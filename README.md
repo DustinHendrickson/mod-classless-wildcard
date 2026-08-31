@@ -119,8 +119,10 @@ client back to stock.
   the server over the `CWCL` addon channel. Players without it lose nothing but convenience.
 - **Every class reads Hero** — creation screen, character sheet, `/who`, tooltips. Class
   colors and icons still work, so addons and raid frames are unaffected.
-- **Every race/class combination** offered on the creation screen, matching the optional
-  server-side SQL.
+- **One class on the creation screen.** Every race stays creatable, each offering a single
+  class, because that is what the realm actually has. Ten identical *Hero* buttons would be
+  a choice that changes nothing — the server converts whatever you pick to the chassis
+  anyway. Needs the race SQL below.
 - **A classless creation screen** — the old per-class blurb replaced with what a Hero
   actually is.
 
@@ -166,10 +168,14 @@ is applied automatically by the DB updater.
 > and the original masks cannot be recomputed. Players should clear their client `Cache`
 > folder afterwards.
 
-**Allow all race/class combinations.** Apply
-`data/sql/db-world/optional/cw_all_race_class.sql`. The client installer unlocks the same
-combinations on the creation screen by default, so apply this or tell players to pass
-`--no-all-combos`.
+**Let every race be the chassis class.** Apply
+`data/sql/db-world/optional/cw_all_race_class.sql`.
+
+> **Required if your players install the client patch.** That patch reduces the creation
+> screen to one class per race, so the server needs a `playercreateinfo` row for combinations
+> that do not exist in vanilla — Tauren Paladin, Gnome Paladin, Undead Paladin. Without it
+> those races cannot be created at all. The script covers every race against every class, so
+> it stays correct if you change `Chassis.Class` later.
 
 **Set your players up.** Hand them the `client-patch` and `client-addon` folders and point
 them at [`client-patch/README.md`](client-patch/README.md). They double-click `install.bat`

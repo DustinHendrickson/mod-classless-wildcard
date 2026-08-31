@@ -82,12 +82,15 @@ def main(argv):
 
             # --- CharBaseInfo -----------------------------------------------
             raw, source = files.find(CHARBASEINFO)
-            combos, added, total = dbc.all_race_class_combos(raw)
-            body = combos[20:20 + total * 2]
+            combos, races = dbc.single_class_combos(raw, 2)
+            body = combos[20:20 + races * 2]
             pairs = {(body[i], body[i + 1]) for i in range(0, len(body), 2)}
-            check("100 race/class combos", total == 100 and len(pairs) == 100,
-                  "%d new" % added)
-            check("tauren paladin unlocked", (6, 2) in pairs)
+            check("one class per race", len(pairs) == races == 10,
+                  "%d rows" % races)
+            check("only the chassis is offered",
+                  {klass for _race, klass in pairs} == {2})
+            check("every race still creatable",
+                  {race for race, _klass in pairs} == set(dbc.PLAYABLE_RACES))
 
             # --- GlueStrings ------------------------------------------------
             raw, source = files.find(GLUESTRINGS)

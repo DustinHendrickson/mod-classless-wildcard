@@ -76,13 +76,22 @@ column is set rather than just column 0.
 
 ### `CharBaseInfo.dbc` — creation screen combinations
 
-Two bytes per record, `(race, class)`. Rebuilt as the full cross product of the
-ten playable races `(1–8, 10, 11)` and ten playable classes `(1–9, 11)` — 100
-pairs, up from the stock 62.
+Two bytes per record, `(race, class)`. Rebuilt as one row per playable race
+`(1–8, 10, 11)`, every one pointing at the chassis class — 10 rows, down from
+the stock 62.
 
-This must be matched server-side by `data/sql/db-world/optional/cw_all_race_class.sql`,
-or the server rejects the combinations the client now offers. `--no-all-combos`
-skips it for realms that did not apply that SQL.
+The module puts every character on a single chassis, so the class list is not a
+choice: whatever a player picks, the server converts it. Offering all ten would
+mean ten identical *Hero* buttons that do the same thing. One row per race keeps
+every race creatable and drops the meaningless question.
+
+This **must** be matched server-side by
+`data/sql/db-world/optional/cw_all_race_class.sql`, which adds `playercreateinfo`
+rows for combinations vanilla does not have (Tauren Paladin and friends).
+Without it those races cannot be created once this patch is installed.
+
+`--chassis <id>` must match the realm's `ClasslessWildcard.Chassis.Class`.
+`--keep-class-choice` leaves the stock list alone.
 
 ### `GlueStrings.lua` — the creation screen copy
 
@@ -115,10 +124,12 @@ which blocks the custom creation screen. One conditional jump enforces it:
 ```
 
 `lib/exepatch.py` locates it by that 15-byte anchor, requires exactly one match,
-checks the target bytes are `74 28` before writing, and by default requires the
-binary's SHA-256 to be the known build-12340 client
-(`aa63a575…e88cb8`). It copies to `Wow.exe.classless-bak` first and recognises an
-already-patched exe by searching for the patched anchor.
+and checks the target bytes are `74 28` before writing. That structural check is
+the safety, not the hash: private-server clients are usually repacks, so an
+unrecognised SHA-256 is normal and only produces a note in the output. The known
+build-12340 hash (`aa63a575…e88cb8`) is still recognised and labelled. It copies
+to `Wow.exe.classless-bak` first and spots an already-patched exe by searching
+for the patched anchor.
 
 On the stock client the patch site is file offset `0x243F`.
 
@@ -145,8 +156,9 @@ especially a non-enUS one.
 - Incremental MPQ patch files (`MPQ_FILE_PATCH_FILE`) are not applied. No
   3.3.5a archive in the normal load order uses them; if one did, the reader
   raises rather than returning wrong bytes.
-- Only the build-12340 `Wow.exe` is whitelisted. Other builds need their
-  SHA-256 added to `KNOWN_SHA256`, or `--force-exe`.
+- Only the build-12340 `Wow.exe` is recognised by hash. Other builds still get
+  patched when the anchor is unambiguous, but add their SHA-256 to
+  `KNOWN_SHA256` to have them labelled instead of noted.
 
 ## Extending the patch
 

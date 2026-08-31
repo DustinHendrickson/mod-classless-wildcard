@@ -4,7 +4,8 @@ The classless system works on a stock 3.3.5a client with nothing installed.
 This folder is the optional polish — run one installer and your client will:
 
 - show every class as **Hero**, everywhere it appears
-- offer **every race and class combination** on the character creation screen
+- put **every race** on the character creation screen with a single class, because
+  a classless realm only has one
 - explain the classless system on the creation screen instead of the old class blurb
 - install the **ClasslessWildcard** addon
 
@@ -64,11 +65,12 @@ World of Warcraft : C:\Games\World of Warcraft
 Locales           : enUS
 Patch archives    : patch-Z.MPQ  (+ patch-<locale>-Z.MPQ)
 Class name        : Hero
+Chassis           : Paladin (the only class on the creation screen)
 
 Install to this client? [Y/n] y
 
   ChrClasses.dbc   10 classes renamed to Hero (from patch-enUS-3.MPQ)
-  CharBaseInfo.dbc 100 race/class combos (38 new, from locale-enUS.MPQ)
+  CharBaseInfo.dbc all 10 races, one class each (the Paladin chassis)
   -> Data/patch-Z.MPQ
   GlueStrings.lua  76 class strings rewritten (from patch-enUS-3.MPQ)
   -> Data/enUS/patch-enUS-Z.MPQ
@@ -107,17 +109,19 @@ You will not normally need any of these.
 | `--uninstall`       | Undo everything the installer did                                       |
 | `--yes` / `-y`      | Skip the confirmation prompt                                            |
 | `--name Champion`   | Call every class something other than `Hero`                            |
-| `--no-all-combos`   | Leave the creation screen's race/class restrictions alone               |
+| `--chassis 2`       | The class id your realm runs on, if it is not Paladin                    |
+| `--keep-class-choice` | Leave the creation screen's class list alone                          |
 | `--no-glue`         | Skip the creation-screen text (and the `Wow.exe` change it needs)       |
 | `--no-exe`          | Never touch `Wow.exe`                                                   |
 | `--no-addon`        | Do not install the addon                                                |
 | `--locale enUS`     | Patch one locale only, on a multi-language client                       |
 
-**`--no-all-combos`** is the one worth knowing about. The installer unlocks every
-race/class pair on the creation screen, which matches a realm running the module's
-recommended `cw_all_race_class.sql`. If your realm did **not** apply that, the
-server will reject the extra combinations, so pass `--no-all-combos`. Ask your
-server admin if you are unsure.
+**`--chassis`** is the one worth knowing about. Every character on a classless realm
+runs on the same class, so the creation screen is reduced to that one class for every
+race — picking between ten identical "Hero" buttons would be meaningless, since the
+server converts your choice anyway. The default is Paladin, which is the module's
+default. **If your realm changed `ClasslessWildcard.Chassis.Class`, pass the matching
+id** or character creation will fail. Ask your server admin if you are unsure.
 
 ---
 

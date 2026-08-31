@@ -1,8 +1,14 @@
--- mod-classless-wildcard: OPTIONAL — all race/class chassis combinations
+-- mod-classless-wildcard: every race creatable on any chassis
 --
--- Server-side half of the CharBaseInfo.dbc client patch: unlocks every
--- race/class pair for character creation. Class is only a chassis in the
--- classless system, so a Tauren mage-chassis is as valid as a Human one.
+-- REQUIRED if your players install the client patch. That patch reduces the
+-- creation screen to one class per race -- the chassis -- which means the
+-- server is asked for combinations vanilla does not have: Tauren Paladin,
+-- Gnome Paladin, Undead Paladin. Without a playercreateinfo row those races
+-- simply cannot be created.
+--
+-- Every race is inserted against every class rather than just the current
+-- chassis, so changing ClasslessWildcard.Chassis.Class later does not need a
+-- re-import.
 --
 -- AzerothCore master derives stats from player_race_stats x player_class_stats,
 -- so every combo already has correct stats; this file only adds the missing

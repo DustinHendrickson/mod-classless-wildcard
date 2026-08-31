@@ -100,28 +100,31 @@ def rename_all_classes(data: bytes, new_name: str):
     return header + bytes(records) + new_strings, renamed
 
 
-def all_race_class_combos(data: bytes):
-    """Rebuild CharBaseInfo.dbc offering every race/class pair.
+def single_class_combos(data: bytes, chassis_class: int):
+    """Rebuild CharBaseInfo.dbc so every race offers exactly one class.
 
-    Returns (new_dbc_bytes, added_count, total_count).
+    There is only one class on a classless realm -- the chassis -- and it is
+    the same for everyone. Offering all ten would put ten identical "Hero"
+    buttons on the creation screen, each doing the same thing, since the server
+    converts whatever was picked to the chassis anyway.
+
+    So: one row per playable race, all pointing at the chassis. Every race
+    stays creatable, and class stops being a question.
+
+    Returns (new_dbc_bytes, race_count).
     """
     record_count, field_count, record_size, string_size = parse_header(data)
     if record_size != 2:
         raise DbcError("CharBaseInfo.dbc records are %d bytes, expected 2"
                        % record_size)
-
-    existing = set()
-    body = data[20:20 + record_count * record_size]
-    for i in range(0, len(body), 2):
-        existing.add((body[i], body[i + 1]))
-
-    combos = [(race, klass)
-              for race in PLAYABLE_RACES
-              for klass in PLAYABLE_CLASSES]
+    if chassis_class not in PLAYABLE_CLASSES:
+        raise DbcError("chassis class %d is not a playable 3.3.5a class"
+                       % chassis_class)
 
     records = bytearray()
-    for race, klass in combos:
-        records += bytes([race, klass])
+    for race in PLAYABLE_RACES:
+        records += bytes([race, chassis_class])
 
-    header = WDBC_MAGIC + struct.pack("<4I", len(combos), field_count, 2, 1)
-    return header + bytes(records) + b"\0", len(set(combos) - existing), len(combos)
+    header = WDBC_MAGIC + struct.pack("<4I", len(PLAYABLE_RACES), field_count,
+                                      2, 1)
+    return header + bytes(records) + b"\0", len(PLAYABLE_RACES)

@@ -144,7 +144,12 @@ def prompt_for_client():
 
 # ------------------------------------------------------------------- build
 
-def build_data_patch(files, name, all_combos, report):
+CLASS_NAMES = {1: "Warrior", 2: "Paladin", 3: "Hunter", 4: "Rogue",
+               5: "Priest", 6: "Death Knight", 7: "Shaman", 8: "Mage",
+               9: "Warlock", 11: "Druid"}
+
+
+def build_data_patch(files, name, chassis, report):
     """Assemble the base patch archive contents from the client's own DBCs."""
     payload = {}
 
@@ -154,12 +159,13 @@ def build_data_patch(files, name, all_combos, report):
     report.append("  ChrClasses.dbc   %d classes renamed to %s (from %s)"
                   % (len(renamed), name, os.path.basename(source)))
 
-    if all_combos:
+    if chassis:
         raw, source = files.find(CHARBASEINFO)
-        patched, added, total = dbc.all_race_class_combos(raw)
+        patched, races = dbc.single_class_combos(raw, chassis)
         payload[CHARBASEINFO] = patched
-        report.append("  CharBaseInfo.dbc %d race/class combos (%d new, from %s)"
-                      % (total, added, os.path.basename(source)))
+        report.append("  CharBaseInfo.dbc all %d races, one class each "
+                      "(the %s chassis)"
+                      % (races, CLASS_NAMES.get(chassis, "class %d" % chassis)))
 
     return payload
 
@@ -244,6 +250,12 @@ def do_install(args, wow_dir):
     if not locales:
         raise Abort("no locale folder (enUS, deDE, ...) found in %s" % data_dir)
 
+    chassis = args.chassis if args.one_class else 0
+    if chassis and chassis not in CLASS_NAMES:
+        raise Abort("--chassis %d is not a playable 3.3.5a class. Valid ids: %s"
+                    % (chassis, ", ".join("%d %s" % (k, v)
+                                          for k, v in sorted(CLASS_NAMES.items()))))
+
     previous = read_manifest(wow_dir)
     suffix = (previous or {}).get("suffix")
     if not suffix:
@@ -257,6 +269,9 @@ def do_install(args, wow_dir):
     print("Patch archives    : patch-%s.MPQ  (+ patch-<locale>-%s.MPQ)"
           % (suffix, suffix))
     print("Class name        : %s" % args.name)
+    if chassis:
+        print("Chassis           : %s (the only class on the creation screen)"
+              % CLASS_NAMES.get(chassis, "class %d" % chassis))
     if previous:
         print("Note              : replacing a previous install (same letter)")
     print()
@@ -273,7 +288,7 @@ def do_install(args, wow_dir):
 
     # base patch: built once, from the highest-priority locale's chain
     with clientfs.ClientFiles(data_dir, locales[0]) as files:
-        payload = build_data_patch(files, args.name, args.all_combos, report)
+        payload = build_data_patch(files, args.name, chassis, report)
     target = os.path.join(data_dir, "patch-%s.MPQ" % suffix)
     if not args.dry_run:
         mpq.write_archive(target, payload)
@@ -316,6 +331,7 @@ def do_install(args, wow_dir):
         "suffix": suffix,
         "locales": locales,
         "name": args.name,
+        "chassis": chassis,
         "files": written,
         "addon": addon_rel,
         "exe_patched": exe_patched or bool((previous or {}).get("exe_patched")),
@@ -404,11 +420,14 @@ def main(argv=None):
     parser.add_argument("--locale", help="patch only this locale, e.g. enUS")
     parser.add_argument("--name", default="Hero",
                         help="what every class is called (default: Hero)")
-    parser.add_argument("--no-all-combos", dest="all_combos",
+    parser.add_argument("--chassis", type=int, default=2, metavar="ID",
+                        help="the class id your realm runs every character on, "
+                             "matching ClasslessWildcard.Chassis.Class "
+                             "(default: 2, Paladin)")
+    parser.add_argument("--keep-class-choice", dest="one_class",
                         action="store_false",
-                        help="do not unlock every race/class pair on the "
-                             "creation screen (use this if your realm did not "
-                             "apply cw_all_race_class.sql)")
+                        help="leave the creation screen's class list alone "
+                             "instead of reducing it to the single chassis")
     parser.add_argument("--no-glue", dest="glue", action="store_false",
                         help="skip the creation-screen text and the exe patch")
     parser.add_argument("--no-exe", dest="exe", action="store_false",
