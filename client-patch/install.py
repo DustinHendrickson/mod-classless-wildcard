@@ -32,14 +32,16 @@ import sys
 HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, HERE)
 
-from lib import clientfs, dbc, exepatch, gluestrings, mpq  # noqa: E402
+from lib import charcreate, clientfs, dbc, exepatch, gluestrings, mpq, outfit  # noqa: E402
 
 MANIFEST_NAME = "ClasslessWildcard-install.json"
 ADDON_NAME = "ClasslessWildcard"
 
 CHRCLASSES = "DBFilesClient\\ChrClasses.dbc"
 CHARBASEINFO = "DBFilesClient\\CharBaseInfo.dbc"
+CHARSTARTOUTFIT = "DBFilesClient\\CharStartOutfit.dbc"
 GLUESTRINGS = "Interface\\GlueXML\\GlueStrings.lua"
+CHARCREATE_LUA = "Interface\\GlueXML\\CharacterCreate.lua"
 
 COMMON_INSTALL_DIRS = [
     r"C:\World of Warcraft",
@@ -157,8 +159,12 @@ def prompt_for_client():
 SHELL_CLASS = 1
 
 
-def build_data_patch(files, name, report):
-    """Assemble the base patch archive contents from the client's own DBCs."""
+def build_data_patch(files, name, report, theme=False):
+    """Assemble the base patch archive contents from the client's own DBCs.
+
+    theme=True (with --creation-text) also gives the Hero the armored starting
+    outfit via CharStartOutfit.dbc.
+    """
     payload = {}
 
     raw, source = files.find(CHRCLASSES)
@@ -172,6 +178,18 @@ def build_data_patch(files, name, report):
     payload[CHARBASEINFO] = patched
     report.append("  CharBaseInfo.dbc all %d races, one cosmetic class "
                   "(shown as %s)" % (races, name))
+
+    if theme:
+        try:
+            raw, source = files.find(CHARSTARTOUTFIT)
+            patched, updated, be = outfit.build_hero_outfit(raw, SHELL_CLASS)
+            payload[CHARSTARTOUTFIT] = patched
+            report.append("  CharStartOutfit.dbc  armored Hero look on %d races"
+                          "%s (from %s)"
+                          % (updated, " +Blood Elf" if be else "",
+                             os.path.basename(source)))
+        except (FileNotFoundError, outfit.OutfitError) as error:
+            report.append("  CharStartOutfit.dbc  skipped (%s)" % error)
 
     return payload
 
@@ -189,7 +207,21 @@ def build_locale_patch(files, name, report, locale):
             "Drop --creation-text to install everything else." % locale)
     report.append("  GlueStrings.lua  %d class strings rewritten (from %s)"
                   % (len(replaced), os.path.basename(source)))
-    return {GLUESTRINGS: new_text.encode("utf-8", "surrogateescape")}
+    payload = {GLUESTRINGS: new_text.encode("utf-8", "surrogateescape")}
+
+    # hide the leftover single-class selector on the creation screen
+    try:
+        raw, source = files.find(CHARCREATE_LUA)
+    except FileNotFoundError:
+        report.append("  CharacterCreate.lua  not found; class selector left visible")
+    else:
+        lua = raw.decode("utf-8", "surrogateescape")
+        hooked = charcreate.add_hide_class_hook(lua)
+        payload[CHARCREATE_LUA] = hooked.encode("utf-8", "surrogateescape")
+        report.append("  CharacterCreate.lua  class selector hidden (from %s)"
+                      % os.path.basename(source))
+
+    return payload
 
 
 # ----------------------------------------------------------------- actions
@@ -311,7 +343,7 @@ def do_install(args, wow_dir):
 
     # base patch: built once, from the highest-priority locale's chain
     with clientfs.ClientFiles(data_dir, locales[0]) as files:
-        payload = build_data_patch(files, args.name, report)
+        payload = build_data_patch(files, args.name, report, theme=args.glue)
     target = os.path.join(data_dir, "patch-%s.MPQ" % suffix)
     if not args.dry_run:
         mpq.write_archive(target, payload)
@@ -397,9 +429,12 @@ def do_install(args, wow_dir):
 # is one of these (plus the "(listfile)" entry itself) is ours; anything else,
 # including a client pack's own patch archive, is left alone.
 _OUR_ARCHIVE_CONTENTS = (
-    frozenset({CHRCLASSES.lower(), CHARBASEINFO.lower()}),  # base patch
-    frozenset({CHRCLASSES.lower()}),                        # base, --no-...
-    frozenset({GLUESTRINGS.lower()}),                       # locale patch
+    frozenset({CHRCLASSES.lower(), CHARBASEINFO.lower()}),                 # base
+    frozenset({CHRCLASSES.lower(), CHARBASEINFO.lower(),
+               CHARSTARTOUTFIT.lower()}),                                  # base + outfit
+    frozenset({CHRCLASSES.lower()}),                                       # base, minimal
+    frozenset({GLUESTRINGS.lower()}),                                      # locale, text only
+    frozenset({GLUESTRINGS.lower(), CHARCREATE_LUA.lower()}),             # locale + hide-class
 )
 
 
