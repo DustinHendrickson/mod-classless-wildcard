@@ -113,6 +113,22 @@ def _nearest(palette, key):
     return best
 
 
+def build_addon_class_atlas(original_blp):
+    """Re-encode the client's class-icon atlas as the addon's OWN texture.
+
+    The addon ships its own class-icon atlas instead of pointing at the game's
+    shared file, so it does not depend on (or get disturbed by) whatever the
+    client has at that path. Same 4x4 layout, so the addon's tex coords still
+    line up. Returns BLP2 bytes, or None if Pillow is missing.
+    """
+    try:
+        from PIL import Image
+    except ImportError:
+        return None
+    w, h, rgba = decode_blp(original_blp)
+    return encode_palettized(Image.frombytes("RGBA", (w, h), rgba))
+
+
 # ----------------------------------------------------------------- decoding
 
 def decode_blp(data):

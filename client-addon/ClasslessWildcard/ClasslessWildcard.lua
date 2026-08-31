@@ -27,7 +27,7 @@ local CLASS_NAMES = {
     [1] = "Warrior", [2] = "Paladin", [3] = "Hunter", [4] = "Rogue", [5] = "Priest",
     [6] = "Death Knight", [7] = "Shaman", [8] = "Mage", [9] = "Warlock", [11] = "Druid",
 }
-local CLASS_ORDER = { 1, 2, 3, 4, 5, 7, 8, 9, 11, 6 }
+local CLASS_ORDER = { 1, 2, 3, 4, 5, 7, 8, 9, 11 } -- Death Knight (6) is the Hero class type; hidden from the browser
 
 -- ---------------------------------------------------------------------------
 -- state
@@ -141,7 +141,11 @@ for i, classId in ipairs(CLASS_ORDER) do
     b:SetPoint("TOPLEFT", (950 - stripWidth) / 2 + (i - 1) * (CLASS_BTN + 8), -70)
     b.icon = b:CreateTexture(nil, "ARTWORK")
     b.icon:SetAllPoints(b)
-    b.icon:SetTexture("Interface\\Glues\\CharacterCreate\\UI-CharacterCreate-Classes")
+    -- the addon ships its OWN class-icon atlas (embedded, decoupled from the
+    -- game files); fall back to the stock atlas if it was not installed
+    if not b.icon:SetTexture("Interface\\AddOns\\ClasslessWildcard\\classicons") then
+        b.icon:SetTexture("Interface\\Glues\\CharacterCreate\\UI-CharacterCreate-Classes")
+    end
     local tc = CLASS_TCOORDS[CLASS_TOKENS[classId]]
     if tc then b.icon:SetTexCoord(tc[1], tc[2], tc[3], tc[4]) end
     b.slot = b:CreateTexture(nil, "OVERLAY")

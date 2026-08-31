@@ -80,14 +80,13 @@ Two bytes per record, `(race, class)`. Rebuilt as one row per playable race
 `(1–8, 10, 11)` — 10 rows, down from the stock 62 — all pointing at a single
 **cosmetic shell class**.
 
-The shell is Warrior (`SHELL_CLASS` in `install.py`) and it has *nothing to do
-with the server's chassis*. The server converts every new character to its
-configured chassis at creation, so what the client sends is irrelevant; the
-class list exists only to show the Hero name, pitch and bullets once instead of
-ten identical times. Warrior is the shell because vanilla already permits it
-for 9 of the 10 races — the module's auto-applied `cw_world_hero_races.sql`
-adds the one missing server row (Blood Elf Warrior), so no manual SQL is
-involved.
+The shell is **Paladin** (`SHELL_CLASS` in `install.py`), which is also the
+server chassis — so a Hero is created as a Paladin directly, with native mana
+and no runtime class change. Paladin is only vanilla-creatable by four races, so
+the module's auto-applied `cw_world_hero_races.sql` adds the missing
+`playercreateinfo` rows for the other six (Orc/Night Elf/Undead/Tauren/Gnome/
+Troll); stats derive from `player_race_stats` x `player_class_stats`, so only the
+start position and action bar need adding.
 
 ### `GlueStrings.lua` — the creation screen copy
 
@@ -128,13 +127,12 @@ client pack's copy.
 `ItemID[24]`, `DisplayInfoID[24]`, `InventoryType[24]`. The model is drawn from
 the **DisplayInfoID** array, not the item IDs.
 
-`lib/outfit.py` rewrites the shell-class (Warrior) rows to wear the Death Knight
+`lib/outfit.py` rewrites the shell-class (Paladin) rows to wear the Death Knight
 starting plate: DK (class 6) has a row for every race and gender, so the display
 IDs are real and verified rather than invented. The head slot (InventoryType 1)
 is dropped so the customized face stays visible, and a two-hander is kept so the
-Hero is armed. It also **adds** a shell-class row for Blood Elf, which has no
-vanilla Warrior outfit and would otherwise appear in underwear (126 → 128
-records).
+Hero is armed. It also **adds** a Paladin row for every race+gender that lacks
+one (six races have no vanilla Paladin), so no Hero appears in underwear.
 
 ### `UI-Classes-Circles.blp` — the Hero emblem (`--hero-icon`)
 

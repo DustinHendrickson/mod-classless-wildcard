@@ -1,20 +1,20 @@
 """Give the Hero a distinct starting look on the character-creation screen.
 
 CharStartOutfit.dbc drives the gear shown on the previewed character (by
-DisplayInfoID). Warriors -- the cosmetic shell -- start in plain recruit cloth,
-so every Hero looks like a peasant with a sword. This rebuilds the shell-class
-rows to wear the Death Knight starting plate instead: an armored, heroic look
-that already exists in the client for every race and gender, so no display IDs
-are invented.
+DisplayInfoID). The shell class (Paladin) starts in plain recruit cloth, so
+every Hero would look like a peasant. This rebuilds the shell-class rows to wear
+the Death Knight starting plate instead: an armored, heroic look that already
+exists in the client for every race and gender, so no display IDs are invented.
 
 Two deliberate adjustments:
   * the head slot is dropped, so the face and hair the player just customized
     stay visible (the DK set includes a full helm);
   * a two-handed weapon is kept, so the Hero is holding something.
 
-It also fixes a real gap: Blood Elf has no Warrior CharStartOutfit row at all
-(Blood Elves were never vanilla warriors), so a Blood Elf Hero would appear in
-underwear. Blood Elf gets a shell row built the same way.
+It also fills real gaps: Paladin is only vanilla-creatable by four races, so the
+other six have no Paladin CharStartOutfit row and their Heroes would appear in
+underwear. A shell row is added for every race+gender that lacks one, built the
+same way (from that race's own Death Knight row).
 
 None of this needs the exe patch -- it is data. It ships with --creation-text
 only to keep all the visual extras behind one flag.
@@ -147,26 +147,29 @@ def build_hero_outfit(data: bytes, shell_class: int):
                 write_pieces(rec, pieces)
                 updated += 1
 
-    # Blood Elf (race 10) has no shell-class row in vanilla -> add one so a
-    # Blood Elf Hero is not naked.
-    blood_elf_added = 0
-    for gender in (0, 1):
-        if (10, gender, shell_class) in index:
-            continue
-        pieces = hero_pieces(10, gender)
-        if not pieces:
-            continue
-        max_id += 1
-        rec = [0] * _FIELDS
-        rec[0] = max_id
-        rec[1] = _pack_packed(10, shell_class, gender, 0)
-        write_pieces(rec, pieces)
-        records.append(rec)
-        blood_elf_added += 1
+    # Any race with no shell-class row in vanilla gets one added, so no Hero
+    # appears naked. The shell (Paladin) is only vanilla-creatable by four
+    # races; the outfit look is copied from that race's own Death Knight row,
+    # which every race has.
+    added = 0
+    for race in _RACES:
+        for gender in (0, 1):
+            if (race, gender, shell_class) in index:
+                continue
+            pieces = hero_pieces(race, gender)
+            if not pieces:
+                continue
+            max_id += 1
+            rec = [0] * _FIELDS
+            rec[0] = max_id
+            rec[1] = _pack_packed(race, shell_class, gender, 0)
+            write_pieces(rec, pieces)
+            records.append(rec)
+            added += 1
 
     body = b"".join(struct.pack("<%di" % _FIELDS, *rec) for rec in records)
     header = WDBC_MAGIC + struct.pack("<4I", len(records), field_count,
                                       record_size, string_size)
     strings = data[20 + record_count * record_size:
                    20 + record_count * record_size + string_size]
-    return header + body + strings, updated, blood_elf_added
+    return header + body + strings, updated, added

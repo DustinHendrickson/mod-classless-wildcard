@@ -85,13 +85,13 @@ def main(argv):
 
             # --- CharBaseInfo -----------------------------------------------
             raw, source = files.find(CHARBASEINFO)
-            combos, races = dbc.single_class_combos(raw, 1)
+            combos, races = dbc.single_class_combos(raw, 2)  # Paladin shell
             body = combos[20:20 + races * 2]
             pairs = {(body[i], body[i + 1]) for i in range(0, len(body), 2)}
             check("one class per race", len(pairs) == races == 10,
                   "%d rows" % races)
-            check("only the Warrior shell is offered",
-                  {klass for _race, klass in pairs} == {1})
+            check("only the Paladin shell is offered",
+                  {klass for _race, klass in pairs} == {2})
             check("every race still creatable",
                   {race for race, _klass in pairs} == set(dbc.PLAYABLE_RACES))
 
@@ -117,10 +117,10 @@ def main(argv):
 
             # --- CharStartOutfit armored look -------------------------------
             raw, source = files.find(CHARSTARTOUTFIT)
-            new_dbc, updated, be = outfit.build_hero_outfit(raw, 1)
+            new_dbc, updated, added = outfit.build_hero_outfit(raw, 2)
             oc, of, orc, oss = struct.unpack_from("<4I", new_dbc, 4)
-            check("outfit rows updated", updated == 18, "%d rows" % updated)
-            check("Blood Elf outfit added", be == 2 and oc == 128)
+            check("outfit rows present for every race+gender",
+                  updated + added == 20, "%d updated + %d added" % (updated, added))
             # no head slot (invtype 1) on the human-male Hero row
             def _row(data, race, gender, cls):
                 rc = struct.unpack_from("<I", data, 4)[0]
@@ -131,7 +131,7 @@ def main(argv):
                     if r == race and g == gender and c == cls:
                         return struct.unpack_from("<%di" % (rs // 4), data, b)
                 return None
-            hm = _row(new_dbc, 1, 0, 1)
+            hm = _row(new_dbc, 1, 0, 2)  # human male Paladin (Hero)
             check("Hero outfit keeps the face (no helmet)",
                   hm is not None and all(hm[50 + k] != 1 for k in range(24)))
 

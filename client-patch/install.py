@@ -153,12 +153,13 @@ def prompt_for_client():
 
 # ------------------------------------------------------------------- build
 
-# The one class the creation screen offers. Purely cosmetic: the server
-# converts every new character to its configured chassis no matter what the
-# client sends. Warrior is used as the shell because vanilla already allows it
-# for 9 of the 10 races (the installer's SQL side adds the one gap), and it is
-# renamed "Hero" like everything else.
-SHELL_CLASS = 1
+# The one class the creation screen offers, shown as "Hero". This IS the chassis
+# class (Paladin): a Hero is created as a Paladin directly, so there is no
+# runtime class conversion, mana is native, and the Paladin class icon (which
+# the client patch reskins to the Hero emblem) shows from creation onward.
+# Paladin is not vanilla-creatable by every race, so the module's
+# cw_world_hero_races.sql adds the missing playercreateinfo rows server-side.
+SHELL_CLASS = 2
 
 
 def build_data_patch(files, name, report, theme=False):
@@ -184,12 +185,11 @@ def build_data_patch(files, name, report, theme=False):
     if theme:
         try:
             raw, source = files.find(CHARSTARTOUTFIT)
-            patched, updated, be = outfit.build_hero_outfit(raw, SHELL_CLASS)
+            patched, updated, added = outfit.build_hero_outfit(raw, SHELL_CLASS)
             payload[CHARSTARTOUTFIT] = patched
-            report.append("  CharStartOutfit.dbc  armored Hero look on %d races"
-                          "%s (from %s)"
-                          % (updated, " +Blood Elf" if be else "",
-                             os.path.basename(source)))
+            report.append("  CharStartOutfit.dbc  armored Hero look, %d rows "
+                          "updated + %d added (from %s)"
+                          % (updated, added, os.path.basename(source)))
         except (FileNotFoundError, outfit.OutfitError) as error:
             report.append("  CharStartOutfit.dbc  skipped (%s)" % error)
 
@@ -258,7 +258,7 @@ def build_locale_patch(files, name, report, locale, theme=False, icon=False):
 
 # ----------------------------------------------------------------- actions
 
-def install_addon(wow_dir, dry_run, report):
+def install_addon(wow_dir, dry_run, report, files=None):
     source = os.path.abspath(os.path.join(HERE, os.pardir, "client-addon", ADDON_NAME))
     if not os.path.isdir(source):
         report.append("  addon            SKIPPED, not found at %s" % source)
@@ -272,6 +272,25 @@ def install_addon(wow_dir, dry_run, report):
     count = sum(len(names) for _root, _dirs, names in os.walk(source))
     report.append("  addon            %d files -> Interface/AddOns/%s"
                   % (count, ADDON_NAME))
+
+    # give the addon its OWN copy of the class-icon atlas, built from the
+    # client, so it does not depend on the shared game texture (the addon falls
+    # back to that texture if this is absent)
+    if files is not None:
+        try:
+            raw, _src = files.find(CLASSICONS_CREATE)
+        except FileNotFoundError:
+            raw = None
+        atlas = blp.build_addon_class_atlas(raw) if raw else None
+        if atlas is not None and not dry_run:
+            with open(os.path.join(target, "classicons.blp"), "wb") as handle:
+                handle.write(atlas)
+        if atlas is not None:
+            report.append("  addon class icons    embedded (classicons.blp)")
+        elif raw is not None:
+            report.append("  addon class icons    using game atlas (Pillow not "
+                          "installed)")
+
     return os.path.relpath(target, wow_dir).replace("\\", "/")
 
 
@@ -419,7 +438,9 @@ def do_install(args, wow_dir):
 
     addon_rel = None
     if args.addon:
-        addon_rel = install_addon(wow_dir, args.dry_run, report)
+        with clientfs.ClientFiles(data_dir, locales[0],
+                                  exclude=own_archives(locales[0])) as files:
+            addon_rel = install_addon(wow_dir, args.dry_run, report, files)
 
     clear_cache(wow_dir, args.dry_run, report)
 
