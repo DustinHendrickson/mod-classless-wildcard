@@ -89,8 +89,8 @@ tinsert(UISpecialFrames, "ClasslessWildcardFrame")
 
 -- clickable dice crest: opens the Wildcard roll/reroll experience
 local titleBtn = CreateFrame("Button", nil, frame)
-titleBtn:SetWidth(54); titleBtn:SetHeight(54)
-titleBtn:SetPoint("TOPLEFT", 10, -6)
+titleBtn:SetWidth(64); titleBtn:SetHeight(64)
+titleBtn:SetPoint("TOPLEFT", 20, -16)
 
 local titleIcon = titleBtn:CreateTexture(nil, "ARTWORK")
 titleIcon:SetAllPoints(titleBtn)
@@ -98,7 +98,7 @@ titleIcon:SetTexture("Interface\\AddOns\\ClasslessWildcard\\icon")
 
 -- glow behind the die brightens on hover, so it reads as clickable
 local titleGlow = titleBtn:CreateTexture(nil, "BACKGROUND")
-titleGlow:SetWidth(84); titleGlow:SetHeight(84)
+titleGlow:SetWidth(100); titleGlow:SetHeight(100)
 titleGlow:SetPoint("CENTER")
 titleGlow:SetTexture("Interface\\AddOns\\ClasslessWildcard\\glow")
 titleGlow:SetBlendMode("ADD")
@@ -424,8 +424,10 @@ bottomLine:SetTexture("Interface\\Buttons\\WHITE8X8")
 bottomLine:SetVertexColor(0.82, 0.66, 0.20, 0.5)
 
 local bottomText = frame:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
-bottomText:SetPoint("BOTTOMLEFT", 26, 32)
-bottomText:SetJustifyH("LEFT")
+-- sits in the empty gap between the left (Help/Buy Scroll) and right (Stats/
+-- Rebirth/Respec) button clusters so it never overlaps a button
+bottomText:SetPoint("BOTTOM", -22, 33)
+bottomText:SetJustifyH("CENTER")
 
 -- Bottom-right cluster, laid out right-to-left with fixed offsets so nothing
 -- overlaps: Respec (-20), Rebirth (-116), Stats (-212).
@@ -666,7 +668,7 @@ local function UpdateStatus()
     if s.mode == 0 then
         statusText:SetText(modeText .. "   Ability Essence: |cff00ff00" .. s.ae .. "|r   Talent Essence: |cff00ff00" .. s.te .. "|r")
         subStatusText:SetText("Level " .. s.level)
-        bottomText:SetText("Ability Essence: |cff00ff00" .. s.ae .. "|r    Talent Essence: |cff00ff00" .. s.te .. "|r    Reroll Scrolls: " .. s.scrolls)
+        bottomText:SetText("Ability Essence: |cff00ff00" .. s.ae .. "|r    Talent Essence: |cff00ff00" .. s.te .. "|r")
         respecBtn:Enable()
         if s.rebirth == 1 then CW.rebirthBtn:Show() else CW.rebirthBtn:Hide() end
         CW.buyScrollBtn:Hide()
