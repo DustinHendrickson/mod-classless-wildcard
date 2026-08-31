@@ -11,6 +11,7 @@ cmake-build-*/
 
 # Generated client patch artifacts
 client-patch/mpqtool
+client-patch/StormLib/
 client-patch/*.MPQ
 client-patch/*.mpq
 client-patch/out/
@@ -21,3 +22,7 @@ client-patch/out/
 *.swp
 .DS_Store
 Thumbs.db
+
+# Python
+__pycache__/
+*.pyc

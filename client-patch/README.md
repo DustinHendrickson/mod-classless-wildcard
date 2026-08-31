@@ -1,106 +1,172 @@
-# Client patch (MPQ): "Hero" class + all race/class combos
+# Client setup
 
-Renames every class to **Hero** (or any name you choose) on the character
-creation screen, character sheet, /who, chat and tooltips — the last visible
-trace of the old classes. Class names come from `ChrClasses.dbc`, which ships
-inside the client's MPQ archives and has **no signature check** (unlike
-GlueXML), so this is a clean, ban-free data patch.
+The classless system works on a stock 3.3.5a client with nothing installed.
+This folder is the optional polish — run one installer and your client will:
 
-The chassis mechanics (which resource bar is displayed, base stats) are
-unchanged — this is purely cosmetic naming. Everything else the classless
-system needs is server-side + addon.
+- show every class as **Hero**, everywhere it appears
+- offer **every race and class combination** on the character creation screen
+- explain the classless system on the creation screen instead of the old class blurb
+- install the **ClasslessWildcard** addon
 
-## Build the tool (once)
+It is one command, it backs up anything it changes, and `--uninstall` puts your
+client back exactly as it was.
 
-```bash
-./build_mpqtool.sh          # clones & builds StormLib, compiles mpqtool
-```
+---
 
-## What goes in the patch
+## What you need
 
-- **ChrClasses.dbc** — every class renamed to "Hero" (creation screen,
-  character sheet, /who, tooltips). Internal class tokens (WARRIOR, MAGE, …)
-  are preserved so class colors, icons and addons keep working.
-- **CharBaseInfo.dbc** — every race/class chassis combination unlocked on the
-  creation screen (100 combos). Pair this with the module's
-  `data/sql/db-world/optional/cw_all_race_class.sql`, which unlocks the same
-  combos server-side (start locations, action bars, starter kits — stats are
-  automatic on AzerothCore master since they derive from
-  player_race_stats × player_class_stats).
+- Your **World of Warcraft 3.3.5a** folder — the one with `Wow.exe` and `Data` in it.
+- **Python 3** (any version from 3.6 up).
+  Windows: get it from [python.org/downloads](https://www.python.org/downloads/) and
+  tick **"Add python.exe to PATH"** on the first screen of the installer.
 
-## Make the patch
+Nothing else. No compiler, no StormLib, no MPQ editor, no extra downloads.
 
-```bash
-# 1. pull the original DBCs out of your client (adjust locale)
-./mpqtool extract "/path/to/WoW/Data/enUS/locale-enUS.MPQ" \
-    'DBFilesClient\ChrClasses.dbc' ChrClasses.dbc
-./mpqtool extract "/path/to/WoW/Data/common.MPQ" \
-    'DBFilesClient\CharBaseInfo.dbc' CharBaseInfo.dbc
-
-# 2. rename all classes (pick any name) + unlock all combos (--no-dk to skip DK)
-python3 make_hero_classes.py ChrClasses.dbc ChrClasses_hero.dbc --name Hero
-python3 make_all_combos_charbaseinfo.py CharBaseInfo.dbc CharBaseInfo_all.dbc
-
-# 3. pack them as a patch archive
-./mpqtool create patch-4.MPQ \
-    'ChrClasses_hero.dbc@DBFilesClient\ChrClasses.dbc' \
-    'CharBaseInfo_all.dbc@DBFilesClient\CharBaseInfo.dbc'
-```
+---
 
 ## Install
 
-Drop `patch-4.MPQ` into the client's `Data/` folder (next to patch.MPQ,
-patch-2.MPQ, patch-3.MPQ). Patches load alphabetically/numerically, so `-4`
-overrides the originals. Players delete their `Cache/` folder once and log in:
-every class shows as **Hero**.
+### Windows
 
-Distribute the MPQ to your players alongside the `ClasslessWildcard` addon —
-a launcher or a zip with both is typical private-server practice.
+**Double-click `install.bat`.**
 
-## Verified
+It finds your WoW folder, shows you what it is about to do, and asks once before
+touching anything. If it cannot find your client, drag your WoW folder onto
+`install.bat` and drop it.
 
-The whole pipeline (DBC rewrite → MPQ pack → list → extract → byte-identical
-roundtrip → all names read back as "Hero") is exercised by the module's test
-run against a synthetic ChrClasses.dbc. You run it against the real one from
-your client, which we don't redistribute for copyright reasons.
+### macOS / Linux
 
-## Extending the patch later
+```bash
+./install.sh "/path/to/World of Warcraft"
+```
 
-The same `mpqtool create` command takes any number of `file@mpqpath` pairs, so
-future additions — custom `Spell.dbc` rows for exclusive classless spells,
-custom icons, `TalentTab.dbc` tweaks — go into the same archive. Keep the DBC
-edits matched with server-side data or the client will disagree with the
-server.
+### Any system, explicitly
 
+```bash
+python3 install.py "C:\Games\World of Warcraft"
+```
 
-## Creation-screen class description ("Hero" pitch instead of the Warrior blurb)
+Want to see exactly what would happen before committing to it?
 
-Two files, in order — try step A alone first; only do step B if the client
-refuses the custom glue.
+```bash
+python3 install.py --dry-run "C:\Games\World of Warcraft"
+```
 
-**A. The text (patch MPQ).** Rewrite the Warrior strings to the Hero pitch and
-pack them; on many 3.3.5a clients this loads with no exe change at all:
+That writes nothing at all — it just prints the plan.
 
-    mpqtool extract "Data\enUS\locale-enUS.MPQ" \
-        "Interface\GlueXML\GlueStrings.lua" GlueStrings.lua
-    python3 make_hero_gluestrings.py GlueStrings.lua GlueStrings_hero.lua
-    mpqtool create patch-enUS-4.MPQ \
-        "GlueStrings_hero.lua@Interface\GlueXML\GlueStrings.lua"
-    #   -> drop patch-enUS-4.MPQ into Data\enUS\
+### What you should see
 
-**B. Accept custom glue (exe patch, only if A shows a signature/corrupted
-error).** `patch_client_exe.py` flips the single TOC-signature branch in the
-client so custom GlueXML is accepted. It is run LOCALLY by each player on their
-OWN Wow.exe — you never distribute a modified binary — and is safe and
-reversible:
+```
+mod-classless-wildcard client installer
+=======================================
 
-    python3 patch_client_exe.py --dry-run Wow.exe   # shows the site, writes nothing
-    python3 patch_client_exe.py         Wow.exe   # backs up to Wow.exe.bak, patches
-    python3 patch_client_exe.py --restore Wow.exe   # revert
+World of Warcraft : C:\Games\World of Warcraft
+Locales           : enUS
+Patch archives    : patch-Z.MPQ  (+ patch-<locale>-Z.MPQ)
+Class name        : Hero
 
-It verifies the exe is the known build-12340 client by SHA-256, locates the
-patch site by a unique byte pattern (74 28 -> EB 28 at VA 0x40303F), refuses on
-any mismatch, always writes Wow.exe.bak first, and detects an already-patched
-exe. Verified and round-trip tested against the standard 3.3.5a 12340 Wow.exe
-(SHA-256 aa63a575...e88cb8). A different build/locale aborts safely instead of
-corrupting anything — send its SHA-256 to add support rather than forcing it.
+Install to this client? [Y/n] y
+
+  ChrClasses.dbc   10 classes renamed to Hero (from patch-enUS-3.MPQ)
+  CharBaseInfo.dbc 100 race/class combos (38 new, from locale-enUS.MPQ)
+  -> Data/patch-Z.MPQ
+  GlueStrings.lua  76 class strings rewritten (from patch-enUS-3.MPQ)
+  -> Data/enUS/patch-enUS-Z.MPQ
+  Wow.exe          patched at file offset 0x243F (backup: Wow.exe.classless-bak)
+  addon            12 files -> Interface/AddOns/ClasslessWildcard
+  cache            cleared (the client rebuilds it on next login)
+
+Done. Start the game and every class will read Hero.
+```
+
+Then just start the game. **Close WoW before running the installer** — Windows will
+not let it replace `Wow.exe` while the game is open.
+
+---
+
+## Uninstall
+
+```bash
+python3 install.py --uninstall "C:\Games\World of Warcraft"
+```
+
+Windows users can run `install.bat --uninstall` instead.
+
+This removes the patch archives, restores `Wow.exe` from the backup it made,
+removes the addon and clears the cache. Your client is back to stock.
+
+---
+
+## Options
+
+You will not normally need any of these.
+
+| Option              | Effect                                                                  |
+| ------------------- | ----------------------------------------------------------------------- |
+| `--dry-run`         | Print the plan and write nothing                                        |
+| `--uninstall`       | Undo everything the installer did                                       |
+| `--yes` / `-y`      | Skip the confirmation prompt                                            |
+| `--name Champion`   | Call every class something other than `Hero`                            |
+| `--no-all-combos`   | Leave the creation screen's race/class restrictions alone               |
+| `--no-glue`         | Skip the creation-screen text (and the `Wow.exe` change it needs)       |
+| `--no-exe`          | Never touch `Wow.exe`                                                   |
+| `--no-addon`        | Do not install the addon                                                |
+| `--locale enUS`     | Patch one locale only, on a multi-language client                       |
+| `--force-exe`       | Patch a `Wow.exe` the installer does not recognise                      |
+
+**`--no-all-combos`** is the one worth knowing about. The installer unlocks every
+race/class pair on the creation screen, which matches a realm running the module's
+recommended `cw_all_race_class.sql`. If your realm did **not** apply that, the
+server will reject the extra combinations, so pass `--no-all-combos`. Ask your
+server admin if you are unsure.
+
+---
+
+## Troubleshooting
+
+**"Python 3 is required and was not found."**
+Install Python and make sure you ticked *Add python.exe to PATH*. Restart the
+command prompt afterwards.
+
+**"That is not a World of Warcraft folder."**
+Give it the folder that directly contains `Wow.exe` and `Data`, not a parent
+folder and not the `Data` folder itself.
+
+**"Unrecognised Wow.exe."**
+Your client is not the standard 3.3.5a build 12340 binary. Some client packs ship
+an already-patched `Wow.exe`, in which case the custom creation screen works
+anyway — re-run with `--no-exe`. If the creation screen then shows a "login
+interface corrupted" error, your exe genuinely needs the change: re-run with
+`--force-exe` (a backup is still written first).
+
+**Permission denied writing Wow.exe.**
+Close the game. On Windows, run the command prompt as Administrator if your WoW
+folder lives under `C:\Program Files`.
+
+**Classes still show their old names.**
+Delete the `Cache` folder in your WoW directory and start the game again. The
+installer does this for you, but a client left running can write it back.
+
+**The creation screen still shows the old class descriptions.**
+That part needs the `Wow.exe` change. Check it applied:
+
+```bash
+python3 patch_client_exe.py --status "C:\Games\World of Warcraft\Wow.exe"
+```
+
+---
+
+## A note on what gets shipped
+
+This folder contains no Blizzard data. The installer reads the DBC and interface
+files out of **your own client**, edits them on your machine, and writes the result
+into a new patch archive next to the originals. Your original files are never
+modified — patch archives sit on top of them, and deleting them reverts everything.
+
+`Wow.exe` is the one file changed in place, and only so it will accept the custom
+creation screen. The installer copies it to `Wow.exe.classless-bak` before writing,
+verifies the binary it is editing, and refuses to touch anything it does not
+recognise.
+
+Server admins and anyone curious about how the patch is built: see
+[`MAINTAINERS.md`](MAINTAINERS.md).

@@ -100,13 +100,22 @@ training, the Hero Advancement NPC and the addon UI. Players choose a path per c
 
 #### Client-side (optional)
 
+Players run **one installer** ([`client-patch/install.py`](client-patch/README.md), or
+double-click `install.bat` on Windows) and get all of the below. It needs nothing but
+Python 3 — no compiler, no MPQ tools, no manual file copying — and `--uninstall` puts the
+client back to stock.
+
 - **Addon UI** ([`client-addon/ClasslessWildcard/`](client-addon/ClasslessWildcard/)) — a
   Character Advancement panel for the stock client: class-tabbed ability browser with icons,
   tooltips and rarity colors, talent trees, a My Hero tab (unlearn / reroll / lock), a Wildcard
   tab (talent rerolls, cards, pity and synergy display), and the onboarding wizard. Talks to
   the server over the `CWCL` addon channel. Players without it lose nothing but convenience.
-- **MPQ client patch** ([`client-patch/`](client-patch/)) — builds a `patch-4.MPQ` that renames
-  every class to **Hero** across the client: creation screen, character sheet, `/who`.
+- **Every class reads Hero** — creation screen, character sheet, `/who`, tooltips. Class
+  colors and icons still work, so addons and raid frames are unaffected.
+- **Every race/class combination** offered on the creation screen, matching the optional
+  server-side SQL.
+- **A classless creation screen** — the old per-class blurb replaced with what a Hero
+  actually is.
 
 ---
 
@@ -150,14 +159,16 @@ is applied automatically by the DB updater.
 > and the original masks cannot be recomputed. Players should clear their client `Cache`
 > folder afterwards.
 
-**Ship the addon.** Give players the `client-addon/ClasslessWildcard` folder to drop into
-`Interface/AddOns/`. `/cw` opens the panel, `/cwbars` toggles the resource mini-bars.
-
-**Build the MPQ patch.** See [`client-patch/README.md`](client-patch/README.md) — it produces a
-`patch-4.MPQ` that renames every class to *Hero* in the client UI.
-
 **Allow all race/class combinations.** Apply
-`data/sql/db-world/optional/cw_all_race_class.sql`.
+`data/sql/db-world/optional/cw_all_race_class.sql`. The client installer unlocks the same
+combinations on the creation screen by default, so apply this or tell players to pass
+`--no-all-combos`.
+
+**Set your players up.** Hand them the `client-patch` and `client-addon` folders and point
+them at [`client-patch/README.md`](client-patch/README.md). They double-click `install.bat`
+(or run `python3 install.py "/path/to/WoW"`) once and get the addon, the *Hero* renaming, the
+unlocked creation screen and the classless creation-screen text in a single step. It only
+needs Python 3, it backs up everything it touches, and `--uninstall` reverts it.
 
 </details>
 
@@ -278,8 +289,8 @@ Do this **with the worldserver stopped**:
    core's own login validation (`ValidateSkillLearnedBySpells`, on by default) deletes every
    spell and skill invalid for a character's real class the next time they log in. Talent
    points return and the power bar reverts to the class default.
-6. **Client side** — players delete `Data/patch-4.MPQ`, the `Interface/AddOns/ClasslessWildcard`
-   folder, and their `Cache` folder.
+6. **Client side** — players run `python3 install.py --uninstall "/path/to/WoW"`, which removes
+   the patch archives and the addon, restores `Wow.exe` from its backup, and clears the cache.
 
 **What does not revert automatically:**
 
