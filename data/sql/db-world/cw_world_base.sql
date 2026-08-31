@@ -32,6 +32,16 @@ INSERT IGNORE INTO `cw_ability_override` (`first_spell`, `rarity`, `cost`, `weig
 (100, 0, 0, 0, 1);       -- Charge
 
 -- ---------------------------------------------------------------------------
+-- Cleanup: an early version of this module auto-applied playercreateinfo_item
+-- rows (tagged 'cw kit: ...') that duplicated the starter kit at character
+-- creation -- piles of throwing axes, a second Hearthstone (STORAGE err 17 in
+-- the log), and so on. The starter kit is granted by C++ now; remove any of
+-- those rows still sitting in the database.
+-- ---------------------------------------------------------------------------
+
+DELETE FROM `playercreateinfo_item` WHERE `Note` LIKE 'cw kit:%';
+
+-- ---------------------------------------------------------------------------
 -- Reroll Scrolls (wildcard reroll currency)
 -- ---------------------------------------------------------------------------
 

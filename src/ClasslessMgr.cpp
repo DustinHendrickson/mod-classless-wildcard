@@ -19,6 +19,7 @@
 #include "DBCStores.h"
 #include "DatabaseEnv.h"
 #include "Log.h"
+#include "ObjectMgr.h"
 #include "Player.h"
 #include "Random.h"
 #include "SharedDefines.h"
@@ -1080,23 +1081,28 @@ bool ClasslessMgr::EnforceChassis(Player* player)
     return true;
 }
 
-void ClasslessMgr::ApplyStarterGear(Player* player)
+bool ClasslessMgr::ApplyStarterGear(Player* player)
 {
     // Runs at character creation (so the character-select preview shows the
     // neutral outfit instead of the shell class's plate) and again in the
     // first-login kit. Exempt characters (bots/system) keep vanilla gear.
     if (!cfg.enabled || !cfg.starterKitEnable || IsExempt(player))
-        return;
+        return false;
 
+    bool changed = false;
     if (cfg.starterKitStripEquipped)
         for (uint8 slot = EQUIPMENT_SLOT_START; slot < EQUIPMENT_SLOT_END; ++slot)
             if (player->GetItemByPos(INVENTORY_SLOT_BAG_0, slot))
+            {
                 player->DestroyItem(INVENTORY_SLOT_BAG_0, slot, true);
+                changed = true;
+            }
 
     // empty equip slots mean StoreNewItemInBestSlots equips the outfit (shirt/
     // pants/boots) rather than dropping it into the bags
     for (auto const& [itemId, count] : cfg.starterKitEquip)
-        player->StoreNewItemInBestSlots(itemId, count);
+        changed = player->StoreNewItemInBestSlots(itemId, count) || changed;
+    return changed;
 }
 
 void ClasslessMgr::HandleFirstLogin(Player* player)
@@ -1145,7 +1151,19 @@ void ClasslessMgr::HandleFirstLogin(Player* player)
         // weapons and consumables go into the bags, unequipped -- the Hero picks
         // up the neutral weapons from there when they want them
         for (auto const& [itemId, count] : cfg.starterKitItems)
-            player->AddItem(itemId, count);
+        {
+            uint32 give = count;
+            // Safety net: a non-stackable item with a big count (a stale conf
+            // with "throwing axe x200", say) would fill every bag slot with
+            // copies. Cap non-stackables at 2 (dual-wield pairs are legit).
+            if (ItemTemplate const* proto = sObjectMgr->GetItemTemplate(itemId))
+                if (proto->GetMaxStackSize() <= 1 && give > 2)
+                {
+                    LOG_WARN("module.classless", "StarterKit.Items: item {} does not stack; count {} clamped to 1", itemId, count);
+                    give = 1;
+                }
+            player->AddItem(itemId, give);
+        }
     }
 
     TeachProficiencies(player);

@@ -95,8 +95,10 @@ public:
     // ------- helpers -------
     // Strip the shell class's equipped creation gear and equip the neutral Hero
     // outfit. Run at character creation (so the character-select preview is
-    // right) and again as part of the first-login starter kit.
-    void ApplyStarterGear(Player* player);
+    // right) and again as part of the first-login starter kit. Returns true
+    // when it changed anything -- the creation hook fires AFTER the initial
+    // SaveToDB, so the caller must re-save for the change to persist.
+    bool ApplyStarterGear(Player* player);
     void TeachProficiencies(Player* player);
     void UpdateAbilityRanks(Player* player); // learn newly available ranks of owned lines
     // true while the module itself is teaching spells (lets the learn-spell

@@ -21,6 +21,7 @@
 #include "ScriptMgr.h"
 #include "Spell.h"
 #include "SpellInfo.h"
+#include "StringFormat.h"
 
 using namespace ClasslessWildcard;
 
@@ -133,9 +134,12 @@ public:
         if (sClasslessMgr->cfg.enabled)
         {
             sClasslessMgr->EnforceChassis(player);
-            // dress the Hero in the neutral outfit now, so the character-select
-            // screen shows it instead of the shell class's starting gear
-            sClasslessMgr->ApplyStarterGear(player);
+            // Dress the Hero in the neutral outfit now, so the character-select
+            // screen shows it instead of the shell class's starting gear. This
+            // hook fires AFTER creation's SaveToDB already committed, so the
+            // gear change must be saved again or it silently evaporates.
+            if (sClasslessMgr->ApplyStarterGear(player))
+                player->SaveToDB(false, false);
         }
     }
 
@@ -193,6 +197,24 @@ public:
             return;
         if (!player->IsInWorld() || !player->IsAlive())
             return;
+
+        // The stock 3.3.5 client only shows combo points for rogues and cat
+        // druids -- Wow.exe gates GetComboPoints by class, so a Hero never SEES
+        // the points the server tracks (retail warriors had the same hidden
+        // Overpower combo points). Mirror them over the addon channel whenever
+        // they change; the addon lights its own pips from this.
+        {
+            CharState& cpSt = sClasslessMgr->GetState(player);
+            if (!cpSt.exempt)
+            {
+                uint8 cp = player->GetComboPoints();
+                if (cp != cpSt.lastComboPush)
+                {
+                    cpSt.lastComboPush = cp;
+                    PushAddon(player, Acore::StringFormat("CP|{}", uint32(cp)));
+                }
+            }
+        }
 
         uint32& acc = _manaRegenAcc[player->GetGUID().GetCounter()];
         acc += p_time;
