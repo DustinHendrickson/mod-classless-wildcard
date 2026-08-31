@@ -213,9 +213,17 @@ def _dxt5_alpha_table(a0, a1):
     return a
 
 
-def reskin_hero_cell(original_blp, cells=4):
-    """Return BLP2 bytes: the client's class-icon atlas with only the Hero
-    (Warrior) cell replaced by the emblem; every other class icon untouched.
+# Where the Hero emblem goes in the class-icon atlas: the Death Knight cell.
+# Death Knight is disabled in the mod (it IS the "Hero" class type), so its cell
+# is free to carry the Hero mark, and nothing else -- no other class's icon and
+# no ability grouping in the addon -- is disturbed.
+# CLASS_ICON_TCOORDS["DEATHKNIGHT"] = {0.25, 0.5, 0.5, 0.75}
+_HERO_CELL_TC = (0.25, 0.5, 0.5, 0.75)
+
+
+def reskin_hero_cell(original_blp):
+    """Return BLP2 bytes: the client's class-icon atlas with the Death Knight
+    cell replaced by the Hero emblem; every other class icon untouched.
 
     Returns None if Pillow is missing.
     """
@@ -227,10 +235,11 @@ def reskin_hero_cell(original_blp, cells=4):
     w, h, rgba = decode_blp(original_blp)
     atlas = Image.frombytes("RGBA", (w, h), rgba)
 
-    cw, ch = w // cells, h // cells
-    emblem = _draw_emblem(cw if cw == ch else min(cw, ch)).resize((cw, ch), Image.LANCZOS)
-    # WARRIOR cell = top-left (CLASS_ICON_TCOORDS["WARRIOR"] = {0,.25,0,.25})
-    atlas.paste(emblem, (0, 0), emblem)
+    left, right, top, bottom = _HERO_CELL_TC
+    x0, y0 = round(left * w), round(top * h)
+    cw, ch = round((right - left) * w), round((bottom - top) * h)
+    emblem = _draw_emblem(max(cw, ch)).resize((cw, ch), Image.LANCZOS)
+    atlas.paste(emblem, (x0, y0), emblem)
     return encode_palettized(atlas)
 
 

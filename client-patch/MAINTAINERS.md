@@ -139,17 +139,19 @@ records).
 ### `UI-Classes-Circles.blp` — the Hero emblem (`--hero-icon`)
 
 The class icon is a 4×4 grid in a 256×256 atlas (`CLASS_ICON_TCOORDS` maps each
-token to a cell; Hero uses the Warrior cell, top-left). `lib/blp.py` **decodes**
-the client's own atlas (`decode_blp`, handling palettized and DXT1/3/5), pastes
-the gold emblem into **only the Warrior cell**, and re-encodes. Every other class
-icon is preserved untouched -- essential, because the addon groups abilities by
-their source class using those icons. Writes over
+token to a cell). `lib/blp.py` **decodes** the client's own atlas (`decode_blp`,
+handling palettized and DXT1/3/5), pastes the gold emblem into **only the Death
+Knight cell** (`_HERO_CELL_TC` = {0.25, 0.5, 0.5, 0.75}), and re-encodes. Death
+Knight is disabled in the mod -- it IS the "Hero" class type -- so its cell is
+free to carry the mark, and every other class icon is preserved untouched, which
+matters because the addon groups abilities by their source class using those
+icons. The Hero shows this emblem when its chassis class is Death Knight. Writes over
 `Interface\TargetingFrame\UI-Classes-Circles.blp` (in-game, character select,
 the addon's icons) and the creation-screen atlas.
 
 > An earlier version filled *every* cell with the emblem, which erased the class
 > icons the addon needs and drew the Hero mark over every ability group. Only the
-> Hero's own cell may change.
+> Death Knight (Hero) cell may change.
 
 To read the pristine original on a reinstall (not the installer's own previous
 output), `install.py` builds its `ClientFiles` with `exclude=` set to the patch
