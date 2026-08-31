@@ -126,9 +126,9 @@ titleBtn:SetScript("OnEnter", function(self)
         GameTooltip:AddLine("Click to reroll your starter abilities.", 0.3, 1, 0.3, true)
         GameTooltip:AddLine("Free before level 10 -- lock the ones you like.", 0.6, 0.9, 0.6, true)
     else
-        GameTooltip:SetText("|cffffd100Wildcard Roll|r")
-        GameTooltip:AddLine("Open the Wildcard die to reroll your abilities.", 0.3, 1, 0.3, true)
-        GameTooltip:AddLine("Costs a reroll charge or a Reroll Scroll.", 0.7, 0.7, 0.7, true)
+        GameTooltip:SetText("Starting Hand — closed")
+        GameTooltip:AddLine("Free starter rolls end at level 10.", 0.8, 0.8, 0.8, true)
+        GameTooltip:AddLine("Reroll anything you own one at a time from |cffffd100My Build|r, using the circular arrow beside it.", 0.6, 0.9, 0.6, true)
     end
     GameTooltip:Show()
 end)
@@ -139,8 +139,16 @@ titleBtn:SetScript("OnLeave", function()
 end)
 titleBtn:SetScript("OnMouseDown", function() titleGlow:SetAlpha(1); titleIcon:SetVertexColor(0.85, 0.85, 0.85) end)
 titleBtn:SetScript("OnMouseUp", function() titleGlow:SetAlpha(0.9); titleIcon:SetVertexColor(1.3, 1.3, 1.3) end)
+-- The starting hand is a BELOW-LEVEL-10 mechanic: free rolls, lock what you
+-- like, reroll the rest. From level 10 it is over for good -- rerolls cost a
+-- charge and are made one at a time from My Build -- so nothing may reopen it.
+function CW.CanShowHand()
+    local s = CW.state
+    return s.mode == 1 and (s.level or 1) < 10
+end
+
 titleBtn:SetScript("OnClick", function()
-    if CW.state.mode ~= 1 then return end   -- rolling is Wildcard-only
+    if not CW.CanShowHand() then return end
     if PlaySound then pcall(PlaySound, "igMainMenuOptionCheckBoxOn") end
     if CW.handFrame then CW.handFrame:Show() end
 end)
@@ -216,6 +224,16 @@ for i, classId in ipairs(CLASS_ORDER) do
         CW.classIndex = i
         CW.abilPage = 0
         Send("ABIL " .. classId .. " 0")
+        -- follow the class across: jump the Talents pane to that class's first
+        -- tree, so both panes are showing the same class
+        for idx, t in ipairs(CW.tabs) do
+            if t.class == classId then
+                CW.tabIndex = idx
+                CW.talPage = 0
+                Send("TAL " .. t.id .. " 0")
+                break
+            end
+        end
     end)
     b:SetScript("OnEnter", function(self)
         GameTooltip:SetOwner(self, "ANCHOR_BOTTOM")
@@ -741,7 +759,20 @@ end
 local function RenderTalPane()
     local s = CW.state
     local tabInfo = CW.tabs[CW.tabIndex]
-    treeText:SetText(tabInfo and ("|cffffd100" .. (CLASS_NAMES[tabInfo.class] or "?") .. " tree " .. CW.tabIndex .. " of " .. #CW.tabs .. "|r") or "No trees loaded")
+    if tabInfo then
+        -- count within this class, not across all 27 trees: "Mage tree 1 of 3"
+        local within, count = 0, 0
+        for idx, t in ipairs(CW.tabs) do
+            if t.class == tabInfo.class then
+                count = count + 1
+                if idx == CW.tabIndex then within = count end
+            end
+        end
+        treeText:SetText("|cffffd100" .. (CLASS_NAMES[tabInfo.class] or "?")
+            .. " tree " .. within .. " of " .. count .. "|r")
+    else
+        treeText:SetText("No trees loaded")
+    end
     talPage:SetText((CW.talPage + 1) .. " / " .. CW.talTotal)
     for i = 1, TAL_ENTRIES do
         local t = CW.talRows[i]
@@ -1860,16 +1891,31 @@ local function HandleMessage(msg)
         s.mode, s.ae, s.te, s.pity, s.chance = tonumber(p[2]) or 255, tonumber(p[3]) or 0, tonumber(p[4]) or 0, tonumber(p[5]) or 0, tonumber(p[6]) or 0
         s.scrolls, s.level, s.deadline = tonumber(p[7]) or 0, tonumber(p[8]) or 1, tonumber(p[9]) or 5
         s.rebirth, s.rebirthCost = tonumber(p[10]) or 0, tonumber(p[11]) or 0
-        s.rerolls = tonumber(p[12]) or 0
-        s.universalResources = tonumber(p[13]) or 0
-        s.scrollCost = tonumber(p[14]) or 0
-        s.scrollBuy = tonumber(p[15]) or 0
+        if p[16] ~= nil then
+            -- older server still sending separate ability/talent reroll fields:
+            -- fold them so the addon keeps working until the core is rebuilt
+            s.rerolls = (tonumber(p[12]) or 0) + (tonumber(p[13]) or 0)
+            s.universalResources = tonumber(p[14]) or 0
+            s.scrollCost = tonumber(p[15]) or 0
+            s.scrollBuy = tonumber(p[16]) or 0
+        else
+            s.rerolls = tonumber(p[12]) or 0
+            s.universalResources = tonumber(p[13]) or 0
+            s.scrollCost = tonumber(p[14]) or 0
+            s.scrollBuy = tonumber(p[15]) or 0
+        end
         CW.UpdateBarsVisibility()
         UpdateStatus()
         -- fresh Wildcard hero: lock & roll your starting hand
-        if CW.pendingHand and s.mode == 1 then
+        if CW.pendingHand then
             CW.pendingHand = nil
-            if s.level < 10 then hand:Show() end
+            if CW.CanShowHand() then hand:Show() end
+        end
+        -- level 10 can arrive while the hand is open: close it out rather than
+        -- leaving a "free until level 10" screen up
+        if hand:IsShown() and not CW.CanShowHand() then
+            hand:Hide()
+            frame:Show()
         end
         -- first-login onboarding: unchosen mode and still inside the window
         if s.mode == 255 and s.level < s.deadline and not frame:IsShown() and not wizard:IsShown() then
@@ -2023,7 +2069,13 @@ SlashCmdList["CLASSLESSWILDCARD"] = function(msg)
         end
         return
     elseif msg == "hand" then
-        if hand:IsShown() then hand:Hide() else hand:Show() end
+        if hand:IsShown() then
+            hand:Hide()
+        elseif CW.CanShowHand() then
+            hand:Show()
+        else
+            Print("The Starting Hand is only available to Wildcard Heroes below level 10. Reroll from |cffffff00My Build|r instead.")
+        end
         return
     elseif msg == "testroll" then
         -- preview the d20 reveal without a real roll (Fireball, random rarity)
