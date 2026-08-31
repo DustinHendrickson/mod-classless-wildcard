@@ -46,7 +46,7 @@ installs the addon. It is part of the mod, not an extra — see [Client setup](#
 | Progression           | +1 AE and +1 TE per level from 10                               | 1 talent per level and 1 ability every 2 levels, from 10                           |
 | Cost model            | Abilities cost 1 / 2 / 3 / 5 / 8 AE by rarity, talents per rank | Free, but weighted — legendary is rarest                                           |
 | Control over outcomes | Total; unlearn refunds, respec for gold                         | Rerolls, ability lock-in, Skill Cards, synergy rolls, 25-roll bad-luck protection  |
-| Changing your mind    | `.classless respec`                                             | `.wildcard reroll`, Scrolls of Fortune, **Rebirth**                                |
+| Changing your mind    | `.classless respec`                                             | `.wildcard reroll`, Reroll Scrolls, **Rebirth**                                |
 
 Both paths share the universal resource pools, primary-stat allocation, full proficiency
 training, the Hero Advancement NPC and the addon UI. Players choose a path per character
@@ -66,7 +66,7 @@ training, the Hero Advancement NPC and the addon UI. Players choose a path per c
   (2+2 ability, 3+3 talent, locked from level 10), and synergy rolls with a rising pity chance
   plus bad-luck bans.
 - **Rerolls flow with leveling.** Every scheduled roll grants a matching reroll charge, so
-  rerolling is part of normal play. Scrolls of Fortune are a top-up for when charges run dry —
+  rerolling is part of normal play. Reroll Scrolls are a top-up for when charges run dry —
   bought from the Hero Advancement NPC, or straight from the addon's **Buy Scroll** button (the
   price scales with level — silver in the early game, gold near the cap; configurable, toggleable off).
 - **Rebirth** — a config-gated full reset that switches a character between paths after the

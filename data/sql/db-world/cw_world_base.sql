@@ -1,5 +1,5 @@
 -- mod-classless-wildcard: world data
--- Hero Advancement NPC, Scrolls of Fortune, rarity/cost override tables.
+-- Hero Advancement NPC, Reroll Scrolls, rarity/cost override tables.
 
 -- ---------------------------------------------------------------------------
 -- Admin tuning tables (stand-in for Ascension's curated rarity/cost data)
@@ -32,7 +32,7 @@ INSERT IGNORE INTO `cw_ability_override` (`first_spell`, `rarity`, `cost`, `weig
 (100, 0, 0, 0, 1);       -- Charge
 
 -- ---------------------------------------------------------------------------
--- Scrolls of Fortune (wildcard reroll currency)
+-- Reroll Scrolls (wildcard reroll currency)
 -- ---------------------------------------------------------------------------
 
 DELETE FROM `item_template` WHERE `entry` IN (990101, 990102);
@@ -41,10 +41,10 @@ INSERT INTO `item_template`
    `InventoryType`, `AllowableClass`, `AllowableRace`, `ItemLevel`, `RequiredLevel`, `maxcount`, `stackable`,
    `BagFamily`, `description`, `VerifiedBuild`)
 VALUES
-(990101, 15, 0, 'Scroll of Fortune', 1103, 3, 1, 5000, 0, 0, -1, -1, 1, 1, 0, 20,
- 0, 'Rerolls one of your Wildcard abilities or talents. A top-up: you earn a reroll with every roll the Wildcard deals you.', 12340),
-(990102, 15, 0, 'Scroll of Fortune: Talents', 1103, 2, 1, 2500, 0, 0, -1, -1, 1, 1, 0, 20,
- 0, 'Rerolls one of your Wildcard talents. A top-up: you earn a reroll with every roll the Wildcard deals you.', 12340);
+(990101, 15, 0, 'Reroll Scroll', 1103, 3, 1, 5000, 0, 0, -1, -1, 1, 1, 0, 20,
+ 0, 'A stored Wildcard reroll. When you reroll an ability (or talent) you were dealt and have no free rerolls left, one of these is spent automatically. You earn rerolls just by leveling -- keep a few of these for a run of bad luck.', 12340),
+(990102, 15, 0, 'Talent Reroll Scroll', 1103, 2, 1, 2500, 0, 0, -1, -1, 1, 1, 0, 20,
+ 0, 'A stored Wildcard talent reroll. Spent automatically when you reroll a talent and have no free talent rerolls left. Cheaper than a Reroll Scroll, but works on talents only.', 12340);
 
 -- ---------------------------------------------------------------------------
 -- Hero Advancement NPC (gossip + vendor)

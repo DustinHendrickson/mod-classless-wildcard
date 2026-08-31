@@ -791,6 +791,13 @@ bool ClasslessMgr::BuyScroll(Player* player, uint32 which, std::string* err)
         if (err) *err = "Buying scrolls is disabled on this realm.";
         return false;
     }
+    // Below the free-reroll level every reroll is free, so scrolls are pointless
+    // there -- don't let players waste coin on them yet.
+    if (player->GetLevel() < cfg.wcFreeRerollLevel)
+    {
+        if (err) *err = Acore::StringFormat("Rerolls are free below level {} -- you don't need scrolls yet.", cfg.wcFreeRerollLevel);
+        return false;
+    }
 
     bool talent = which == 1;
     uint32 itemId = talent ? cfg.wcScrollTalentItemId : cfg.wcScrollItemId;
@@ -813,7 +820,7 @@ bool ClasslessMgr::BuyScroll(Player* player, uint32 which, std::string* err)
     player->ModifyMoney(-int32(costCopper));
 
     Msg(player, Acore::StringFormat("Purchased a |cff0070dd{}|r for |cffffd100{}|r.",
-        talent ? "Scroll of Fortune: Talents" : "Scroll of Fortune", CopperToText(costCopper)));
+        talent ? "Talent Reroll Scroll" : "Reroll Scroll", CopperToText(costCopper)));
     return true;
 }
 
@@ -1095,6 +1102,25 @@ bool ClasslessMgr::EnforceChassis(Player* player)
     return true;
 }
 
+void ClasslessMgr::ApplyStarterGear(Player* player)
+{
+    // Runs at character creation (so the character-select preview shows the
+    // neutral outfit instead of the shell class's plate) and again in the
+    // first-login kit. Exempt characters (bots/system) keep vanilla gear.
+    if (!cfg.enabled || !cfg.starterKitEnable || IsExempt(player))
+        return;
+
+    if (cfg.starterKitStripEquipped)
+        for (uint8 slot = EQUIPMENT_SLOT_START; slot < EQUIPMENT_SLOT_END; ++slot)
+            if (player->GetItemByPos(INVENTORY_SLOT_BAG_0, slot))
+                player->DestroyItem(INVENTORY_SLOT_BAG_0, slot, true);
+
+    // empty equip slots mean StoreNewItemInBestSlots equips the outfit (shirt/
+    // pants/boots) rather than dropping it into the bags
+    for (auto const& [itemId, count] : cfg.starterKitEquip)
+        player->StoreNewItemInBestSlots(itemId, count);
+}
+
 void ClasslessMgr::HandleFirstLogin(Player* player)
 {
     if (!cfg.enabled)
@@ -1122,26 +1148,18 @@ void ClasslessMgr::HandleFirstLogin(Player* player)
     // neutral Hero starter kit
     if (cfg.starterKitEnable)
     {
-        // Wipe EVERY class starting item -- both the equipped gear and the
-        // default backpack contents -- so a Hero begins from a clean slate.
-        // Stripping only the equipped slots left the shell class's starting
-        // bag items behind, which then duplicated the neutral kit; and it left
-        // the kit armour falling through to the bags because equip slots were
-        // still full.
+        // Strip the shell class's default BACKPACK items (the equipped gear is
+        // handled by ApplyStarterGear, already run at character creation). Both
+        // are stripped so the Hero begins from a clean slate rather than
+        // duplicating the neutral kit on top of the shell class's starters.
         if (cfg.starterKitStripEquipped)
-        {
-            for (uint8 slot = EQUIPMENT_SLOT_START; slot < EQUIPMENT_SLOT_END; ++slot)
-                if (player->GetItemByPos(INVENTORY_SLOT_BAG_0, slot))
-                    player->DestroyItem(INVENTORY_SLOT_BAG_0, slot, true);
             for (uint8 slot = INVENTORY_SLOT_ITEM_START; slot < INVENTORY_SLOT_ITEM_END; ++slot)
                 if (player->GetItemByPos(INVENTORY_SLOT_BAG_0, slot))
                     player->DestroyItem(INVENTORY_SLOT_BAG_0, slot, true);
-        }
 
-        // the basic armour (shirt/pants/boots) goes onto the character; the now
-        // empty slots mean StoreNewItemInBestSlots equips it rather than bagging
-        for (auto const& [itemId, count] : cfg.starterKitEquip)
-            player->StoreNewItemInBestSlots(itemId, count);
+        // (re)apply the visible outfit -- idempotent with the character-create pass
+        ApplyStarterGear(player);
+
         // an extra bag, equipped in a bag slot, so the Hero has room for the kit
         // (StoreNewItemInBestSlots equips a bag into a free bag slot)
         if (cfg.starterKitBag)
@@ -1975,7 +1993,7 @@ bool ClasslessMgr::Reroll(Player* player, bool isTalent, uint32 entry, std::stri
                 player->DestroyItemCount(cfg.wcScrollItemId, 1, true);
             else
             {
-                if (err) *err = "No talent rerolls left — you earn one with every talent the Wildcard deals you (or buy a Scroll of Fortune).";
+                if (err) *err = "No talent rerolls left — you earn one with every talent the Wildcard deals you (or buy a Reroll Scroll).";
                 return false;
             }
         }
@@ -2015,7 +2033,7 @@ bool ClasslessMgr::Reroll(Player* player, bool isTalent, uint32 entry, std::stri
                 player->DestroyItemCount(cfg.wcScrollItemId, 1, true);
             else
             {
-                if (err) *err = "No ability rerolls left — you earn one with every ability the Wildcard deals you (or buy a Scroll of Fortune).";
+                if (err) *err = "No ability rerolls left — you earn one with every ability the Wildcard deals you (or buy a Reroll Scroll).";
                 return false;
             }
         }

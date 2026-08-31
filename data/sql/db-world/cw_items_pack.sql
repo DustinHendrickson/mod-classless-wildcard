@@ -3,7 +3,7 @@
 -- guns, strength throwing weapons, mail tanking and caster gear, spellpower
 -- fist weapons. Pure server-side data (client reads them from the item query
 -- cache; existing display ids are reused) — no client patch needed.
--- Sold by the Hero Advancement NPC alongside the Scrolls of Fortune.
+-- Sold by the Hero Advancement NPC alongside the Reroll Scrolls.
 
 DELETE FROM `item_template` WHERE `entry` BETWEEN 990201 AND 990212;
 INSERT INTO `item_template`

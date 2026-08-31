@@ -78,7 +78,8 @@ namespace
             scrolls, player->GetLevel(), cfg.modeChoiceDeadline,
             cfg.rebirthEnable ? 1 : 0, cfg.rebirthCostGold,
             st.abilityRerolls, st.talentRerolls, cfg.universalResources ? 1 : 0,
-            sClasslessMgr->ScrollBuyCost(player->GetLevel()), cfg.wcScrollBuyEnable ? 1 : 0));
+            sClasslessMgr->ScrollBuyCost(player->GetLevel()),
+            (cfg.wcScrollBuyEnable && player->GetLevel() >= cfg.wcFreeRerollLevel) ? 1 : 0));
     }
 
     void SendErr(Player* player, std::string const& text)

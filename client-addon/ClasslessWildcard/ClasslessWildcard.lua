@@ -40,7 +40,7 @@ local CW = {
     abilPage = 0, abilTotal = 1, abilRows = {},
     tabs = {}, tabIndex = 1,
     talPage = 0, talTotal = 1, talRows = {},
-    owned = {}, ownedT = {}, cards = {},
+    owned = {}, ownedT = {},
     archetypes = {},
     tab = "ABIL",
     heroPage = 0, wcPage = 0,
@@ -120,7 +120,7 @@ titleBtn:SetScript("OnEnter", function(self)
     else
         GameTooltip:SetText("|cffffd100Wildcard Roll|r")
         GameTooltip:AddLine("Open the Wildcard die to reroll your abilities.", 0.3, 1, 0.3, true)
-        GameTooltip:AddLine("Costs a reroll charge or a Scroll of Fortune.", 0.7, 0.7, 0.7, true)
+        GameTooltip:AddLine("Costs a reroll charge or a Reroll Scroll.", 0.7, 0.7, 0.7, true)
     end
     GameTooltip:Show()
 end)
@@ -428,17 +428,12 @@ bottomText:SetPoint("BOTTOMLEFT", 26, 32)
 bottomText:SetJustifyH("LEFT")
 
 -- Bottom-right cluster, laid out right-to-left with fixed offsets so nothing
--- overlaps: Respec (-20), Rebirth (-116), Skill Cards (-212), Stats (-320).
+-- overlaps: Respec (-20), Rebirth (-116), Stats (-212).
 -- Rebirth only shows sometimes; its slot stays reserved either way.
 local statsBtn = CreateFrame("Button", nil, frame, "UIPanelButtonTemplate")
 statsBtn:SetWidth(90); statsBtn:SetHeight(22)
-statsBtn:SetPoint("BOTTOMRIGHT", -320, 26)
+statsBtn:SetPoint("BOTTOMRIGHT", -212, 26)
 statsBtn:SetText("Stats")
-
-local cardsBtn = CreateFrame("Button", nil, frame, "UIPanelButtonTemplate")
-cardsBtn:SetWidth(100); cardsBtn:SetHeight(22)
-cardsBtn:SetPoint("BOTTOMRIGHT", -212, 26)
-cardsBtn:SetText("Skill Cards")
 
 local respecBtn = CreateFrame("Button", nil, frame, "UIPanelButtonTemplate")
 respecBtn:SetWidth(90); respecBtn:SetHeight(22)
@@ -473,11 +468,11 @@ helpBtn:SetPoint("BOTTOMLEFT", 20, 26)
 helpBtn:SetText("Help")
 CW.helpBtn = helpBtn
 
--- Buy Scroll: purchase a Scroll of Fortune for coin (price scales with level --
+-- Buy Scroll: purchase a Reroll Scroll for coin (price scales with level --
 -- silver early, gold near cap; the server enforces it). Wildcard-only, where
 -- rerolls are spent. scrollCost is copper; GetCoinTextureString renders coins.
 StaticPopupDialogs["CW_CLASSLESS_BUYSCROLL"] = {
-    text = "Buy a |cff0070ddScroll of Fortune|r for %s?\nIt grants one extra reroll for the Wildcard.",
+    text = "Buy a |cff0070ddReroll Scroll|r for %s?\nIt grants one extra reroll for the Wildcard.",
     button1 = "Buy",
     button2 = "Cancel",
     OnAccept = function() Send("BUYSCROLL 0") end,
@@ -493,7 +488,7 @@ buyScrollBtn:SetScript("OnClick", function()
 end)
 buyScrollBtn:SetScript("OnEnter", function(self)
     GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
-    GameTooltip:SetText("Buy a Scroll of Fortune")
+    GameTooltip:SetText("Buy a Reroll Scroll")
     GameTooltip:AddLine("Cost: " .. GetCoinTextureString(CW.state.scrollCost or 0) .. "  (rises with your level).", 1, 1, 1)
     GameTooltip:AddLine("Each scroll is one extra reroll for the Wildcard.", 0.8, 0.8, 0.8, true)
     GameTooltip:Show()
@@ -546,52 +541,6 @@ local statReset = CreateFrame("Button", nil, statFly, "UIPanelButtonTemplate")
 statReset:SetWidth(100); statReset:SetHeight(22)
 statReset:SetPoint("BOTTOMRIGHT", -14, 12)
 statReset:SetText("Reset edits")
-
--- cards flyout -------------------------------------------------------------------
-local cardFly = CreateFrame("Frame", "ClasslessWildcardCards", frame)
-cardFly:SetWidth(280); cardFly:SetHeight(300)
-cardFly:SetPoint("BOTTOMRIGHT", frame, "BOTTOMRIGHT", -114, 56)
-cardFly:SetFrameStrata("DIALOG")
-cardFly:SetBackdrop({
-    bgFile = "Interface\\DialogFrame\\UI-DialogBox-Background",
-    edgeFile = "Interface\\Tooltips\\UI-Tooltip-Border",
-    tile = true, tileSize = 32, edgeSize = 14,
-    insets = { left = 4, right = 4, top = 4, bottom = 4 },
-})
-cardFly:Hide()
-
-local cardTitle = cardFly:CreateFontString(nil, "OVERLAY", "GameFontNormal")
-cardTitle:SetPoint("TOP", 0, -12)
-cardTitle:SetText("Skill Cards")
-
-local cardHint = cardFly:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
-cardHint:SetPoint("TOP", 0, -28)
-cardHint:SetWidth(250)
-cardHint:SetText("|cffaaaaaaSlot a card to guarantee that roll. Add cards with .wildcard card or at the Hero Advancement NPC.|r")
-
-local cardRows = {}
-for i = 1, 8 do
-    local r = CreateFrame("Frame", nil, cardFly)
-    r:SetWidth(250); r:SetHeight(24)
-    r:SetPoint("TOPLEFT", 14, -56 - (i - 1) * 26)
-    r.icon = r:CreateTexture(nil, "ARTWORK")
-    r.icon:SetWidth(20); r.icon:SetHeight(20)
-    r.icon:SetPoint("LEFT", 0, 0)
-    r.icon:SetTexCoord(0.07, 0.93, 0.07, 0.93)
-    r.label = r:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
-    r.label:SetPoint("LEFT", r.icon, "RIGHT", 5, 0)
-    r.label:SetJustifyH("LEFT")
-    r.label:SetWidth(170)
-    r.rm = CreateFrame("Button", nil, r)
-    r.rm:SetWidth(18); r.rm:SetHeight(18)
-    r.rm:SetPoint("RIGHT", 0, 0)
-    r.rm.tex = r.rm:CreateTexture(nil, "ARTWORK")
-    r.rm.tex:SetAllPoints(r.rm)
-    r.rm.tex:SetTexture("Interface\\Buttons\\UI-GroupLoot-Pass-Up")
-    r.rm:SetHighlightTexture("Interface\\Buttons\\UI-Common-MouseHilight", "ADD")
-    r:Hide()
-    cardRows[i] = r
-end
 
 -- help flyout ---------------------------------------------------------------
 -- A scrollable "how it works" panel covering both systems. Static text, so it
@@ -650,9 +599,8 @@ local HELP_TEXT = table.concat({
 "Rolls are rarity-weighted, so legendaries are the rarest. You steer your luck:",
 "   |cffffd100Rerolls|r -- every roll also grants a reroll charge (rerolls are free below level 10). Spend one to reroll a result you don't want.",
 "   |cffffd100Lock|r -- protect an ability so a later roll can't overwrite it.",
-"   |cffffd100Skill Cards|r -- slot a card to guarantee a specific ability or talent on your next roll.",
 "   |cffffd100Synergy & pity|r -- rolls lean toward what fits your build, with a rising pity chance and bad-luck bans so a cold streak can't ruin you.",
-"   |cffffd100Scrolls of Fortune|r -- spare rerolls for when your charges run dry. Earn them, buy them from the Hero Advancement NPC, or use the |cffffd100Buy Scroll|r button on this panel (the price scales with level -- silver early, gold near the cap).",
+"   |cffffd100Reroll Scrolls|r -- spare rerolls for when your charges run dry. Earn them, buy them from the Hero Advancement NPC, or use the |cffffd100Buy Scroll|r button on this panel (the price scales with level -- silver early, gold near the cap).",
 "Open the roll screen any time with the |cffffd100dice crest|r at the top-left of this window.",
 "",
 "|cff40ff40==  Shared by both paths  ==|r",
@@ -675,28 +623,18 @@ helpContent:SetHeight(helpText:GetStringHeight() + 20)
 CW.helpFly = helpFly
 
 helpBtn:SetScript("OnClick", function()
-    statFly:Hide(); cardFly:Hide()
+    statFly:Hide()
     if helpFly:IsShown() then helpFly:Hide() else helpFly:Show() end
 end)
 
 statsBtn:SetScript("OnClick", function()
-    cardFly:Hide(); helpFly:Hide()
+    helpFly:Hide()
     if statFly:IsShown() then
         statFly:Hide()
     else
         Send("STATS")
         statFly:Show()
         if CW.RenderStats then CW.RenderStats() end -- render cached data now
-    end
-end)
-cardsBtn:SetScript("OnClick", function()
-    statFly:Hide(); helpFly:Hide()
-    if cardFly:IsShown() then
-        cardFly:Hide()
-    else
-        Send("CARDS")
-        cardFly:Show()
-        if CW.RenderCards then CW.RenderCards() end
     end
 end)
 
@@ -728,14 +666,14 @@ local function UpdateStatus()
     if s.mode == 0 then
         statusText:SetText(modeText .. "   Ability Essence: |cff00ff00" .. s.ae .. "|r   Talent Essence: |cff00ff00" .. s.te .. "|r")
         subStatusText:SetText("Level " .. s.level)
-        bottomText:SetText("Ability Essence: |cff00ff00" .. s.ae .. "|r    Talent Essence: |cff00ff00" .. s.te .. "|r    Scrolls of Fortune: " .. s.scrolls)
+        bottomText:SetText("Ability Essence: |cff00ff00" .. s.ae .. "|r    Talent Essence: |cff00ff00" .. s.te .. "|r    Reroll Scrolls: " .. s.scrolls)
         respecBtn:Enable()
         if s.rebirth == 1 then CW.rebirthBtn:Show() else CW.rebirthBtn:Hide() end
         CW.buyScrollBtn:Hide()
     elseif s.mode == 1 then
         statusText:SetText(modeText .. "   Rerolls: |cff00ff00" .. s.abilityRerolls .. "|r ability / |cff00ff00" .. s.talentRerolls .. "|r talent")
         subStatusText:SetText("Level " .. s.level .. "   Scrolls: " .. s.scrolls .. "   Synergy chance: " .. s.chance .. "%   Pity: " .. s.pity)
-        bottomText:SetText("Rerolls: |cff00ff00" .. s.abilityRerolls .. "|r ability / |cff00ff00" .. s.talentRerolls .. "|r talent    Scrolls of Fortune: " .. s.scrolls)
+        bottomText:SetText("Rerolls: |cff00ff00" .. s.abilityRerolls .. "|r ability / |cff00ff00" .. s.talentRerolls .. "|r talent    Reroll Scrolls: " .. s.scrolls)
         respecBtn:Disable()
         if s.rebirth == 1 then CW.rebirthBtn:Show() else CW.rebirthBtn:Hide() end
         if s.scrollBuy == 1 then
@@ -908,40 +846,15 @@ local function RenderStats()
     end
 end
 
-local function RenderCards()
-    for i = 1, 8 do
-        local c = CW.cards[i]
-        local r = cardRows[i]
-        if c then
-            -- CD entry: isTalent, entry, nameSpell, golden, used
-            local isTal, entry, nameSpell, golden, used = c[1], c[2], c[3], c[4], c[5]
-            r.icon:SetTexture(SpellIcon(nameSpell))
-            local name = GetSpellInfo(nameSpell) or ("#" .. entry)
-            r.label:SetText((golden == 1 and "|cffffd100" or "|cffffffff") .. name .. "|r"
-                .. (isTal == 1 and " |cffaaaaaa(talent)|r" or "")
-                .. (used == 1 and " |cff888888used|r" or ""))
-            r.rm:SetScript("OnClick", function()
-                Send("CARDRM " .. (isTal == 1 and "T" or "A") .. " " .. entry)
-            end)
-            if used == 1 then r.rm:Hide() else r.rm:Show() end
-            r:Show()
-        else
-            r:Hide()
-        end
-    end
-end
-
 local function RenderList()
     UpdateClassStrip()
     RenderAbilPane()
     RenderTalPane()
     RenderBuild()
     if statFly:IsShown() then RenderStats() end
-    if cardFly:IsShown() then RenderCards() end
     UpdateStatus()
 end
 CW.RenderStats = RenderStats
-CW.RenderCards = RenderCards
 
 statApply:SetScript("OnClick", function()
     local p = PendingAlloc()
@@ -965,7 +878,6 @@ function CW.SetTab(key)
     Send("OWN"); Send("OWNT")
     if key == "STAT" then Send("STATS"); statFly:Show() end
     if statFly:IsShown() then Send("STATS") end
-    if cardFly:IsShown() then Send("CARDS") end
     RenderList()
 end
 
@@ -1917,10 +1829,6 @@ local function HandleMessage(msg)
         end
     elseif kind == "OTE" then
         CW._collectingOwnedT = false
-        RenderList()
-
-    elseif kind == "CD" then
-        CW.cards = ParseEntries(p[2], 5)
         RenderList()
 
     elseif kind == "AR" then

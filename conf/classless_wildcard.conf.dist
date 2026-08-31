@@ -221,16 +221,18 @@ ClasslessWildcard.Wildcard.RerollsPerTalentRoll = 1
 # module's world SQL). Consumed only when earned charges run out.
 ClasslessWildcard.Wildcard.ScrollItemId = 990101
 ClasslessWildcard.Wildcard.ScrollTalentItemId = 990102
-# Optional extra faucet: also grant FreeScrollCount Scrolls of Fortune every
+# Optional extra faucet: also grant FreeScrollCount Reroll Scrolls every
 # FreeScrollEveryLevels levels (0 disables).
 ClasslessWildcard.Wildcard.FreeScrollEveryLevels = 0
 ClasslessWildcard.Wildcard.FreeScrollCount = 1
-# Buy Scroll button (Hero Advancement panel): players can buy a Scroll of
-# Fortune straight from the addon, no NPC needed. Price is in COPPER and scales
-# with level, so it reads as silver in the early game and only grows into gold
-# near the cap: cost = ScrollBuyBaseCopper + ScrollBuyPerLevelCopper * level
-# (100 copper = 1 silver, 10000 copper = 1 gold; the talent scroll is half).
-# Defaults: 5s at level 0, ~55s at level 10, ~4g at level 80. Set
+# Buy Scroll button (Hero Advancement panel): players can buy a Reroll Scroll
+# straight from the addon, no NPC needed. Only available at or above the
+# FreeRerollBelowLevel level (rerolls are free before then, so scrolls are
+# pointless) -- the button hides and purchases are refused below it. Price is
+# in COPPER and scales with level, so it reads as silver in the early game and
+# only grows into gold near the cap: cost = ScrollBuyBaseCopper +
+# ScrollBuyPerLevelCopper * level (100 copper = 1 silver, 10000 copper = 1 gold;
+# the talent scroll is half). Defaults: ~55s at level 10, ~4g at level 80. Set
 # ScrollBuyEnable = 0 to hide the button and leave scrolls to the NPC vendor.
 ClasslessWildcard.Wildcard.ScrollBuyEnable = 1
 ClasslessWildcard.Wildcard.ScrollBuyBaseCopper = 500

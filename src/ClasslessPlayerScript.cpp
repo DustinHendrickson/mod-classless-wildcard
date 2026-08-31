@@ -131,7 +131,12 @@ public:
     void OnPlayerCreate(Player* player) override
     {
         if (sClasslessMgr->cfg.enabled)
+        {
             sClasslessMgr->EnforceChassis(player);
+            // dress the Hero in the neutral outfit now, so the character-select
+            // screen shows it instead of the shell class's starting gear
+            sClasslessMgr->ApplyStarterGear(player);
+        }
     }
 
     void OnPlayerFirstLogin(Player* player) override

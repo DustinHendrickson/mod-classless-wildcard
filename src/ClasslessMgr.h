@@ -95,6 +95,10 @@ public:
     uint32 ScrollBuyCost(uint8 level) const;
 
     // ------- helpers -------
+    // Strip the shell class's equipped creation gear and equip the neutral Hero
+    // outfit. Run at character creation (so the character-select preview is
+    // right) and again as part of the first-login starter kit.
+    void ApplyStarterGear(Player* player);
     void TeachProficiencies(Player* player);
     void UpdateAbilityRanks(Player* player); // learn newly available ranks of owned lines
     // true while the module itself is teaching spells (lets the learn-spell

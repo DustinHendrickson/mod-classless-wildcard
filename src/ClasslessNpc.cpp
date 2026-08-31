@@ -125,7 +125,7 @@ namespace
             AddGossipItemFor(player, GOSSIP_ICON_BATTLE, "My rolled talents (reroll)", GOSSIP_SENDER_MAIN, BASE_MY_TALENTS_PG);
             if (player->GetLevel() < 10)
                 AddGossipItemFor(player, GOSSIP_ICON_INTERACT_1, "Skill Cards (guarantee rolls)", GOSSIP_SENDER_MAIN, ACT_CARDS);
-            AddGossipItemFor(player, GOSSIP_ICON_VENDOR, "Buy Scrolls of Fortune", GOSSIP_SENDER_MAIN, ACT_VENDOR);
+            AddGossipItemFor(player, GOSSIP_ICON_VENDOR, "Buy Reroll Scrolls", GOSSIP_SENDER_MAIN, ACT_VENDOR);
         }
 
         if (st.mode != Mode::Unchosen && cfg.rebirthEnable)
@@ -276,7 +276,7 @@ namespace
             {
                 AddGossipItemFor(player, GOSSIP_ICON_BATTLE, Acore::StringFormat("Reroll: {}", label),
                     GOSSIP_SENDER_MAIN, BASE_ABILITY_ACTION + firstSpell,
-                    "Reroll this ability? (Consumes a Scroll of Fortune from level 10.)", 0, false);
+                    "Reroll this ability? (Consumes a Reroll Scroll from level 10.)", 0, false);
                 AddGossipItemFor(player, GOSSIP_ICON_INTERACT_1, Acore::StringFormat("{}: {}", locked ? "Unlock" : "Lock", label),
                     GOSSIP_SENDER_MAIN, BASE_LOCK_ABILITY + firstSpell);
             }
