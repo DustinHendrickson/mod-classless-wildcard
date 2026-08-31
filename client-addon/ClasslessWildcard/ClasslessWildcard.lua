@@ -463,29 +463,28 @@ rebirthBtn:SetScript("OnClick", function()
 end)
 CW.rebirthBtn = rebirthBtn
 
--- Buy Scroll: purchase a Scroll of Fortune for gold (cost scales with level;
--- the server enforces the price). Wildcard-only, where rerolls are spent.
+-- Buy Scroll: purchase a Scroll of Fortune for coin (price scales with level --
+-- silver early, gold near cap; the server enforces it). Wildcard-only, where
+-- rerolls are spent. scrollCost is copper; GetCoinTextureString renders coins.
 StaticPopupDialogs["CW_CLASSLESS_BUYSCROLL"] = {
-    text = "Buy a |cff0070ddScroll of Fortune|r for |cffffd100%d gold|r?
-"
-        .. "It grants one extra reroll for the Wildcard.",
+    text = "Buy a |cff0070ddScroll of Fortune|r for %s?\nIt grants one extra reroll for the Wildcard.",
     button1 = "Buy",
     button2 = "Cancel",
     OnAccept = function() Send("BUYSCROLL 0") end,
     timeout = 0, whileDead = 1, hideOnEscape = 1, preferredIndex = 3,
 }
 local buyScrollBtn = CreateFrame("Button", nil, frame, "UIPanelButtonTemplate")
-buyScrollBtn:SetWidth(130); buyScrollBtn:SetHeight(22)
+buyScrollBtn:SetWidth(160); buyScrollBtn:SetHeight(22)
 buyScrollBtn:SetPoint("BOTTOMLEFT", 20, 26)
 buyScrollBtn:SetText("Buy Scroll")
 buyScrollBtn:Hide()
 buyScrollBtn:SetScript("OnClick", function()
-    StaticPopup_Show("CW_CLASSLESS_BUYSCROLL", CW.state.scrollCost or 0)
+    StaticPopup_Show("CW_CLASSLESS_BUYSCROLL", GetCoinTextureString(CW.state.scrollCost or 0))
 end)
 buyScrollBtn:SetScript("OnEnter", function(self)
     GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
     GameTooltip:SetText("Buy a Scroll of Fortune")
-    GameTooltip:AddLine("Cost: |cffffd100" .. (CW.state.scrollCost or 0) .. " gold|r, rising with your level.", 1, 1, 1)
+    GameTooltip:AddLine("Cost: " .. GetCoinTextureString(CW.state.scrollCost or 0) .. "  (rises with your level).", 1, 1, 1)
     GameTooltip:AddLine("Each scroll is one extra reroll for the Wildcard.", 0.8, 0.8, 0.8, true)
     GameTooltip:Show()
 end)
@@ -644,7 +643,7 @@ local function UpdateStatus()
         respecBtn:Disable()
         if s.rebirth == 1 then CW.rebirthBtn:Show() else CW.rebirthBtn:Hide() end
         if s.scrollBuy == 1 then
-            CW.buyScrollBtn:SetText("Buy Scroll (" .. (s.scrollCost or 0) .. "g)")
+            CW.buyScrollBtn:SetText("Buy Scroll  " .. GetCoinTextureString(s.scrollCost or 0))
             CW.buyScrollBtn:Show()
         else CW.buyScrollBtn:Hide() end
     else

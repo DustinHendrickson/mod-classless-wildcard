@@ -224,8 +224,8 @@ void ClasslessMgr::LoadConfig(bool /*reload*/)
     cfg.wcFreeScrollEveryLevels = sConfigMgr->GetOption<uint32>("ClasslessWildcard.Wildcard.FreeScrollEveryLevels", 0);
     cfg.wcFreeScrollCount = sConfigMgr->GetOption<uint32>("ClasslessWildcard.Wildcard.FreeScrollCount", 1);
     cfg.wcScrollBuyEnable = sConfigMgr->GetOption<uint32>("ClasslessWildcard.Wildcard.ScrollBuyEnable", 1);
-    cfg.wcScrollBuyBaseGold = sConfigMgr->GetOption<uint32>("ClasslessWildcard.Wildcard.ScrollBuyBaseGold", 10);
-    cfg.wcScrollBuyPerLevel = sConfigMgr->GetOption<uint32>("ClasslessWildcard.Wildcard.ScrollBuyPerLevel", 1);
+    cfg.wcScrollBuyBaseCopper = sConfigMgr->GetOption<uint32>("ClasslessWildcard.Wildcard.ScrollBuyBaseCopper", 500);
+    cfg.wcScrollBuyPerLevelCopper = sConfigMgr->GetOption<uint32>("ClasslessWildcard.Wildcard.ScrollBuyPerLevelCopper", 500);
 
     cfg.universalResources = sConfigMgr->GetOption<bool>("ClasslessWildcard.UniversalResources.Enable", true);
     cfg.urBaseMana = sConfigMgr->GetOption<uint32>("ClasslessWildcard.UniversalResources.BaseMana", 100);
@@ -764,9 +764,24 @@ bool ClasslessMgr::Rebirth(Player* player, Mode target, std::string* err)
     return true;
 }
 
+// Price in COPPER so the cost reads as silver in the early game and only grows
+// into gold near the level cap. which 1 (talent-only scroll) is half.
 uint32 ClasslessMgr::ScrollBuyCost(uint8 level) const
 {
-    return cfg.wcScrollBuyBaseGold + cfg.wcScrollBuyPerLevel * uint32(level);
+    return cfg.wcScrollBuyBaseCopper + cfg.wcScrollBuyPerLevelCopper * uint32(level);
+}
+
+// "1g 20s 5c", trimming empty leading units.
+static std::string CopperToText(uint32 copper)
+{
+    uint32 g = copper / GOLD;
+    uint32 s = (copper % GOLD) / SILVER;
+    uint32 c = copper % SILVER;
+    std::string out;
+    if (g) out += Acore::StringFormat("{}g", g);
+    if (s) out += Acore::StringFormat("{}{}s", out.empty() ? "" : " ", s);
+    if (c || out.empty()) out += Acore::StringFormat("{}{}c", out.empty() ? "" : " ", c);
+    return out;
 }
 
 bool ClasslessMgr::BuyScroll(Player* player, uint32 which, std::string* err)
@@ -779,14 +794,13 @@ bool ClasslessMgr::BuyScroll(Player* player, uint32 which, std::string* err)
 
     bool talent = which == 1;
     uint32 itemId = talent ? cfg.wcScrollTalentItemId : cfg.wcScrollItemId;
-    uint32 costGold = ScrollBuyCost(player->GetLevel());
+    uint32 costCopper = ScrollBuyCost(player->GetLevel());
     if (talent)
-        costGold = std::max<uint32>(1, costGold / 2); // talent-only scroll is cheaper
+        costCopper = std::max<uint32>(1, costCopper / 2);
 
-    int32 costCopper = int32(costGold) * GOLD;
-    if (!player->HasEnoughMoney(costCopper))
+    if (!player->HasEnoughMoney(int32(costCopper)))
     {
-        if (err) *err = Acore::StringFormat("That scroll costs {} gold.", costGold);
+        if (err) *err = Acore::StringFormat("That scroll costs {}.", CopperToText(costCopper));
         return false;
     }
 
@@ -796,10 +810,10 @@ bool ClasslessMgr::BuyScroll(Player* player, uint32 which, std::string* err)
         if (err) *err = "Your bags are full.";
         return false;
     }
-    player->ModifyMoney(-costCopper);
+    player->ModifyMoney(-int32(costCopper));
 
-    Msg(player, Acore::StringFormat("Purchased a |cff0070dd{}|r for |cffffd100{} gold|r.",
-        talent ? "Scroll of Fortune: Talents" : "Scroll of Fortune", costGold));
+    Msg(player, Acore::StringFormat("Purchased a |cff0070dd{}|r for |cffffd100{}|r.",
+        talent ? "Scroll of Fortune: Talents" : "Scroll of Fortune", CopperToText(costCopper)));
     return true;
 }
 

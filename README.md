@@ -35,8 +35,6 @@ Two progression paths ship in the box:
 Players run a **one-click client setup** (included) that patches their 3.3.5a client and
 installs the addon. It is part of the mod, not an extra — see [Client setup](#client-setup).
 
-> Design notes, research sources and the full roadmap live in [`PLAN.md`](PLAN.md).
-
 ---
 
 ## Two ways to play
@@ -69,8 +67,8 @@ training, the Hero Advancement NPC and the addon UI. Players choose a path per c
   plus bad-luck bans.
 - **Rerolls flow with leveling.** Every scheduled roll grants a matching reroll charge, so
   rerolling is part of normal play. Scrolls of Fortune are a top-up for when charges run dry —
-  bought from the Hero Advancement NPC, or straight from the addon's **Buy Scroll** button for
-  gold (price scales with level; configurable, and toggleable off).
+  bought from the Hero Advancement NPC, or straight from the addon's **Buy Scroll** button (the
+  price scales with level — silver in the early game, gold near the cap; configurable, toggleable off).
 - **Rebirth** — a config-gated full reset that switches a character between paths after the
   mode lock. Wildcard rebirths replay the entire roll schedule.
 
@@ -251,8 +249,8 @@ which documents all 70+ settings inline. The ones you are most likely to touch:
 | `Wildcard.TalentEveryLevels` / `AbilityEveryLevels` | `1` / `2`   | Roll cadence                                          |
 | `Wildcard.RarityWeights`                            | `100,…`     | Roll weights per rarity tier                          |
 | `Wildcard.FreeRerollBelowLevel`                     | `10`        | Rerolls are free under this level                     |
-| `Wildcard.ScrollBuyEnable`                          | `1`         | Buy Scroll button on the addon panel                  |
-| `Wildcard.ScrollBuyBaseGold` / `ScrollBuyPerLevel`  | `10` / `1`  | Scroll price = base + per-level × level               |
+| `Wildcard.ScrollBuyEnable`                          | `1`          | Buy Scroll button on the addon panel                 |
+| `Wildcard.ScrollBuyBaseCopper` / `…PerLevelCopper`  | `500` / `500`| Scroll price in copper = base + per-level × level    |
 | `UniversalResources.Enable`                         | `1`         | Mana + rage + energy on every character               |
 | `Stats.Enable` / `Stats.PointsPerLevel`             | `1` / `2`   | Primary stat allocation                               |
 | `Rebirth.Enable` / `Rebirth.CostGold`               | `1` / `100` | Path switching after the mode lock                    |
@@ -271,12 +269,7 @@ These follow from the stock 3.3.5a client, and are not bugs:
 
 - **The talent frame is unused.** Talents are granted as their underlying spells through the
   module, and native talent points are zeroed. Everything you learn shows in the spellbook.
-- **The class you pick at creation has no mechanical effect.** Every character is converted to
-  the configured chassis, so there is no "better base" for casters or for melee. Set
-  `ClasslessWildcard.Chassis.Class` before your realm launches; changing it later re-converts
-  every character and shifts their base stats.
-- **Death Knight spells are excluded by default** because of rune costs. Configurable.
-- Mystic enchants and multispec are Phase 2/3 — see [`PLAN.md`](PLAN.md).
+- **Death Knight spells are excluded by default for now**
 
 ---
 
