@@ -1,0 +1,275 @@
+/*
+ * mod-classless-wildcard
+ *
+ * Ascension-style classless system + Season 10 "Wildcard" mode for AzerothCore.
+ * Released under GNU AGPL v3, like AzerothCore.
+ */
+
+#ifndef MOD_CLASSLESS_WILDCARD_H
+#define MOD_CLASSLESS_WILDCARD_H
+
+#include "Define.h"
+#include "ObjectGuid.h"
+#include <array>
+#include <map>
+#include <string>
+#include <unordered_map>
+#include <unordered_set>
+#include <vector>
+
+class Player;
+
+namespace ClasslessWildcard
+{
+    // implemented in ClasslessAddon.cpp: raw push to the client addon
+    // (used e.g. for "RV|..." roll-reveal notifications)
+    void PushAddon(Player* player, std::string const& body);
+
+    enum class Mode : uint8
+    {
+        Classless = 0,  // free-pick with essences
+        Wildcard  = 1,  // random rolls
+        Unchosen  = 255
+    };
+
+    enum class Rarity : uint8
+    {
+        Common    = 0,
+        Uncommon  = 1,
+        Rare      = 2,
+        Epic      = 3,
+        Legendary = 4,
+        Max       = 5
+    };
+
+    enum class GrantSource : uint8
+    {
+        Picked = 0,   // bought with essence (classless mode)
+        Rolled = 1,   // wildcard random roll
+        Card   = 2    // wildcard skill card guarantee
+    };
+
+    // One entry of the ability library: a spell line (first rank) + all its ranks.
+    struct AbilityEntry
+    {
+        uint32 firstSpellId = 0;
+        std::string name;               // rank-1 spell name (dedupe + owned-name checks)
+        std::vector<uint32> ranks;      // rank spell ids in order, [0] == firstSpellId
+        std::vector<uint8>  rankLevels; // required level per rank
+        uint32 classMask = 0;           // origin class(es)
+        Rarity rarity = Rarity::Common;
+        uint32 cost = 1;                // ability essence cost (classless mode)
+        uint32 weight = 100;            // wildcard roll weight
+        bool   enabled = true;
+        bool   passive = false;
+    };
+
+    // One entry of the talent pool.
+    struct TalentPoolEntry
+    {
+        uint32 talentId = 0;
+        uint32 tabId = 0;
+        uint32 classMask = 0;           // from TalentTab
+        uint32 row = 0;
+        uint32 col = 0;
+        uint32 dependsOn = 0;           // prerequisite talent id (0 = none)
+        uint32 dependsOnRank = 0;
+        std::array<uint32, 5> rankSpells = { 0, 0, 0, 0, 0 };
+        uint8  maxRank = 0;
+        Rarity rarity = Rarity::Common;
+        uint32 weight = 100;
+        bool   enabled = true;
+    };
+
+    struct OwnedAbility
+    {
+        GrantSource source = GrantSource::Picked;
+        bool locked = false;
+    };
+
+    struct SkillCard
+    {
+        uint32 entry = 0;   // firstSpellId or talentId
+        bool   isTalent = false;
+        bool   golden = false;
+        bool   used = false;
+    };
+
+    struct RollBan
+    {
+        uint32 entry = 0;
+        bool   isTalent = false;
+        int32  rollsLeft = 0;
+    };
+
+    // Pre-built starter builds for onboarding (Ascension's "archetypes").
+    struct Archetype
+    {
+        uint32 id = 0;
+        std::string name;
+        std::string description;
+        std::vector<uint32> abilities;                    // first-rank spell ids
+        std::vector<std::pair<uint32, uint8>> talents;    // talentId -> rank
+    };
+
+    // Per-character runtime state (mirrored to characters DB).
+    struct CharState
+    {
+        Mode   mode = Mode::Unchosen;
+        uint32 abilityEssence = 0;
+        uint32 talentEssence = 0;
+        uint32 pity = 0;                 // rerolls since last synergy roll
+        uint32 abilityRerolls = 0;       // earned reroll charges (wildcard)
+        uint32 talentRerolls = 0;
+        uint8  lastProcessedLevel = 0;
+
+        // which resource bar the default unit frame displays
+        // (0 mana, 1 rage, 3 energy, 255 = chassis default)
+        uint8  displayPower = 255;
+
+        // primary stat allocation (points per stat: STR, AGI, STA, INT, SPI)
+        std::array<uint32, 5> statAlloc = { 0, 0, 0, 0, 0 };
+        std::array<int32, 5>  appliedStatBonus = { 0, 0, 0, 0, 0 }; // currently applied, runtime only
+
+        // universal stat layer bonuses currently applied (runtime only)
+        int32 usMeleeAP = 0;
+        int32 usRangedAP = 0;
+        int32 usSpellPower = 0;
+
+        std::unordered_map<uint32 /*firstSpellId*/, OwnedAbility> abilities;
+        std::unordered_map<uint32 /*talentId*/, uint8 /*rank*/>   talents;
+        std::vector<SkillCard> cards;
+        std::vector<RollBan>   bans;
+        bool exempt = false;   // bot/system account: classless rules don't apply
+        bool loaded = false;
+    };
+
+    struct Config
+    {
+        bool   enabled = true;
+        bool   announce = true;
+        uint8  defaultMode = 0;
+        bool   allowModeChoice = true;
+        uint8  modeChoiceDeadline = 5;
+
+        // library filters
+        bool   includeDeathKnight = false;
+        bool   includeRacials = false;
+        bool   includePassives = true;
+        std::unordered_set<uint32> excludedSpells;
+
+        // tiered acquisition: rolls/purchases respect each spell's own level
+        // requirement (rank 1 learn level) and each talent's tree-row level,
+        // so low levels can't be dealt end-game spells
+        bool   respectLevelReqs = true;
+
+        // only spells players actually learn (starter spells + class trainer
+        // lists) enter the library; also sources each rank's REAL learn level
+        // from trainer data. Kills NPC/pet variants like "Demonic Immolate".
+        bool   trainerTaughtOnly = true;
+
+        // proficiencies
+        bool   teachProficiencies = true;
+        std::vector<uint32> proficiencySpells;
+
+        // clean-slate start: strip the chassis class's default spells at
+        // creation and hand out one of each basic weapon type instead
+        bool   stripStartingSpells = true;
+        bool   starterKitEnable = true;
+        bool   starterKitReplaceWeapons = true;
+        std::vector<std::pair<uint32, uint32>> starterKitItems;  // into bags
+        std::vector<std::pair<uint32, uint32>> starterKitEquip;  // auto-equipped
+
+        // accounts whose name starts with one of these prefixes play VANILLA
+        // rules (no essences/rolls, native talents, trainers work) — for
+        // playerbots' random-bot accounts and similar system accounts
+        std::vector<std::string> exemptAccountPrefixes;
+
+        // native talent suppression
+        bool   suppressTalentPoints = true;
+
+        // revert class-library spells learned outside the module (class
+        // trainers, quest rewards) so essence/rolls stay the only path
+        bool   blockOutsideSpellSources = true;
+
+        // classless (free-pick) economy
+        uint32 startingAbilityEssence = 9;
+        uint8  essenceStartLevel = 10;
+        uint32 abilityEssencePerLevel = 1;
+        uint32 talentEssencePerLevel = 1;
+        std::array<uint32, 5> abilityCostByRarity = { 1, 2, 3, 5, 8 };
+        uint32 talentCostPerRank = 1;
+        bool   enforceTalentRows = true;
+        bool   refundOnUnlearn = true;
+        uint32 respecCostGold = 50;
+
+        // wildcard
+        uint32 wcStartingAbilities = 4;
+        uint8  wcRollStartLevel = 10;
+        uint32 wcTalentEveryLevels = 1;
+        uint32 wcAbilityEveryLevels = 2;
+        uint8  wcFreeRerollLevel = 10;   // below this, rerolls are free
+        std::array<uint32, 5> wcRarityWeights = { 100, 60, 30, 10, 3 };
+        uint32 wcSynergyBaseChance = 10;   // percent
+        uint32 wcSynergyIncrement = 10;    // percent per pity point
+        uint32 wcSynergyBanRolls = 25;
+        uint32 wcAbilityCards = 2;
+        uint32 wcGoldenAbilityCards = 2;
+        uint32 wcTalentCards = 3;
+        uint32 wcGoldenTalentCards = 3;
+        uint32 wcScrollItemId = 990101;        // Scroll of Fortune (top-up item)
+        uint32 wcScrollTalentItemId = 990102;  // Scroll of Fortune: Talents
+        uint32 wcRerollsPerAbilityRoll = 1;    // earned reroll charges per scheduled ability roll
+        uint32 wcRerollsPerTalentRoll = 1;     // earned reroll charges per scheduled talent roll
+        uint32 wcFreeScrollEveryLevels = 0;    // optional extra: scrolls every N levels (0 = off)
+        uint32 wcFreeScrollCount = 1;          // scrolls granted per milestone
+
+        // universal resources: every Hero maintains mana, rage AND energy
+        // pools simultaneously (druid-style — the client tracks all pools,
+        // only the chassis bar is displayed; the addon shows the others)
+        bool   universalResources = true;
+        // synthetic mana for non-mana chassis, using the real WoW conversion:
+        // the first 20 Intellect give 1 mana each, points beyond 20 give
+        // ManaPerIntellect each; plus a flat base and per-level growth
+        uint32 urBaseMana = 100;
+        uint32 urManaPerLevel = 35;
+        uint32 urManaPerIntellect = 15;    // per point of Intellect ABOVE 20
+        uint32 urMaxRage = 1000;           // internal units (1000 = 100 rage)
+        uint32 urMaxEnergy = 100;
+        uint32 urRageDealtPct = 100;       // % of warrior-formula rage gained when dealing melee damage
+        uint32 urRageTakenPct = 100;       // % of warrior-formula rage gained when taking damage
+        // synthetic mana regen (per 5s): Base + Spirit*PerSpirit + Pct% of max
+        float  urManaRegenBase = 4.0f;
+        float  urManaRegenPerSpirit = 0.3f;
+        uint32 urManaRegenPct = 0;
+
+        // universal stat layer: fills the gaps the (warrior) chassis math
+        // leaves so EVERY stat is worth allocating on a classless Hero:
+        //   AGI -> melee + ranged attack power, INT -> spell power,
+        //   SPI -> mana regen (above). STR/STA already work via the core.
+        bool   universalStats = true;
+        float  usMeleeAPPerAgi = 1.0f;
+        float  usRangedAPPerAgi = 1.0f;
+        float  usSpellPowerPerInt = 1.0f;  // per Intellect point above 10
+
+        // primary stat allocation
+        bool   statsEnable = true;
+        uint32 statStartingPoints = 4;
+        uint32 statPointsPerLevel = 2;
+        uint32 statValuePerPoint = 1;      // stat granted per point
+
+        // rebirth (late mode switch / full reset)
+        bool   rebirthEnable = true;
+        uint32 rebirthCostGold = 100;
+
+        // experimental
+        bool   crossPowerCasting = false;
+
+        uint32 npcEntry = 990100;
+    };
+
+    char const* RarityName(Rarity r);
+    char const* RarityColor(Rarity r); // client color escape
+} // namespace ClasslessWildcard
+
+#endif // MOD_CLASSLESS_WILDCARD_H

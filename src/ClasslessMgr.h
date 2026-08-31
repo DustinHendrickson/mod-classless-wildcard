@@ -1,0 +1,128 @@
+/*
+ * mod-classless-wildcard
+ * Released under GNU AGPL v3, like AzerothCore.
+ */
+
+#ifndef MOD_CW_CLASSLESS_MGR_H
+#define MOD_CW_CLASSLESS_MGR_H
+
+#include "ClasslessWildcard.h"
+
+class Player;
+
+class ClasslessMgr
+{
+public:
+    static ClasslessMgr* instance();
+
+    ClasslessWildcard::Config cfg;
+
+    void LoadConfig(bool reload);
+    void BuildLibrary(); // call once world data (DBC/SpellMgr) is loaded
+
+    // ------- library access -------
+    ClasslessWildcard::AbilityEntry const* GetAbility(uint32 firstSpellId) const;
+    ClasslessWildcard::TalentPoolEntry const* GetTalent(uint32 talentId) const;
+    std::map<uint32, ClasslessWildcard::AbilityEntry> const& Abilities() const { return _abilities; }
+    std::map<uint32, ClasslessWildcard::TalentPoolEntry> const& Talents() const { return _talents; }
+    // resolve any spell id (any rank) to its library entry, nullptr if not in library
+    ClasslessWildcard::AbilityEntry const* FindAbilityBySpell(uint32 spellId) const;
+
+    // ------- per-character state -------
+    ClasslessWildcard::CharState& GetState(Player* player);
+    void UnloadState(ObjectGuid guid);
+    // bot/system accounts (e.g. mod-playerbots "rndbot" accounts) play with
+    // vanilla class rules so their factories keep working
+    bool IsExempt(Player* player) { return GetState(player).exempt; }
+    bool IsWildcard(Player* player) { return GetState(player).mode == ClasslessWildcard::Mode::Wildcard; }
+
+    // ------- lifecycle -------
+    void HandleFirstLogin(Player* player);
+    void HandleLogin(Player* player);
+    void HandleLevelUp(Player* player, uint8 oldLevel);
+    bool SetMode(Player* player, ClasslessWildcard::Mode mode, std::string* err = nullptr);
+
+    // ------- classless (free-pick) -------
+    bool BuyAbility(Player* player, uint32 firstSpellId, std::string* err);
+    bool UnlearnAbility(Player* player, uint32 firstSpellId, std::string* err);
+    bool BuyTalentRank(Player* player, uint32 talentId, std::string* err);
+    bool Respec(Player* player, std::string* err);
+
+    // ------- wildcard -------
+    // returns granted entry (firstSpellId / talentId) or 0
+    uint32 RollAbility(Player* player, ClasslessWildcard::GrantSource source = ClasslessWildcard::GrantSource::Rolled);
+    uint32 RollTalent(Player* player);
+    bool Reroll(Player* player, bool isTalent, uint32 entry, std::string* err);
+    bool ToggleLock(Player* player, uint32 firstSpellId, std::string* err);
+    bool AddCard(Player* player, bool isTalent, uint32 entry, std::string* err);
+    bool RemoveCard(Player* player, bool isTalent, uint32 entry, std::string* err);
+
+    // ------- displayed resource bar (0 mana, 1 rage, 3 energy, 255 default) -------
+    bool SetDisplayPower(Player* player, uint8 powerIdx, std::string* err);
+    void ApplyDisplayPower(Player* player); // re-apply saved choice (login)
+
+    // ------- primary stat allocation -------
+    uint32 StatBudget(Player* player) const;
+    uint32 SpentStatPoints(ClasslessWildcard::CharState const& st) const;
+    void   ApplyStatMods(Player* player);   // sync applied bonuses to the allocation
+    bool   SetStatAllocation(Player* player, std::array<uint32, 5> const& alloc, std::string* err);
+
+    // ------- onboarding & exits -------
+    std::map<uint32, ClasslessWildcard::Archetype> const& Archetypes() const { return _archetypes; }
+    bool ApplyArchetype(Player* player, uint32 archetypeId, std::string* err);
+    // Full reset + (optional) mode switch for gold — the late "exit" once the
+    // level-based mode lock has passed.
+    bool Rebirth(Player* player, ClasslessWildcard::Mode target, std::string* err);
+
+    // ------- helpers -------
+    void TeachProficiencies(Player* player);
+    void UpdateAbilityRanks(Player* player); // learn newly available ranks of owned lines
+    // true while the module itself is teaching spells (lets the learn-spell
+    // hook distinguish module grants from trainers/quests)
+    bool IsApplyingGrant() const { return _applyingGrant; }
+    void SaveState(Player* player);          // persist scalar state row
+    void AnnounceState(Player* player);      // login summary line
+    uint32 AbilityCost(ClasslessWildcard::AbilityEntry const& e) const;
+    uint32 RollWeight(ClasslessWildcard::Rarity rarity, uint32 overrideWeight) const;
+    uint32 SpentTalentRanksInTab(ClasslessWildcard::CharState const& st, uint32 tabId) const;
+
+private:
+    ClasslessMgr() = default;
+
+    void LoadOverrides();
+    void LoadCharacter(Player* player, ClasslessWildcard::CharState& st);
+    void GrantAbilityInternal(Player* player, ClasslessWildcard::AbilityEntry const& e,
+                              ClasslessWildcard::GrantSource source, bool persist = true);
+    void RemoveAbilityInternal(Player* player, ClasslessWildcard::AbilityEntry const& e, bool persist = true);
+    void GrantTalentRankInternal(Player* player, ClasslessWildcard::TalentPoolEntry const& t, uint8 newRank, bool persist = true);
+    void RemoveTalentInternal(Player* player, ClasslessWildcard::TalentPoolEntry const& t, bool persist = true);
+    void TickBans(ClasslessWildcard::CharState& st, ObjectGuid guid);
+    void SaveBans(ObjectGuid guid, ClasslessWildcard::CharState const& st);
+    bool IsBanned(ClasslessWildcard::CharState const& st, bool isTalent, uint32 entry) const;
+    uint32 OwnedClassMask(ClasslessWildcard::CharState const& st) const;
+    ClasslessWildcard::SkillCard* FindUnusedCard(ClasslessWildcard::CharState& st, bool isTalent);
+
+    void LoadArchetypes();
+
+    std::map<uint32, ClasslessWildcard::AbilityEntry> _abilities;      // firstSpellId -> entry
+    std::map<uint32, ClasslessWildcard::TalentPoolEntry> _talents;     // talentId -> entry
+    std::map<uint32, ClasslessWildcard::Archetype> _archetypes;
+    std::unordered_map<uint32, uint32> _spellToFirst;                  // any rank -> firstSpellId
+    std::unordered_map<ObjectGuid::LowType, ClasslessWildcard::CharState> _states;
+    bool _libraryBuilt = false;
+    bool _applyingGrant = false;
+    // true while batch-granting (starting hand, rebirth replay): the client
+    // shows those results in bulk, so per-roll reveal popups are suppressed
+    bool _revealSuppress = false;
+
+    struct GrantGuard
+    {
+        explicit GrantGuard(bool& flag) : _flag(flag) { _flag = true; }
+        ~GrantGuard() { _flag = false; }
+        bool& _flag;
+    };
+};
+
+#define sClasslessMgr ClasslessMgr::instance()
+
+#endif

@@ -1,0 +1,23 @@
+# Build output
+build/
+cmake-build-*/
+*.o
+*.obj
+*.so
+*.dll
+*.a
+*.lib
+*.exe
+
+# Generated client patch artifacts
+client-patch/mpqtool
+client-patch/*.MPQ
+client-patch/*.mpq
+client-patch/out/
+
+# Editor / OS
+.vscode/
+.idea/
+*.swp
+.DS_Store
+Thumbs.db
