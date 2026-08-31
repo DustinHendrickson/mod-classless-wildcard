@@ -1164,6 +1164,13 @@ void ClasslessMgr::HandleFirstLogin(Player* player)
                 }
             player->AddItem(itemId, give);
         }
+
+        // The backpack strip above also destroys the creation Hearthstone (and
+        // non-native shell-class race combos never get one from the DBC outfit
+        // at all). Every Hero must keep one -- put it back.
+        constexpr uint32 HEARTHSTONE = 6948;
+        if (!player->HasItemCount(HEARTHSTONE, 1))
+            player->AddItem(HEARTHSTONE, 1);
     }
 
     TeachProficiencies(player);
