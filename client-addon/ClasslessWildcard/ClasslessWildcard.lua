@@ -1275,7 +1275,8 @@ if Minimap then
     mmBtn:SetScript("OnEnter", function(self)
         GameTooltip:SetOwner(self, "ANCHOR_LEFT")
         GameTooltip:AddLine("Hero Advancement")
-        GameTooltip:AddLine("Left-click: classless panel", 1, 1, 1)
+        local key = GetBindingKey and GetBindingKey("CLASSLESSWILDCARD_TOGGLE")
+        GameTooltip:AddLine("Left-click: classless panel" .. (key and ("  (" .. key .. ")") or ""), 1, 1, 1)
         GameTooltip:AddLine("Right-click: toggle resource bars", 1, 1, 1)
         GameTooltip:AddLine("Drag to move", 0.7, 0.7, 0.7)
         GameTooltip:Show()
@@ -1298,8 +1299,20 @@ if HelpMicroButton then
             ToggleMainPanel()
         end
     end)
-    HelpMicroButton.tooltipText = "Hero Advancement"
-    HelpMicroButton.newbieText = "Opens the classless panel. Shift-click for the Help / GM window."
+    -- Show the bound key after the name, the way every stock micro button does
+    -- ("Player vs. Player (H)"). MicroButtonTooltipText appends it from the
+    -- CURRENT binding, so this has to be refreshed whenever bindings change --
+    -- notably after we claim our own key, which happens later than this file.
+    function CW.RefreshMicroTooltip()
+        if not HelpMicroButton then return end
+        local label = "Hero Advancement"
+        if MicroButtonTooltipText then
+            label = MicroButtonTooltipText(label, "CLASSLESSWILDCARD_TOGGLE")
+        end
+        HelpMicroButton.tooltipText = label
+        HelpMicroButton.newbieText = "Opens the classless panel. Shift-click for the Help / GM window."
+    end
+    CW.RefreshMicroTooltip()
 
     -- REPLACE the button art outright: the "?" is gone, and the die texture is
     -- baked in the micro button's own 32x64 layout, so it fills the art area
@@ -2036,6 +2049,7 @@ end
 local events = CreateFrame("Frame")
 events:RegisterEvent("CHAT_MSG_ADDON")
 events:RegisterEvent("PLAYER_ENTERING_WORLD")
+events:RegisterEvent("UPDATE_BINDINGS")
 events:SetScript("OnEvent", function(self, event, arg1, arg2, arg3, arg4)
     if event == "CHAT_MSG_ADDON" then
         if arg1 == PREFIX and arg4 == UnitName("player") then
@@ -2044,6 +2058,10 @@ events:SetScript("OnEvent", function(self, event, arg1, arg2, arg3, arg4)
     elseif event == "PLAYER_ENTERING_WORLD" then
         Send("HELLO")
         if CW.ClaimHotkey then CW.ClaimHotkey() end
+        if CW.RefreshMicroTooltip then CW.RefreshMicroTooltip() end
+    elseif event == "UPDATE_BINDINGS" then
+        -- the player rebound us in Key Bindings: keep the "(N)" suffix honest
+        if CW.RefreshMicroTooltip then CW.RefreshMicroTooltip() end
     end
 end)
 
@@ -2145,6 +2163,7 @@ function CW.ClaimHotkey()
         end
         pcall(SaveBindings, GetCurrentBindingSet and GetCurrentBindingSet() or 1)
         ClasslessWildcardDB.hotkeyClaimed = true
+        if CW.RefreshMicroTooltip then CW.RefreshMicroTooltip() end
         Print("Hotkey |cffffff00" .. key .. "|r opens the Hero Advancement panel"
             .. (occupied and " (it replaced the unused Talents frame)" or "")
             .. ". Rebind it under Key Bindings > ClasslessWildcard.")
