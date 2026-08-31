@@ -244,12 +244,14 @@ def build_locale_patch(files, name, report, locale, theme=False, icon=False):
         elif atlas is None:
             report.append("  Hero class icon      skipped (class-icon atlas not found)")
         else:
-            # only the Hero (Warrior) cell becomes the emblem; the other class
-            # icons stay intact so the addon can still group abilities by class
-            for tex in (CLASSICONS_INGAME, CLASSICONS_CREATE):
-                payload[tex] = atlas
-            report.append("  Hero class icon      emblem on the Hero cell, other "
-                          "class icons kept (from %s)" % os.path.basename(source))
+            # ONLY UI-Classes-Circles (the player's own class icon: unit frames,
+            # character select). The addon draws its ability-group tabs from
+            # UI-CharacterCreate-Classes, which is deliberately left alone, so
+            # every class icon there stays intact for by-class grouping.
+            payload[CLASSICONS_INGAME] = atlas
+            report.append("  Hero class icon      emblem on the Hero's own class "
+                          "icon; addon class icons untouched (from %s)"
+                          % os.path.basename(source))
 
     return payload
 

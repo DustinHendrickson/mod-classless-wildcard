@@ -140,18 +140,25 @@ records).
 
 The class icon is a 4×4 grid in a 256×256 atlas (`CLASS_ICON_TCOORDS` maps each
 token to a cell). `lib/blp.py` **decodes** the client's own atlas (`decode_blp`,
-handling palettized and DXT1/3/5), pastes the gold emblem into **only the Death
-Knight cell** (`_HERO_CELL_TC` = {0.25, 0.5, 0.5, 0.75}), and re-encodes. Death
-Knight is disabled in the mod -- it IS the "Hero" class type -- so its cell is
-free to carry the mark, and every other class icon is preserved untouched, which
-matters because the addon groups abilities by their source class using those
-icons. The Hero shows this emblem when its chassis class is Death Knight. Writes over
+handling palettized and DXT1/3/5), pastes the gold emblem into the cells a
+Hero's *own* class icon is drawn from -- **Paladin** (the chassis, in-game) and
+**Warrior** (the creation-screen shell), `_HERO_CELLS_TC` -- and re-encodes.
+Every other class icon is preserved untouched.
+
+Only `UI-Classes-Circles` is rewritten -- that is the atlas the game uses for a
+unit's own class icon (unit frames, character select, the creation-screen class
+icon). The addon draws its by-class ability tabs from a DIFFERENT atlas,
+`UI-CharacterCreate-Classes` (see `CLASS_TCOORDS` in ClasslessWildcard.lua),
+which is left alone, so putting the Hero mark on the Paladin/Warrior cells shows
+it on the Hero's frame WITHOUT touching the addon's class grouping. This keeps
+the Paladin chassis (real native mana) and a Hero emblem at the same time. Writes over
 `Interface\TargetingFrame\UI-Classes-Circles.blp` (in-game, character select,
 the addon's icons) and the creation-screen atlas.
 
-> An earlier version filled *every* cell with the emblem, which erased the class
-> icons the addon needs and drew the Hero mark over every ability group. Only the
-> Death Knight (Hero) cell may change.
+> Earlier tries got this wrong twice: filling *every* cell erased the icons the
+> addon needs, and rewriting `UI-CharacterCreate-Classes` broke the addon's
+> class tabs. The addon reads `UI-CharacterCreate-Classes`; leave it alone and
+> only reskin `UI-Classes-Circles`.
 
 To read the pristine original on a reinstall (not the installer's own previous
 output), `install.py` builds its `ClientFiles` with `exclude=` set to the patch

@@ -213,17 +213,21 @@ def _dxt5_alpha_table(a0, a1):
     return a
 
 
-# Where the Hero emblem goes in the class-icon atlas: the Death Knight cell.
-# Death Knight is disabled in the mod (it IS the "Hero" class type), so its cell
-# is free to carry the Hero mark, and nothing else -- no other class's icon and
-# no ability grouping in the addon -- is disturbed.
-# CLASS_ICON_TCOORDS["DEATHKNIGHT"] = {0.25, 0.5, 0.5, 0.75}
-_HERO_CELL_TC = (0.25, 0.5, 0.5, 0.75)
+# The Hero emblem goes on the cells a Hero's *own* class icon is drawn from, in
+# UI-Classes-Circles (unit frames, character select, the creation-screen class
+# icon). Heroes run the Paladin chassis in-game, and are created through the
+# Warrior shell, so those two cells carry the mark. This atlas is NOT the one
+# the addon uses for its by-class ability grouping (that is
+# UI-CharacterCreate-Classes), so nothing about the addon is disturbed.
+# CLASS_ICON_TCOORDS: PALADIN = {0,.25,.5,.75}, WARRIOR = {0,.25,0,.25}
+_HERO_CELLS_TC = ((0.0, 0.25, 0.5, 0.75),   # Paladin  (chassis / in-game class)
+                  (0.0, 0.25, 0.0, 0.25))   # Warrior  (creation-screen shell)
 
 
 def reskin_hero_cell(original_blp):
-    """Return BLP2 bytes: the client's class-icon atlas with the Death Knight
-    cell replaced by the Hero emblem; every other class icon untouched.
+    """Return BLP2 bytes: the class-icon atlas with the Hero's own class cells
+    (Paladin + Warrior shell) replaced by the Hero emblem; every other class
+    icon untouched.
 
     Returns None if Pillow is missing.
     """
@@ -235,11 +239,11 @@ def reskin_hero_cell(original_blp):
     w, h, rgba = decode_blp(original_blp)
     atlas = Image.frombytes("RGBA", (w, h), rgba)
 
-    left, right, top, bottom = _HERO_CELL_TC
-    x0, y0 = round(left * w), round(top * h)
-    cw, ch = round((right - left) * w), round((bottom - top) * h)
-    emblem = _draw_emblem(max(cw, ch)).resize((cw, ch), Image.LANCZOS)
-    atlas.paste(emblem, (x0, y0), emblem)
+    for left, right, top, bottom in _HERO_CELLS_TC:
+        x0, y0 = round(left * w), round(top * h)
+        cw, ch = round((right - left) * w), round((bottom - top) * h)
+        emblem = _draw_emblem(max(cw, ch)).resize((cw, ch), Image.LANCZOS)
+        atlas.paste(emblem, (x0, y0), emblem)
     return encode_palettized(atlas)
 
 
