@@ -208,6 +208,9 @@ namespace ClasslessWildcard
         uint32 talentEssencePerLevel = 1;
         std::array<uint32, 5> abilityCostByRarity = { 1, 2, 3, 5, 8 };
         uint32 talentCostPerRank = 1;
+        // Ascension rule: a talent costs ONE point no matter which rank you end
+        // up at, so only the first rank is charged and ranks 2..5 are free.
+        bool   talentFlatCost = true;
         bool   enforceTalentRows = true;
         bool   refundOnUnlearn = true;
         uint32 respecCostGold = 50;

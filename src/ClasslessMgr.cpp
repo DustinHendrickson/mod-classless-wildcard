@@ -184,6 +184,7 @@ void ClasslessMgr::LoadConfig(bool /*reload*/)
     cfg.abilityEssencePerLevel = sConfigMgr->GetOption<uint32>("ClasslessWildcard.Classless.AbilityEssencePerLevel", 1);
     cfg.talentEssencePerLevel = sConfigMgr->GetOption<uint32>("ClasslessWildcard.Classless.TalentEssencePerLevel", 1);
     cfg.talentCostPerRank = sConfigMgr->GetOption<uint32>("ClasslessWildcard.Classless.TalentCostPerRank", 1);
+    cfg.talentFlatCost = sConfigMgr->GetOption<bool>("ClasslessWildcard.Classless.TalentFlatCost", true);
     cfg.enforceTalentRows = sConfigMgr->GetOption<bool>("ClasslessWildcard.Classless.EnforceTalentRows", true);
     cfg.refundOnUnlearn = sConfigMgr->GetOption<bool>("ClasslessWildcard.Classless.RefundOnUnlearn", true);
     cfg.respecCostGold = sConfigMgr->GetOption<uint32>("ClasslessWildcard.Classless.RespecCostGold", 50);
@@ -847,6 +848,47 @@ uint32 ClasslessMgr::RollWeight(Rarity rarity, uint32 overrideWeight) const
     return overrideWeight ? overrideWeight : cfg.wcRarityWeights[uint8(rarity)];
 }
 
+// Rank IS rarity for talents, by the rank NUMBER: rank 1 common, rank 2
+// uncommon, rank 3 rare, rank 4 epic, rank 5 legendary. (Mapping it to the
+// talent's own rank span instead would call rank 2 of a two-rank talent
+// "legendary", which is neither what the rules say nor rollable in practice.)
+// A talent that is already rare in its own right never reads as less than that,
+// and single-rank talents just keep their own tier.
+Rarity ClasslessMgr::RankRarity(TalentPoolEntry const& t, uint8 rank) const
+{
+    if (t.maxRank <= 1 || !rank)
+        return t.rarity;
+
+    uint8 byRank = std::min<uint8>(uint8(rank - 1), 4);
+    return Rarity(std::max<uint8>(byRank, uint8(t.rarity)));
+}
+
+// Pick which rank a roll lands on, weighted by that rank's rarity -- so rank 5
+// shows up as rarely as any other legendary. Returns 0 when the talent is
+// already maxed.
+uint8 ClasslessMgr::RollTalentRank(TalentPoolEntry const& t, uint8 fromRank) const
+{
+    if (fromRank >= t.maxRank)
+        return 0;
+
+    uint32 total = 0;
+    for (uint8 r = fromRank + 1; r <= t.maxRank; ++r)
+        total += RollWeight(RankRarity(t, r), 0);
+
+    if (!total)
+        return fromRank + 1; // every weight configured to zero: lowest rank
+
+    uint32 pick = urand(0, total - 1);
+    for (uint8 r = fromRank + 1; r <= t.maxRank; ++r)
+    {
+        uint32 w = RollWeight(RankRarity(t, r), 0);
+        if (pick < w)
+            return r;
+        pick -= w;
+    }
+    return fromRank + 1;
+}
+
 // -------------------------------------------------------------------------
 // Per-character state / persistence
 // -------------------------------------------------------------------------
@@ -1428,8 +1470,10 @@ void ClasslessMgr::GrantTalentRankInternal(Player* player, TalentPoolEntry const
             "REPLACE INTO cw_char_talents (guid, talent_id, talent_rank) VALUES ({}, {}, {})",
             player->GetGUID().GetCounter(), t.talentId, newRank);
 
-    Msg(player, Acore::StringFormat("Talent: {}{}|r rank {} ({}).",
-        RarityColor(t.rarity), SpellName(t.rankSpells[newRank - 1]), newRank, RarityName(t.rarity)));
+    // the rank drives the rarity, so the chat line matches the reveal popup
+    Rarity shown = RankRarity(t, newRank);
+    Msg(player, Acore::StringFormat("Talent: {}{}|r rank {}/{} ({}).",
+        RarityColor(shown), SpellName(t.rankSpells[newRank - 1]), newRank, uint32(t.maxRank), RarityName(shown)));
 }
 
 void ClasslessMgr::RemoveTalentInternal(Player* player, TalentPoolEntry const& t, bool persist)
@@ -1572,9 +1616,12 @@ bool ClasslessMgr::BuyTalentRank(Player* player, uint32 talentId, std::string* e
         if (err) *err = "That talent is already at max rank.";
         return false;
     }
-    if (st.talentEssence < cfg.talentCostPerRank)
+    // A talent costs one point, not one per rank: only the first rank is
+    // charged, so ranking a talent all the way to 5 still costs a single point.
+    uint32 cost = (cfg.talentFlatCost && ownedRank > 0) ? 0 : cfg.talentCostPerRank;
+    if (st.talentEssence < cost)
     {
-        if (err) *err = Acore::StringFormat("Not enough Talent Essence ({} needed).", cfg.talentCostPerRank);
+        if (err) *err = Acore::StringFormat("Not enough Talent Essence ({} needed).", cost);
         return false;
     }
     if (t->dependsOn)
@@ -1594,7 +1641,7 @@ bool ClasslessMgr::BuyTalentRank(Player* player, uint32 talentId, std::string* e
         return false;
     }
 
-    st.talentEssence -= cfg.talentCostPerRank;
+    st.talentEssence -= cost;
     GrantTalentRankInternal(player, *t, ownedRank + 1);
     SaveState(player);
     return true;
@@ -1919,11 +1966,18 @@ uint32 ClasslessMgr::RollTalent(Player* player)
         if (auto itr = st.talents.find(chosen->talentId); itr != st.talents.end())
             ownedRank = itr->second;
 
-        GrantTalentRankInternal(player, *chosen, ownedRank + 1);
+        // the roll decides the RANK too, not just the talent: a rank 5 is as
+        // rare a result as any legendary, and costs the same one point
+        uint8 newRank = RollTalentRank(*chosen, ownedRank);
+        if (!newRank)
+            break; // already maxed (shouldn't happen: maxed talents are filtered out)
+        Rarity shown = RankRarity(*chosen, newRank);
+
+        GrantTalentRankInternal(player, *chosen, newRank);
         lastGranted = chosen->talentId;
         PushAddon(player, Acore::StringFormat("RV|T|{}|{}|{}|{}|{}",
-            chosen->talentId, chosen->rankSpells[0], uint32(chosen->rarity),
-            uint32(ownedRank + 1), synergy ? 1 : 0));
+            chosen->talentId, chosen->rankSpells[newRank - 1], uint32(shown),
+            uint32(newRank), synergy ? 1 : 0));
 
         if (ownedRank == 0)
             break; // fresh talent — done

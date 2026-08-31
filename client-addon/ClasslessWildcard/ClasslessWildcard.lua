@@ -593,16 +593,18 @@ local HELP_TEXT = table.concat({
 "|cff00ccff==  CLASSLESS  --  you choose  ==|r",
 "Spend two currencies to buy exactly what you want:",
 "   |cffffd100Ability Essence (AE)|r  buys abilities.",
-"   |cffffd100Talent Essence (TE)|r  buys talent ranks.",
+"   |cffffd100Talent Essence (TE)|r  buys talents -- |cffffffffone point each|r, however far you rank it.",
 "You start with a pool of AE and earn |cff00ff00+1 AE and +1 TE every level from 10|r.",
-"Abilities are priced by rarity -- |cff9d9d9d1|r / |cff1eff002|r / |cff0070dd3|r / |cffa335ee5|r / |cffff80008|r AE from common to legendary. Talents cost TE per rank and respect their tree's prerequisites and tier rules.",
+"Abilities are priced by rarity -- |cff9d9d9d1|r / |cff1eff002|r / |cff0070dd3|r / |cffa335ee5|r / |cffff80008|r AE from common to legendary. A talent costs |cffffffffone Talent Essence|r no matter which rank you take it to, and still respects its tree's prerequisites and tier rules.",
 "Unlearning an ability refunds what you paid, |cffffd100Respec|r reshuffles your talents for gold, and every ability line you own |cff00ff00ranks up on its own|r as you level.",
 "",
 "|cffff8800==  WILDCARD  --  the dice choose  ==|r",
 "The server rolls abilities and talents for you on a fixed schedule:",
 "   |cff00ff00Level 1:|r  4 random abilities to begin.",
 "   |cff00ff00From level 10:|r  1 talent every level, 1 ability every 2 levels.",
-"Rolls are rarity-weighted, so legendaries are the rarest. You steer your luck:",
+"Rolls are rarity-weighted, so legendaries are the rarest.",
+"A rolled talent also lands on a random |cffffd100rank|r, and the rank IS its rarity: rank 1 common, rank 2 uncommon, rank 3 rare, rank 4 epic, |cffff8000rank 5 legendary|r. A high rank is the jackpot -- a talent costs one point whatever rank it arrives at, so rank 5 is four ranks for free.",
+"You steer your luck:",
 "   |cffffd100Rerolls|r -- every roll also grants a reroll charge (rerolls are free below level 10). Spend one to reroll a result you don't want.",
 "   |cffffd100Lock|r -- protect an ability so a later roll can't overwrite it.",
 "   |cffffd100Synergy & pity|r -- rolls lean toward what fits your build, with a rising pity chance and bad-luck bans so a cold streak can't ruin you.",
@@ -1391,13 +1393,18 @@ local function ShowResult()
     rvIcon:Show()
     if d.isTalent then
         rvTitle:SetText("Talent Unlocked!")
-        rvName:SetText(SpellLabel(d.spell, d.rarity) .. "  |cffaaaaaa(Rank " .. (d.rank or 1) .. ")|r")
+        -- rank IS the rarity for talents, so it is colored and shown large
+        local rgbHex = string.format("|cff%02x%02x%02x", rgb[1] * 255, rgb[2] * 255, rgb[3] * 255)
+        rvName:SetText(SpellLabel(d.spell, d.rarity) .. "  " .. rgbHex .. "Rank " .. (d.rank or 1) .. "|r")
     else
         rvTitle:SetText("Ability Unlocked!")
         rvName:SetText(SpellLabel(d.spell, d.rarity))
     end
     if d.flags == 1 then
         rvSub:SetText("|cff00ff88Synergy roll — it complements your Hero!|r")
+    elseif d.isTalent then
+        -- one talent point buys the talent whatever rank it landed on
+        rvSub:SetText((RARITY_NAMES[d.rarity or 0] or "") .. "  |cffaaaaaa- costs one talent point|r")
     else
         rvSub:SetText(RARITY_NAMES[d.rarity or 0] or "")
     end
@@ -1424,7 +1431,9 @@ local function StartReveal(d)
     rvAnim.t0 = GetTime()
     rvAnim.awaiting = false   -- any reveal starting fresh is no longer a pending reroll
     rvAnim.data = d
-    rvTitle:SetText("The Wildcard rolls...")
+    -- say what is being rolled: a level can deal a talent AND an ability, so
+    -- "the Wildcard rolls..." alone left you guessing which one you were seeing
+    rvTitle:SetText(d.isTalent and "Rolling a Talent..." or "Rolling an Ability...")
     rvGlow:SetVertexColor(0.45, 0.75, 1) -- cyan rim light while spinning
     rvGlow:SetAlpha(0)
     rvIcon:Hide()
@@ -1470,7 +1479,8 @@ local function AwaitReroll()
     rvAnim.t0 = GetTime()
     rvAnim.awaiting = true
     rvAnim.awaitT0 = GetTime()
-    rvTitle:SetText("The Wildcard rolls...")
+    local d = rvAnim.data
+    rvTitle:SetText((d and d.isTalent) and "Rerolling a Talent..." or "Rerolling an Ability...")
     rvGlow:SetVertexColor(0.45, 0.75, 1)
     rvGlow:SetAlpha(0)
     rvIcon:Hide()

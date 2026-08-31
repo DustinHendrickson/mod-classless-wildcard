@@ -107,6 +107,12 @@ public:
     void SaveState(Player* player);          // persist scalar state row
     void AnnounceState(Player* player);      // login summary line
     uint32 AbilityCost(ClasslessWildcard::AbilityEntry const& e) const;
+    // A rolled talent can arrive at ANY rank. The rank it lands on decides how
+    // rare the find is -- rank 5 is a legendary result -- and since a talent
+    // costs one point whatever its rank, a high rank is pure profit.
+    ClasslessWildcard::Rarity RankRarity(ClasslessWildcard::TalentPoolEntry const& t, uint8 rank) const;
+    // Weighted pick of a rank above `fromRank`, rarer the higher it goes.
+    uint8 RollTalentRank(ClasslessWildcard::TalentPoolEntry const& t, uint8 fromRank) const;
     uint32 RollWeight(ClasslessWildcard::Rarity rarity, uint32 overrideWeight) const;
     uint32 SpentTalentRanksInTab(ClasslessWildcard::CharState const& st, uint32 tabId) const;
 
