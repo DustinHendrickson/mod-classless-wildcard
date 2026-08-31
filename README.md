@@ -23,8 +23,9 @@ with Essence like Ascension's classless realms, or let the dice decide in Wildca
 
 `mod-classless-wildcard` is an AzerothCore module that removes the class system from WotLK.
 Not "softened" — removed. Every character is a **Hero**: one shared base class under the
-hood, so stats, health and resources are identical for everyone, and your abilities and
-talents can come from anywhere in the game.
+hood, so the class you pick at creation is cosmetic — it grants no abilities and locks
+nothing away. Your race still brings its own racial traits; everything else — every ability
+and talent — you earn yourself, from anywhere in the game.
 
 Two progression paths ship in the box:
 
@@ -73,9 +74,10 @@ training, the Hero Advancement NPC and the addon UI. Players choose a path per c
 
 #### Making every build actually work
 
-- **One base class for everyone** — every Hero shares a single base class (Paladin), so
-  base stats, health and resources are the same no matter which race you pick. Your class is
-  purely cosmetic; everything you can do comes from what you learn.
+- **One base class for everyone** — every Hero shares a single base class (Paladin), so the
+  class you pick at creation is purely cosmetic: it grants no class abilities and no build is
+  locked to it. Race is the meaningful pick (it keeps its racial traits); everything else you
+  can do comes from what you learn.
 - **Universal resources** — every Hero carries mana, rage *and* energy at once. One shows on
   the main bar and the addon draws mini-bars for the rest (`/cwbars`). Every spell draws its
   own resource, so the same Hero casts Fireball on mana and Bloodthirsts on rage — no spell

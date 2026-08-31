@@ -580,7 +580,7 @@ helpContent:SetWidth(540); helpContent:SetHeight(1)
 helpScroll:SetScrollChild(helpContent)
 
 local HELP_TEXT = table.concat({
-"|cffffd100You are a Hero.|r Every character shares one hidden base class, so your health, stats and resources never depend on your race -- race is purely cosmetic. All of your power comes from the abilities and talents you gain, and you may take them from |cffffffffany class in the game|r.",
+"|cffffd100You are a Hero.|r Every character runs on the same hidden base class, so the |cffffffffclass you pick at creation is just for show|r -- it grants no special abilities and locks nothing away. Your |cffffffffrace|r is the real choice at creation: its racial traits are yours to keep. Everything else -- every ability and talent -- you earn yourself, and you can take it from |cffffffffany class in the game|r.",
 "",
 "You gain that power one of two ways. You choose a path per character, and can |cffffd100Rebirth|r later to switch.",
 "",

@@ -1164,9 +1164,9 @@ void ClasslessMgr::HandleFirstLogin(Player* player)
         if (st.mode == Mode::Unchosen)
         {
             Msg(player, "Welcome, Hero! You have no class. Every Hero shares the same |cffffff00chassis|r, so the "
-                        "one you picked at creation changes nothing — you carry mana, rage and energy at once, every "
-                        "stat is worth having, and every spell, talent, weapon and armor type in the game is open "
-                        "to you.");
+                        "class you picked at creation changes nothing (your race keeps its own racial traits) — you "
+                        "carry mana, rage and energy at once, every stat is worth having, and every spell, talent, "
+                        "weapon and armor type in the game is open to you.");
             Msg(player, "Speak to the |cffffff00Hero Advancement|r NPC (or use |cffffff00.classless mode|r / the "
                         "|cffffff00/cw|r addon) to choose your path: Classless free-pick or Wildcard random rolls.");
         }
