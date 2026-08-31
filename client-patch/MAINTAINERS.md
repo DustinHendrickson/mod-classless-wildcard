@@ -121,7 +121,7 @@ original file is passed through untouched. Class selection is separate state
 not affect Accept. The override ships in the locale patch, which outranks the
 client pack's copy.
 
-### `CharStartOutfit.dbc` — the armored Hero look (`--creation-text`)
+### `CharStartOutfit.dbc` — the Hero starter gear (`--creation-text`)
 
 74 `uint32` per record: ID, packed `(race,class,gender,outfit)`, then
 `ItemID[24]`, `DisplayInfoID[24]`, `InventoryType[24]`. The model is drawn from
@@ -142,16 +142,16 @@ STARTER_ITEMS to match.
 
 The class icon is a 4×4 grid in a 256×256 atlas (`CLASS_ICON_TCOORDS` maps each
 token to a cell). `lib/blp.py` **decodes** the client's own atlas (`decode_blp`,
-handling palettized and DXT1/3/5), pastes the gold emblem into the cells a
-Hero's *own* class icon is drawn from -- **Paladin** (the chassis, in-game) and
-**Warrior** (the creation-screen shell), `_HERO_CELLS_TC` -- and re-encodes.
+handling palettized and DXT1/3/5), pastes the gold emblem into the
+**Paladin** cell (`_HERO_CELLS_TC`) -- Paladin is the Hero's class (shell and
+chassis), so that is the cell its own class icon is drawn from -- and re-encodes.
 Every other class icon is preserved untouched.
 
 Only `UI-Classes-Circles` is rewritten -- that is the atlas the game uses for a
 unit's own class icon (unit frames, character select, the creation-screen class
 icon). The addon draws its by-class ability tabs from a DIFFERENT atlas,
 `UI-CharacterCreate-Classes` (see `CLASS_TCOORDS` in ClasslessWildcard.lua),
-which is left alone, so putting the Hero mark on the Paladin/Warrior cells shows
+which is left alone, so putting the Hero mark on the Paladin cell shows
 it on the Hero's frame WITHOUT touching the addon's class grouping. This keeps
 the Paladin chassis (real native mana) and a Hero emblem at the same time. Writes over
 `Interface\TargetingFrame\UI-Classes-Circles.blp` (in-game, character select,
