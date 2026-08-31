@@ -20,23 +20,14 @@ with Essence like Ascension's classless realms, or let the dice decide in Wildca
 ---
 
 > [!CAUTION]
-> **Experimental. Treat any realm you install this on as disposable.**
+> **This module is experimental.**
 >
-> - **The client patch is required, not optional.** Every player must run the included
->   [client setup](#client-setup). Without it the creation screen, class names, starter
->   outfit and Hero UI are all wrong, and the experience is broken rather than merely
->   unpolished.
-> - **Do not install this on a realm where data loss matters.** This module rewrites
->   character class data, strips and re-grants spells, talents and starting gear, and adds
->   its own tables. The optional SQL scripts under [`data/sql/manual/`](data/sql/manual/)
->   are destructive and overwrite core tables outright. **Back up both your world and
->   characters databases before installing**, and try it on a test realm first.
-> - **Existing characters are converted permanently.** Every character that logs in is
->   switched to the shared base class and saved immediately. The class they used to be is
->   not recorded anywhere, so [uninstalling](#uninstall) cannot put it back — a Warrior
->   who logs in once is a Paladin forever, on a race/class combination the game may not
->   consider valid. Install on a fresh realm, or one whose existing characters you are
->   willing to lose.
+> The [client patch](#client-setup) is **required** — every player must run it, or the
+> experience will be broken rather than merely unpolished.
+>
+> Installing changes character data and touches core tables. It is [reversible](#uninstall),
+> but **back up your world and characters databases first** and don't install it on a realm
+> where data loss would be a problem.
 
 ---
 
@@ -314,15 +305,12 @@ These follow from the stock 3.3.5a client, and are not bugs:
 
 ## Uninstall
 
-Almost everything the module does is additive and reversible — its own tables, its own item and
-NPC entries, runtime-only hooks — and the one large per-character change (cross-class spells)
-cleans itself up on next login.
+The module is reversible. Almost everything it does is additive — its own tables, its own item
+and NPC entries, runtime-only hooks — and the one large per-character change (cross-class
+spells) cleans itself up on next login.
 
-**One change is permanent: the class conversion.** Every character that logged in was switched
-to the chassis class and saved, and the class it used to be was never recorded, so nothing here
-restores it. After uninstalling, those characters remain that class — including on race/class
-combinations the game normally disallows. If you need them back, restore the characters database
-from a backup taken *before* installing.
+The exception is the class conversion: characters keep the chassis class after uninstalling,
+since their original class was never stored. Restore a pre-install backup if you need it back.
 
 <details>
 <summary><b>Step-by-step revert</b></summary>
