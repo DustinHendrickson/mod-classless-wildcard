@@ -67,8 +67,6 @@ public:
     uint32 RollTalent(Player* player);
     bool Reroll(Player* player, bool isTalent, uint32 entry, std::string* err);
     bool ToggleLock(Player* player, uint32 firstSpellId, std::string* err);
-    bool AddCard(Player* player, bool isTalent, uint32 entry, std::string* err);
-    bool RemoveCard(Player* player, bool isTalent, uint32 entry, std::string* err);
 
     // ------- displayed resource bar (0 mana, 1 rage, 3 energy, 255 default) -------
     bool SetDisplayPower(Player* player, uint8 powerIdx, std::string* err);
@@ -124,7 +122,6 @@ private:
     void SaveBans(ObjectGuid guid, ClasslessWildcard::CharState const& st);
     bool IsBanned(ClasslessWildcard::CharState const& st, bool isTalent, uint32 entry) const;
     uint32 OwnedClassMask(ClasslessWildcard::CharState const& st) const;
-    ClasslessWildcard::SkillCard* FindUnusedCard(ClasslessWildcard::CharState& st, bool isTalent);
 
     void LoadArchetypes();
 

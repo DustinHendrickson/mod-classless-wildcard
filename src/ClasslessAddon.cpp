@@ -219,21 +219,6 @@ namespace
         SendAddon(player, "OTE|");
     }
 
-    void SendCards(Player* player)
-    {
-        CharState& st = sClasslessMgr->GetState(player);
-        std::string body = "CD|";
-        for (SkillCard const& card : st.cards)
-        {
-            uint32 nameSpell = card.isTalent
-                ? (sClasslessMgr->GetTalent(card.entry) ? sClasslessMgr->GetTalent(card.entry)->rankSpells[0] : 0)
-                : card.entry;
-            body += Acore::StringFormat("{}:{}:{}:{}:{};", card.isTalent ? 1 : 0, card.entry,
-                nameSpell, card.golden ? 1 : 0, card.used ? 1 : 0);
-        }
-        SendAddon(player, body);
-    }
-
     void SendStats(Player* player)
     {
         CharState& st = sClasslessMgr->GetState(player);
@@ -283,8 +268,6 @@ namespace
             SendOwnedAbilities(player);
         else if (cmd == "OWNT")
             SendOwnedTalents(player);
-        else if (cmd == "CARDS")
-            SendCards(player);
         else if (cmd == "ARCH")
             SendArchetypes(player);
         else if (cmd == "STATS")
@@ -319,12 +302,6 @@ namespace
             sClasslessMgr->Reroll(player, true, argNum(1), &err) ? SendOk(player, "RRT") : SendErr(player, err);
         else if (cmd == "LOCK")
             sClasslessMgr->ToggleLock(player, argNum(1), &err) ? SendOk(player, "LOCK") : SendErr(player, err);
-        else if (cmd == "CARD")
-            sClasslessMgr->AddCard(player, args.size() > 1 && args[1] == "T", argNum(2), &err)
-                ? SendOk(player, "CARD") : SendErr(player, err);
-        else if (cmd == "CARDRM")
-            sClasslessMgr->RemoveCard(player, args.size() > 1 && args[1] == "T", argNum(2), &err)
-                ? SendOk(player, "CARDRM") : SendErr(player, err);
         else if (cmd == "ARCHAPPLY")
             sClasslessMgr->ApplyArchetype(player, argNum(1), &err) ? SendOk(player, "ARCH") : SendErr(player, err);
         else if (cmd == "REBIRTH")

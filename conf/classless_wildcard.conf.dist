@@ -205,13 +205,6 @@ ClasslessWildcard.Wildcard.RarityWeights = "100,100,100,100,100"
 ClasslessWildcard.Wildcard.SynergyBaseChance = 10
 ClasslessWildcard.Wildcard.SynergyIncrement = 10
 ClasslessWildcard.Wildcard.SynergyBanRolls = 25
-# Skill card slots (normal + golden), lock in at level 10.
-# Season 9 rule: "no skill card caps" — set base + golden of a type to 0 for
-# UNLIMITED slots of that type (e.g. AbilityCards = 0 and GoldenAbilityCards = 0).
-ClasslessWildcard.Wildcard.AbilityCards = 0
-ClasslessWildcard.Wildcard.GoldenAbilityCards = 0
-ClasslessWildcard.Wildcard.TalentCards = 0
-ClasslessWildcard.Wildcard.GoldenTalentCards = 0
 # Earned rerolls (the Ascension way): every scheduled roll grants matching
 # reroll charges, so rerolls flow with leveling itself. Charges are spent
 # before any scroll is touched.
@@ -364,7 +357,7 @@ ClasslessWildcard.Stats.ValuePerPoint = 1
 ########################################
 #
 #    ClasslessWildcard.Rebirth.Enable
-#        Allow a full reset that wipes all abilities/talents/cards and lets the
+#        Allow a full reset that wipes all abilities/talents and lets the
 #        character switch path (classless <-> wildcard) after the mode-choice
 #        deadline, for gold. Wildcard rebirths replay the whole roll schedule
 #        for the character's level.

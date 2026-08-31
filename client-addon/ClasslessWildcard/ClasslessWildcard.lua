@@ -1386,8 +1386,6 @@ local function ShowResult()
     end
     if d.flags == 1 then
         rvSub:SetText("|cff00ff88Synergy roll — it complements your Hero!|r")
-    elseif d.flags == 2 then
-        rvSub:SetText("|cffffd24aSkill Card guarantee|r")
     else
         rvSub:SetText(RARITY_NAMES[d.rarity or 0] or "")
     end

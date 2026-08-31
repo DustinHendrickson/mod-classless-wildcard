@@ -56,7 +56,6 @@ public:
             { "reroll",  HandleReroll,        SEC_PLAYER, Console::No },
             { "rerolltalent", HandleRerollTalent, SEC_PLAYER, Console::No },
             { "lock",    HandleLock,          SEC_PLAYER, Console::No },
-            { "card",    HandleCard,          SEC_PLAYER, Console::No },
         };
         static ChatCommandTable root =
         {
@@ -94,11 +93,7 @@ public:
                 st.abilityRerolls, st.talentRerolls);
             handler->PSendSysMessage("Reroll pity: {} (synergy chance {}%)", st.pity,
                 std::min<uint32>(sClasslessMgr->cfg.wcSynergyBaseChance + st.pity * sClasslessMgr->cfg.wcSynergyIncrement, 100));
-            uint32 active = 0;
-            for (auto const& c : st.cards)
-                if (!c.used)
-                    ++active;
-            handler->PSendSysMessage("Active skill cards: {} | Roll bans active: {}", active, uint32(st.bans.size()));
+            handler->PSendSysMessage("Roll bans active: {}", uint32(st.bans.size()));
         }
         return true;
     }
@@ -301,30 +296,6 @@ public:
             return true;
         std::string err;
         if (!sClasslessMgr->ToggleLock(handler->GetSession()->GetPlayer(), spellId, &err) && !err.empty())
-            handler->SendSysMessage(err);
-        return true;
-    }
-
-    static bool HandleCard(ChatHandler* handler, std::string kind, uint32 id)
-    {
-        if (!CheckEnabled(handler))
-            return true;
-        Player* player = handler->GetSession()->GetPlayer();
-        std::string err;
-        if (kind == "ability")
-            sClasslessMgr->AddCard(player, false, id, &err);
-        else if (kind == "talent")
-            sClasslessMgr->AddCard(player, true, id, &err);
-        else if (kind == "removeability")
-            sClasslessMgr->RemoveCard(player, false, id, &err);
-        else if (kind == "removetalent")
-            sClasslessMgr->RemoveCard(player, true, id, &err);
-        else
-        {
-            handler->SendSysMessage("Usage: .wildcard card ability|talent|removeability|removetalent <id>");
-            return true;
-        }
-        if (!err.empty())
             handler->SendSysMessage(err);
         return true;
     }

@@ -47,9 +47,6 @@ namespace
         ACT_MY_TALENTS        = 31,
         ACT_RESPEC            = 40,
         ACT_RESPEC_CONFIRM    = 41,
-        ACT_CARDS             = 50,
-        ACT_CARD_ADD_ABILITY  = 51,   // coded
-        ACT_CARD_ADD_TALENT   = 52,   // coded
         ACT_LEARN_BY_ID       = 60,   // coded
         ACT_TALENT_BY_ID      = 61,   // coded
         ACT_VENDOR            = 70,
@@ -67,8 +64,7 @@ namespace
         BASE_MY_ABILITIES_PG  = 600000000, // + page
         BASE_LOCK_ABILITY     = 700000000, // + firstSpellId
         BASE_REROLL_TALENT    = 800000000, // + talentId
-        BASE_MY_TALENTS_PG    = 900000000, // + page
-        BASE_CARD_REMOVE      = 1000000000 // + index into card list
+        BASE_MY_TALENTS_PG    = 900000000  // + page
     };
 
     char const* ClassNameById(uint8 classId)
@@ -123,8 +119,6 @@ namespace
         {
             AddGossipItemFor(player, GOSSIP_ICON_BATTLE, "My rolled abilities (reroll / lock)", GOSSIP_SENDER_MAIN, BASE_MY_ABILITIES_PG);
             AddGossipItemFor(player, GOSSIP_ICON_BATTLE, "My rolled talents (reroll)", GOSSIP_SENDER_MAIN, BASE_MY_TALENTS_PG);
-            if (player->GetLevel() < 10)
-                AddGossipItemFor(player, GOSSIP_ICON_INTERACT_1, "Skill Cards (guarantee rolls)", GOSSIP_SENDER_MAIN, ACT_CARDS);
             AddGossipItemFor(player, GOSSIP_ICON_VENDOR, "Buy Reroll Scrolls", GOSSIP_SENDER_MAIN, ACT_VENDOR);
         }
 
@@ -323,36 +317,6 @@ namespace
         SendGossipMenuFor(player, DEFAULT_GOSSIP_MESSAGE, creature->GetGUID());
     }
 
-    void ShowCards(Player* player, Creature* creature)
-    {
-        ClearGossipMenuFor(player);
-        CharState& st = sClasslessMgr->GetState(player);
-        Config const& cfg = sClasslessMgr->cfg;
-
-        uint32 abilityCards = 0, talentCards = 0;
-        for (uint32 i = 0; i < st.cards.size(); ++i)
-        {
-            SkillCard const& card = st.cards[i];
-            if (card.isTalent) ++talentCards; else ++abilityCards;
-            uint32 nameSpell = card.isTalent
-                ? (sClasslessMgr->GetTalent(card.entry) ? sClasslessMgr->GetTalent(card.entry)->rankSpells[0] : 0)
-                : card.entry;
-            AddGossipItemFor(player, GOSSIP_ICON_INTERACT_1,
-                Acore::StringFormat("Remove {}{} Card: {}{}", card.golden ? "Golden " : "",
-                    card.isTalent ? "Talent" : "Ability", SpellNameOf(nameSpell), card.used ? " (used)" : ""),
-                GOSSIP_SENDER_MAIN, BASE_CARD_REMOVE + i);
-        }
-
-        if (abilityCards < cfg.wcAbilityCards + cfg.wcGoldenAbilityCards)
-            AddGossipItemFor(player, GOSSIP_ICON_CHAT, "Activate an Ability Card...", GOSSIP_SENDER_MAIN,
-                ACT_CARD_ADD_ABILITY, "Enter the ability's first-rank spell ID:", 0, true);
-        if (talentCards < cfg.wcTalentCards + cfg.wcGoldenTalentCards)
-            AddGossipItemFor(player, GOSSIP_ICON_CHAT, "Activate a Talent Card...", GOSSIP_SENDER_MAIN,
-                ACT_CARD_ADD_TALENT, "Enter the talent ID:", 0, true);
-
-        AddGossipItemFor(player, GOSSIP_ICON_TALK, "<- Back", GOSSIP_SENDER_MAIN, ACT_MAIN);
-        SendGossipMenuFor(player, DEFAULT_GOSSIP_MESSAGE, creature->GetGUID());
-    }
 }
 
 class npc_hero_advancement : public CreatureScript
@@ -372,15 +336,7 @@ public:
     {
         std::string err;
 
-        if (action >= BASE_CARD_REMOVE)
-        {
-            uint32 index = action - BASE_CARD_REMOVE;
-            CharState& st = sClasslessMgr->GetState(player);
-            if (index < st.cards.size())
-                sClasslessMgr->RemoveCard(player, st.cards[index].isTalent, st.cards[index].entry, &err);
-            ShowCards(player, creature);
-        }
-        else if (action >= BASE_MY_TALENTS_PG)
+        if (action >= BASE_MY_TALENTS_PG)
             ShowMyTalents(player, creature, action - BASE_MY_TALENTS_PG);
         else if (action >= BASE_REROLL_TALENT)
         {
@@ -470,9 +426,6 @@ public:
                     ChatHandler(player->GetSession()).SendSysMessage(err);
                 ShowMain(player, creature);
                 break;
-            case ACT_CARDS:
-                ShowCards(player, creature);
-                break;
             case ACT_ARCHETYPES:
                 ShowArchetypes(player, creature);
                 break;
@@ -524,14 +477,6 @@ public:
                 break;
             case ACT_TALENT_BY_ID:
                 if (!sClasslessMgr->BuyTalentRank(player, *id, &err) && !err.empty())
-                    ChatHandler(player->GetSession()).SendSysMessage(err);
-                break;
-            case ACT_CARD_ADD_ABILITY:
-                if (!sClasslessMgr->AddCard(player, false, *id, &err) && !err.empty())
-                    ChatHandler(player->GetSession()).SendSysMessage(err);
-                break;
-            case ACT_CARD_ADD_TALENT:
-                if (!sClasslessMgr->AddCard(player, true, *id, &err) && !err.empty())
                     ChatHandler(player->GetSession()).SendSysMessage(err);
                 break;
             default:

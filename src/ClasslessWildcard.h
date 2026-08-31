@@ -55,8 +55,7 @@ namespace ClasslessWildcard
     enum class GrantSource : uint8
     {
         Picked = 0,   // bought with essence (classless mode)
-        Rolled = 1,   // wildcard random roll
-        Card   = 2    // wildcard skill card guarantee
+        Rolled = 1    // wildcard random roll
     };
 
     // One entry of the ability library: a spell line (first rank) + all its ranks.
@@ -95,14 +94,6 @@ namespace ClasslessWildcard
     {
         GrantSource source = GrantSource::Picked;
         bool locked = false;
-    };
-
-    struct SkillCard
-    {
-        uint32 entry = 0;   // firstSpellId or talentId
-        bool   isTalent = false;
-        bool   golden = false;
-        bool   used = false;
     };
 
     struct RollBan
@@ -148,7 +139,6 @@ namespace ClasslessWildcard
 
         std::unordered_map<uint32 /*firstSpellId*/, OwnedAbility> abilities;
         std::unordered_map<uint32 /*talentId*/, uint8 /*rank*/>   talents;
-        std::vector<SkillCard> cards;
         std::vector<RollBan>   bans;
         bool exempt = false;   // bot/system account: classless rules don't apply
         bool loaded = false;
@@ -228,12 +218,8 @@ namespace ClasslessWildcard
         uint32 wcSynergyBaseChance = 10;   // percent
         uint32 wcSynergyIncrement = 10;    // percent per pity point
         uint32 wcSynergyBanRolls = 25;
-        uint32 wcAbilityCards = 2;
-        uint32 wcGoldenAbilityCards = 2;
-        uint32 wcTalentCards = 3;
-        uint32 wcGoldenTalentCards = 3;
-        uint32 wcScrollItemId = 990101;        // Scroll of Fortune (top-up item)
-        uint32 wcScrollTalentItemId = 990102;  // Scroll of Fortune: Talents
+        uint32 wcScrollItemId = 990101;        // Reroll Scroll (top-up item)
+        uint32 wcScrollTalentItemId = 990102;  // Talent Reroll Scroll
         uint32 wcRerollsPerAbilityRoll = 1;    // earned reroll charges per scheduled ability roll
         uint32 wcRerollsPerTalentRoll = 1;     // earned reroll charges per scheduled talent roll
         uint32 wcFreeScrollEveryLevels = 0;    // optional extra: scrolls every N levels (0 = off)

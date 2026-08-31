@@ -212,11 +212,6 @@ void ClasslessMgr::LoadConfig(bool /*reload*/)
     cfg.wcSynergyBaseChance = sConfigMgr->GetOption<uint32>("ClasslessWildcard.Wildcard.SynergyBaseChance", 10);
     cfg.wcSynergyIncrement = sConfigMgr->GetOption<uint32>("ClasslessWildcard.Wildcard.SynergyIncrement", 10);
     cfg.wcSynergyBanRolls = sConfigMgr->GetOption<uint32>("ClasslessWildcard.Wildcard.SynergyBanRolls", 25);
-    // Season 9 default: 0 + 0 of a type = UNLIMITED card slots ("no skill card caps")
-    cfg.wcAbilityCards = sConfigMgr->GetOption<uint32>("ClasslessWildcard.Wildcard.AbilityCards", 0);
-    cfg.wcGoldenAbilityCards = sConfigMgr->GetOption<uint32>("ClasslessWildcard.Wildcard.GoldenAbilityCards", 0);
-    cfg.wcTalentCards = sConfigMgr->GetOption<uint32>("ClasslessWildcard.Wildcard.TalentCards", 0);
-    cfg.wcGoldenTalentCards = sConfigMgr->GetOption<uint32>("ClasslessWildcard.Wildcard.GoldenTalentCards", 0);
     cfg.wcScrollItemId = sConfigMgr->GetOption<uint32>("ClasslessWildcard.Wildcard.ScrollItemId", 990101);
     cfg.wcScrollTalentItemId = sConfigMgr->GetOption<uint32>("ClasslessWildcard.Wildcard.ScrollTalentItemId", 990102);
     cfg.wcRerollsPerAbilityRoll = sConfigMgr->GetOption<uint32>("ClasslessWildcard.Wildcard.RerollsPerAbilityRoll", 1);
@@ -712,10 +707,8 @@ bool ClasslessMgr::Rebirth(Player* player, Mode target, std::string* err)
         if (TalentPoolEntry const* t = GetTalent(talentId))
             RemoveTalentInternal(player, *t);
 
-    st.cards.clear();
     st.bans.clear();
     st.pity = 0;
-    CharacterDatabase.Execute("DELETE FROM cw_char_cards WHERE guid = {}", guid);
     CharacterDatabase.Execute("DELETE FROM cw_char_bans WHERE guid = {}", guid);
 
     st.mode = target;
@@ -932,21 +925,6 @@ void ClasslessMgr::LoadCharacter(Player* player, CharState& st)
         {
             Field* f = result->Fetch();
             st.talents[f[0].Get<uint32>()] = f[1].Get<uint8>();
-        } while (result->NextRow());
-    }
-
-    if (QueryResult result = CharacterDatabase.Query(
-        "SELECT is_talent, entry, golden, used FROM cw_char_cards WHERE guid = {}", guid))
-    {
-        do
-        {
-            Field* f = result->Fetch();
-            SkillCard card;
-            card.isTalent = f[0].Get<bool>();
-            card.entry = f[1].Get<uint32>();
-            card.golden = f[2].Get<bool>();
-            card.used = f[3].Get<bool>();
-            st.cards.push_back(card);
         } while (result->NextRow());
     }
 
@@ -1730,35 +1708,11 @@ uint32 ClasslessMgr::OwnedClassMask(CharState const& st) const
     return mask;
 }
 
-SkillCard* ClasslessMgr::FindUnusedCard(CharState& st, bool isTalent)
-{
-    for (SkillCard& card : st.cards)
-        if (card.isTalent == isTalent && !card.used)
-            return &card;
-    return nullptr;
-}
-
 uint32 ClasslessMgr::RollAbility(Player* player, GrantSource source)
 {
     CharState& st = GetState(player);
     ObjectGuid guid = player->GetGUID();
     TickBans(st, guid);
-
-    // skill card guarantee first
-    if (SkillCard* card = FindUnusedCard(st, false))
-    {
-        if (AbilityEntry const* e = GetAbility(card->entry); e && !st.abilities.count(e->firstSpellId))
-        {
-            card->used = true;
-            CharacterDatabase.Execute(
-                "UPDATE cw_char_cards SET used = 1 WHERE guid = {} AND is_talent = 0 AND entry = {}",
-                guid.GetCounter(), card->entry);
-            GrantAbilityInternal(player, *e, GrantSource::Card);
-            Msg(player, "An Ability Card was consumed to guarantee that roll!");
-            PushAddon(player, Acore::StringFormat("RV|A|{}|{}|2", e->firstSpellId, uint32(e->rarity)));
-            return e->firstSpellId;
-        }
-    }
 
     // never deal an ability whose NAME the Hero already owns (duplicate spell
     // ids with identical names exist in the DBC)
@@ -1846,29 +1800,6 @@ uint32 ClasslessMgr::RollTalent(Player* player)
     CharState& st = GetState(player);
     ObjectGuid guid = player->GetGUID();
     TickBans(st, guid);
-
-    // skill card guarantee first
-    if (SkillCard* card = FindUnusedCard(st, true))
-    {
-        if (TalentPoolEntry const* t = GetTalent(card->entry))
-        {
-            uint8 ownedRank = 0;
-            if (auto itr = st.talents.find(t->talentId); itr != st.talents.end())
-                ownedRank = itr->second;
-            if (ownedRank < t->maxRank)
-            {
-                card->used = true;
-                CharacterDatabase.Execute(
-                    "UPDATE cw_char_cards SET used = 1 WHERE guid = {} AND is_talent = 1 AND entry = {}",
-                    guid.GetCounter(), card->entry);
-                GrantTalentRankInternal(player, *t, ownedRank + 1);
-                Msg(player, "A Talent Card was consumed to guarantee that roll!");
-                PushAddon(player, Acore::StringFormat("RV|T|{}|{}|{}|{}|2",
-                    t->talentId, t->rankSpells[0], uint32(t->rarity), uint32(ownedRank + 1)));
-                return t->talentId;
-            }
-        }
-    }
 
     uint32 ownedMask = OwnedClassMask(st);
     uint32 lastGranted = 0;
@@ -2075,85 +2006,3 @@ bool ClasslessMgr::ToggleLock(Player* player, uint32 firstSpellId, std::string* 
     return true;
 }
 
-bool ClasslessMgr::AddCard(Player* player, bool isTalent, uint32 entry, std::string* err)
-{
-    CharState& st = GetState(player);
-    if (st.mode != Mode::Wildcard)
-    {
-        if (err) *err = "Skill Cards are a Wildcard mechanic.";
-        return false;
-    }
-    if (player->GetLevel() >= 10)
-    {
-        if (err) *err = "Skill Cards can only be activated before level 10.";
-        return false;
-    }
-
-    if (isTalent ? !GetTalent(entry) : !GetAbility(entry))
-    {
-        if (err) *err = isTalent ? "Unknown talent id." : "Unknown ability (use the first-rank spell id).";
-        return false;
-    }
-
-    // slot budget: 0 base+golden means UNLIMITED (Season 9: "no skill card caps")
-    uint32 slots = isTalent ? cfg.wcTalentCards + cfg.wcGoldenTalentCards
-                            : cfg.wcAbilityCards + cfg.wcGoldenAbilityCards;
-    uint32 active = 0;
-    for (SkillCard const& card : st.cards)
-    {
-        if (card.isTalent != isTalent)
-            continue;
-        if (card.entry == entry)
-        {
-            if (err) *err = "That card is already active.";
-            return false;
-        }
-        ++active;
-    }
-    if (slots && active >= slots)
-    {
-        if (err) *err = Acore::StringFormat("All {} card slots of that type are in use (remove one first).", slots);
-        return false;
-    }
-
-    SkillCard card;
-    card.entry = entry;
-    card.isTalent = isTalent;
-    card.golden = active >= (isTalent ? cfg.wcTalentCards : cfg.wcAbilityCards);
-    st.cards.push_back(card);
-
-    CharacterDatabase.Execute(
-        "REPLACE INTO cw_char_cards (guid, is_talent, entry, golden, used) VALUES ({}, {}, {}, {}, 0)",
-        player->GetGUID().GetCounter(), isTalent ? 1 : 0, entry, card.golden ? 1 : 0);
-
-    Msg(player, Acore::StringFormat("{} Card activated: {}.",
-        isTalent ? "Talent" : "Ability",
-        SpellName(isTalent ? GetTalent(entry)->rankSpells[0] : entry)));
-    return true;
-}
-
-bool ClasslessMgr::RemoveCard(Player* player, bool isTalent, uint32 entry, std::string* err)
-{
-    CharState& st = GetState(player);
-    if (player->GetLevel() >= 10)
-    {
-        if (err) *err = "Skill Cards are locked in from level 10.";
-        return false;
-    }
-
-    for (auto itr = st.cards.begin(); itr != st.cards.end(); ++itr)
-    {
-        if (itr->isTalent == isTalent && itr->entry == entry && !itr->used)
-        {
-            st.cards.erase(itr);
-            CharacterDatabase.Execute(
-                "DELETE FROM cw_char_cards WHERE guid = {} AND is_talent = {} AND entry = {}",
-                player->GetGUID().GetCounter(), isTalent ? 1 : 0, entry);
-            Msg(player, "Card removed.");
-            return true;
-        }
-    }
-
-    if (err) *err = "No such active card.";
-    return false;
-}

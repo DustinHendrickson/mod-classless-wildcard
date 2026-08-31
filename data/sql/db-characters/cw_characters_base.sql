@@ -21,7 +21,7 @@ CREATE TABLE IF NOT EXISTS `cw_char_state` (
 CREATE TABLE IF NOT EXISTS `cw_char_abilities` (
   `guid` INT UNSIGNED NOT NULL,
   `first_spell` INT UNSIGNED NOT NULL,
-  `source` TINYINT UNSIGNED NOT NULL DEFAULT 0 COMMENT '0 picked, 1 rolled, 2 card',
+  `source` TINYINT UNSIGNED NOT NULL DEFAULT 0 COMMENT '0 picked, 1 rolled',
   `locked` TINYINT UNSIGNED NOT NULL DEFAULT 0,
   PRIMARY KEY (`guid`, `first_spell`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='Owned classless ability lines';
@@ -32,15 +32,6 @@ CREATE TABLE IF NOT EXISTS `cw_char_talents` (
   `talent_rank` TINYINT UNSIGNED NOT NULL DEFAULT 1,
   PRIMARY KEY (`guid`, `talent_id`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='Owned classless talents';
-
-CREATE TABLE IF NOT EXISTS `cw_char_cards` (
-  `guid` INT UNSIGNED NOT NULL,
-  `is_talent` TINYINT UNSIGNED NOT NULL DEFAULT 0,
-  `entry` INT UNSIGNED NOT NULL,
-  `golden` TINYINT UNSIGNED NOT NULL DEFAULT 0,
-  `used` TINYINT UNSIGNED NOT NULL DEFAULT 0,
-  PRIMARY KEY (`guid`, `is_talent`, `entry`)
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='Wildcard skill cards';
 
 CREATE TABLE IF NOT EXISTS `cw_char_bans` (
   `guid` INT UNSIGNED NOT NULL,

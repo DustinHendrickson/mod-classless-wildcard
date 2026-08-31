@@ -39,9 +39,6 @@ An AzerothCore (master / WotLK 3.3.5a) module that replicates Project Ascension'
   Ascension. "Keep what you like, reroll the rest."
 - **Talent upgrade rule**: rerolling into a higher rank of a talent you already own
   auto-upgrades it, and the reroll fires again for another talent.
-- **Skill Cards** guarantee specific results: up to 2 normal + 2 golden **Ability
-  Cards** and 3 normal + 3 golden **Talent Cards**, changeable until level 10; after
-  level 9 no new cards can be activated.
 - **Synergy & Relevancy** (replaced the old "weighting"): every reroll increases the
   chance that the next roll is a **Synergy Roll** — an ability/talent complementing
   what the Hero already owns. **Bad-luck protection**: a rejected Synergy result is
@@ -104,9 +101,8 @@ rank-spell ids (`RankID[0..4]`), tab, row/col and prerequisite (`DependsOn`).
 | table              | contents                                                          |
 |--------------------|-------------------------------------------------------------------|
 | `cw_char_state`    | guid, mode (0 classless / 1 wildcard / 255 unchosen), AE, TE, pity counter, last processed level |
-| `cw_char_abilities`| guid, first_spell, source (picked/rolled/card), locked flag       |
+| `cw_char_abilities`| guid, first_spell, source (picked/rolled), locked flag            |
 | `cw_char_talents`  | guid, talent_id, rank                                             |
-| `cw_char_cards`    | guid, is_talent, entry, golden, used                              |
 | `cw_char_bans`     | guid, is_talent, entry, rolls_left (synergy bad-luck protection)  |
 
 Learned spells themselves persist natively in `character_spell` (we call
@@ -156,8 +152,7 @@ Schedule (all configurable, Ascension defaults):
   level (level cap 80 simply extends the schedule).
 
 Roll algorithm:
-1. Build candidate set (enabled, not owned, not banned; cards first — an unused
-   matching Skill Card short-circuits the roll and is consumed).
+1. Build candidate set (enabled, not owned, not banned).
 2. **Synergy check**: chance = `SynergyBaseChance + pity × SynergyIncrement`;
    a synergy roll restricts candidates to entries sharing an origin class with
    something the Hero already owns, then resets the pity counter.
@@ -178,11 +173,6 @@ Rerolls ("keep what you like, reroll the rest"):
   replacement talent grants.
 - locking (`.wildcard lock`) protects an ability from accidental rerolls.
 
-Skill Cards: `.wildcard card ability|talent <id>` (or NPC gossip with an ID prompt);
-slots default 2+2 ability / 3+3 talent (normal+golden simplified to slot counts);
-cards can be added/changed only below level 10, consumed automatically when a
-scheduled roll matches.
-
 Mode selection: per-character opt-in at the NPC (or `.classless mode …`) before
 level `ModeChoiceDeadline` = 5; unchosen characters fall back to `DefaultMode`.
 
@@ -193,7 +183,7 @@ level `ModeChoiceDeadline` = 5; unchosen characters fall back to `DefaultMode`.
 **Phase 1 — this module (implemented)**
 Library/pool builder, override tables, both modes, essence economy, wildcard roll
 engine (schedule, rarity weights, synergy + bad-luck protection, upgrade rule,
-scrolls, cards, locks), proficiencies, NPC gossip UI, command families, respec,
+scrolls and locks), proficiencies, NPC gossip UI, command families, respec,
 config surface, SQL, README.
 
 **Phase 2 — onboarding, exits, itemization (implemented)**
