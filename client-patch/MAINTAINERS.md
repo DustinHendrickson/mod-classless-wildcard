@@ -149,8 +149,10 @@ Reforged pattern (`00 A1 26` → `00 16 4E`) is absent from stock 12340 and is
 applied only if present.
 
 Verified on a real 12340 exe: 6 sites, 12 bytes changed, `apply → inspect →
-restore` round-trips byte-identical. The one thing this cannot self-check is a
-live login — that needs a human at the character screen.
+restore` round-trips byte-identical, **and confirmed at the login/character
+screen** — with the patch applied, the custom `GlueStrings.lua` loads and the
+creation screen shows the Hero description instead of the corrupt-interface
+error.
 
 ## Testing
 

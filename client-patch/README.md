@@ -37,9 +37,11 @@ Nothing else. No compiler, no StormLib, no MPQ editor, no extra downloads.
 
 **Double-click `install.bat`.**
 
-It finds your WoW folder, shows you what it is about to do, and asks once before
-touching anything. If it cannot find your client, drag your WoW folder onto
-`install.bat` and drop it.
+It finds your WoW folder, asks whether to also install the Hero creation-screen
+text (see below), shows what it is about to do, and confirms once before touching
+anything. If it cannot find your client, drag your WoW folder onto `install.bat`
+and drop it. **Close World of Warcraft first** if you say yes to the creation-screen
+text, since that patches `Wow.exe`.
 
 ### macOS / Linux
 
@@ -115,7 +117,7 @@ interface file, so editing it also requires patching `Wow.exe` to accept custom
 interface files. `--creation-text` does both: it installs the text **and** applies the
 well-known "allow custom interface" byte patch (the same one the Project Reforged
 patcher uses), after backing `Wow.exe` up to `Wow.exe.classless-bak`. `--uninstall`
-restores the backup. It is off by default because it modifies your executable, and
+restores the backup. This is confirmed working on a stock 3.3.5a build 12340 client. It is off by default because it modifies your executable, and
 because if anything is off you would rather opt in deliberately: if the login screen
 still shows *"interface files are corrupt"*, run `--uninstall`. Close the game before
 running it — a running client locks `Wow.exe`.

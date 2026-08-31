@@ -35,7 +35,22 @@ if not defined PYTHON (
 
 echo Using Python: %PYTHON%
 echo.
-call %PYTHON% install.py %*
+
+rem If the user double-clicked (no arguments), offer the creation-screen text.
+rem If they passed arguments, respect them and don't prompt.
+set "EXTRA="
+if "%~1"=="" (
+    echo The creation screen can also show the "Hero" class description instead
+    echo of the old class blurb. This patches Wow.exe to accept the custom text
+    echo ^(it is backed up first, and --uninstall reverts it^). Close the game first.
+    echo.
+    set /p "WANTTEXT=Also install the Hero creation-screen text? [y/N] "
+    echo.
+)
+if /i "%WANTTEXT%"=="y"   set "EXTRA=--creation-text"
+if /i "%WANTTEXT%"=="yes" set "EXTRA=--creation-text"
+
+call %PYTHON% install.py %EXTRA% %*
 set "RESULT=%ERRORLEVEL%"
 
 echo.

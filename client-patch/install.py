@@ -9,10 +9,12 @@ client side needs:
   * installs the ClasslessWildcard addon
   * clears the client Cache so the new data is picked up
 
-Wow.exe is NEVER modified. The optional --creation-text flag also rewrites the
-creation-screen class blurb, but that touches a signed interface file and only
-works on clients that do not enforce GlueXML signatures, so it is off by
-default.
+The default install never modifies Wow.exe. The optional --creation-text flag
+also rewrites the creation-screen class blurb; because that is a signed
+interface file, --creation-text also applies the well-known "allow custom
+interface" patch to Wow.exe (backed up first) so the client loads it. Confirmed
+working on a stock 3.3.5a build 12340 client. Off by default because it edits
+the executable.
 
 Everything is reversible with --uninstall.
 
