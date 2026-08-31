@@ -427,14 +427,17 @@ local bottomText = frame:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
 bottomText:SetPoint("BOTTOMLEFT", 26, 32)
 bottomText:SetJustifyH("LEFT")
 
+-- Bottom-right cluster, laid out right-to-left with fixed offsets so nothing
+-- overlaps: Respec (-20), Rebirth (-116), Skill Cards (-212), Stats (-320).
+-- Rebirth only shows sometimes; its slot stays reserved either way.
 local statsBtn = CreateFrame("Button", nil, frame, "UIPanelButtonTemplate")
 statsBtn:SetWidth(90); statsBtn:SetHeight(22)
-statsBtn:SetPoint("BOTTOMRIGHT", -218, 26)
+statsBtn:SetPoint("BOTTOMRIGHT", -320, 26)
 statsBtn:SetText("Stats")
 
 local cardsBtn = CreateFrame("Button", nil, frame, "UIPanelButtonTemplate")
 cardsBtn:SetWidth(100); cardsBtn:SetHeight(22)
-cardsBtn:SetPoint("BOTTOMRIGHT", -114, 26)
+cardsBtn:SetPoint("BOTTOMRIGHT", -212, 26)
 cardsBtn:SetText("Skill Cards")
 
 local respecBtn = CreateFrame("Button", nil, frame, "UIPanelButtonTemplate")
@@ -455,7 +458,7 @@ StaticPopupDialogs["CW_CLASSLESS_REBIRTH"] = {
 }
 local rebirthBtn = CreateFrame("Button", nil, frame, "UIPanelButtonTemplate")
 rebirthBtn:SetWidth(90); rebirthBtn:SetHeight(22)
-rebirthBtn:SetPoint("RIGHT", respecBtn, "LEFT", -6, 0)
+rebirthBtn:SetPoint("BOTTOMRIGHT", -116, 26)
 rebirthBtn:SetText("Rebirth")
 rebirthBtn:Hide()
 rebirthBtn:SetScript("OnClick", function()
@@ -594,16 +597,22 @@ end
 -- A scrollable "how it works" panel covering both systems. Static text, so it
 -- is built once here; the Help button toggles it.
 local helpFly = CreateFrame("Frame", "ClasslessWildcardHelp", frame)
-helpFly:SetWidth(600); helpFly:SetHeight(500)
-helpFly:SetPoint("CENTER", frame, "CENTER", 0, -6)
+helpFly:SetWidth(600); helpFly:SetHeight(468)
+helpFly:SetPoint("CENTER", frame, "CENTER", 0, -8)
 helpFly:SetFrameStrata("DIALOG")
 helpFly:SetBackdrop({
-    bgFile = "Interface\\DialogFrame\\UI-DialogBox-Background",
     edgeFile = "Interface\\Tooltips\\UI-Tooltip-Border",
-    tile = true, tileSize = 32, edgeSize = 14,
+    edgeSize = 16,
     insets = { left = 4, right = 4, top = 4, bottom = 4 },
 })
+helpFly:EnableMouse(true)  -- swallow clicks so the panel behind can't be used through it
 helpFly:Hide()
+
+-- solid opaque fill so the busy ability lists behind never bleed through the text
+local helpBg = helpFly:CreateTexture(nil, "BACKGROUND")
+helpBg:SetPoint("TOPLEFT", 4, -4)
+helpBg:SetPoint("BOTTOMRIGHT", -4, 4)
+helpBg:SetTexture(0.035, 0.045, 0.07, 1)
 
 local helpTitle = helpFly:CreateFontString(nil, "OVERLAY", "GameFontNormalLarge")
 helpTitle:SetPoint("TOP", 0, -14)
