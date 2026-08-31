@@ -72,7 +72,7 @@ def inspect(exe):
     return UNKNOWN, None, digest, label
 
 
-def apply(exe, force=False):
+def apply(exe):
     """Patch the exe. Returns a human-readable summary line."""
     state, offset, digest, label = inspect(exe)
 
@@ -82,18 +82,15 @@ def apply(exe, force=False):
         raise RuntimeError(
             "Could not find the signature check in %s.\n"
             "  SHA-256: %s\n"
-            "This does not look like a stock 3.3.5a build 12340 Wow.exe, so "
-            "nothing was written. Some client packs are already patched, in "
-            "which case the custom creation screen will simply work; run with "
-            "--no-exe to skip this step." % (exe, digest))
-    if label is None and not force:
-        raise RuntimeError(
-            "Unrecognised Wow.exe.\n"
-            "  SHA-256: %s\n"
-            "The patch site was found, but this exact binary has not been "
-            "verified. Re-run with --force-exe to patch it anyway (a backup is "
-            "still written), or with --no-exe to skip this step." % digest)
+            "Nothing was written. Some client packs already ship a patched "
+            "Wow.exe, in which case the custom creation screen simply works -- "
+            "re-run with --no-exe to skip this step." % (exe, digest))
 
+    # Private-server clients are usually repacks, so an unrecognised hash is
+    # normal and refusing on it alone would make this unusable. The structural
+    # check is the one that matters: exactly one match for the 15-byte anchor,
+    # and the two bytes we are about to change are exactly the expected `je`.
+    # A backup is written either way.
     with open(exe, "rb") as handle:
         data = bytearray(handle.read())
     if data[offset:offset + 2] != FROM_BYTES:
@@ -105,8 +102,15 @@ def apply(exe, force=False):
     data[offset:offset + 2] = TO_BYTES
     with open(exe, "wb") as handle:
         handle.write(bytes(data))
-    return "patched at file offset 0x%X (backup: %s)" % (
-        offset, os.path.basename(backup))
+
+    note = ""
+    if label is None:
+        note = ("\n                   note: this exe is not the stock build "
+                "12340 binary (sha256 %s...).\n"
+                "                   The patch site was unambiguous, so it was "
+                "applied anyway. Undo with --uninstall." % digest[:16])
+    return "patched at file offset 0x%X (backup: %s)%s" % (
+        offset, os.path.basename(backup), note)
 
 
 def restore(exe):

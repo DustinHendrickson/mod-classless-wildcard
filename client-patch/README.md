@@ -16,7 +16,7 @@ client back exactly as it was.
 ## What you need
 
 - Your **World of Warcraft 3.3.5a** folder — the one with `Wow.exe` and `Data` in it.
-- **Python 3** (any version from 3.6 up).
+- **Python 3** (any version from 3.7 up).
   Windows: get it from [python.org/downloads](https://www.python.org/downloads/) and
   tick **"Add python.exe to PATH"** on the first screen of the installer.
 
@@ -112,7 +112,6 @@ You will not normally need any of these.
 | `--no-exe`          | Never touch `Wow.exe`                                                   |
 | `--no-addon`        | Do not install the addon                                                |
 | `--locale enUS`     | Patch one locale only, on a multi-language client                       |
-| `--force-exe`       | Patch a `Wow.exe` the installer does not recognise                      |
 
 **`--no-all-combos`** is the one worth knowing about. The installer unlocks every
 race/class pair on the creation screen, which matches a realm running the module's
@@ -132,12 +131,11 @@ command prompt afterwards.
 Give it the folder that directly contains `Wow.exe` and `Data`, not a parent
 folder and not the `Data` folder itself.
 
-**"Unrecognised Wow.exe."**
-Your client is not the standard 3.3.5a build 12340 binary. Some client packs ship
-an already-patched `Wow.exe`, in which case the custom creation screen works
-anyway — re-run with `--no-exe`. If the creation screen then shows a "login
-interface corrupted" error, your exe genuinely needs the change: re-run with
-`--force-exe` (a backup is still written first).
+**"Could not find the signature check in Wow.exe."**
+The installer could not locate the exact spot it needs, so it wrote nothing.
+Many private-server client packs already ship a `Wow.exe` that accepts custom
+interface files, in which case everything works anyway — re-run with `--no-exe`
+to skip that step. Everything else still installs.
 
 **Permission denied writing Wow.exe.**
 Close the game. On Windows, run the command prompt as Administrator if your WoW
@@ -164,9 +162,10 @@ into a new patch archive next to the originals. Your original files are never
 modified — patch archives sit on top of them, and deleting them reverts everything.
 
 `Wow.exe` is the one file changed in place, and only so it will accept the custom
-creation screen. The installer copies it to `Wow.exe.classless-bak` before writing,
-verifies the binary it is editing, and refuses to touch anything it does not
-recognise.
+creation screen. Two bytes change. The installer copies it to
+`Wow.exe.classless-bak` first, requires the spot it edits to be unambiguous, checks
+the bytes are what it expects before writing, and refuses rather than guessing if
+anything looks different.
 
 Server admins and anyone curious about how the patch is built: see
 [`MAINTAINERS.md`](MAINTAINERS.md).

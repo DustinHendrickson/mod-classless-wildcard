@@ -13,7 +13,7 @@ client side needs:
 
 Everything is reversible with --uninstall.
 
-Requires nothing but Python 3.6+. No compiler, no StormLib, no other packages.
+Requires nothing but Python 3.7+. No compiler, no StormLib, no other packages.
 """
 
 from __future__ import annotations
@@ -53,22 +53,54 @@ class Abort(Exception):
 
 # ---------------------------------------------------------------- discovery
 
+def resolve_child(parent, name):
+    """Find `name` inside `parent` ignoring case, for Linux and macOS.
+
+    Returns the existing path if there is one, otherwise the plain join so the
+    caller can create it with the spelling we prefer.
+    """
+    direct = os.path.join(parent, name)
+    if os.path.exists(direct):
+        return direct
+    try:
+        entries = os.listdir(parent)
+    except OSError:
+        return direct
+    lowered = name.lower()
+    for entry in entries:
+        if entry.lower() == lowered:
+            return os.path.join(parent, entry)
+    return direct
+
+
+def resolve_path(root, *parts):
+    path = root
+    for part in parts:
+        path = resolve_child(path, part)
+    return path
+
+
 def looks_like_client(path) -> bool:
     if not path or not os.path.isdir(path):
         return False
-    has_exe = any(os.path.isfile(os.path.join(path, name))
-                  for name in ("Wow.exe", "WoW.exe", "wow.exe", "World of Warcraft.app"))
-    return has_exe and os.path.isdir(os.path.join(path, "Data"))
+    if not os.path.isdir(resolve_child(path, "Data")):
+        return False
+    if find_wow_exe(path):
+        return True
+    # a macOS client has no Wow.exe; the data patches still apply
+    return os.path.exists(resolve_child(path, "World of Warcraft.app"))
 
 
 def find_wow_exe(wow_dir):
-    for name in ("Wow.exe", "WoW.exe", "wow.exe"):
-        candidate = os.path.join(wow_dir, name)
-        if os.path.isfile(candidate):
-            return candidate
-    for entry in sorted(os.listdir(wow_dir)):
+    try:
+        entries = os.listdir(wow_dir)
+    except OSError:
+        return None
+    for entry in entries:
         if entry.lower() == "wow.exe":
-            return os.path.join(wow_dir, entry)
+            candidate = os.path.join(wow_dir, entry)
+            if os.path.isfile(candidate):
+                return candidate
     return None
 
 
@@ -155,7 +187,7 @@ def install_addon(wow_dir, dry_run, report):
     if not os.path.isdir(source):
         report.append("  addon            SKIPPED, not found at %s" % source)
         return None
-    target = os.path.join(wow_dir, "Interface", "AddOns", ADDON_NAME)
+    target = resolve_path(wow_dir, "Interface", "AddOns", ADDON_NAME)
     if not dry_run:
         if os.path.isdir(target):
             shutil.rmtree(target)
@@ -168,7 +200,7 @@ def install_addon(wow_dir, dry_run, report):
 
 
 def clear_cache(wow_dir, dry_run, report):
-    cache = os.path.join(wow_dir, "Cache")
+    cache = resolve_child(wow_dir, "Cache")
     if not os.path.isdir(cache):
         report.append("  cache            nothing to clear")
         return
@@ -200,7 +232,7 @@ def write_manifest(wow_dir, data, dry_run):
 # ----------------------------------------------------------------- install
 
 def do_install(args, wow_dir):
-    data_dir = os.path.join(wow_dir, "Data")
+    data_dir = resolve_child(wow_dir, "Data")
     exe = find_wow_exe(wow_dir)
 
     locales = clientfs.detect_locales(data_dir)
@@ -270,7 +302,7 @@ def do_install(args, wow_dir):
             report.append("  Wow.exe          %s (%s)"
                           % (state, label or "sha256 " + digest[:16]))
         else:
-            report.append("  Wow.exe          %s" % exepatch.apply(exe, args.force_exe))
+            report.append("  Wow.exe          %s" % exepatch.apply(exe))
             exe_patched = True
 
     addon_rel = None
@@ -312,7 +344,7 @@ def do_uninstall(args, wow_dir):
     else:
         # no manifest: fall back to the names this installer would have used
         targets = []
-        data_dir = os.path.join(wow_dir, "Data")
+        data_dir = resolve_child(wow_dir, "Data")
         for suffix in "ZYXWVUTSRQPONMLKJIHGFEDCBA":
             candidate = "Data/patch-%s.MPQ" % suffix
             if os.path.isfile(os.path.join(wow_dir, candidate)):
@@ -383,8 +415,6 @@ def main(argv=None):
                         help="do not touch Wow.exe")
     parser.add_argument("--no-addon", dest="addon", action="store_false",
                         help="do not install the in-game addon")
-    parser.add_argument("--force-exe", action="store_true",
-                        help="patch an unrecognised Wow.exe anyway")
     args = parser.parse_args(argv)
 
     print("mod-classless-wildcard client installer")

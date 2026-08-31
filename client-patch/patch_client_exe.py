@@ -21,8 +21,6 @@ def main():
     parser.add_argument("exe", help="path to Wow.exe")
     parser.add_argument("--status", action="store_true", help="report and exit")
     parser.add_argument("--restore", action="store_true", help="undo the patch")
-    parser.add_argument("--force", action="store_true",
-                        help="patch an unrecognised binary anyway")
     args = parser.parse_args()
 
     if not os.path.isfile(args.exe):
@@ -39,7 +37,7 @@ def main():
         return 0
     try:
         print(exepatch.restore(args.exe) if args.restore
-              else exepatch.apply(args.exe, args.force))
+              else exepatch.apply(args.exe))
     except RuntimeError as error:
         print("\n%s" % error, file=sys.stderr)
         return 1
