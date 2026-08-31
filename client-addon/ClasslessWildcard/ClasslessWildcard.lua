@@ -35,7 +35,7 @@ local CLASS_ORDER = { 1, 2, 3, 4, 5, 7, 8, 9, 11 } -- Death Knight (6) is the He
 local CW = {
     state = { mode = 255, ae = 0, te = 0, pity = 0, chance = 0, scrolls = 0,
               level = 1, deadline = 5, rebirth = 0, rebirthCost = 0,
-              abilityRerolls = 0, talentRerolls = 0, scrollCost = 0, scrollBuy = 0,
+              rerolls = 0, scrollCost = 0, scrollBuy = 0,
               comboPoints = 0 },
     classIndex = 1,
     abilPage = 0, abilTotal = 1, abilRows = {},
@@ -81,6 +81,13 @@ frame:SetBackdrop({
     tile = false, edgeSize = 32,
     insets = { left = 0, right = 0, top = 0, bottom = 0 },
 })
+-- Opaque backing UNDER the baked art: panel_bg has transparent regions, so
+-- without this the world shows through the gaps between the painted panes.
+local frameBg = frame:CreateTexture(nil, "BACKGROUND", nil, -8)
+frameBg:SetPoint("TOPLEFT", 6, -6)
+frameBg:SetPoint("BOTTOMRIGHT", -6, 6)
+frameBg:SetTexture(0.04, 0.045, 0.06, 1)
+
 frame:SetMovable(true); frame:EnableMouse(true)
 frame:RegisterForDrag("LeftButton")
 frame:SetScript("OnDragStart", frame.StartMoving)
@@ -605,10 +612,10 @@ local HELP_TEXT = table.concat({
 "Rolls are rarity-weighted, so legendaries are the rarest.",
 "A rolled talent also lands on a random |cffffd100rank|r, and the rank IS its rarity: rank 1 common, rank 2 uncommon, rank 3 rare, rank 4 epic, |cffff8000rank 5 legendary|r. A high rank is the jackpot -- a talent costs one point whatever rank it arrives at, so rank 5 is four ranks for free.",
 "You steer your luck:",
-"   |cffffd100Rerolls|r -- every roll also grants a reroll charge (rerolls are free below level 10). Spend one to reroll a result you don't want.",
+"   |cffffd100Rerolls|r -- every roll also grants a reroll charge (rerolls are free below level 10). One pool, spent on abilities or talents alike. Reroll straight from the popup, or later from |cffffd100My Build|r using the circular arrow next to anything you own.",
 "   |cffffd100Lock|r -- protect an ability so a later roll can't overwrite it.",
 "   |cffffd100Synergy & pity|r -- rolls lean toward what fits your build, with a rising pity chance and bad-luck bans so a cold streak can't ruin you.",
-"   |cffffd100Reroll Scrolls|r -- spare rerolls for when your charges run dry. Earn them, buy them from the Hero Advancement NPC, or use the |cffffd100Buy Scroll|r button on this panel (the price scales with level -- silver early, gold near the cap).",
+"   |cffffd100Reroll Scrolls|r -- one scroll, good for an ability OR a talent, for when your charges run dry. Earn them, buy them from the Hero Advancement NPC, or use the |cffffd100Buy Scroll|r button on this panel (the price scales with level -- silver early, gold near the cap).",
 "Open the roll screen any time with the |cffffd100dice crest|r at the top-left of this window.",
 "",
 "|cff40ff40==  Shared by both paths  ==|r",
@@ -679,9 +686,9 @@ local function UpdateStatus()
         if s.rebirth == 1 then CW.rebirthBtn:Show() else CW.rebirthBtn:Hide() end
         CW.buyScrollBtn:Hide()
     elseif s.mode == 1 then
-        statusText:SetText(modeText .. "   Rerolls: |cff00ff00" .. s.abilityRerolls .. "|r ability / |cff00ff00" .. s.talentRerolls .. "|r talent")
+        statusText:SetText(modeText .. "   Rerolls: |cff00ff00" .. s.rerolls .. "|r")
         subStatusText:SetText("Level " .. s.level .. "   Scrolls: " .. s.scrolls .. "   Synergy chance: " .. s.chance .. "%   Pity: " .. s.pity)
-        bottomText:SetText("Rerolls: |cff00ff00" .. s.abilityRerolls .. "|r ability / |cff00ff00" .. s.talentRerolls .. "|r talent    Reroll Scrolls: " .. s.scrolls)
+        bottomText:SetText("Rerolls: |cff00ff00" .. s.rerolls .. "|r    Reroll Scrolls: |cff00ff00" .. s.scrolls .. "|r")
         respecBtn:Disable()
         if s.rebirth == 1 then CW.rebirthBtn:Show() else CW.rebirthBtn:Hide() end
         if s.scrollBuy == 1 then
@@ -805,12 +812,21 @@ local function RenderBuild()
                     r.lockBtn:Hide()
                 end
                 r.actBtn:Show()
-                r.actBtn.tex:SetTexture("Interface\\Buttons\\UI-RefreshButton")
+                r.actBtn.tex:SetTexture("Interface\\Buttons\\UI-RotationRight-Button-Up")
                 r.actBtn.tex:SetVertexColor(1, 0.85, 0.3)
                 local id, kind = it.id, it.kind
                 r.actBtn:SetScript("OnClick", function()
                     Send((kind == "T" and "RRT " or "RR ") .. id)
                 end)
+                r.actBtn:SetScript("OnEnter", function(self)
+                    GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
+                    GameTooltip:SetText("Reroll this " .. (kind == "T" and "talent" or "ability"))
+                    local left = (CW.state.rerolls or 0) + (CW.state.scrolls or 0)
+                    GameTooltip:AddLine("You have |cff00ff00" .. left .. "|r reroll" .. (left == 1 and "" or "s")
+                        .. " (charges + scrolls).", 1, 1, 1)
+                    GameTooltip:Show()
+                end)
+                r.actBtn:SetScript("OnLeave", function() GameTooltip:Hide() end)
             else
                 r.lockBtn:Hide()
                 if it.kind == "A" then
@@ -819,6 +835,13 @@ local function RenderBuild()
                     r.actBtn.tex:SetVertexColor(1, 1, 1)
                     local id = it.id
                     r.actBtn:SetScript("OnClick", function() Send("UNL " .. id) end)
+                    r.actBtn:SetScript("OnEnter", function(self)
+                        GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
+                        GameTooltip:SetText("Unlearn this ability")
+                        GameTooltip:AddLine("Refunds the Ability Essence you paid.", 1, 1, 1)
+                        GameTooltip:Show()
+                    end)
+                    r.actBtn:SetScript("OnLeave", function() GameTooltip:Hide() end)
                 else
                     r.actBtn:Hide()
                 end
@@ -1411,7 +1434,7 @@ local function ShowResult()
     rvName:Show(); rvSub:Show()
     -- reroll button shows what the player can actually spend
     local s = CW.state
-    local charges = (d.isTalent and (s.talentRerolls or 0) or (s.abilityRerolls or 0)) + (s.scrolls or 0)
+    local charges = (s.rerolls or 0) + (s.scrolls or 0)
     if (s.level or 1) < 10 then
         rvReroll:SetText("Reroll (free)")
         rvReroll:Enable()
@@ -1837,10 +1860,10 @@ local function HandleMessage(msg)
         s.mode, s.ae, s.te, s.pity, s.chance = tonumber(p[2]) or 255, tonumber(p[3]) or 0, tonumber(p[4]) or 0, tonumber(p[5]) or 0, tonumber(p[6]) or 0
         s.scrolls, s.level, s.deadline = tonumber(p[7]) or 0, tonumber(p[8]) or 1, tonumber(p[9]) or 5
         s.rebirth, s.rebirthCost = tonumber(p[10]) or 0, tonumber(p[11]) or 0
-        s.abilityRerolls, s.talentRerolls = tonumber(p[12]) or 0, tonumber(p[13]) or 0
-        s.universalResources = tonumber(p[14]) or 0
-        s.scrollCost = tonumber(p[15]) or 0
-        s.scrollBuy = tonumber(p[16]) or 0
+        s.rerolls = tonumber(p[12]) or 0
+        s.universalResources = tonumber(p[13]) or 0
+        s.scrollCost = tonumber(p[14]) or 0
+        s.scrollBuy = tonumber(p[15]) or 0
         CW.UpdateBarsVisibility()
         UpdateStatus()
         -- fresh Wildcard hero: lock & roll your starting hand

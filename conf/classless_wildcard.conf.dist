@@ -227,7 +227,6 @@ ClasslessWildcard.Wildcard.RerollsPerTalentRoll = 1
 # Reroll top-up items (cheap, sold by the Hero Advancement NPC; shipped in the
 # module's world SQL). Consumed only when earned charges run out.
 ClasslessWildcard.Wildcard.ScrollItemId = 990101
-ClasslessWildcard.Wildcard.ScrollTalentItemId = 990102
 # Optional extra faucet: also grant FreeScrollCount Reroll Scrolls every
 # FreeScrollEveryLevels levels (0 disables).
 ClasslessWildcard.Wildcard.FreeScrollEveryLevels = 0

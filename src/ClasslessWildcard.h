@@ -120,8 +120,9 @@ namespace ClasslessWildcard
         uint32 abilityEssence = 0;
         uint32 talentEssence = 0;
         uint32 pity = 0;                 // rerolls since last synergy roll
-        uint32 abilityRerolls = 0;       // earned reroll charges (wildcard)
-        uint32 talentRerolls = 0;
+        // One pool of earned reroll charges, spent on abilities OR talents --
+        // two separate pools just made the UI read as three confusing numbers.
+        uint32 rerolls = 0;
         uint8  lastProcessedLevel = 0;
 
         // which resource bar the default unit frame displays
@@ -226,7 +227,6 @@ namespace ClasslessWildcard
         uint32 wcSynergyIncrement = 10;    // percent per pity point
         uint32 wcSynergyBanRolls = 25;
         uint32 wcScrollItemId = 990101;        // Reroll Scroll (top-up item)
-        uint32 wcScrollTalentItemId = 990102;  // Talent Reroll Scroll
         uint32 wcRerollsPerAbilityRoll = 1;    // earned reroll charges per scheduled ability roll
         uint32 wcRerollsPerTalentRoll = 1;     // earned reroll charges per scheduled talent roll
         uint32 wcFreeScrollEveryLevels = 0;    // optional extra: scrolls every N levels (0 = off)

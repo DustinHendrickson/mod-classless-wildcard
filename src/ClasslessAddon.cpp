@@ -73,12 +73,12 @@ namespace
         CharState& st = sClasslessMgr->GetState(player);
         Config const& cfg = sClasslessMgr->cfg;
         uint32 chance = std::min<uint32>(cfg.wcSynergyBaseChance + st.pity * cfg.wcSynergyIncrement, 100);
-        uint32 scrolls = player->GetItemCount(cfg.wcScrollItemId) + player->GetItemCount(cfg.wcScrollTalentItemId);
-        SendAddon(player, Acore::StringFormat("S|{}|{}|{}|{}|{}|{}|{}|{}|{}|{}|{}|{}|{}|{}|{}",
+        uint32 scrolls = player->GetItemCount(cfg.wcScrollItemId);
+        SendAddon(player, Acore::StringFormat("S|{}|{}|{}|{}|{}|{}|{}|{}|{}|{}|{}|{}|{}|{}",
             uint32(st.mode), st.abilityEssence, st.talentEssence, st.pity, chance,
             scrolls, player->GetLevel(), cfg.modeChoiceDeadline,
             cfg.rebirthEnable ? 1 : 0, cfg.rebirthCostGold,
-            st.abilityRerolls, st.talentRerolls, cfg.universalResources ? 1 : 0,
+            st.rerolls, cfg.universalResources ? 1 : 0,
             sClasslessMgr->ScrollBuyCost(player->GetLevel()),
             (cfg.wcScrollBuyEnable && player->GetLevel() >= cfg.wcFreeRerollLevel) ? 1 : 0));
     }

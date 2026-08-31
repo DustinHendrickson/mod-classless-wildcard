@@ -7,12 +7,25 @@ DROP PROCEDURE IF EXISTS cw_upgrade_char_state;
 DELIMITER //
 CREATE PROCEDURE cw_upgrade_char_state()
 BEGIN
-    IF NOT EXISTS (SELECT 1 FROM information_schema.COLUMNS
+    -- Reroll charges. These started life as two pools (ability_rerolls and
+    -- talent_rerolls) and are now a single `rerolls` pool spent on either, so
+    -- fold the old columns together rather than dropping players' charges.
+    IF EXISTS (SELECT 1 FROM information_schema.COLUMNS
+               WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'cw_char_state'
+                 AND COLUMN_NAME = 'ability_rerolls') THEN
+        IF EXISTS (SELECT 1 FROM information_schema.COLUMNS
                    WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'cw_char_state'
-                     AND COLUMN_NAME = 'ability_rerolls') THEN
+                     AND COLUMN_NAME = 'talent_rerolls') THEN
+            UPDATE `cw_char_state` SET `ability_rerolls` = `ability_rerolls` + `talent_rerolls`;
+            ALTER TABLE `cw_char_state` DROP COLUMN `talent_rerolls`;
+        END IF;
         ALTER TABLE `cw_char_state`
-            ADD COLUMN `ability_rerolls` INT UNSIGNED NOT NULL DEFAULT 0 AFTER `pity`,
-            ADD COLUMN `talent_rerolls` INT UNSIGNED NOT NULL DEFAULT 0 AFTER `ability_rerolls`;
+            CHANGE `ability_rerolls` `rerolls` INT UNSIGNED NOT NULL DEFAULT 0;
+    ELSEIF NOT EXISTS (SELECT 1 FROM information_schema.COLUMNS
+                       WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'cw_char_state'
+                         AND COLUMN_NAME = 'rerolls') THEN
+        ALTER TABLE `cw_char_state`
+            ADD COLUMN `rerolls` INT UNSIGNED NOT NULL DEFAULT 0 AFTER `pity`;
     END IF;
     IF NOT EXISTS (SELECT 1 FROM information_schema.COLUMNS
                    WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'cw_char_state'

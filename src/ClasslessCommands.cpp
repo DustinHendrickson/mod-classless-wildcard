@@ -89,8 +89,8 @@ public:
             handler->PSendSysMessage("Ability Essence: {} | Talent Essence: {}", st.abilityEssence, st.talentEssence);
         if (st.mode == Mode::Wildcard)
         {
-            handler->PSendSysMessage("Rerolls: {} ability / {} talent (you earn one with every roll the Wildcard deals)",
-                st.abilityRerolls, st.talentRerolls);
+            handler->PSendSysMessage("Rerolls: {} (you earn one with every roll the Wildcard deals; spend on either)",
+                st.rerolls);
             handler->PSendSysMessage("Reroll pity: {} (synergy chance {}%)", st.pity,
                 std::min<uint32>(sClasslessMgr->cfg.wcSynergyBaseChance + st.pity * sClasslessMgr->cfg.wcSynergyIncrement, 100));
             handler->PSendSysMessage("Roll bans active: {}", uint32(st.bans.size()));

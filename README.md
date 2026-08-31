@@ -83,10 +83,12 @@ training, the Hero Advancement NPC and the addon UI. Players choose a path per c
   rank it arrives at, a high roll is four free ranks. (Rank odds follow `RarityWeights`, so the
   shipped equal-weight Season 9 default makes every rank equally likely — use descending
   weights like `100,60,30,10,3` to make rank 5 the rare prize.)
-- **Rerolls flow with leveling.** Every scheduled roll grants a matching reroll charge, so
-  rerolling is part of normal play. Reroll Scrolls are a top-up for when charges run dry —
-  bought from the Hero Advancement NPC, or straight from the addon's **Buy Scroll** button (the
-  price scales with level — silver in the early game, gold near the cap; configurable, toggleable off).
+- **Rerolls flow with leveling.** Every scheduled roll grants a reroll charge — one pool,
+  spent on abilities and talents alike — and anything you already own can be rerolled later
+  from **My Build**. Reroll Scrolls are a single top-up item, good for either, for when charges
+  run dry — bought from the Hero Advancement NPC, or straight from the addon's **Buy Scroll**
+  button (the price scales with level — silver in the early game, gold near the cap;
+  configurable, toggleable off).
 - **Rebirth** — a config-gated full reset that switches a character between paths after the
   mode lock. Wildcard rebirths replay the entire roll schedule.
 

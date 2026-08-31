@@ -216,7 +216,6 @@ void ClasslessMgr::LoadConfig(bool /*reload*/)
     cfg.wcSynergyIncrement = sConfigMgr->GetOption<uint32>("ClasslessWildcard.Wildcard.SynergyIncrement", 10);
     cfg.wcSynergyBanRolls = sConfigMgr->GetOption<uint32>("ClasslessWildcard.Wildcard.SynergyBanRolls", 25);
     cfg.wcScrollItemId = sConfigMgr->GetOption<uint32>("ClasslessWildcard.Wildcard.ScrollItemId", 990101);
-    cfg.wcScrollTalentItemId = sConfigMgr->GetOption<uint32>("ClasslessWildcard.Wildcard.ScrollTalentItemId", 990102);
     cfg.wcRerollsPerAbilityRoll = sConfigMgr->GetOption<uint32>("ClasslessWildcard.Wildcard.RerollsPerAbilityRoll", 1);
     cfg.wcRerollsPerTalentRoll = sConfigMgr->GetOption<uint32>("ClasslessWildcard.Wildcard.RerollsPerTalentRoll", 1);
     cfg.wcFreeScrollEveryLevels = sConfigMgr->GetOption<uint32>("ClasslessWildcard.Wildcard.FreeScrollEveryLevels", 0);
@@ -745,12 +744,12 @@ bool ClasslessMgr::Rebirth(Player* player, Mode target, std::string* err)
             if (offset % cfg.wcTalentEveryLevels == 0)
             {
                 RollTalent(player);
-                st.talentRerolls += cfg.wcRerollsPerTalentRoll;
+                st.rerolls += cfg.wcRerollsPerTalentRoll;
             }
             if (offset % cfg.wcAbilityEveryLevels == 0)
             {
                 RollAbility(player);
-                st.abilityRerolls += cfg.wcRerollsPerAbilityRoll;
+                st.rerolls += cfg.wcRerollsPerAbilityRoll;
             }
         }
         SaveState(player);
@@ -795,28 +794,25 @@ bool ClasslessMgr::BuyScroll(Player* player, uint32 which, std::string* err)
         return false;
     }
 
-    bool talent = which == 1;
-    uint32 itemId = talent ? cfg.wcScrollTalentItemId : cfg.wcScrollItemId;
+    // one scroll, good for abilities AND talents (`which` is ignored: it dates
+    // from when there was a separate, talent-only scroll)
     uint32 costCopper = ScrollBuyCost(player->GetLevel());
-    if (talent)
-        costCopper = std::max<uint32>(1, costCopper / 2);
-
     if (!player->HasEnoughMoney(int32(costCopper)))
     {
-        if (err) *err = Acore::StringFormat("That scroll costs {}.", CopperToText(costCopper));
+        if (err) *err = Acore::StringFormat("A Reroll Scroll costs {}.", CopperToText(costCopper));
         return false;
     }
 
     // Add the item first so a full bag fails before the player is charged.
-    if (!player->AddItem(itemId, 1))
+    if (!player->AddItem(cfg.wcScrollItemId, 1))
     {
         if (err) *err = "Your bags are full.";
         return false;
     }
     player->ModifyMoney(-int32(costCopper));
 
-    Msg(player, Acore::StringFormat("Purchased a |cff0070dd{}|r for |cffffd100{}|r.",
-        talent ? "Talent Reroll Scroll" : "Reroll Scroll", CopperToText(costCopper)));
+    Msg(player, Acore::StringFormat("Purchased a |cff0070ddReroll Scroll|r for |cffffd100{}|r.",
+        CopperToText(costCopper)));
     return true;
 }
 
@@ -933,7 +929,7 @@ void ClasslessMgr::LoadCharacter(Player* player, CharState& st)
     }
 
     if (QueryResult result = CharacterDatabase.Query(
-        "SELECT mode, ability_essence, talent_essence, pity, ability_rerolls, talent_rerolls, last_level, "
+        "SELECT mode, ability_essence, talent_essence, pity, rerolls, last_level, "
         "stat_str, stat_agi, stat_sta, stat_int, stat_spi, display_power FROM cw_char_state WHERE guid = {}", guid))
     {
         Field* f = result->Fetch();
@@ -941,12 +937,11 @@ void ClasslessMgr::LoadCharacter(Player* player, CharState& st)
         st.abilityEssence = f[1].Get<uint32>();
         st.talentEssence = f[2].Get<uint32>();
         st.pity = f[3].Get<uint32>();
-        st.abilityRerolls = f[4].Get<uint32>();
-        st.talentRerolls = f[5].Get<uint32>();
-        st.lastProcessedLevel = f[6].Get<uint8>();
+        st.rerolls = f[4].Get<uint32>();
+        st.lastProcessedLevel = f[5].Get<uint8>();
         for (uint8 i = 0; i < 5; ++i)
-            st.statAlloc[i] = f[7 + i].Get<uint32>();
-        st.displayPower = f[12].Get<uint8>();
+            st.statAlloc[i] = f[6 + i].Get<uint32>();
+        st.displayPower = f[11].Get<uint8>();
     }
 
     if (QueryResult result = CharacterDatabase.Query(
@@ -993,10 +988,10 @@ void ClasslessMgr::SaveState(Player* player)
 {
     CharState& st = GetState(player);
     CharacterDatabase.Execute(
-        "REPLACE INTO cw_char_state (guid, mode, ability_essence, talent_essence, pity, ability_rerolls, talent_rerolls, last_level, "
-        "stat_str, stat_agi, stat_sta, stat_int, stat_spi, display_power) VALUES ({}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {})",
+        "REPLACE INTO cw_char_state (guid, mode, ability_essence, talent_essence, pity, rerolls, last_level, "
+        "stat_str, stat_agi, stat_sta, stat_int, stat_spi, display_power) VALUES ({}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {})",
         player->GetGUID().GetCounter(), uint32(st.mode), st.abilityEssence, st.talentEssence, st.pity,
-        st.abilityRerolls, st.talentRerolls, st.lastProcessedLevel,
+        st.rerolls, st.lastProcessedLevel,
         st.statAlloc[0], st.statAlloc[1], st.statAlloc[2], st.statAlloc[3], st.statAlloc[4],
         uint32(st.displayPower));
 }
@@ -1328,12 +1323,12 @@ void ClasslessMgr::HandleLevelUp(Player* player, uint8 oldLevel)
             if (offset % cfg.wcTalentEveryLevels == 0)
             {
                 RollTalent(player);
-                st.talentRerolls += cfg.wcRerollsPerTalentRoll; // every roll comes with its reroll
+                st.rerolls += cfg.wcRerollsPerTalentRoll; // every roll comes with its reroll
             }
             if (offset % cfg.wcAbilityEveryLevels == 0)
             {
                 RollAbility(player);
-                st.abilityRerolls += cfg.wcRerollsPerAbilityRoll;
+                st.rerolls += cfg.wcRerollsPerAbilityRoll;
             }
         }
 
@@ -1404,8 +1399,8 @@ void ClasslessMgr::AnnounceState(Player* player)
             st.abilities.size(), st.talents.size(), st.abilityEssence, st.talentEssence));
     else if (st.mode == Mode::Wildcard)
         Msg(player, Acore::StringFormat(
-            "Wildcard Hero — abilities: {}, talents: {}. Rerolls: |cff00ff00{}|r ability / |cff00ff00{}|r talent (earned as you level).",
-            st.abilities.size(), st.talents.size(), st.abilityRerolls, st.talentRerolls));
+            "Wildcard Hero — abilities: {}, talents: {}. Rerolls: |cff00ff00{}|r (earned as you level, spend on either).",
+            st.abilities.size(), st.talents.size(), st.rerolls));
 }
 
 // -------------------------------------------------------------------------
@@ -2013,15 +2008,13 @@ bool ClasslessMgr::Reroll(Player* player, bool isTalent, uint32 entry, std::stri
 
         if (!free)
         {
-            if (st.talentRerolls > 0)
-                --st.talentRerolls; // earned charge (granted with every talent roll)
-            else if (player->HasItemCount(cfg.wcScrollTalentItemId, 1))
-                player->DestroyItemCount(cfg.wcScrollTalentItemId, 1, true);
+            if (st.rerolls > 0)
+                --st.rerolls; // earned charge (granted with every roll)
             else if (player->HasItemCount(cfg.wcScrollItemId, 1))
                 player->DestroyItemCount(cfg.wcScrollItemId, 1, true);
             else
             {
-                if (err) *err = "No talent rerolls left — you earn one with every talent the Wildcard deals you (or buy a Reroll Scroll).";
+                if (err) *err = "No rerolls left — you earn one with every roll the Wildcard deals you (or buy a Reroll Scroll).";
                 return false;
             }
         }
@@ -2055,13 +2048,13 @@ bool ClasslessMgr::Reroll(Player* player, bool isTalent, uint32 entry, std::stri
 
         if (!free)
         {
-            if (st.abilityRerolls > 0)
-                --st.abilityRerolls; // earned charge (granted with every ability roll)
+            if (st.rerolls > 0)
+                --st.rerolls; // earned charge (granted with every roll)
             else if (player->HasItemCount(cfg.wcScrollItemId, 1))
                 player->DestroyItemCount(cfg.wcScrollItemId, 1, true);
             else
             {
-                if (err) *err = "No ability rerolls left — you earn one with every ability the Wildcard deals you (or buy a Reroll Scroll).";
+                if (err) *err = "No rerolls left — you earn one with every roll the Wildcard deals you (or buy a Reroll Scroll).";
                 return false;
             }
         }

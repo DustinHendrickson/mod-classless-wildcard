@@ -6,8 +6,7 @@ CREATE TABLE IF NOT EXISTS `cw_char_state` (
   `ability_essence` INT UNSIGNED NOT NULL DEFAULT 0,
   `talent_essence` INT UNSIGNED NOT NULL DEFAULT 0,
   `pity` INT UNSIGNED NOT NULL DEFAULT 0,
-  `ability_rerolls` INT UNSIGNED NOT NULL DEFAULT 0,
-  `talent_rerolls` INT UNSIGNED NOT NULL DEFAULT 0,
+  `rerolls` INT UNSIGNED NOT NULL DEFAULT 0 COMMENT 'earned reroll charges, spent on abilities or talents',
   `last_level` TINYINT UNSIGNED NOT NULL DEFAULT 0,
   `stat_str` INT UNSIGNED NOT NULL DEFAULT 0,
   `stat_agi` INT UNSIGNED NOT NULL DEFAULT 0,
@@ -17,6 +16,9 @@ CREATE TABLE IF NOT EXISTS `cw_char_state` (
   `display_power` TINYINT UNSIGNED NOT NULL DEFAULT 255 COMMENT '0 mana, 1 rage, 3 energy, 255 chassis default',
   PRIMARY KEY (`guid`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='Classless/Wildcard character state';
+
+-- (databases created by an older version are upgraded to this shape by
+--  cw_characters_rerolls.sql, which runs after this file)
 
 CREATE TABLE IF NOT EXISTS `cw_char_abilities` (
   `guid` INT UNSIGNED NOT NULL,

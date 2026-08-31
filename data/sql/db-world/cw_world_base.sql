@@ -52,9 +52,10 @@ INSERT INTO `item_template`
    `BagFamily`, `description`, `VerifiedBuild`)
 VALUES
 (990101, 15, 0, 'Reroll Scroll', 1103, 3, 1, 5000, 0, 0, -1, -1, 1, 1, 0, 20,
- 0, 'A stored Wildcard reroll. When you reroll an ability (or talent) you were dealt and have no free rerolls left, one of these is spent automatically. You earn rerolls just by leveling -- keep a few of these for a run of bad luck.', 12340),
-(990102, 15, 0, 'Talent Reroll Scroll', 1103, 2, 1, 2500, 0, 0, -1, -1, 1, 1, 0, 20,
- 0, 'A stored Wildcard talent reroll. Spent automatically when you reroll a talent and have no free talent rerolls left. Cheaper than a Reroll Scroll, but works on talents only.', 12340);
+ 0, 'A stored Wildcard reroll, good for an ability OR a talent. Spent automatically when you reroll something you were dealt and have no free rerolls left. You earn rerolls just by leveling -- keep a few of these for a run of bad luck.', 12340);
+
+-- 990102 was a second, talent-only scroll. One scroll now covers both, so the
+-- old item is removed (it is also deleted by the range above).
 
 -- ---------------------------------------------------------------------------
 -- Hero Advancement NPC (gossip + vendor)
@@ -70,8 +71,7 @@ VALUES
 -- scoped delete: cw_items_pack.sql manages its own rows on this vendor
 DELETE FROM `npc_vendor` WHERE `entry` = 990100 AND `item` IN (990101, 990102);
 INSERT INTO `npc_vendor` (`entry`, `slot`, `item`, `maxcount`, `incrtime`, `ExtendedCost`, `VerifiedBuild`) VALUES
-(990100, 0, 990101, 0, 0, 0, 12340),
-(990100, 1, 990102, 0, 0, 0, 12340);
+(990100, 0, 990101, 0, 0, 0, 12340);
 
 -- ---------------------------------------------------------------------------
 -- Model + spawns (schema-adaptive)
