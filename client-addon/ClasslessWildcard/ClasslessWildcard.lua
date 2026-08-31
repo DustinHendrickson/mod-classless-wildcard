@@ -1372,16 +1372,30 @@ local SPIN_TIME, BURST_TIME = 1.6, 0.35
 -- frameless, Ascension-style: the die floats over the world on a soft shadow,
 -- no dialog box
 local reveal = CreateFrame("Frame", "ClasslessWildcardReveal", UIParent)
-reveal:SetWidth(320); reveal:SetHeight(300)
+reveal:SetWidth(340); reveal:SetHeight(346)
 reveal:SetPoint("CENTER", 0, 170)
 reveal:SetFrameStrata("FULLSCREEN_DIALOG") -- always clearly above the panel
 reveal:EnableMouse(true)                   -- and never leaks clicks through
 reveal:Hide()
 
 local rvShadow = reveal:CreateTexture(nil, "BACKGROUND")
-rvShadow:SetWidth(320); rvShadow:SetHeight(320)
+rvShadow:SetWidth(400); rvShadow:SetHeight(400)
 rvShadow:SetPoint("CENTER", 0, 0)
 rvShadow:SetTexture("Interface\\AddOns\\ClasslessWildcard\\shadow")
+
+-- Text over open world is unreadable against bright ground, so darken a band
+-- behind the title and the name/rarity lines. Two soft bars rather than a panel:
+-- the reveal is meant to float, not become a dialog box.
+local function TextScrim(parent, y, height, alpha)
+    local t = parent:CreateTexture(nil, "BACKGROUND", nil, -6)
+    t:SetTexture("Interface\\AddOns\\ClasslessWildcard\\shadow")
+    t:SetWidth(360); t:SetHeight(height)
+    t:SetPoint("CENTER", 0, y)
+    t:SetAlpha(alpha)
+    return t
+end
+local rvTitleScrim = TextScrim(reveal, 140, 96, 0.85)
+local rvTextScrim = TextScrim(reveal, -104, 116, 0.9)
 
 local rvTitle = reveal:CreateFontString(nil, "OVERLAY", "GameFontNormalHuge")
 rvTitle:SetPoint("TOP", 0, -8)
@@ -1389,25 +1403,27 @@ rvTitle:SetPoint("TOP", 0, -8)
 local REVEAL_ATLAS = "Interface\\AddOns\\ClasslessWildcard\\die_reveal"
 
 local rvGlow = reveal:CreateTexture(nil, "BORDER")
-rvGlow:SetWidth(190); rvGlow:SetHeight(190)
-rvGlow:SetPoint("CENTER", 0, 25)
+rvGlow:SetWidth(250); rvGlow:SetHeight(250)
+rvGlow:SetPoint("CENTER", 0, 34)
 rvGlow:SetTexture("Interface\\AddOns\\ClasslessWildcard\\glow")
 rvGlow:SetBlendMode("ADD")
 
--- the spell icon sits BEHIND the die: the rarity die frames have a transparent
--- medallion window, so the icon shows through it (Ascension-style)
-local rvIcon = reveal:CreateTexture(nil, "ARTWORK")
-rvIcon:SetPoint("CENTER", 0, 25)
-
-local rvDie = reveal:CreateTexture(nil, "OVERLAY")
-rvDie:SetWidth(124); rvDie:SetHeight(124)
-rvDie:SetPoint("CENTER", 0, 25)
+local rvDie = reveal:CreateTexture(nil, "ARTWORK")
+rvDie:SetWidth(168); rvDie:SetHeight(168)
+rvDie:SetPoint("CENTER", 0, 34)
 rvDie:SetTexture(SPIN_ATLAS)
+
+-- The die frames only leave a small transparent medallion -- 34% of the frame,
+-- measured from the art -- so an icon drawn BEHIND them loses most of itself to
+-- the surround. Draw it ON TOP instead, sized to that window, so the whole icon
+-- reads while still sitting inside the frame like a set gem.
+local rvIcon = reveal:CreateTexture(nil, "OVERLAY")
+rvIcon:SetPoint("CENTER", 0, 34)
 
 -- hover the revealed ability to read its tooltip
 local rvHover = CreateFrame("Button", nil, reveal)
-rvHover:SetWidth(150); rvHover:SetHeight(150)
-rvHover:SetPoint("CENTER", 0, 25)
+rvHover:SetWidth(200); rvHover:SetHeight(200)
+rvHover:SetPoint("CENTER", 0, 34)
 rvHover:SetScript("OnEnter", function(self)
     -- CW.revealAnim: rvAnim is declared below, so reach it through CW
     local anim = CW.revealAnim
@@ -1421,10 +1437,10 @@ end)
 rvHover:SetScript("OnLeave", function() GameTooltip:Hide() end)
 
 local rvName = reveal:CreateFontString(nil, "OVERLAY", "GameFontNormalLarge")
-rvName:SetPoint("CENTER", 0, -60)
+rvName:SetPoint("CENTER", 0, -96)
 
 local rvSub = reveal:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
-rvSub:SetPoint("CENTER", 0, -82)
+rvSub:SetPoint("CENTER", 0, -120)
 
 local rvKeep = CreateFrame("Button", nil, reveal, "UIPanelButtonTemplate")
 rvKeep:SetWidth(110); rvKeep:SetHeight(24)
@@ -1457,11 +1473,11 @@ local function ShowResult()
     local col, rowi = r % 4, math.floor(r / 4)
     rvDie:SetTexture(REVEAL_ATLAS)
     rvDie:SetTexCoord(col / 4, (col + 1) / 4, rowi / 2, (rowi + 1) / 2)
-    rvDie:SetWidth(170); rvDie:SetHeight(170)
+    -- 230px frame leaves a ~78px medallion (34% of the art); the icon is sized
+    -- to that and drawn over the top, so all of it is visible
+    rvDie:SetWidth(230); rvDie:SetHeight(230)
     rvDie:Show()
-    -- the icon is the point of the whole reveal, so it fills the die's window
-    -- rather than floating in the middle of it
-    rvIcon:SetWidth(108); rvIcon:SetHeight(108)
+    rvIcon:SetWidth(78); rvIcon:SetHeight(78)
     rvIcon:SetTexture(SpellIcon(d.spell))
     rvIcon:SetTexCoord(0.12, 0.88, 0.12, 0.88)
     rvIcon:Show()
@@ -1515,7 +1531,7 @@ local function StartReveal(d)
     rvKeep:Hide(); rvReroll:Hide()
     rvDie:SetTexture(SPIN_ATLAS)
     SetDieFrame(0)
-    rvDie:SetWidth(124); rvDie:SetHeight(124)
+    rvDie:SetWidth(168); rvDie:SetHeight(168)
     rvDie:Show()
     reveal:Show()
 end
@@ -1562,7 +1578,7 @@ local function AwaitReroll()
     rvKeep:Hide(); rvReroll:Hide()
     rvDie:SetTexture(SPIN_ATLAS)
     SetDieFrame(0)
-    rvDie:SetWidth(124); rvDie:SetHeight(124)
+    rvDie:SetWidth(168); rvDie:SetHeight(168)
     rvDie:Show()
 end
 CW.AwaitReroll = AwaitReroll
@@ -1597,7 +1613,7 @@ reveal:SetScript("OnUpdate", function()
             return
         end
         rvGlow:SetAlpha(1 - p * 0.3)
-        local s = 124 + 46 * p               -- die "expands" into the light
+        local s = 168 + 62 * p               -- die "expands" into the light
         rvDie:SetWidth(s); rvDie:SetHeight(s)
     end
 end)
@@ -1638,9 +1654,17 @@ hand:EnableMouse(true)
 hand:Hide()
 
 local handShadow = hand:CreateTexture(nil, "BACKGROUND")
-handShadow:SetWidth(500); handShadow:SetHeight(300)
+handShadow:SetWidth(560); handShadow:SetHeight(340)
 handShadow:SetPoint("CENTER", 0, 0)
 handShadow:SetTexture("Interface\\AddOns\\ClasslessWildcard\\shadow")
+
+-- extra darkening under the title and the instruction line: over bright ground
+-- the shadow alone was not enough to read them against
+local handTextScrim = hand:CreateTexture(nil, "BACKGROUND", nil, -6)
+handTextScrim:SetWidth(520); handTextScrim:SetHeight(120)
+handTextScrim:SetPoint("TOP", 0, 22)
+handTextScrim:SetTexture("Interface\\AddOns\\ClasslessWildcard\\shadow")
+handTextScrim:SetAlpha(0.9)
 
 local handGlow = hand:CreateTexture(nil, "BORDER")
 handGlow:SetWidth(440); handGlow:SetHeight(230)
@@ -1847,9 +1871,10 @@ hand:SetScript("OnUpdate", function()
 end)
 
 handRoll:SetScript("OnClick", function()
-    for _, e in ipairs(CW.owned) do
-        if e.locked ~= 1 then Send("RR " .. e.id) end
-    end
+    -- One command: the server rerolls every unlocked ability from its own
+    -- state. Firing one RR per entry from this snapshot went stale as soon as
+    -- the first landed, so the rest came back "You do not own that ability".
+    Send("RRALL")
     CW.handAnimatePending = true -- deal the new cards in with the die spin
     Send("OWN")
 end)

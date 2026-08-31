@@ -2072,6 +2072,41 @@ bool ClasslessMgr::Reroll(Player* player, bool isTalent, uint32 entry, std::stri
     return true;
 }
 
+uint32 ClasslessMgr::RerollUnlockedAbilities(Player* player, std::string* err)
+{
+    CharState& st = GetState(player);
+    if (st.mode != Mode::Wildcard)
+    {
+        if (err) *err = "Rerolls are a Wildcard mechanic.";
+        return 0;
+    }
+
+    // snapshot from OUR state, not the client's: the ids are guaranteed to be
+    // owned right now, and rerolled entries are banned from coming straight
+    // back, so nothing in the list can be invalidated by an earlier reroll
+    std::vector<uint32> targets;
+    for (auto const& [firstSpell, owned] : st.abilities)
+        if (!owned.locked)
+            targets.push_back(firstSpell);
+
+    uint32 done = 0;
+    for (uint32 firstSpell : targets)
+    {
+        if (!st.abilities.count(firstSpell))
+            continue; // defensive: already gone
+        std::string one;
+        if (!Reroll(player, false, firstSpell, &one))
+        {
+            // out of charges (or similar): report once, don't spam per ability
+            if (err && err->empty())
+                *err = one;
+            break;
+        }
+        ++done;
+    }
+    return done;
+}
+
 bool ClasslessMgr::ToggleLock(Player* player, uint32 firstSpellId, std::string* err)
 {
     CharState& st = GetState(player);

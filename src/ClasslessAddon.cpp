@@ -306,6 +306,15 @@ namespace
             sClasslessMgr->SetMode(player, Mode(uint8(argNum(1))), &err) ? SendOk(player, "MODE") : SendErr(player, err);
         else if (cmd == "RR")
             sClasslessMgr->Reroll(player, false, argNum(1), &err) ? SendOk(player, "RR") : SendErr(player, err);
+        else if (cmd == "RRALL")
+        {
+            // starting hand: reroll everything unlocked in one authoritative pass
+            uint32 n = sClasslessMgr->RerollUnlockedAbilities(player, &err);
+            if (n)
+                SendOk(player, "RRALL");
+            else
+                SendErr(player, err.empty() ? "Nothing to reroll — everything is locked." : err);
+        }
         else if (cmd == "RRT")
             sClasslessMgr->Reroll(player, true, argNum(1), &err) ? SendOk(player, "RRT") : SendErr(player, err);
         else if (cmd == "LOCK")
