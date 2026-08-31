@@ -108,8 +108,8 @@ public:
     void AnnounceState(Player* player);      // login summary line
     uint32 AbilityCost(ClasslessWildcard::AbilityEntry const& e) const;
     // A rolled talent can arrive at ANY rank. The rank it lands on decides how
-    // rare the find is -- rank 5 is a legendary result -- and since a talent
-    // costs one point whatever its rank, a high rank is pure profit.
+    // rare the find is -- rank 5 is a legendary result -- and since Wildcard
+    // rolls cost nothing, a high rank is every one of those ranks for free.
     ClasslessWildcard::Rarity RankRarity(ClasslessWildcard::TalentPoolEntry const& t, uint8 rank) const;
     // Weighted pick of a rank above `fromRank`, rarer the higher it goes.
     uint8 RollTalentRank(ClasslessWildcard::TalentPoolEntry const& t, uint8 fromRank) const;

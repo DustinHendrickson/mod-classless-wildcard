@@ -184,7 +184,7 @@ void ClasslessMgr::LoadConfig(bool /*reload*/)
     cfg.abilityEssencePerLevel = sConfigMgr->GetOption<uint32>("ClasslessWildcard.Classless.AbilityEssencePerLevel", 1);
     cfg.talentEssencePerLevel = sConfigMgr->GetOption<uint32>("ClasslessWildcard.Classless.TalentEssencePerLevel", 1);
     cfg.talentCostPerRank = sConfigMgr->GetOption<uint32>("ClasslessWildcard.Classless.TalentCostPerRank", 1);
-    cfg.talentFlatCost = sConfigMgr->GetOption<bool>("ClasslessWildcard.Classless.TalentFlatCost", true);
+    cfg.talentFlatCost = sConfigMgr->GetOption<bool>("ClasslessWildcard.Classless.TalentFlatCost", false);
     cfg.enforceTalentRows = sConfigMgr->GetOption<bool>("ClasslessWildcard.Classless.EnforceTalentRows", true);
     cfg.refundOnUnlearn = sConfigMgr->GetOption<bool>("ClasslessWildcard.Classless.RefundOnUnlearn", true);
     cfg.respecCostGold = sConfigMgr->GetOption<uint32>("ClasslessWildcard.Classless.RespecCostGold", 50);

@@ -177,10 +177,11 @@ ClasslessWildcard.Classless.TalentEssencePerLevel = 1
 # AE cost per rarity: common,uncommon,rare,epic,legendary
 ClasslessWildcard.Classless.AbilityCostByRarity = "1,2,3,5,8"
 ClasslessWildcard.Classless.TalentCostPerRank = 1
-# A talent costs ONE point no matter what rank you take it to: only the first
-# rank is charged and ranks 2..5 are free, so a rank 5 talent costs 1 point.
-# Set to 0 to charge TalentCostPerRank for every rank instead.
-ClasslessWildcard.Classless.TalentFlatCost = 1
+# Optional: charge only the FIRST rank, so a talent costs one point however far
+# you rank it. Off by default -- in Classless you pick what you buy, so every
+# rank is paid for at TalentCostPerRank. (Wildcard is where a rank 5 costs "one
+# point": the roll hands you the rank for free, whatever it lands on.)
+ClasslessWildcard.Classless.TalentFlatCost = 0
 ClasslessWildcard.Classless.EnforceTalentRows = 1
 ClasslessWildcard.Classless.RefundOnUnlearn = 1
 ClasslessWildcard.Classless.RespecCostGold = 50

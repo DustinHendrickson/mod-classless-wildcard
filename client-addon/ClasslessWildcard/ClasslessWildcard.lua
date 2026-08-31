@@ -38,6 +38,8 @@ local CW = {
               rerolls = 0, scrollCost = 0, scrollBuy = 0,
               comboPoints = 0 },
     classIndex = 1,
+    -- classless talent pricing; the server overrides these via the CFG message
+    talentCost = 1, talentFlat = true,
     abilPage = 0, abilTotal = 1, abilRows = {},
     tabs = {}, tabIndex = 1,
     talPage = 0, talTotal = 1, talRows = {},
@@ -618,9 +620,9 @@ local HELP_TEXT = table.concat({
 "|cff00ccff==  CLASSLESS  --  you choose  ==|r",
 "Spend two currencies to buy exactly what you want:",
 "   |cffffd100Ability Essence (AE)|r  buys abilities.",
-"   |cffffd100Talent Essence (TE)|r  buys talents -- |cffffffffone point each|r, however far you rank it.",
+"   |cffffd100Talent Essence (TE)|r  buys talent ranks, one point per rank.",
 "You start with a pool of AE and earn |cff00ff00+1 AE and +1 TE every level from 10|r.",
-"Abilities are priced by rarity -- |cff9d9d9d1|r / |cff1eff002|r / |cff0070dd3|r / |cffa335ee5|r / |cffff80008|r AE from common to legendary. A talent costs |cffffffffone Talent Essence|r no matter which rank you take it to, and still respects its tree's prerequisites and tier rules.",
+"Abilities are priced by rarity -- |cff9d9d9d1|r / |cff1eff002|r / |cff0070dd3|r / |cffa335ee5|r / |cffff80008|r AE from common to legendary. Talents cost Talent Essence per rank and respect their tree's prerequisites and tier rules -- ranking one to 5 costs 5 TE, so pick your capstones carefully.",
 "Unlearning an ability refunds what you paid, |cffffd100Respec|r reshuffles your talents for gold, and every ability line you own |cff00ff00ranks up on its own|r as you level.",
 "",
 "|cffff8800==  WILDCARD  --  the dice choose  ==|r",
@@ -628,7 +630,7 @@ local HELP_TEXT = table.concat({
 "   |cff00ff00Level 1:|r  4 random abilities to begin.",
 "   |cff00ff00From level 10:|r  1 talent every level, 1 ability every 2 levels.",
 "Rolls are rarity-weighted, so legendaries are the rarest.",
-"A rolled talent also lands on a random |cffffd100rank|r, and the rank IS its rarity: rank 1 common, rank 2 uncommon, rank 3 rare, rank 4 epic, |cffff8000rank 5 legendary|r. A high rank is the jackpot -- a talent costs one point whatever rank it arrives at, so rank 5 is four ranks for free.",
+"A rolled talent also lands on a random |cffffd100rank|r, and the rank IS its rarity: rank 1 common, rank 2 uncommon, rank 3 rare, rank 4 epic, |cffff8000rank 5 legendary|r. A high rank is the jackpot -- rolls cost you nothing, so a rank 5 is all five ranks handed over for free. (A Classless Hero would have to buy each of those ranks.)",
 "You steer your luck:",
 "   |cffffd100Rerolls|r -- every roll also grants a reroll charge (rerolls are free below level 10). One pool, spent on abilities or talents alike. Reroll straight from the popup, or later from |cffffd100My Build|r using the circular arrow next to anything you own.",
 "   |cffffd100Lock|r -- protect an ability so a later roll can't overwrite it.",
@@ -788,7 +790,12 @@ local function RenderTalPane()
                 w.tipLine = "Rolled at level-up"
                 w:SetScript("OnClick", nil)
             else
-                w.sub:SetText("Row " .. (t.row + 1) .. "  1 Talent Essence/rank" .. LevelTag(tlvl, s.level))
+                -- price comes from the server (CFG), not an assumption: a
+                -- talent costs one point for ALL its ranks by default
+                local cost = CW.talentCost or 1
+                local costText = cost .. " Talent Essence"
+                    .. (CW.talentFlat and " (all ranks)" or "/rank")
+                w.sub:SetText("Row " .. (t.row + 1) .. "  " .. costText .. LevelTag(tlvl, s.level))
                 w.tipLine = t.owned >= t.max and "Maxed" or "Click to learn a rank"
                 local id = t.talentId
                 w:SetScript("OnClick", function()
@@ -1471,7 +1478,7 @@ local function ShowResult()
         rvSub:SetText("|cff00ff88Synergy roll — it complements your Hero!|r")
     elseif d.isTalent then
         -- one talent point buys the talent whatever rank it landed on
-        rvSub:SetText((RARITY_NAMES[d.rarity or 0] or "") .. "  |cffaaaaaa- costs one talent point|r")
+        rvSub:SetText((RARITY_NAMES[d.rarity or 0] or "") .. "  |cffaaaaaa- dealt free, all ranks included|r")
     else
         rvSub:SetText(RARITY_NAMES[d.rarity or 0] or "")
     end
@@ -2009,6 +2016,12 @@ local function HandleMessage(msg)
         s.enabled = tonumber(p[10]) or 1
         CW.statsPending = nil
         RenderList() -- refreshes the stats flyout when it is open
+
+    elseif kind == "CFG" then
+        -- classless pricing the browser needs to label costs honestly
+        CW.talentCost = tonumber(p[2]) or 1
+        CW.talentFlat = (tonumber(p[3]) or 1) == 1
+        RenderList()
 
     elseif kind == "CP" then
         -- server-mirrored combo points (the stock client hides them for

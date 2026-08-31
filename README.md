@@ -57,7 +57,7 @@ installs the addon. It is part of the mod, not an extra — see [Client setup](#
 | How you gain power    | Spend Ability Essence (AE) and Talent Essence (TE)              | The server rolls abilities and talents for you                                     |
 | Starting kit          | 9 AE to spend as you like                                       | 4 random abilities at level 1                                                      |
 | Progression           | +1 AE and +1 TE per level from 10                               | 1 talent per level and 1 ability every 2 levels, from 10                           |
-| Cost model            | Abilities cost 1 / 2 / 3 / 5 / 8 AE by rarity, talents 1 TE each | Free, but weighted — legendary is rarest, and talent rank *is* rarity             |
+| Cost model            | Abilities cost 1 / 2 / 3 / 5 / 8 AE by rarity, talents 1 TE per rank | Free, but weighted — legendary is rarest, and talent rank *is* rarity         |
 | Control over outcomes | Total; unlearn refunds, respec for gold                         | Rerolls, ability lock-in, synergy rolls, 25-roll bad-luck protection               |
 | Changing your mind    | `.classless respec`                                             | `.wildcard reroll`, Reroll Scrolls, **Rebirth**                                |
 
@@ -71,18 +71,17 @@ training, the Hero Advancement NPC and the addon UI. Players choose a path per c
 
 #### Progression
 
-- **Classless free-pick** — rarity-priced abilities, and talents from every class tree that
-  cost **one point each no matter which rank you take them to**, with prerequisites and tier
-  rules enforced, refunds on unlearn, gold respec, and owned spell lines that auto-rank-up as
-  you level.
+- **Classless free-pick** — rarity-priced abilities, talents from every class tree bought a
+  rank at a time, with prerequisites and tier rules enforced, refunds on unlearn, gold respec,
+  and owned spell lines that auto-rank-up as you level.
 - **Wildcard rolls** — the Ascension S10 schedule and mechanics: free rerolls below level 10,
   rarity-weighted rolls, the talent-upgrade-rolls-again rule, ability locking, and synergy rolls
   with a rising pity chance plus bad-luck bans.
 - **Talent rank is its rarity** — a rolled talent lands on a random rank, and the rank *is* the
-  tier: rank 1 common through **rank 5 legendary**. Since a talent costs one point whatever
-  rank it arrives at, a high roll is four free ranks. (Rank odds follow `RarityWeights`, so the
-  shipped equal-weight Season 9 default makes every rank equally likely — use descending
-  weights like `100,60,30,10,3` to make rank 5 the rare prize.)
+  tier: rank 1 common through **rank 5 legendary**. Rolls cost nothing, so a rank 5 is all five
+  ranks handed over free — where a Classless Hero would have to buy each one. (Rank odds follow
+  `RarityWeights`, so the shipped equal-weight Season 9 default makes every rank equally likely —
+  use descending weights like `100,60,30,10,3` to make rank 5 the rare prize.)
 - **Rerolls flow with leveling.** Every scheduled roll grants a reroll charge — one pool,
   spent on abilities and talents alike — and anything you already own can be rerolled later
   from **My Build**. Reroll Scrolls are a single top-up item, good for either, for when charges
@@ -291,7 +290,7 @@ which documents all 70+ settings inline. The ones you are most likely to touch:
 | `Wildcard.RollStartLevel`                           | `10`        | Level the roll schedule begins                        |
 | `Wildcard.TalentEveryLevels` / `AbilityEveryLevels` | `1` / `2`   | Roll cadence                                          |
 | `Wildcard.RarityWeights`                            | `100,…`     | Roll weights per rarity tier — also picks talent rank |
-| `Classless.TalentFlatCost`                          | `1`         | A talent costs 1 point at any rank                    |
+| `Classless.TalentFlatCost`                          | `0`         | Charge only rank 1, so a talent costs 1 point total   |
 | `Wildcard.FreeRerollBelowLevel`                     | `10`        | Rerolls are free under this level                     |
 | `Wildcard.ScrollBuyEnable`                          | `1`          | Buy Scroll button on the addon panel                 |
 | `Wildcard.ScrollBuyBaseCopper` / `…PerLevelCopper`  | `500` / `500`| Scroll price in copper = base + per-level × level    |

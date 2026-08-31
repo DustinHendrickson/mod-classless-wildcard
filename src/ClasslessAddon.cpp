@@ -81,6 +81,13 @@ namespace
             st.rerolls, cfg.universalResources ? 1 : 0,
             sClasslessMgr->ScrollBuyCost(player->GetLevel()),
             (cfg.wcScrollBuyEnable && player->GetLevel() >= cfg.wcFreeRerollLevel) ? 1 : 0));
+
+        // Talent pricing, so the browser can label what a talent actually
+        // costs instead of assuming. Sent as its own message rather than more
+        // positional fields on S -- an addon that predates it simply ignores
+        // the unknown kind.
+        SendAddon(player, Acore::StringFormat("CFG|{}|{}",
+            cfg.talentCostPerRank, cfg.talentFlatCost ? 1 : 0));
     }
 
     void SendErr(Player* player, std::string const& text)
