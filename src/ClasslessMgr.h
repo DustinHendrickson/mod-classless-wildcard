@@ -87,6 +87,13 @@ public:
     // level-based mode lock has passed.
     bool Rebirth(Player* player, ClasslessWildcard::Mode target, std::string* err);
 
+    // Buy a Scroll of Fortune for gold straight from the addon panel; which 0 =
+    // ability scroll, 1 = talent scroll (cheaper). Cost scales with level.
+    bool BuyScroll(Player* player, uint32 which, std::string* err);
+    // Gold price of an ability Scroll of Fortune at the given level (talent
+    // scrolls are half). Shared by BuyScroll and the addon state packet.
+    uint32 ScrollBuyCost(uint8 level) const;
+
     // ------- helpers -------
     void TeachProficiencies(Player* player);
     void UpdateAbilityRanks(Player* player); // learn newly available ranks of owned lines

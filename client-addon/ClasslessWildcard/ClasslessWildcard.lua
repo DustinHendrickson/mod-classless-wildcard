@@ -35,7 +35,7 @@ local CLASS_ORDER = { 1, 2, 3, 4, 5, 7, 8, 9, 11 } -- Death Knight (6) is the He
 local CW = {
     state = { mode = 255, ae = 0, te = 0, pity = 0, chance = 0, scrolls = 0,
               level = 1, deadline = 5, rebirth = 0, rebirthCost = 0,
-              abilityRerolls = 0, talentRerolls = 0 },
+              abilityRerolls = 0, talentRerolls = 0, scrollCost = 0, scrollBuy = 0 },
     classIndex = 1,
     abilPage = 0, abilTotal = 1, abilRows = {},
     tabs = {}, tabIndex = 1,
@@ -463,6 +463,35 @@ rebirthBtn:SetScript("OnClick", function()
 end)
 CW.rebirthBtn = rebirthBtn
 
+-- Buy Scroll: purchase a Scroll of Fortune for gold (cost scales with level;
+-- the server enforces the price). Wildcard-only, where rerolls are spent.
+StaticPopupDialogs["CW_CLASSLESS_BUYSCROLL"] = {
+    text = "Buy a |cff0070ddScroll of Fortune|r for |cffffd100%d gold|r?
+"
+        .. "It grants one extra reroll for the Wildcard.",
+    button1 = "Buy",
+    button2 = "Cancel",
+    OnAccept = function() Send("BUYSCROLL 0") end,
+    timeout = 0, whileDead = 1, hideOnEscape = 1, preferredIndex = 3,
+}
+local buyScrollBtn = CreateFrame("Button", nil, frame, "UIPanelButtonTemplate")
+buyScrollBtn:SetWidth(130); buyScrollBtn:SetHeight(22)
+buyScrollBtn:SetPoint("BOTTOMLEFT", 20, 26)
+buyScrollBtn:SetText("Buy Scroll")
+buyScrollBtn:Hide()
+buyScrollBtn:SetScript("OnClick", function()
+    StaticPopup_Show("CW_CLASSLESS_BUYSCROLL", CW.state.scrollCost or 0)
+end)
+buyScrollBtn:SetScript("OnEnter", function(self)
+    GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
+    GameTooltip:SetText("Buy a Scroll of Fortune")
+    GameTooltip:AddLine("Cost: |cffffd100" .. (CW.state.scrollCost or 0) .. " gold|r, rising with your level.", 1, 1, 1)
+    GameTooltip:AddLine("Each scroll is one extra reroll for the Wildcard.", 0.8, 0.8, 0.8, true)
+    GameTooltip:Show()
+end)
+buyScrollBtn:SetScript("OnLeave", function() GameTooltip:Hide() end)
+CW.buyScrollBtn = buyScrollBtn
+
 -- stats flyout -------------------------------------------------------------------
 local statFly = CreateFrame("Frame", "ClasslessWildcardStats", frame)
 statFly:SetWidth(260); statFly:SetHeight(250)
@@ -607,16 +636,22 @@ local function UpdateStatus()
         bottomText:SetText("Ability Essence: |cff00ff00" .. s.ae .. "|r    Talent Essence: |cff00ff00" .. s.te .. "|r    Scrolls of Fortune: " .. s.scrolls)
         respecBtn:Enable()
         if s.rebirth == 1 then CW.rebirthBtn:Show() else CW.rebirthBtn:Hide() end
+        CW.buyScrollBtn:Hide()
     elseif s.mode == 1 then
         statusText:SetText(modeText .. "   Rerolls: |cff00ff00" .. s.abilityRerolls .. "|r ability / |cff00ff00" .. s.talentRerolls .. "|r talent")
         subStatusText:SetText("Level " .. s.level .. "   Scrolls: " .. s.scrolls .. "   Synergy chance: " .. s.chance .. "%   Pity: " .. s.pity)
         bottomText:SetText("Rerolls: |cff00ff00" .. s.abilityRerolls .. "|r ability / |cff00ff00" .. s.talentRerolls .. "|r talent    Scrolls of Fortune: " .. s.scrolls)
         respecBtn:Disable()
         if s.rebirth == 1 then CW.rebirthBtn:Show() else CW.rebirthBtn:Hide() end
+        if s.scrollBuy == 1 then
+            CW.buyScrollBtn:SetText("Buy Scroll (" .. (s.scrollCost or 0) .. "g)")
+            CW.buyScrollBtn:Show()
+        else CW.buyScrollBtn:Hide() end
     else
         statusText:SetText(modeText)
         subStatusText:SetText("Choose your path before level " .. s.deadline .. "!")
         CW.rebirthBtn:Hide()
+        CW.buyScrollBtn:Hide()
         bottomText:SetText("")
     end
 end
@@ -1722,6 +1757,8 @@ local function HandleMessage(msg)
         s.rebirth, s.rebirthCost = tonumber(p[10]) or 0, tonumber(p[11]) or 0
         s.abilityRerolls, s.talentRerolls = tonumber(p[12]) or 0, tonumber(p[13]) or 0
         s.universalResources = tonumber(p[14]) or 0
+        s.scrollCost = tonumber(p[15]) or 0
+        s.scrollBuy = tonumber(p[16]) or 0
         CW.UpdateBarsVisibility()
         UpdateStatus()
         -- fresh Wildcard hero: lock & roll your starting hand

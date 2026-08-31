@@ -223,6 +223,9 @@ void ClasslessMgr::LoadConfig(bool /*reload*/)
     cfg.wcRerollsPerTalentRoll = sConfigMgr->GetOption<uint32>("ClasslessWildcard.Wildcard.RerollsPerTalentRoll", 1);
     cfg.wcFreeScrollEveryLevels = sConfigMgr->GetOption<uint32>("ClasslessWildcard.Wildcard.FreeScrollEveryLevels", 0);
     cfg.wcFreeScrollCount = sConfigMgr->GetOption<uint32>("ClasslessWildcard.Wildcard.FreeScrollCount", 1);
+    cfg.wcScrollBuyEnable = sConfigMgr->GetOption<uint32>("ClasslessWildcard.Wildcard.ScrollBuyEnable", 1);
+    cfg.wcScrollBuyBaseGold = sConfigMgr->GetOption<uint32>("ClasslessWildcard.Wildcard.ScrollBuyBaseGold", 10);
+    cfg.wcScrollBuyPerLevel = sConfigMgr->GetOption<uint32>("ClasslessWildcard.Wildcard.ScrollBuyPerLevel", 1);
 
     cfg.universalResources = sConfigMgr->GetOption<bool>("ClasslessWildcard.UniversalResources.Enable", true);
     cfg.urBaseMana = sConfigMgr->GetOption<uint32>("ClasslessWildcard.UniversalResources.BaseMana", 100);
@@ -758,6 +761,45 @@ bool ClasslessMgr::Rebirth(Player* player, Mode target, std::string* err)
     }
 
     UpdateAbilityRanks(player);
+    return true;
+}
+
+uint32 ClasslessMgr::ScrollBuyCost(uint8 level) const
+{
+    return cfg.wcScrollBuyBaseGold + cfg.wcScrollBuyPerLevel * uint32(level);
+}
+
+bool ClasslessMgr::BuyScroll(Player* player, uint32 which, std::string* err)
+{
+    if (!cfg.wcScrollBuyEnable)
+    {
+        if (err) *err = "Buying scrolls is disabled on this realm.";
+        return false;
+    }
+
+    bool talent = which == 1;
+    uint32 itemId = talent ? cfg.wcScrollTalentItemId : cfg.wcScrollItemId;
+    uint32 costGold = ScrollBuyCost(player->GetLevel());
+    if (talent)
+        costGold = std::max<uint32>(1, costGold / 2); // talent-only scroll is cheaper
+
+    int32 costCopper = int32(costGold) * GOLD;
+    if (!player->HasEnoughMoney(costCopper))
+    {
+        if (err) *err = Acore::StringFormat("That scroll costs {} gold.", costGold);
+        return false;
+    }
+
+    // Add the item first so a full bag fails before the player is charged.
+    if (!player->AddItem(itemId, 1))
+    {
+        if (err) *err = "Your bags are full.";
+        return false;
+    }
+    player->ModifyMoney(-costCopper);
+
+    Msg(player, Acore::StringFormat("Purchased a |cff0070dd{}|r for |cffffd100{} gold|r.",
+        talent ? "Scroll of Fortune: Talents" : "Scroll of Fortune", costGold));
     return true;
 }
 

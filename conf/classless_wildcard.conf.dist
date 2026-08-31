@@ -225,6 +225,14 @@ ClasslessWildcard.Wildcard.ScrollTalentItemId = 990102
 # FreeScrollEveryLevels levels (0 disables).
 ClasslessWildcard.Wildcard.FreeScrollEveryLevels = 0
 ClasslessWildcard.Wildcard.FreeScrollCount = 1
+# Buy Scroll button (Hero Advancement panel): players can buy a Scroll of
+# Fortune for gold straight from the addon, no NPC needed. Price scales with
+# level: cost(gold) = ScrollBuyBaseGold + ScrollBuyPerLevel * level (the talent
+# scroll is half). Set ScrollBuyEnable = 0 to hide the button and leave scrolls
+# to the NPC vendor only.
+ClasslessWildcard.Wildcard.ScrollBuyEnable = 1
+ClasslessWildcard.Wildcard.ScrollBuyBaseGold = 10
+ClasslessWildcard.Wildcard.ScrollBuyPerLevel = 1
 
 ########################################
 # Chassis

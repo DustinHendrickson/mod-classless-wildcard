@@ -68,8 +68,9 @@ training, the Hero Advancement NPC and the addon UI. Players choose a path per c
   (2+2 ability, 3+3 talent, locked from level 10), and synergy rolls with a rising pity chance
   plus bad-luck bans.
 - **Rerolls flow with leveling.** Every scheduled roll grants a matching reroll charge, so
-  rerolling is part of normal play. Scrolls of Fortune (50s / 25s from the NPC) exist only as
-  a top-up when charges run dry.
+  rerolling is part of normal play. Scrolls of Fortune are a top-up for when charges run dry —
+  bought from the Hero Advancement NPC, or straight from the addon's **Buy Scroll** button for
+  gold (price scales with level; configurable, and toggleable off).
 - **Rebirth** — a config-gated full reset that switches a character between paths after the
   mode lock. Wildcard rebirths replay the entire roll schedule.
 
@@ -89,9 +90,10 @@ training, the Hero Advancement NPC and the addon UI. Players choose a path per c
 
 #### Getting players in the door
 
-- **Hero Advancement NPC** (entry `990100`) — spawned in Stormwind, Orgrimmar and Dalaran,
-  each spawn carrying the full gossip UI plus the scroll and item vendor. `.npc add 990100`
-  places more anywhere.
+- **Hero Advancement NPC** (entry `990100`) — one in every major city, standing beside that
+  city's guild master so it's easy to find (Shattrath's sits by A'dal). Each spawn carries the
+  full gossip UI plus the scroll and item vendor, and everything it offers is also reachable
+  from the addon panel. `.npc add 990100` places more anywhere.
 - **Starter archetypes** — six curated builds (*Blade Dancer*, *Battle Mage*,
   *Ranger of the Light*, *Shadow Mender*, *Stealthy Healer*, *Storm Warrior*) that spend a new
   Hero's starting essence on a coherent role. Add your own in `cw_archetypes`.
@@ -249,6 +251,8 @@ which documents all 70+ settings inline. The ones you are most likely to touch:
 | `Wildcard.TalentEveryLevels` / `AbilityEveryLevels` | `1` / `2`   | Roll cadence                                          |
 | `Wildcard.RarityWeights`                            | `100,…`     | Roll weights per rarity tier                          |
 | `Wildcard.FreeRerollBelowLevel`                     | `10`        | Rerolls are free under this level                     |
+| `Wildcard.ScrollBuyEnable`                          | `1`         | Buy Scroll button on the addon panel                  |
+| `Wildcard.ScrollBuyBaseGold` / `ScrollBuyPerLevel`  | `10` / `1`  | Scroll price = base + per-level × level               |
 | `UniversalResources.Enable`                         | `1`         | Mana + rage + energy on every character               |
 | `Stats.Enable` / `Stats.PointsPerLevel`             | `1` / `2`   | Primary stat allocation                               |
 | `Rebirth.Enable` / `Rebirth.CostGold`               | `1` / `100` | Path switching after the mode lock                    |

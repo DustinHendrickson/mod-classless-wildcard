@@ -238,6 +238,9 @@ namespace ClasslessWildcard
         uint32 wcRerollsPerTalentRoll = 1;     // earned reroll charges per scheduled talent roll
         uint32 wcFreeScrollEveryLevels = 0;    // optional extra: scrolls every N levels (0 = off)
         uint32 wcFreeScrollCount = 1;          // scrolls granted per milestone
+        uint32 wcScrollBuyEnable = 1;          // allow buying scrolls for gold from the addon panel
+        uint32 wcScrollBuyBaseGold = 10;       // base gold price of a Scroll of Fortune
+        uint32 wcScrollBuyPerLevel = 1;        // added gold per character level
 
         // SINGLE CHASSIS
         //

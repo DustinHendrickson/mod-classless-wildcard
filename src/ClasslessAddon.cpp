@@ -73,11 +73,12 @@ namespace
         Config const& cfg = sClasslessMgr->cfg;
         uint32 chance = std::min<uint32>(cfg.wcSynergyBaseChance + st.pity * cfg.wcSynergyIncrement, 100);
         uint32 scrolls = player->GetItemCount(cfg.wcScrollItemId) + player->GetItemCount(cfg.wcScrollTalentItemId);
-        SendAddon(player, Acore::StringFormat("S|{}|{}|{}|{}|{}|{}|{}|{}|{}|{}|{}|{}|{}",
+        SendAddon(player, Acore::StringFormat("S|{}|{}|{}|{}|{}|{}|{}|{}|{}|{}|{}|{}|{}|{}|{}",
             uint32(st.mode), st.abilityEssence, st.talentEssence, st.pity, chance,
             scrolls, player->GetLevel(), cfg.modeChoiceDeadline,
             cfg.rebirthEnable ? 1 : 0, cfg.rebirthCostGold,
-            st.abilityRerolls, st.talentRerolls, cfg.universalResources ? 1 : 0));
+            st.abilityRerolls, st.talentRerolls, cfg.universalResources ? 1 : 0,
+            sClasslessMgr->ScrollBuyCost(player->GetLevel()), cfg.wcScrollBuyEnable ? 1 : 0));
     }
 
     void SendErr(Player* player, std::string const& text)
@@ -327,6 +328,8 @@ namespace
             sClasslessMgr->ApplyArchetype(player, argNum(1), &err) ? SendOk(player, "ARCH") : SendErr(player, err);
         else if (cmd == "REBIRTH")
             sClasslessMgr->Rebirth(player, Mode(uint8(argNum(1))), &err) ? SendOk(player, "REBIRTH") : SendErr(player, err);
+        else if (cmd == "BUYSCROLL")
+            sClasslessMgr->BuyScroll(player, argNum(1), &err) ? SendOk(player, "BUYSCROLL") : SendErr(player, err);
     }
 }
 
