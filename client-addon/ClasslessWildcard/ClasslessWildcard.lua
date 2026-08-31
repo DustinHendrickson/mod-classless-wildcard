@@ -87,10 +87,55 @@ frame:SetScript("OnDragStop", frame.StopMovingOrSizing)
 frame:Hide()
 tinsert(UISpecialFrames, "ClasslessWildcardFrame")
 
-local titleIcon = frame:CreateTexture(nil, "ARTWORK")
-titleIcon:SetWidth(38); titleIcon:SetHeight(38)
-titleIcon:SetPoint("TOPLEFT", 16, -12)
+-- clickable dice crest: opens the Wildcard roll/reroll experience
+local titleBtn = CreateFrame("Button", nil, frame)
+titleBtn:SetWidth(54); titleBtn:SetHeight(54)
+titleBtn:SetPoint("TOPLEFT", 10, -6)
+
+local titleIcon = titleBtn:CreateTexture(nil, "ARTWORK")
+titleIcon:SetAllPoints(titleBtn)
 titleIcon:SetTexture("Interface\\AddOns\\ClasslessWildcard\\icon")
+
+-- glow behind the die brightens on hover, so it reads as clickable
+local titleGlow = titleBtn:CreateTexture(nil, "BACKGROUND")
+titleGlow:SetWidth(84); titleGlow:SetHeight(84)
+titleGlow:SetPoint("CENTER")
+titleGlow:SetTexture("Interface\\AddOns\\ClasslessWildcard\\glow")
+titleGlow:SetBlendMode("ADD")
+titleGlow:SetVertexColor(0.45, 0.75, 1)
+titleGlow:SetAlpha(0)
+
+titleBtn:SetScript("OnEnter", function(self)
+    titleGlow:SetAlpha(0.9)
+    titleIcon:SetVertexColor(1.3, 1.3, 1.3)
+    GameTooltip:SetOwner(self, "ANCHOR_BOTTOMRIGHT")
+    local s = CW.state
+    if s.mode ~= 1 then
+        GameTooltip:SetText("Wildcard rolls")
+        GameTooltip:AddLine("Only Wildcard Heroes roll the dice for abilities.", 0.8, 0.8, 0.8, true)
+    elseif (s.level or 1) < 10 then
+        GameTooltip:SetText("|cffffd100Roll your Starting Hand|r")
+        GameTooltip:AddLine("Click to reroll your starter abilities.", 0.3, 1, 0.3, true)
+        GameTooltip:AddLine("Free before level 10 -- lock the ones you like.", 0.6, 0.9, 0.6, true)
+    else
+        GameTooltip:SetText("|cffffd100Wildcard Roll|r")
+        GameTooltip:AddLine("Open the Wildcard die to reroll your abilities.", 0.3, 1, 0.3, true)
+        GameTooltip:AddLine("Costs a reroll charge or a Scroll of Fortune.", 0.7, 0.7, 0.7, true)
+    end
+    GameTooltip:Show()
+end)
+titleBtn:SetScript("OnLeave", function()
+    titleGlow:SetAlpha(0)
+    titleIcon:SetVertexColor(1, 1, 1)
+    GameTooltip:Hide()
+end)
+titleBtn:SetScript("OnMouseDown", function() titleGlow:SetAlpha(1); titleIcon:SetVertexColor(0.85, 0.85, 0.85) end)
+titleBtn:SetScript("OnMouseUp", function() titleGlow:SetAlpha(0.9); titleIcon:SetVertexColor(1.3, 1.3, 1.3) end)
+titleBtn:SetScript("OnClick", function()
+    if CW.state.mode ~= 1 then return end   -- rolling is Wildcard-only
+    if PlaySound then pcall(PlaySound, "igMainMenuOptionCheckBoxOn") end
+    if CW.handFrame then CW.handFrame:Show() end
+end)
 
 local title = frame:CreateFontString(nil, "OVERLAY", "GameFontNormalLarge")
 title:SetPoint("TOP", 0, -18)
