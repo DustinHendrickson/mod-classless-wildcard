@@ -278,12 +278,18 @@ def do_install(args, wow_dir):
     print()
 
     if args.glue:
-        print("  !! --creation-text modifies GlueStrings.lua, a signed interface")
-        print("  !! file. If your client enforces GlueXML signatures you will get")
-        print('  !! "Your login interface files are corrupt" at the login screen.')
-        print("  !! If that happens, run this installer again with --uninstall.")
-        print("  !! The Hero name and single-class creation list do NOT need this")
-        print("  !! and are installed either way.")
+        print("  --creation-text rewrites GlueStrings.lua (the creation-screen")
+        print("  class description), which is a signed interface file. To make the")
+        if args.exe:
+            print("  client accept it, it also applies the well-known \"allow custom")
+            print("  interface\" patch to Wow.exe -- backed up first to")
+            print("  Wow.exe.classless-bak, and reversible with --uninstall.")
+        else:
+            print("  client accept it you asked to skip the Wow.exe patch (--no-exe),")
+            print("  so this only works if your client already loads custom UI files.")
+        print('  If the login screen still says "interface files are corrupt", run')
+        print("  this installer again with --uninstall. The Hero name and single-")
+        print("  class list do NOT need any of this and install either way.")
         print()
 
     if not args.yes and not args.dry_run:
@@ -322,7 +328,29 @@ def do_install(args, wow_dir):
             written.append("Data/%s/%s" % (locale, name))
             report.append("  -> Data/%s/%s" % (locale, name))
 
-    # Wow.exe is never modified -- see the note in main().
+    # Wow.exe -- only when installing the creation text, and only with the
+    # verified pattern set. A running game locks it; that must not throw away
+    # the archives already written, so a lock is reported, not fatal.
+    exe_patched = False
+    exe_locked = False
+    if args.exe:
+        if not exe:
+            report.append("  Wow.exe          SKIPPED, not found")
+        elif args.dry_run:
+            state, _o, digest, label = exepatch.inspect(exe)
+            report.append("  Wow.exe          %s (%s)"
+                          % (state, label or "sha256 " + digest[:16]))
+        else:
+            try:
+                report.append("  Wow.exe          %s" % exepatch.apply(exe))
+                exe_patched = True
+            except PermissionError:
+                exe_locked = True
+                report.append("  Wow.exe          COULD NOT WRITE -- close the "
+                              "game and re-run")
+            except (OSError, RuntimeError) as error:
+                exe_locked = True
+                report.append("  Wow.exe          NOT PATCHED -- %s" % error)
 
     addon_rel = None
     if args.addon:
@@ -335,6 +363,7 @@ def do_install(args, wow_dir):
         "suffix": suffix,
         "locales": locales,
         "name": args.name,
+        "exe_patched": exe_patched or bool((previous or {}).get("exe_patched")),
         "files": written,
         "addon": addon_rel,
         "creation_text": bool(args.glue),
@@ -346,10 +375,16 @@ def do_install(args, wow_dir):
         print("Dry run: nothing was written.")
         return 0
 
+    if exe_locked:
+        print("Almost done -- the game was open, so Wow.exe was not patched and")
+        print("the creation-screen text will show as corrupt until it is. Close")
+        print("World of Warcraft completely and run this installer again to finish.")
+        print()
+
     print("Done. Start the game and every class will read %s." % args.name)
-    if args.glue:
-        print("If the login screen says the interface is corrupt, your client")
-        print("enforces GlueXML signatures -- re-run with --uninstall to revert.")
+    if args.glue and not exe_locked:
+        print("The creation screen now shows the Hero pitch. If it instead says")
+        print("the interface is corrupt, re-run with --uninstall to revert.")
     print("To undo everything:  python install.py --uninstall \"%s\"" % wow_dir)
     return 0
 
@@ -504,17 +539,19 @@ def main(argv=None):
                         help="do not install the in-game addon")
     parser.add_argument("--creation-text", dest="glue", action="store_true",
                         help="ALSO replace the creation-screen class description "
-                             "with the Hero pitch. OFF by default because it "
-                             "modifies a signed interface file: on a client that "
-                             "enforces GlueXML signatures it causes 'Your login "
-                             "interface files are corrupt'. Only enable it if you "
-                             "know your client accepts custom GlueXML. Fully "
-                             "reversible with --uninstall.")
+                             "with the Hero pitch. This edits a signed interface "
+                             "file, so it also applies the well-known 'allow "
+                             "custom interface' patch to Wow.exe (backed up "
+                             "first) so the client accepts it. OFF by default; "
+                             "fully reversible with --uninstall.")
+    parser.add_argument("--no-exe", dest="exe_ok", action="store_false",
+                        help="with --creation-text, install the text but do NOT "
+                             "patch Wow.exe (only for clients that already accept "
+                             "custom interface files)")
     args = parser.parse_args(argv)
-    # The exe is never modified. The 2-byte signature-check patch that used to
-    # live here could not be verified and did not reliably work, so it is gone;
-    # --creation-text now just installs the text and warns.
-    args.exe = False
+    # Wow.exe is patched only when installing the creation text, and only with
+    # the verified community pattern set in lib/exepatch.py.
+    args.exe = args.glue and args.exe_ok
 
     print("mod-classless-wildcard client installer")
     print("=" * 39)

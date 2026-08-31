@@ -1,12 +1,20 @@
-"""Let a 3.3.5a Wow.exe accept custom GlueXML.
+"""Let a 3.3.5a Wow.exe load custom (unsigned) GlueXML / FrameXML.
 
-The client refuses interface files whose "## Signature:" scope does not match,
-which is what blocks a custom creation-screen. One conditional jump enforces
-that. Flipping it accepts custom glue.
+Replacing an interface file the client signs -- GlueStrings.lua, for the Hero
+creation-screen text -- makes the client reject the whole set with "Your login
+interface files are corrupt". The fix is the well-known "allow custom interface"
+binary patch: it forces the interface signature-scope check to always report the
+accepted scope, so modified UI files load.
 
-This runs on the player's own Wow.exe and nothing pre-modified is ever shipped.
-It refuses to touch anything it does not recognise, always writes a .bak first,
-and can put the original back.
+The byte patterns below are the ones used by the Project Reforged 3.3.5 patcher
+(https://github.com/Stormhand-dev/WoW-3.3.5-Patcher---Project-Reforged), which
+is in use on a live server. They are applied here only after verifying each one
+matches the target exe EXACTLY ONCE, so a client this set does not fit is
+refused rather than corrupted. A backup is always written first, and restore()
+puts the original back.
+
+Each replacement is the same length as what it replaces (in-place byte edits:
+je/jz/jg -> jmp, and `mov eax,1` -> `mov eax,3`), so offsets never move.
 """
 
 from __future__ import annotations
@@ -15,25 +23,47 @@ import hashlib
 import os
 import shutil
 
-# The stock 3.3.5a build 12340 client.
+# The stock 3.3.5a build 12340 client (for labelling only; patching does not
+# depend on it -- the pattern match is the real gate).
 KNOWN_SHA256 = {
     "aa63a5750d60ef16746c686b3d5e26876d98953eab08b1c026cd0faf78e88cb8":
         "3.3.5a build 12340 (Wow.exe)",
 }
 
-# Unique 15-byte anchor around the TOC signature-scope check:
-#   83 ff 02        cmp edi, 2         ; edi = parsed signature scope
-#   74 28           je  +0x28          ; skip the mismatch error when valid
-#   68 98 0f 00 00  push 0xf98
-#   68 94 0e 9e 00  push 0x9e0e94      ; -> "signature does not match"
-ANCHOR = bytes.fromhex("83ff02" "7428" "68980f0000" "68940e9e00")
-JE_OFFSET = 3
-FROM_BYTES = bytes([0x74, 0x28])  # je  +0x28
-TO_BYTES = bytes([0xEB, 0x28])    # jmp +0x28
+# (search, replace). `core` patterns must each be present exactly once (or
+# already applied) or the exe is refused. Non-core patterns are applied when
+# present and skipped when absent -- they cover client revisions this one is not.
+_PATCHES = [
+    # signature-scope validation: branches -> always take the accept path,
+    # and both "return 1" (reject) sites -> "return 3" (accept).
+    ("04 85 C0 74 39 56",                "04 85 C0 EB 39 56",                True),
+    ("C0 FF 85 C0 75 05 5E 8B",          "C0 FF 85 C0 EB 05 5E 8B",          True),
+    ("B6 C0 FF B8 01 00 00 00",          "B6 C0 FF B8 03 00 00 00",          True),
+    ("C0 FF 5F B8 01 00 00 00",          "C0 FF 5F B8 03 00 00 00",          True),
+    ("B8 01 00 00 00 7F 12 83 C8 FF F7", "B8 01 00 00 00 EB 12 83 C8 FF F7", True),
+    ("C0 5F 83 C0 03 5E 8B E5 5D C3 CC", "C0 5F B8 03 00 00 00 EB ED C3 CC", True),
+    # present only on some client revisions; absent on stock 12340.
+    ("00 A1 26",                         "00 16 4E",                         False),
+]
 
 UNPATCHED = "unpatched"
 PATCHED = "patched"
 UNKNOWN = "unknown"
+
+
+def _bytes(hex_str):
+    return bytes.fromhex(hex_str.replace(" ", ""))
+
+
+def _count(data, needle):
+    n = 0
+    start = 0
+    while True:
+        i = data.find(needle, start)
+        if i < 0:
+            return n
+        n += 1
+        start = i + 1
 
 
 def sha256(path) -> str:
@@ -48,69 +78,89 @@ def backup_path(exe) -> str:
     return str(exe) + ".classless-bak"
 
 
+def _classify(data):
+    """Per-pattern state: 'apply' (1 source match), 'done' (already replaced),
+    'absent' (neither), or 'ambiguous' (2+ source matches)."""
+    result = []
+    for search, replace, core in _PATCHES:
+        sb, rb = _bytes(search), _bytes(replace)
+        src = _count(data, sb)
+        if src == 1:
+            result.append(("apply", sb, rb, core))
+        elif src == 0 and _count(data, rb) >= 1:
+            result.append(("done", sb, rb, core))
+        elif src == 0:
+            result.append(("absent", sb, rb, core))
+        else:
+            result.append(("ambiguous", sb, rb, core))
+    return result
+
+
 def inspect(exe):
-    """Return (state, offset_or_None, sha256, recognised_label_or_None)."""
+    """Return (state, None, sha256, label). state is one of the module consts."""
     with open(exe, "rb") as handle:
         data = handle.read()
-
     digest = hashlib.sha256(data).hexdigest()
     label = KNOWN_SHA256.get(digest)
 
-    patched_anchor = bytearray(ANCHOR)
-    patched_anchor[JE_OFFSET:JE_OFFSET + 2] = TO_BYTES
-    if data.find(bytes(patched_anchor)) != -1:
-        return PATCHED, data.find(bytes(patched_anchor)) + JE_OFFSET, digest, label
-
-    hits = []
-    start = data.find(ANCHOR)
-    while start != -1:
-        hits.append(start)
-        start = data.find(ANCHOR, start + 1)
-
-    if len(hits) == 1:
-        return UNPATCHED, hits[0] + JE_OFFSET, digest, label
+    states = _classify(data)
+    core = [s for s in states if s[3]]
+    if any(st == "ambiguous" for st, *_ in core):
+        return UNKNOWN, None, digest, label
+    if core and all(st == "done" for st, *_ in core):
+        return PATCHED, None, digest, label
+    if core and all(st in ("apply", "done") for st, *_ in core):
+        # at least one core still needs applying -> treat as unpatched/ready
+        if any(st == "apply" for st, *_ in core):
+            return UNPATCHED, None, digest, label
+        return PATCHED, None, digest, label
     return UNKNOWN, None, digest, label
 
 
 def apply(exe):
-    """Patch the exe. Returns a human-readable summary line."""
-    state, offset, digest, label = inspect(exe)
-
-    if state == PATCHED:
-        return "already accepts custom glue; left alone"
-    if state == UNKNOWN:
-        raise RuntimeError(
-            "Could not find the signature check in %s.\n"
-            "  SHA-256: %s\n"
-            "Nothing was written. Some client packs already ship a patched "
-            "Wow.exe, in which case the custom creation screen simply works -- "
-            "re-run with --no-exe to skip this step." % (exe, digest))
-
-    # Private-server clients are usually repacks, so an unrecognised hash is
-    # normal and refusing on it alone would make this unusable. The structural
-    # check is the one that matters: exactly one match for the 15-byte anchor,
-    # and the two bytes we are about to change are exactly the expected `je`.
-    # A backup is written either way.
+    """Apply the interface-signature bypass. Returns a summary line."""
     with open(exe, "rb") as handle:
         data = bytearray(handle.read())
-    if data[offset:offset + 2] != FROM_BYTES:
-        raise RuntimeError("unexpected bytes at the patch site; nothing written")
+    digest = hashlib.sha256(bytes(data)).hexdigest()
+
+    states = _classify(data)
+
+    # refuse a client the core set does not cleanly fit
+    for (st, sb, rb, core) in states:
+        if core and st == "ambiguous":
+            raise RuntimeError(
+                "the interface-signature check appears more than once in this "
+                "Wow.exe, so it was not touched. This binary is not one the "
+                "known patch fits; nothing was written.")
+    core_states = [st for (st, sb, rb, core) in states if core]
+    if not core_states or any(st == "absent" for st in core_states):
+        raise RuntimeError(
+            "could not find the interface-signature check in this Wow.exe "
+            "(sha256 %s). It is not the client this patch knows, so nothing was "
+            "written. If your client already loads custom interface files, you "
+            "do not need this." % digest[:16])
+
+    if all(st == "done" for st in core_states):
+        return "already accepts custom interface files; left alone"
 
     backup = backup_path(exe)
     if not os.path.exists(backup):
         shutil.copy2(exe, backup)
-    data[offset:offset + 2] = TO_BYTES
+
+    applied = 0
+    for (st, sb, rb, core) in states:
+        if st == "apply":
+            i = data.find(sb)
+            data[i:i + len(sb)] = rb
+            applied += 1
+
     with open(exe, "wb") as handle:
         handle.write(bytes(data))
 
-    note = ""
-    if label is None:
-        note = ("\n                   note: this exe is not the stock build "
-                "12340 binary (sha256 %s...).\n"
-                "                   The patch site was unambiguous, so it was "
-                "applied anyway. Undo with --uninstall." % digest[:16])
-    return "patched at file offset 0x%X (backup: %s)%s" % (
-        offset, os.path.basename(backup), note)
+    note = "" if KNOWN_SHA256.get(digest) else \
+        " (unrecognised build, but the patch sites matched exactly)"
+    return "patched %d site(s) to accept custom interface files%s (backup: %s)" \
+        % (applied, note, os.path.basename(backup))
 
 
 def restore(exe):
@@ -121,12 +171,20 @@ def restore(exe):
         os.remove(backup)
         return "restored from %s" % os.path.basename(backup)
 
-    state, offset, _digest, _label = inspect(exe)
-    if state != PATCHED:
-        return "was not patched; left alone"
+    # no backup: reverse the byte edits in place if they are present
     with open(exe, "rb") as handle:
         data = bytearray(handle.read())
-    data[offset:offset + 2] = FROM_BYTES
+    reverted = 0
+    for search, replace, _core in _PATCHES:
+        sb, rb = _bytes(search), _bytes(replace)
+        # only reverse when the patched form is uniquely present and the
+        # original is not, to avoid touching an unrelated match
+        if _count(data, rb) == 1 and _count(data, sb) == 0 and sb != rb:
+            i = data.find(rb)
+            data[i:i + len(rb)] = sb
+            reverted += 1
+    if not reverted:
+        return "was not patched; left alone"
     with open(exe, "wb") as handle:
         handle.write(bytes(data))
-    return "reverted the signature check in place (no backup was present)"
+    return "reverted %d patch site(s) in place (no backup was present)" % reverted

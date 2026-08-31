@@ -109,8 +109,9 @@ training, the Hero Advancement NPC and the addon UI. Players choose a path per c
 
 Players run **one installer** ([`client-patch/install.py`](client-patch/README.md), or
 double-click `install.bat` on Windows) and get all of the below. It needs nothing but
-Python 3 — no compiler, no MPQ tools, no manual file copying — it never modifies `Wow.exe`,
-and `--uninstall` puts the client back to stock.
+Python 3 — no compiler, no MPQ tools, no manual file copying. The default install never
+modifies `Wow.exe` (only the optional `--creation-text` does, with a backup), and
+`--uninstall` puts the client back to stock.
 
 - **Addon UI** ([`client-addon/ClasslessWildcard/`](client-addon/ClasslessWildcard/)) — a
   Character Advancement panel for the stock client: class-tabbed ability browser with icons,
@@ -123,9 +124,10 @@ and `--uninstall` puts the client back to stock.
   cosmetic shell (shown as *Hero*, with the Hero pitch and bullets). The pick means
   nothing — the server converts every new character to its chassis regardless — so the
   screen stops asking a question that has no answer.
-- **The creation-screen class blurb** (optional) — rewritten to the Hero pitch. Off by
-  default: it edits a signed interface file, so it only suits clients that do not enforce
-  GlueXML signatures. The Hero name and single-class list above do not need it.
+- **The creation-screen class blurb** (optional, `--creation-text`) — rewritten to the
+  Hero pitch. Off by default because it edits a signed interface file and therefore also
+  applies the well-known "allow custom interface" patch to `Wow.exe` (backed up first,
+  reversible). The Hero name and single-class list above do not need it.
 
 ---
 
@@ -179,9 +181,10 @@ is applied automatically by the DB updater.
 **Set your players up.** Hand them the `client-patch` and `client-addon` folders and point
 them at [`client-patch/README.md`](client-patch/README.md). They double-click `install.bat`
 (or run `python3 install.py "/path/to/WoW"`) once and get the addon, the *Hero* renaming and
-the single-class creation list. It only needs Python 3, never touches `Wow.exe`, and
+the single-class creation list. It only needs Python 3, does not modify `Wow.exe`, and
 `--uninstall` reverts it. Rewriting the creation-screen *description* is a separate opt-in
-(`--creation-text`) because it edits a signed interface file that some clients reject.
+(`--creation-text`) that also applies the known "allow custom interface" patch to
+`Wow.exe` (backed up first) so the client accepts the edited file.
 
 </details>
 

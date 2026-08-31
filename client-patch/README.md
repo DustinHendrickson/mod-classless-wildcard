@@ -8,14 +8,15 @@ This folder is the optional polish — run one installer and your client will:
   pick between, so the screen stops offering ten
 - install the **ClasslessWildcard** addon
 
-It is one command, it never touches `Wow.exe`, and `--uninstall` puts your client
-back exactly as it was.
+It is one command and `--uninstall` puts your client back exactly as it was. The
+default install writes only new patch files plus the addon and **never touches
+`Wow.exe`**.
 
 > The creation-screen **class description** is left as-is by default. Rewriting it to
-> the Hero pitch means editing a *signed* interface file, which many clients reject
-> with *"Your login interface files are corrupt"*. If you know your client accepts
-> custom GlueXML, add `--creation-text` — see [Options](#options). Everything else
-> works without it.
+> the Hero pitch means editing a *signed* interface file, so `--creation-text` also
+> applies the well-known "allow custom interface" patch to `Wow.exe` (backed up first,
+> reversible with `--uninstall`) so the client accepts it — see [Options](#options).
+> The Hero name and single-class list do not need it.
 
 ---
 
@@ -107,14 +108,17 @@ back to stock.
 
 You will not normally need any of these.
 
-**`--creation-text` is the one to be careful with.** The Hero *name* and the
-single-class creation list come from data files (DBCs) that no client checks, so
-they always work. The creation-screen *description paragraph* lives in
-`GlueStrings.lua`, a signed interface file. Editing it works on clients that do not
-enforce GlueXML signatures (many private-server repacks) but on ones that do —
-including a stock retail client — it produces *"Your login interface files are
-corrupt"* at the login screen. If that happens, run `--uninstall`. Fully reversible,
-but it is why the text is opt-in.
+**`--creation-text` is the one to know about.** The Hero *name* and the single-class
+creation list come from data files (DBCs) that no client checks, so they always work.
+The creation-screen *description paragraph* lives in `GlueStrings.lua`, a signed
+interface file, so editing it also requires patching `Wow.exe` to accept custom
+interface files. `--creation-text` does both: it installs the text **and** applies the
+well-known "allow custom interface" byte patch (the same one the Project Reforged
+patcher uses), after backing `Wow.exe` up to `Wow.exe.classless-bak`. `--uninstall`
+restores the backup. It is off by default because it modifies your executable, and
+because if anything is off you would rather opt in deliberately: if the login screen
+still shows *"interface files are corrupt"*, run `--uninstall`. Close the game before
+running it — a running client locks `Wow.exe`.
 
 | Option              | Effect                                                                  |
 | ------------------- | ----------------------------------------------------------------------- |
@@ -122,7 +126,8 @@ but it is why the text is opt-in.
 | `--uninstall`       | Undo everything the installer did                                       |
 | `--yes` / `-y`      | Skip the confirmation prompt                                            |
 | `--name Champion`   | Call every class something other than `Hero`                            |
-| `--creation-text`   | Also rewrite the creation-screen class blurb (risky — see below)        |
+| `--creation-text`   | Also rewrite the creation-screen class blurb (patches `Wow.exe` — see below) |
+| `--no-exe`          | With `--creation-text`, install the text but do not patch `Wow.exe`     |
 | `--no-addon`        | Do not install the addon                                                |
 | `--locale enUS`     | Patch one locale only, on a multi-language client                       |
 
@@ -139,9 +144,12 @@ Give it the folder that directly contains `Wow.exe` and `Data`, not a parent
 folder and not the `Data` folder itself.
 
 **"Your login interface files are corrupt" at the login screen.**
-You used `--creation-text` on a client that enforces interface signatures. Run the
-installer again with `--uninstall` to revert. The Hero name and single-class list do
-not need that flag, so install without it.
+The `Wow.exe` patch that `--creation-text` applies did not take — most often because
+the game was open when you ran the installer, so the exe could not be written (the
+output would have said *"close the game and re-run"*). Close World of Warcraft
+completely and run `--creation-text` again. If it still happens after a clean patch,
+your client is one the known patch does not fit — run `--uninstall`; the Hero name and
+single-class list work without it.
 
 **Permission denied writing Wow.exe.**
 Close the game. On Windows, run the command prompt as Administrator if your WoW
@@ -165,12 +173,14 @@ files out of **your own client**, edits them on your machine, and writes the res
 into a new patch archive next to the originals. Your original files are never
 modified — patch archives sit on top of them, and deleting them reverts everything.
 
-`Wow.exe` is **never** modified by a default install. Only new patch archives (which
+`Wow.exe` is **never** modified by a default install — only new patch archives (which
 sit on top of your originals) and the addon folder are written, so nothing you already
 had is changed and deleting them reverts everything. The optional `--creation-text`
-adds one more patch archive containing the rewritten `GlueStrings.lua`; it still
-writes no code and changes no binary, but because the client verifies that interface
-file it can be rejected, which is why it is opt-in.
+adds the rewritten `GlueStrings.lua` and applies the "allow custom interface" patch to
+`Wow.exe` so the client accepts it; the exe is backed up to `Wow.exe.classless-bak`
+first and `--uninstall` restores it. The patch only ever writes when its exact byte
+sites are found in your exe, so a client it does not fit is left untouched rather than
+corrupted.
 
 Server admins and anyone curious about how the patch is built: see
 [`MAINTAINERS.md`](MAINTAINERS.md).

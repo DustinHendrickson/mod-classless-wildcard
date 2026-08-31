@@ -107,25 +107,50 @@ change the pitch.
 > `WARRIOR_ROLE_TANK`. Those do not exist in any 3.3.5a client, so it silently
 > rewrote nothing. If you change the key set, verify against a real client.
 
-### `Wow.exe` — not touched
+### `Wow.exe` — the "allow custom interface" patch
 
-**The installer no longer patches `Wow.exe`.** An earlier version flipped one
-byte at file offset `0x243F` (`74 28` → `EB 28`) intending to disable the
-GlueXML `## Signature:` scope check so a custom creation-screen would be
-accepted. It did not work: on a real stock build-12340 client the patch applied
-cleanly yet the client still rejected the custom `GlueStrings.lua` with *"Your
-login interface files are corrupt"*. The exact site was never verified against a
-disassembly, so shipping it did nothing but risk bricking clients.
+Replacing `GlueStrings.lua` makes the client reject the whole interface set with
+*"Your login interface files are corrupt"* unless the interface signature check
+is disabled. `--creation-text` applies the well-known signature-scope bypass to
+`Wow.exe` so the custom text loads. The default install never touches the exe.
 
-`lib/exepatch.py` is kept only for its `inspect()` / `restore()` — so
-`--uninstall` can undo an exe that an older version patched — and its `apply()`
-is unused. If you want to revisit accepting custom GlueXML, verify the check in a
-debugger against the specific client first; do not re-enable a blind byte-flip.
+> An earlier version shipped a single-byte flip at `0x243F` and claimed it did
+> this. It was wrong: `0x243F` is next to the *MPQ data* signature strings
+> (`0x9E0387`, *"game's signature version"*), not the GlueXML check, whose
+> strings live at `0x9F2AC4` (*"GlueXML is modified or corrupt"*). It patched an
+> unrelated branch, so the client still rejected custom glue. Never re-add a
+> byte-flip without confirming which check it hits.
 
-This is why `--creation-text` is opt-in and carries a loud warning: replacing
-`GlueStrings.lua` only works on clients that do not enforce interface signatures,
-and there is currently no reliable in-installer way to make one that does accept
-it.
+The correct patch is six same-length in-place edits inside the signature-scope
+validation function, taken from the Project Reforged 3.3.5 patcher
+(`patch-004-allow_interface_edit.bat`,
+<https://github.com/Stormhand-dev/WoW-3.3.5-Patcher---Project-Reforged>). On a
+stock 12340 exe they sit at these file offsets:
+
+| offset     | from → to                       | effect                          |
+| ---------- | ------------------------------- | ------------------------------- |
+| `0x1F41BC` | `74 39` → `EB 39`               | `jz` → `jmp` (take accept path) |
+| `0x415A25` | `75 05` → `EB 05`               | `jnz` → `jmp`                   |
+| `0x415A3B` | `B8 01…` → `B8 03…`             | `mov eax,1` → `mov eax,3`       |
+| `0x415A93` | `B8 01…` → `B8 03…`             | `mov eax,1` → `mov eax,3`       |
+| `0x415B46` | `7F 12` → `EB 12`               | `jg` → `jmp`                    |
+| `0x415B5D` | `83 C0 03 … 5D C3 CC` → `B8 03…`| force return scope 3            |
+
+Scope `3` is the value the check treats as valid, so making the function always
+return it accepts modified UI files.
+
+`lib/exepatch.py` does not hard-code offsets — it carries the byte *patterns*
+and, before writing, requires each to match the target exe **exactly once**
+(same length in, same length out), so a client the set does not fit is refused
+rather than corrupted. It writes `Wow.exe.classless-bak` first, is idempotent
+(re-running detects the patched form), and `restore()` reverts from the backup
+or, failing that, by reversing the unique patched patterns in place. A seventh
+Reforged pattern (`00 A1 26` → `00 16 4E`) is absent from stock 12340 and is
+applied only if present.
+
+Verified on a real 12340 exe: 6 sites, 12 bytes changed, `apply → inspect →
+restore` round-trips byte-identical. The one thing this cannot self-check is a
+live login — that needs a human at the character screen.
 
 ## Testing
 
