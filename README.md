@@ -21,11 +21,10 @@ with Essence like Ascension's classless realms, or let the dice decide in Wildca
 
 ## Overview
 
-`mod-classless-wildcard` is a server-side AzerothCore module that removes the class system
-from WotLK. Not "softened" — removed. Every character runs on one shared chassis class no
-matter what the creation screen sent, so base stats, health, resources and every stat
-conversion are identical for everyone, and the class you picked is just a model and a name.
-Abilities and talents come from anywhere in the game.
+`mod-classless-wildcard` is an AzerothCore module that removes the class system from WotLK.
+Not "softened" — removed. Every character is a **Hero**: one shared base class under the
+hood, so stats, health and resources are identical for everyone, and your abilities and
+talents can come from anywhere in the game.
 
 Two progression paths ship in the box:
 
@@ -33,8 +32,8 @@ Two progression paths ship in the box:
 - **Wildcard** — Ascension's Season 9/10 ruleset. The server rolls for you on a fixed
   schedule; you steer the outcome with rerolls, locks, Skill Cards and pity protection.
 
-Everything runs on a **stock 3.3.5a client**. The included addon and MPQ patch are optional
-polish, not requirements — the whole module is driveable from an NPC and chat commands.
+Players run a **one-click client setup** (included) that patches their 3.3.5a client and
+installs the addon. It is part of the mod, not an extra — see [Client setup](#client-setup).
 
 > Design notes, research sources and the full roadmap live in [`PLAN.md`](PLAN.md).
 
@@ -76,16 +75,13 @@ training, the Hero Advancement NPC and the addon UI. Players choose a path per c
 
 #### Making every build actually work
 
-- **One chassis for everyone** — every character is converted to a single class (Paladin by
-  default) at creation, and existing characters convert on next login. This is the part that
-  makes it classless: with ten different classes underneath, the core's own per-class math —
-  base stats, base health and mana, which stat feeds attack power, the crit and dodge ratios —
-  differs between them, and picking a class quietly becomes a build decision again.
-- **Universal resources** — every Hero runs mana, rage *and* energy at once, druid-style, with
-  **no client patch**. The client already tracks all three pools; one is displayed and the
-  addon draws mini-bars for the rest (`/cwbars`). Spells always draw their native resource and
-  a spell is never unusable because of the pool it costs — the same Hero casts Fireball on
-  mana and Bloodthirsts on rage.
+- **One base class for everyone** — every Hero shares a single base class (Paladin), so
+  base stats, health and resources are the same no matter which race you pick. Your class is
+  purely cosmetic; everything you can do comes from what you learn.
+- **Universal resources** — every Hero carries mana, rage *and* energy at once. One shows on
+  the main bar and the addon draws mini-bars for the rest (`/cwbars`). Every spell draws its
+  own resource, so the same Hero casts Fireball on mana and Bloodthirsts on rage — no spell
+  is ever unusable because of what it costs.
 - **Primary stat allocation** — a per-level point budget spent freely across
   STR / AGI / STA / INT / SPI, applied live, reallocation free.
 - **All proficiencies taught** — armor, weapons and dual wield, each configurable.
@@ -105,35 +101,21 @@ training, the Hero Advancement NPC and the addon UI. Players choose a path per c
   strength javelins, mail tanking gear, plate caster sets, spellpower fist weapons. All
   server-side.
 
-#### Client-side (optional)
+#### Client setup
 
-Players run **one installer** ([`client-patch/install.py`](client-patch/README.md), or
-double-click `install.bat` on Windows) and get the **full Hero client** by default. It
-needs nothing but Python 3 — no compiler, no MPQ tools, no manual file copying. The
-install patches `Wow.exe` (backed up first) so the client accepts the custom
-creation-screen text; `--minimal` skips that for just the name + class list + addon, and
-`--uninstall` puts the client back to stock. Close the game before installing.
+Every player runs a **one-click installer** ([`client-patch/`](client-patch/README.md)): they
+close WoW, double-click `install.bat` (or run `python3 install.py "/path/to/WoW"`), and their
+client is set up. It needs nothing but Python 3 — no compiler, no MPQ tools, no manual file
+copying — and `--uninstall` puts the client back to stock. It gives them:
 
-- **Addon UI** ([`client-addon/ClasslessWildcard/`](client-addon/ClasslessWildcard/)) — a
-  Character Advancement panel for the stock client: class-tabbed ability browser with icons,
-  tooltips and rarity colors, talent trees, a My Hero tab (unlearn / reroll / lock), a Wildcard
-  tab (talent rerolls, cards, pity and synergy display), and the onboarding wizard. Talks to
-  the server over the `CWCL` addon channel. Players without it lose nothing but convenience.
-- **Every class reads Hero** — creation screen, character sheet, `/who`, tooltips. Class
-  colors and icons still work, so addons and raid frames are unaffected.
-- **One class on the creation screen.** Every race stays creatable and offers a single
-  cosmetic shell (shown as *Hero*, with the Hero pitch and bullets). The pick means
-  nothing — the server converts every new character to its chassis regardless — so the
-  screen stops asking a question that has no answer.
-- **A themed creation screen** — the Hero pitch as the class description, the leftover
-  single-class selector hidden, and an armored Hero starting outfit (which also fixes Blood
-  Elf, who has no vanilla Warrior outfit).
-- **A Hero emblem** on the Hero's own class icon — the other class icons are kept, so the
-  addon can still group abilities by their source class.
+- the **ClasslessWildcard addon**: the Hero Advancement panel — an ability browser, talent
+  trees, your build with reroll and lock, the Wildcard roll UI, and the onboarding wizard
+- every class shown as **Hero** on the creation screen, character sheet, `/who` and tooltips
+- a **single class per race** on the creation screen, described as the Hero
+- the **Hero starter outfit** on the creation preview and a **Hero emblem** for your class icon
 
-The text and outfit edit a signed interface file, so the installer applies the well-known
-"allow custom interface" patch to `Wow.exe` (backed up first, reversible). All of this is
-the default; `--minimal` reduces it to just the Hero name, single-class list and addon.
+The creation-screen text is a signed game file, so the installer also applies the well-known
+"allow custom interface" patch to `Wow.exe` (backed up first, reversed by `--uninstall`).
 
 ---
 
@@ -165,8 +147,13 @@ is applied automatically by the DB updater.
 **4. Configure.** Copy `conf/classless_wildcard.conf.dist` next to your `worldserver.conf` as
 `classless_wildcard.conf` (or let the build install it), then tune to taste.
 
+**5. Set up every player's client.** Give players the `client-patch` and `client-addon`
+folders and point them at [`client-patch/README.md`](client-patch/README.md): they close WoW,
+double-click `install.bat` (or run `python3 install.py "/path/to/WoW"`), and they are done.
+This is required — the mod expects a patched client.
+
 <details>
-<summary><b>Optional steps — recommended for the full Ascension feel</b></summary>
+<summary><b>Optional: unlock every item for every class</b></summary>
 
 <br>
 
@@ -183,15 +170,6 @@ is applied automatically by the DB updater.
 > optionally. Check with `SELECT * FROM acore_world.updates WHERE name = 'cw_classless_items.sql';`
 > — if a row exists, your `item_template` was already overwritten and only a backup restores it.
 
-
-**Set your players up.** Hand them the `client-patch` and `client-addon` folders and point
-them at [`client-patch/README.md`](client-patch/README.md). They **close World of Warcraft**,
-double-click `install.bat` (or run `python3 install.py "/path/to/WoW"`) once, and get the
-full Hero client: the addon, the *Hero* renaming, the single-class creation screen with the
-Hero text and armored outfit, and the Hero emblem. It only needs Python 3, applies the known
-"allow custom interface" patch to `Wow.exe` (backed up first) so the client accepts the
-custom text, and `--uninstall` reverts everything. `--minimal` installs just the name,
-class list and addon without touching `Wow.exe`.
 
 </details>
 
@@ -321,16 +299,15 @@ Do this **with the worldserver stopped**:
 
 **What does not revert automatically:**
 
-- **`optional/cw_classless_items.sql`**, if you applied it, overwrote
+- **`manual/cw_classless_items.sql`**, if you applied it, overwrote
   `item_template.AllowableClass` with `-1` for every item. The original masks cannot be
   recomputed — restore `item_template` from your pre-install backup, or re-import it from the
   AzerothCore base SQL matching your core revision.
-- **Same-class spells** a character was granted (a Warrior who rolled warrior abilities) survive
-  validation, since they are legal for that class. Harmless; a GM can `.unlearn` them
-  individually.
-- Characters **created while the module was active** had their class starter spells stripped and
-  got the neutral weapon kit instead. After the revert they relearn missing spells at their
-  class trainer as normal, and the kit weapons are ordinary vendorable items.
+- **Same-class spells** a Hero was granted that are legal for its base class survive validation.
+  Harmless; a GM can `.unlearn` them individually.
+- Characters **created while the module was active** had their class starter spells and gear
+  stripped and got the neutral Hero kit instead. After the revert they relearn missing spells at
+  their class trainer as normal, and the kit items are ordinary vendorable items.
 - Every Hero is effectively **respecced** when their granted kit disappears. That is inherent to
   removing a classless system — announce the revert to your players first.
 
