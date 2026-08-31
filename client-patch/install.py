@@ -104,6 +104,19 @@ def find_wow_exe(wow_dir):
     return None
 
 
+def exe_writable(exe):
+    """True if Wow.exe can be opened for writing right now.
+
+    The running game holds an exclusive lock on Windows, so this is how we tell
+    the player up front instead of failing halfway through.
+    """
+    try:
+        with open(exe, "r+b"):
+            return True
+    except OSError:
+        return False
+
+
 def autodetect_client():
     """Look in the obvious places before asking the player to type a path."""
     candidates = []
@@ -268,6 +281,12 @@ def do_install(args, wow_dir):
         print("Note              : replacing a previous install (same letter)")
     print()
 
+    if not args.dry_run and exe and args.exe and args.glue and not exe_writable(exe):
+        print("NOTE: Wow.exe is locked (the game looks like it is running). The")
+        print("      patches and addon will still install; close the game first")
+        print("      if you want the creation-screen text finished in one pass.")
+        print()
+
     if not args.yes and not args.dry_run:
         if sys.stdin and sys.stdin.isatty():
             answer = input("Install to this client? [Y/n] ").strip().lower()
@@ -299,8 +318,12 @@ def do_install(args, wow_dir):
             written.append("Data/%s/%s" % (locale, name))
             report.append("  -> Data/%s/%s" % (locale, name))
 
-    # exe
+    # exe -- the one step that edits a file in place, and the one the running
+    # game locks. A failure here must not throw away the archives and addon
+    # that already installed: report it and let the player close the game and
+    # re-run (which skips the finished steps and only redoes the exe).
     exe_patched = False
+    exe_locked = False
     if args.exe and args.glue:
         if not exe:
             report.append("  Wow.exe          SKIPPED, not found")
@@ -309,8 +332,16 @@ def do_install(args, wow_dir):
             report.append("  Wow.exe          %s (%s)"
                           % (state, label or "sha256 " + digest[:16]))
         else:
-            report.append("  Wow.exe          %s" % exepatch.apply(exe))
-            exe_patched = True
+            try:
+                report.append("  Wow.exe          %s" % exepatch.apply(exe))
+                exe_patched = True
+            except PermissionError:
+                exe_locked = True
+                report.append("  Wow.exe          COULD NOT WRITE -- the game is "
+                              "open, or the file is read-only")
+            except (OSError, RuntimeError) as error:
+                exe_locked = True
+                report.append("  Wow.exe          SKIPPED -- %s" % error)
 
     addon_rel = None
     if args.addon:
@@ -334,6 +365,18 @@ def do_install(args, wow_dir):
         print("Dry run: nothing was written.")
         return 0
 
+    if exe_locked:
+        print("Almost done -- but Wow.exe could not be written, so the custom")
+        print("creation-screen text is not active yet.")
+        print()
+        print("  1. Fully close World of Warcraft (check the taskbar/system tray).")
+        print("  2. Run this installer again. It will skip what is already done")
+        print("     and just finish Wow.exe.")
+        print()
+        print("Everything else installed. If your client pack already accepts")
+        print("custom interface files, you can ignore this and the text works too.")
+        return 0
+
     print("Done. Start the game and every class will read %s." % args.name)
     print("To undo everything:  python install.py --uninstall \"%s\"" % wow_dir)
     return 0
@@ -341,37 +384,94 @@ def do_install(args, wow_dir):
 
 # --------------------------------------------------------------- uninstall
 
+# The exact file sets our two archives ever contain. An archive whose listfile
+# is one of these (plus the "(listfile)" entry itself) is ours; anything else,
+# including a client pack's own patch archive, is left alone.
+_OUR_ARCHIVE_CONTENTS = (
+    frozenset({CHRCLASSES.lower(), CHARBASEINFO.lower()}),  # base patch
+    frozenset({CHRCLASSES.lower()}),                        # base, --no-...
+    frozenset({GLUESTRINGS.lower()}),                       # locale patch
+)
+
+
+def _is_our_archive(path):
+    """True only if this MPQ's contents are exactly one of ours.
+
+    Used by uninstall when there is no manifest. Reads the listfile and refuses
+    to claim anything that has an unexpected file in it, so a client pack's own
+    patch archive can never be matched by luck of the patch letter.
+    """
+    try:
+        archive = mpq.MPQArchive(path)
+    except Exception:
+        return False
+    try:
+        raw = archive.read_file("(listfile)")
+    except Exception:
+        return False
+    finally:
+        archive.close()
+    names = {n.strip().lower().replace("/", "\\")
+             for n in raw.decode("utf-8", "replace").replace("\r", "\n").split("\n")
+             if n.strip() and n.strip().lower() != "(listfile)"}
+    return names in _OUR_ARCHIVE_CONTENTS
+
+
 def do_uninstall(args, wow_dir):
     manifest = read_manifest(wow_dir)
     report = []
+
+    locked = []  # things a running game held onto
 
     if manifest:
         targets = manifest.get("files", [])
         addon_rel = manifest.get("addon")
     else:
-        # no manifest: fall back to the names this installer would have used
+        # No manifest: find our archives by CONTENT, never by filename. A patch
+        # letter is not proof of ownership -- the client may ship its own
+        # patch-enUS-T.MPQ and friends, and deleting those would break it. Ours
+        # are the only archives whose listfile is exactly the files we write.
         targets = []
         data_dir = resolve_child(wow_dir, "Data")
-        for suffix in "ZYXWVUTSRQPONMLKJIHGFEDCBA":
-            candidate = "Data/patch-%s.MPQ" % suffix
-            if os.path.isfile(os.path.join(wow_dir, candidate)):
-                targets.append(candidate)
+        candidates = []
+        for suffix in "ZYXWVUTSRQPONMLKJIHGFEDCBA0123456789":
+            candidates.append("Data/patch-%s.MPQ" % suffix)
+            for locale in clientfs.detect_locales(data_dir):
+                candidates.append("Data/%s/patch-%s-%s.MPQ"
+                                  % (locale, locale, suffix))
+        for rel in candidates:
+            path = os.path.join(wow_dir, rel.replace("/", os.sep))
+            if os.path.isfile(path) and _is_our_archive(path):
+                targets.append(rel)
         addon_rel = "Interface/AddOns/%s" % ADDON_NAME
-        report.append("  no install manifest found; removing by name only")
+        report.append("  no install manifest found; removing archives that "
+                      "match our contents only")
 
     for rel in targets:
         path = os.path.join(wow_dir, rel.replace("/", os.sep))
         if os.path.isfile(path):
-            if not args.dry_run:
+            if args.dry_run:
+                report.append("  would remove %s" % rel)
+                continue
+            try:
                 os.remove(path)
-            report.append("  removed %s" % rel)
+                report.append("  removed %s" % rel)
+            except OSError:
+                locked.append(rel)
+                report.append("  LOCKED, not removed: %s" % rel)
 
     if addon_rel:
         path = os.path.join(wow_dir, addon_rel.replace("/", os.sep))
         if os.path.isdir(path):
-            if not args.dry_run:
-                shutil.rmtree(path)
-            report.append("  removed %s" % addon_rel)
+            if args.dry_run:
+                report.append("  would remove %s" % addon_rel)
+            else:
+                try:
+                    shutil.rmtree(path)
+                    report.append("  removed %s" % addon_rel)
+                except OSError:
+                    locked.append(addon_rel)
+                    report.append("  LOCKED, not removed: %s" % addon_rel)
 
     exe = find_wow_exe(wow_dir)
     if exe and args.exe:
@@ -379,18 +479,29 @@ def do_uninstall(args, wow_dir):
             state, _o, _d, _l = exepatch.inspect(exe)
             report.append("  Wow.exe is %s" % state)
         else:
-            report.append("  Wow.exe %s" % exepatch.restore(exe))
+            try:
+                report.append("  Wow.exe %s" % exepatch.restore(exe))
+            except OSError:
+                locked.append("Wow.exe")
+                report.append("  Wow.exe          LOCKED, not restored")
 
     clear_cache(wow_dir, args.dry_run, report)
 
+    # keep the manifest if anything was locked, so a re-run after the game
+    # closes knows what is still left to remove
     manifest_path = os.path.join(wow_dir, MANIFEST_NAME)
-    if os.path.isfile(manifest_path) and not args.dry_run:
+    if os.path.isfile(manifest_path) and not args.dry_run and not locked:
         os.remove(manifest_path)
 
     print("\n".join(report) if report else "  nothing to remove")
     print()
-    print("Dry run: nothing was written." if args.dry_run
-          else "Client restored to stock.")
+    if args.dry_run:
+        print("Dry run: nothing was written.")
+    elif locked:
+        print("Some files were in use (the game is running). Close World of")
+        print("Warcraft fully and run --uninstall again to finish.")
+    else:
+        print("Client restored to stock.")
     return 0
 
 
@@ -451,3 +562,12 @@ if __name__ == "__main__":
     except KeyboardInterrupt:
         print("\ncancelled", file=sys.stderr)
         sys.exit(130)
+    except PermissionError as error:
+        print("\nPermission denied: %s\n"
+              "Close World of Warcraft if it is running. On Windows, if the "
+              "client is under C:\\Program Files, run the installer as "
+              "Administrator." % error, file=sys.stderr)
+        sys.exit(1)
+    except OSError as error:
+        print("\nFile error: %s" % error, file=sys.stderr)
+        sys.exit(1)
