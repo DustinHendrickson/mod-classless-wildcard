@@ -135,22 +135,27 @@ ClasslessWildcard.RespectLevelRequirements = 1
 #        through to the bags instead of equipping.
 #
 #        StarterKit.Equip is auto-equipped after the strip (armour only, so it
-#        lands on the character): Recruit's shirt/pants/boots by default.
+#        lands on the character): Recruit's shirt/pants/boots by default. Do NOT
+#        put weapons here -- weapons belong in Items so they go to the bag.
+#
+#        StarterKit.Bag: an 8-slot bag equipped at creation so the kit fits
+#        (default 5573 = Blue Leather Bag; 0 = no bag).
 #
 #        StarterKit.Items go into the BAGS, unequipped -- the neutral weapons
-#        and consumables. The Hero equips a weapon from the bag when they want
-#        one. Default: Worn Shortsword, Worn Wooden Shield, Worn Mace, 2x Worn
-#        Dagger, Worn Battleaxe, Bastard Sword (2H), Battleworn Hammer (2H),
-#        Bent Staff, Worn Shortbow + 200 Rough Arrows, Old Blunderbuss + 200
-#        Light Shot, 200 Crude Throwing Axes.
+#        so the Hero can use any ability it rolls. The Hero equips a weapon from
+#        the bag when they want one. Default: Worn Shortsword, Worn Wooden
+#        Shield, one of each basic weapon type, a bow + 200 Rough Arrows, a gun
+#        + 200 Light Shot, and one Crude Throwing Axe (thrown weapons do not
+#        stack or deplete on 3.3.5a, so one is all you need).
 #
 #        Each list is comma-separated item:count.
 
 ClasslessWildcard.StripStartingSpells = 1
 ClasslessWildcard.StarterKit.Enable = 1
 ClasslessWildcard.StarterKit.StripEquipped = 1
+ClasslessWildcard.StarterKit.Bag = 5573
 ClasslessWildcard.StarterKit.Equip = "38:1,39:1,40:1"
-ClasslessWildcard.StarterKit.Items = "25:1,2362:1,2101:1,2092:2,36:1,1194:1,2361:1,12282:1,35:1,2504:1,2512:200,2508:1,2516:200,25861:200"
+ClasslessWildcard.StarterKit.Items = "25:1,2362:1,2092:2,36:1,1194:1,2361:1,12282:1,35:1,2504:1,2512:200,2508:1,2516:200,25861:1"
 
 ClasslessWildcard.TeachProficiencies = 1
 ClasslessWildcard.BlockOutsideSpellSources = 1

@@ -191,6 +191,7 @@ namespace ClasslessWildcard
         // "replace weapons only" left the shell's shirt/pants/boots on, so the
         // kit armour fell through to the bags)
         bool   starterKitStripEquipped = true;
+        uint32 starterKitBag = 5573;   // an 8-slot bag equipped at creation (0 = none)
         std::vector<std::pair<uint32, uint32>> starterKitItems;  // into bags
         std::vector<std::pair<uint32, uint32>> starterKitEquip;  // auto-equipped (armour)
 

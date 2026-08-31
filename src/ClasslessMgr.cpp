@@ -130,6 +130,7 @@ void ClasslessMgr::LoadConfig(bool /*reload*/)
     cfg.stripStartingSpells = sConfigMgr->GetOption<bool>("ClasslessWildcard.StripStartingSpells", true);
     cfg.starterKitEnable = sConfigMgr->GetOption<bool>("ClasslessWildcard.StarterKit.Enable", true);
     cfg.starterKitStripEquipped = sConfigMgr->GetOption<bool>("ClasslessWildcard.StarterKit.StripEquipped", true);
+    cfg.starterKitBag = sConfigMgr->GetOption<uint32>("ClasslessWildcard.StarterKit.Bag", 5573);
     auto parseKit = [](std::string const& list, std::vector<std::pair<uint32, uint32>>& out)
     {
         out.clear();
@@ -1085,6 +1086,10 @@ void ClasslessMgr::HandleFirstLogin(Player* player)
         // empty slots mean StoreNewItemInBestSlots equips it rather than bagging
         for (auto const& [itemId, count] : cfg.starterKitEquip)
             player->StoreNewItemInBestSlots(itemId, count);
+        // an extra bag, equipped in a bag slot, so the Hero has room for the kit
+        // (StoreNewItemInBestSlots equips a bag into a free bag slot)
+        if (cfg.starterKitBag)
+            player->StoreNewItemInBestSlots(cfg.starterKitBag, 1);
         // weapons and consumables go into the bags, unequipped -- the Hero picks
         // up the neutral weapons from there when they want them
         for (auto const& [itemId, count] : cfg.starterKitItems)
