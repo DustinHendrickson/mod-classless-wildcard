@@ -49,7 +49,8 @@ namespace
 {
     constexpr char ADDON_PREFIX[] = "CWCL";
     constexpr size_t MAX_BODY = 200;      // payload budget per addon message
-    constexpr uint32 LIST_PAGE = 10;      // entries per browse page
+    constexpr uint32 LIST_PAGE = 10;      // entries per browse page (abilities)
+    constexpr uint32 TAL_PAGE = 9;        // talents: the tree-selector row eats one slot
 
     void SendAddon(Player* player, std::string const& body)
     {
@@ -158,13 +159,13 @@ namespace
             return a->row != b->row ? a->row < b->row : a->col < b->col;
         });
 
-        uint32 totalPages = list.empty() ? 1 : (uint32(list.size()) + LIST_PAGE - 1) / LIST_PAGE;
+        uint32 totalPages = list.empty() ? 1 : (uint32(list.size()) + TAL_PAGE - 1) / TAL_PAGE;
         if (page >= totalPages)
             page = totalPages - 1;
 
         std::string body = Acore::StringFormat("TL|{}|{}|{}|", tabId, page, totalPages);
-        uint32 start = page * LIST_PAGE;
-        for (uint32 i = start; i < list.size() && i < start + LIST_PAGE; ++i)
+        uint32 start = page * TAL_PAGE;
+        for (uint32 i = start; i < list.size() && i < start + TAL_PAGE; ++i)
         {
             TalentPoolEntry const* t = list[i];
             uint8 owned = 0;

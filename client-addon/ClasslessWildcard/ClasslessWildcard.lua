@@ -35,7 +35,8 @@ local CLASS_ORDER = { 1, 2, 3, 4, 5, 7, 8, 9, 11 } -- Death Knight (6) is the He
 local CW = {
     state = { mode = 255, ae = 0, te = 0, pity = 0, chance = 0, scrolls = 0,
               level = 1, deadline = 5, rebirth = 0, rebirthCost = 0,
-              abilityRerolls = 0, talentRerolls = 0, scrollCost = 0, scrollBuy = 0 },
+              abilityRerolls = 0, talentRerolls = 0, scrollCost = 0, scrollBuy = 0,
+              comboPoints = 0 },
     classIndex = 1,
     abilPage = 0, abilTotal = 1, abilRows = {},
     tabs = {}, tabIndex = 1,
@@ -233,7 +234,10 @@ end
 -- pane scaffolding ---------------------------------------------------------------
 local PANE_TOP = -122
 local ENTRY_H, ENTRIES = 34, 10
-local BUILD_H, BUILD_ROWS = 26, 12
+-- talents get one fewer row: the tree-selector strip eats a slot, and 10 rows
+-- ran straight into the pager (server pages talents by 9 to match)
+local TAL_ENTRIES = 9
+local BUILD_H, BUILD_ROWS = 26, 13
 
 local function MakePaneHeader(x, width, text)
     -- the label sits ON the baked header strip inside each pane (y 130..154)
@@ -345,7 +349,7 @@ treeRight:SetPoint("TOPLEFT", TAL_X + TAL_W - 28, PANE_TOP - 36)
 StyleArrow(treeRight, false)
 
 local talEntries = {}
-for i = 1, ENTRIES do
+for i = 1, TAL_ENTRIES do
     talEntries[i] = MakeEntry(TAL_X, PANE_TOP - 66 - (i - 1) * ENTRY_H, TAL_W, i)
 end
 local talPrev, talPage, talNext = MakePager(TAL_X, TAL_W, 66)
@@ -730,7 +734,7 @@ local function RenderTalPane()
     local tabInfo = CW.tabs[CW.tabIndex]
     treeText:SetText(tabInfo and ("|cffffd100" .. (CLASS_NAMES[tabInfo.class] or "?") .. " tree " .. CW.tabIndex .. " of " .. #CW.tabs .. "|r") or "No trees loaded")
     talPage:SetText((CW.talPage + 1) .. " / " .. CW.talTotal)
-    for i = 1, ENTRIES do
+    for i = 1, TAL_ENTRIES do
         local t = CW.talRows[i]
         local w = talEntries[i]
         if t then
@@ -1115,8 +1119,12 @@ function CW.RefreshBars()
         end
     end
 
-    local ok, cp = pcall(GetComboPoints, "player", "target")
-    if not ok or not cp then cp = 0 end
+    -- The stock client hides combo points for non-rogue classes (Wow.exe gates
+    -- GetComboPoints), so the server mirrors the real count over the addon
+    -- channel ("CP|n"). Use whichever source knows more.
+    local cp = CW.state.comboPoints or 0
+    local ok, ccp = pcall(GetComboPoints, "player", "target")
+    if ok and ccp and ccp > cp then cp = ccp end
     for i = 1, 5 do
         comboDots[i].bg:SetPoint("TOPLEFT", 12 + (i - 1) * 20, -8 - shown * 17)
         comboDots[i].shine:SetAlpha(i <= cp and 1 or 0)
@@ -1852,6 +1860,12 @@ local function HandleMessage(msg)
         s.enabled = tonumber(p[10]) or 1
         CW.statsPending = nil
         RenderList() -- refreshes the stats flyout when it is open
+
+    elseif kind == "CP" then
+        -- server-mirrored combo points (the stock client hides them for
+        -- non-rogue classes); light the pips under the resource bars
+        CW.state.comboPoints = tonumber(p[2]) or 0
+        if barsFrame:IsShown() then CW.RefreshBars() end
 
     elseif kind == "RV" then
         -- a wildcard roll happened: refresh state (reroll charges/scrolls

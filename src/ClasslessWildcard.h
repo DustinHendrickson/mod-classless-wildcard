@@ -137,6 +137,10 @@ namespace ClasslessWildcard
         int32 usRangedAP = 0;
         int32 usSpellPower = 0;
 
+        // last combo-point count mirrored to the addon (runtime only; 255 =
+        // nothing pushed yet, so the first update always syncs)
+        uint8 lastComboPush = 255;
+
         std::unordered_map<uint32 /*firstSpellId*/, OwnedAbility> abilities;
         std::unordered_map<uint32 /*talentId*/, uint8 /*rank*/>   talents;
         std::vector<RollBan>   bans;
