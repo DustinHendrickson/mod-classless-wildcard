@@ -213,21 +213,19 @@ def _dxt5_alpha_table(a0, a1):
     return a
 
 
-# The Hero emblem goes on the cells a Hero's *own* class icon is drawn from, in
-# UI-Classes-Circles (unit frames, character select, the creation-screen class
-# icon). Heroes run the Paladin chassis in-game, and are created through the
-# Warrior shell, so those two cells carry the mark. This atlas is NOT the one
-# the addon uses for its by-class ability grouping (that is
+# The Hero emblem goes on the Paladin cell of UI-Classes-Circles -- Heroes run
+# the Paladin chassis, so that is the class icon their unit frame / character
+# select draws. Only the Paladin cell is touched; every other class icon
+# (Warrior included) is left exactly as it was. This atlas is NOT the one the
+# addon uses for its by-class ability grouping (that is
 # UI-CharacterCreate-Classes), so nothing about the addon is disturbed.
-# CLASS_ICON_TCOORDS: PALADIN = {0,.25,.5,.75}, WARRIOR = {0,.25,0,.25}
-_HERO_CELLS_TC = ((0.0, 0.25, 0.5, 0.75),   # Paladin  (chassis / in-game class)
-                  (0.0, 0.25, 0.0, 0.25))   # Warrior  (creation-screen shell)
+# CLASS_ICON_TCOORDS: PALADIN = {0,.25,.5,.75}
+_HERO_CELLS_TC = ((0.0, 0.25, 0.5, 0.75),)   # Paladin (chassis / in-game class)
 
 
 def reskin_hero_cell(original_blp):
-    """Return BLP2 bytes: the class-icon atlas with the Hero's own class cells
-    (Paladin + Warrior shell) replaced by the Hero emblem; every other class
-    icon untouched.
+    """Return BLP2 bytes: the class-icon atlas with the Paladin (Hero chassis)
+    cell replaced by the Hero emblem; every other class icon untouched.
 
     Returns None if Pillow is missing.
     """
