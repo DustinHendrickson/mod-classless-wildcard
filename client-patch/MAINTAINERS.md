@@ -127,12 +127,16 @@ client pack's copy.
 `ItemID[24]`, `DisplayInfoID[24]`, `InventoryType[24]`. The model is drawn from
 the **DisplayInfoID** array, not the item IDs.
 
-`lib/outfit.py` rewrites the shell-class (Paladin) rows to wear the Death Knight
-starting plate: DK (class 6) has a row for every race and gender, so the display
-IDs are real and verified rather than invented. The head slot (InventoryType 1)
-is dropped so the customized face stays visible, and a two-hander is kept so the
-Hero is armed. It also **adds** a Paladin row for every race+gender that lacks
-one (six races have no vanilla Paladin), so no Hero appears in underwear.
+`lib/outfit.py` rewrites every Hero's shell-class (Paladin) row to wear exactly
+the neutral starter kit the module equips at first login -- Recruit's shirt,
+pants and boots (`STARTER_ITEMS` = 38, 39, 40, the module's default
+StarterKit.Equip) -- with no weapon, because the module drops the starter
+weapons in the bag rather than equipping them. So the creation preview matches
+what a new Hero actually wears. Display ids and slots are resolved from the
+client's own CharStartOutfit rows, so nothing is invented; a shell-class row is
+added for every race+gender that lacks one (six races cannot be Paladins in
+vanilla), so no Hero previews naked. If a realm changes StarterKit.Equip, update
+STARTER_ITEMS to match.
 
 ### `UI-Classes-Circles.blp` — the Hero emblem (`--hero-icon`)
 

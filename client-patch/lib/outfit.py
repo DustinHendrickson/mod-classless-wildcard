@@ -1,20 +1,21 @@
-"""Give the Hero a distinct starting look on the character-creation screen.
+"""Dress the character-creation preview in the Hero starter gear.
 
 CharStartOutfit.dbc drives the gear shown on the previewed character (by
-DisplayInfoID). The shell class (Paladin) starts in plain recruit cloth, so
-every Hero would look like a peasant. This rebuilds the shell-class rows to wear
-the Death Knight starting plate instead: an armored, heroic look that already
-exists in the client for every race and gender, so no display IDs are invented.
+DisplayInfoID). Left alone, the shell class (Paladin) previews in whatever a
+Paladin starts with -- and that varies by race and shows a weapon. Instead this
+rebuilds every Hero's shell-class row to wear exactly the neutral starter kit the
+module equips at first login (Recruit's shirt/pants/boots), with no weapon,
+because the module drops the starter weapons into the bag rather than equipping
+them. So the creation preview matches what a new Hero actually wears.
 
-Two deliberate adjustments:
-  * the head slot is dropped, so the face and hair the player just customized
-    stay visible (the DK set includes a full helm);
-  * a two-handed weapon is kept, so the Hero is holding something.
+The item ids here mirror the module's default `StarterKit.Equip`
+(`38,39,40`). Their display ids and slots are resolved from the client's own
+CharStartOutfit data, so nothing is invented; if a realm changes StarterKit.Equip
+to different armour, update STARTER_ITEMS to match.
 
-It also fills real gaps: Paladin is only vanilla-creatable by four races, so the
-other six have no Paladin CharStartOutfit row and their Heroes would appear in
-underwear. A shell row is added for every race+gender that lacks one, built the
-same way (from that race's own Death Knight row).
+It also fills real gaps: the Paladin shell is only vanilla-creatable by four
+races, so the other six (and any race missing a row) get a shell-class row added,
+built the same way, so no Hero previews naked.
 
 None of this needs the exe patch -- it is data. It ships with --creation-text
 only to keep all the visual extras behind one flag.
@@ -39,21 +40,12 @@ _ITEM = 2
 _DISP = 26
 _INV = 50
 
-# Playable races (client CharStartOutfit uses these), and the classes we read
-# from / write to.
 _RACES = (1, 2, 3, 4, 5, 6, 7, 8, 10, 11)
-_DK_CLASS = 6
 
-# InventoryType values that show on the character model and that we keep from
-# the DK set. Head (1) is deliberately excluded. Weapons are handled separately.
-_VISIBLE_ARMOR = {3, 5, 6, 7, 8, 9, 10, 16}   # shoulder chest belt legs feet wrist hands back
-_WEAPON_SLOTS = {13, 15, 17, 21, 22, 23, 25, 26}
-_HEARTHSTONE_ITEM = 6948
-
-# Fallback two-hander so every Hero is armed, even races with no shell-class row
-# to copy a weapon from (Blood Elf). Item 49778 / display 2380 is the warrior
-# starter greatsword the client already ships.
-_DEFAULT_WEAPON = (49778, 2380, 17)
+# The equipped starter armour, matching the module's default StarterKit.Equip:
+# Recruit's Shirt (38), Recruit's Pants (39), Recruit's Boots (40). No weapon --
+# the module puts the neutral starter weapons in the bag, so none is shown.
+STARTER_ITEMS = (38, 39, 40)
 
 
 class OutfitError(ValueError):
@@ -68,22 +60,10 @@ def _pack_packed(race, cls, gender, outfit):
     return struct.unpack("<I", struct.pack("<4B", race, cls, gender, outfit))[0]
 
 
-def _pieces(rec):
-    """[(item, display, invtype), ...] for the non-empty slots of a record."""
-    out = []
-    for k in range(_N):
-        item = rec[_ITEM + k]
-        disp = rec[_DISP + k]
-        inv = rec[_INV + k]
-        if item > 0 or disp > 0:
-            out.append((item, disp, inv))
-    return out
-
-
 def build_hero_outfit(data: bytes, shell_class: int):
-    """Rewrite the shell-class rows to the armored Hero look.
+    """Rewrite the shell-class rows to the neutral Hero starter gear.
 
-    Returns (new_dbc_bytes, races_updated, blood_elf_added).
+    Returns (new_dbc_bytes, rows_updated, rows_added).
     """
     if data[:4] != WDBC_MAGIC:
         raise OutfitError("not a WDBC file")
@@ -96,37 +76,23 @@ def build_hero_outfit(data: bytes, shell_class: int):
     records = [list(struct.unpack_from("<%di" % _FIELDS, data, 20 + i * record_size))
                for i in range(record_count)]
 
-    # index by (race, gender, class)
-    index = {}
-    max_id = 0
+    # resolve each starter item's (display, invtype) from the client's own data
+    # so we never invent a display id
+    item_slot = {}
     for rec in records:
-        race, cls, gender, _outfit = _unpack_packed(rec[1])
-        index[(race, gender, cls)] = rec
-        max_id = max(max_id, rec[0])
+        for k in range(_N):
+            item = rec[_ITEM + k]
+            if item in STARTER_ITEMS and item not in item_slot:
+                item_slot[item] = (rec[_DISP + k], rec[_INV + k])
 
-    def hero_pieces(race, gender):
-        dk = index.get((race, gender, _DK_CLASS))
-        if not dk:
-            return None
-        pieces = [p for p in _pieces(dk) if p[2] in _VISIBLE_ARMOR]
-        # a weapon: prefer the shell class's own, else the DK set's, else a
-        # plain two-hander display so the Hero is not empty-handed
-        weapon = None
-        shell = index.get((race, gender, shell_class))
-        for src in (shell, dk):
-            if not src:
-                continue
-            for it, dp, iv in _pieces(src):
-                if iv in _WEAPON_SLOTS:
-                    weapon = (it, dp, iv)
-                    break
-            if weapon:
-                break
-        pieces.append(weapon or _DEFAULT_WEAPON)
-        pieces.append((_HEARTHSTONE_ITEM, 6418, 0))   # hearthstone, not rendered
-        return pieces[:_N]
+    pieces = [(item, item_slot[item][0], item_slot[item][1])
+              for item in STARTER_ITEMS if item in item_slot]
+    if not pieces:
+        raise OutfitError("none of the starter items %s were found in "
+                          "CharStartOutfit -- cannot build the Hero preview"
+                          % (STARTER_ITEMS,))
 
-    def write_pieces(rec, pieces):
+    def write_pieces(rec):
         for k in range(_N):
             rec[_ITEM + k] = 0
             rec[_DISP + k] = 0
@@ -136,34 +102,33 @@ def build_hero_outfit(data: bytes, shell_class: int):
             rec[_DISP + k] = disp
             rec[_INV + k] = inv
 
+    index = {}
+    max_id = 0
+    for rec in records:
+        race, cls, gender, _outfit = _unpack_packed(rec[1])
+        index[(race, gender, cls)] = rec
+        max_id = max(max_id, rec[0])
+
     updated = 0
     for race in _RACES:
         for gender in (0, 1):
-            pieces = hero_pieces(race, gender)
-            if not pieces:
-                continue
             rec = index.get((race, gender, shell_class))
             if rec is not None:
-                write_pieces(rec, pieces)
+                write_pieces(rec)
                 updated += 1
 
-    # Any race with no shell-class row in vanilla gets one added, so no Hero
-    # appears naked. The shell (Paladin) is only vanilla-creatable by four
-    # races; the outfit look is copied from that race's own Death Knight row,
-    # which every race has.
+    # add a shell-class row for every race+gender that lacks one, so no Hero
+    # previews naked (six races cannot be Paladins in vanilla)
     added = 0
     for race in _RACES:
         for gender in (0, 1):
             if (race, gender, shell_class) in index:
                 continue
-            pieces = hero_pieces(race, gender)
-            if not pieces:
-                continue
             max_id += 1
             rec = [0] * _FIELDS
             rec[0] = max_id
             rec[1] = _pack_packed(race, shell_class, gender, 0)
-            write_pieces(rec, pieces)
+            write_pieces(rec)
             records.append(rec)
             added += 1
 

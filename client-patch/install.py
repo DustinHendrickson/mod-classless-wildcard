@@ -187,8 +187,8 @@ def build_data_patch(files, name, report, theme=False):
             raw, source = files.find(CHARSTARTOUTFIT)
             patched, updated, added = outfit.build_hero_outfit(raw, SHELL_CLASS)
             payload[CHARSTARTOUTFIT] = patched
-            report.append("  CharStartOutfit.dbc  armored Hero look, %d rows "
-                          "updated + %d added (from %s)"
+            report.append("  CharStartOutfit.dbc  starter gear on the preview, %d "
+                          "rows updated + %d added (from %s)"
                           % (updated, added, os.path.basename(source)))
         except (FileNotFoundError, outfit.OutfitError) as error:
             report.append("  CharStartOutfit.dbc  skipped (%s)" % error)
