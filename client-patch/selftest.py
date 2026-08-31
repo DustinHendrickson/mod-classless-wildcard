@@ -82,13 +82,13 @@ def main(argv):
 
             # --- CharBaseInfo -----------------------------------------------
             raw, source = files.find(CHARBASEINFO)
-            combos, races = dbc.single_class_combos(raw, 2)
+            combos, races = dbc.single_class_combos(raw, 1)
             body = combos[20:20 + races * 2]
             pairs = {(body[i], body[i + 1]) for i in range(0, len(body), 2)}
             check("one class per race", len(pairs) == races == 10,
                   "%d rows" % races)
-            check("only the chassis is offered",
-                  {klass for _race, klass in pairs} == {2})
+            check("only the Warrior shell is offered",
+                  {klass for _race, klass in pairs} == {1})
             check("every race still creatable",
                   {race for race, _klass in pairs} == set(dbc.PLAYABLE_RACES))
 

@@ -39,17 +39,18 @@ DELETE FROM `creature_template` WHERE `entry` = 990100;
 -- from every character automatically)
 DELETE FROM `skillraceclassinfo_dbc` WHERE `ID` BETWEEN 990000 AND 990999;
 
--- rows added by the OPTIONAL cw_all_race_class.sql (no-ops if never applied)
+-- playercreateinfo rows added by cw_world_hero_races.sql (and by the older
+-- cw_all_race_class.sql, for installs that predate it) — no-ops if absent
 DELETE FROM `charstartoutfit_dbc` WHERE `ID` >= 900000;
 
 -- module DB-updater bookkeeping, so reinstalling later re-applies cleanly
 DELETE FROM `updates` WHERE `name` LIKE 'cw_%';
 
 -- NOT handled here (no safe automatic revert):
---  * optional/cw_classless_items.sql overwrote item_template.AllowableClass
+--  * manual/cw_classless_items.sql overwrote item_template.AllowableClass
 --    with -1 for ALL items. Restore item_template from your pre-install
 --    backup, or re-import item_template from the AzerothCore base SQL that
 --    matches your core revision.
---  * optional/cw_all_race_class.sql playercreateinfo* INSERTs are harmless to
+--  * leftover playercreateinfo* INSERTs from older versions are harmless to
 --    keep (the client no longer offers those combos); restore from backup if
 --    you want them gone.

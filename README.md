@@ -119,10 +119,10 @@ client back to stock.
   the server over the `CWCL` addon channel. Players without it lose nothing but convenience.
 - **Every class reads Hero** — creation screen, character sheet, `/who`, tooltips. Class
   colors and icons still work, so addons and raid frames are unaffected.
-- **One class on the creation screen.** Every race stays creatable, each offering a single
-  class, because that is what the realm actually has. Ten identical *Hero* buttons would be
-  a choice that changes nothing — the server converts whatever you pick to the chassis
-  anyway. Needs the race SQL below.
+- **One class on the creation screen.** Every race stays creatable and offers a single
+  cosmetic shell (shown as *Hero*, with the Hero pitch and bullets). The pick means
+  nothing — the server converts every new character to its chassis regardless — so the
+  screen stops asking a question that has no answer.
 - **A classless creation screen** — the old per-class blurb replaced with what a Hero
   actually is.
 
@@ -162,20 +162,18 @@ is applied automatically by the DB updater.
 <br>
 
 **Unlock every item for every class.** Apply
-`data/sql/db-world/optional/cw_classless_items.sql` to your world DB.
+`data/sql/manual/cw_classless_items.sql` to your world DB by hand.
 
 > **Back up `item_template` first.** This overwrites `AllowableClass` with `-1` for every item
 > and the original masks cannot be recomputed. Players should clear their client `Cache`
 > folder afterwards.
+>
+> ⚠️ **If you ran this module before September 2026:** this script used to live under
+> `data/sql/db-world/optional/`, and AzerothCore's updater applies *everything* under
+> `db-world` recursively — so it was applied automatically on your first startup, not
+> optionally. Check with `SELECT * FROM acore_world.updates WHERE name = 'cw_classless_items.sql';`
+> — if a row exists, your `item_template` was already overwritten and only a backup restores it.
 
-**Let every race be the chassis class.** Apply
-`data/sql/db-world/optional/cw_all_race_class.sql`.
-
-> **Required if your players install the client patch.** That patch reduces the creation
-> screen to one class per race, so the server needs a `playercreateinfo` row for combinations
-> that do not exist in vanilla — Tauren Paladin, Gnome Paladin, Undead Paladin. Without it
-> those races cannot be created at all. The script covers every race against every class, so
-> it stays correct if you change `Chassis.Class` later.
 
 **Set your players up.** Hand them the `client-patch` and `client-addon` folders and point
 them at [`client-patch/README.md`](client-patch/README.md). They double-click `install.bat`

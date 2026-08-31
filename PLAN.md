@@ -67,8 +67,9 @@ mod-classless-wildcard/
 ├── data/sql/
 │   ├── db-characters/cw_characters_base.sql # per-character persistence
 │   ├── db-world/cw_world_base.sql           # NPC, scroll items, vendor, override tables
-│   └── db-world/optional/
-│       └── cw_classless_items.sql           # AllowableClass = -1 on all items (opt-in)
+│   └── manual/
+│       └── cw_classless_items.sql           # AllowableClass = -1 on all items (HAND-APPLY ONLY —
+│                                            #  never under db-world/, which auto-applies recursively)
 └── src/
     ├── cw_loader.cpp              # Addmod_classless_wildcardScripts()
     ├── ClasslessWildcard.h        # config struct, shared enums, state structs

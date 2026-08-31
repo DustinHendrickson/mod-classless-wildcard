@@ -77,21 +77,17 @@ column is set rather than just column 0.
 ### `CharBaseInfo.dbc` — creation screen combinations
 
 Two bytes per record, `(race, class)`. Rebuilt as one row per playable race
-`(1–8, 10, 11)`, every one pointing at the chassis class — 10 rows, down from
-the stock 62.
+`(1–8, 10, 11)` — 10 rows, down from the stock 62 — all pointing at a single
+**cosmetic shell class**.
 
-The module puts every character on a single chassis, so the class list is not a
-choice: whatever a player picks, the server converts it. Offering all ten would
-mean ten identical *Hero* buttons that do the same thing. One row per race keeps
-every race creatable and drops the meaningless question.
-
-This **must** be matched server-side by
-`data/sql/db-world/optional/cw_all_race_class.sql`, which adds `playercreateinfo`
-rows for combinations vanilla does not have (Tauren Paladin and friends).
-Without it those races cannot be created once this patch is installed.
-
-`--chassis <id>` must match the realm's `ClasslessWildcard.Chassis.Class`.
-`--keep-class-choice` leaves the stock list alone.
+The shell is Warrior (`SHELL_CLASS` in `install.py`) and it has *nothing to do
+with the server's chassis*. The server converts every new character to its
+configured chassis at creation, so what the client sends is irrelevant; the
+class list exists only to show the Hero name, pitch and bullets once instead of
+ten identical times. Warrior is the shell because vanilla already permits it
+for 9 of the 10 races — the module's auto-applied `cw_world_hero_races.sql`
+adds the one missing server row (Blood Elf Warrior), so no manual SQL is
+involved.
 
 ### `GlueStrings.lua` — the creation screen copy
 

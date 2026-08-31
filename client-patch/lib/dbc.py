@@ -100,16 +100,17 @@ def rename_all_classes(data: bytes, new_name: str):
     return header + bytes(records) + new_strings, renamed
 
 
-def single_class_combos(data: bytes, chassis_class: int):
+def single_class_combos(data: bytes, shell_class: int):
     """Rebuild CharBaseInfo.dbc so every race offers exactly one class.
 
-    There is only one class on a classless realm -- the chassis -- and it is
-    the same for everyone. Offering all ten would put ten identical "Hero"
-    buttons on the creation screen, each doing the same thing, since the server
-    converts whatever was picked to the chassis anyway.
+    The class list is COSMETIC on a classless realm: the server converts every
+    new character to its configured chassis regardless of what the client
+    sends, so offering ten renamed-to-Hero buttons would be ten copies of the
+    same non-choice. One row per playable race, all pointing at one shell
+    class, keeps every race creatable and removes the question.
 
-    So: one row per playable race, all pointing at the chassis. Every race
-    stays creatable, and class stops being a question.
+    The shell has nothing to do with the server's chassis. The installer uses
+    Warrior because vanilla already allows it for 9 of 10 races.
 
     Returns (new_dbc_bytes, race_count).
     """
@@ -117,13 +118,13 @@ def single_class_combos(data: bytes, chassis_class: int):
     if record_size != 2:
         raise DbcError("CharBaseInfo.dbc records are %d bytes, expected 2"
                        % record_size)
-    if chassis_class not in PLAYABLE_CLASSES:
-        raise DbcError("chassis class %d is not a playable 3.3.5a class"
-                       % chassis_class)
+    if shell_class not in PLAYABLE_CLASSES:
+        raise DbcError("shell class %d is not a playable 3.3.5a class"
+                       % shell_class)
 
     records = bytearray()
     for race in PLAYABLE_RACES:
-        records += bytes([race, chassis_class])
+        records += bytes([race, shell_class])
 
     header = WDBC_MAGIC + struct.pack("<4I", len(PLAYABLE_RACES), field_count,
                                       2, 1)
