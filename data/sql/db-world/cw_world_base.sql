@@ -69,10 +69,12 @@ INSERT INTO `npc_vendor` (`entry`, `slot`, `item`, `maxcount`, `incrtime`, `Exte
 -- Current AzerothCore master uses `creature_template_model` and `creature.id1`;
 -- older cores / forks / repacks use `creature_template.modelid1` and
 -- `creature.id`. Only the branch matching this database executes.
--- Spawns: one in every major city -- Stormwind, Ironforge, Darnassus, the
--- Exodar, Orgrimmar, Thunder Bluff, Undercity, Silvermoon, Dalaran and
--- Shattrath. Coordinates can be adjusted per realm: `.npc del` an unwanted
--- one, or `.go` to a spot and `.npc add 990100` to place more.
+-- Spawns: one in every major city, standing right next to that city's guild
+-- master so players always know where to find it -- Stormwind, Ironforge,
+-- Darnassus, the Exodar, Orgrimmar, Thunder Bluff, Undercity, Silvermoon and
+-- Dalaran; Shattrath (no guild master) sits on the central terrace by A'dal.
+-- Adjust per realm: `.npc del` an unwanted one, or `.go` to a spot and
+-- `.npc add 990100` to place more.
 -- ---------------------------------------------------------------------------
 
 DROP PROCEDURE IF EXISTS cw_world_setup;
@@ -96,46 +98,46 @@ BEGIN
         DELETE FROM `creature` WHERE `id1` = 990100;
         INSERT INTO `creature` (`id1`, `map`, `zoneId`, `areaId`, `spawnMask`, `phaseMask`, `position_x`, `position_y`, `position_z`, `orientation`, `spawntimesecs`, `wander_distance`, `MovementType`)
         VALUES
-        (990100, 0, 1519, 1519, 1, 1, -8842.09, 626.358, 94.0867, 3.61283, 300, 0, 0),   -- Stormwind, Trade District
-        (990100, 0, 1537, 1537, 1, 1, -4918.88, -940.406, 501.564, 5.44, 300, 0, 0),   -- Ironforge, The Commons
-        (990100, 1, 1657, 1657, 1, 1, 9947.52, 2482.73, 1316.2, 4.71, 300, 0, 0),   -- Darnassus
-        (990100, 530, 3557, 3557, 1, 1, -3965.7, -11653.5, -138.8, 0.98, 300, 0, 0),   -- The Exodar
-        (990100, 1, 1637, 1637, 1, 1, 1633.33, -4439.11, 15.7588, 1.06465, 300, 0, 0),   -- Orgrimmar, Valley of Strength
-        (990100, 1, 1638, 1638, 1, 1, -1196.6, 29.24, 176.0, 4.36, 300, 0, 0),   -- Thunder Bluff
-        (990100, 0, 1497, 1497, 1, 1, 1633.75, 240.167, -43.1, 6.24, 300, 0, 0),   -- Undercity
-        (990100, 530, 3487, 3487, 1, 1, 9738.0, -7454.0, 13.65, 1.5, 300, 0, 0),   -- Silvermoon City
-        (990100, 571, 4395, 4395, 1, 1, 5813.9, 448.14, 658.75, 2.19, 300, 0, 0),   -- Dalaran, Krasus' Landing
-        (990100, 530, 3703, 3703, 1, 1, -1838.16, 5301.79, -12.43, 3.86, 300, 0, 0);   -- Shattrath City
+        (990100, 0, 0, 0, 1, 1, -8883.25, 614.395, 95.3576, 3.526, 300, 0, 0),   -- Stormwind -- by Aldwin Laughlin, Guild Master (Trade District)
+        (990100, 0, 0, 0, 1, 1, -5014.19, -997.442, 503.966, 2.793, 300, 0, 0),   -- Ironforge -- by Jondor Steelbrow, Guild Master (The Commons)
+        (990100, 1, 0, 0, 1, 1, 10077.9, 2199.74, 1346.7, 1.833, 300, 0, 0),   -- Darnassus -- by Lysheana, Guild Master
+        (990100, 530, 0, 0, 1, 1, -4090.43, -11626.6, -138.665, 4.224, 300, 0, 0),   -- The Exodar -- by Funaam, Guild Master
+        (990100, 1, 0, 0, 1, 1, 1577.8, -4292.67, 26.2826, 4.381, 300, 0, 0),   -- Orgrimmar -- by Urtrun Clanbringer, Guild Master (Valley of Strength)
+        (990100, 1, 0, 0, 1, 1, -1289.81, 127.206, 131.703, 6.056, 300, 0, 0),   -- Thunder Bluff -- by Krumn, Guild Master
+        (990100, 0, 0, 0, 1, 1, 1593.25, 204.498, -55.2596, 1.728, 300, 0, 0),   -- Undercity -- by Christopher Drakul, Guild Master
+        (990100, 530, 0, 0, 1, 1, 9476.5, -7345.44, 16.183, 3.142, 300, 0, 0),   -- Silvermoon City -- by Tandrine, Guild Master
+        (990100, 571, 0, 0, 1, 1, 5769.96, 627.193, 650.175, 3.613, 300, 0, 0),   -- Dalaran -- by Andrew Matthews, Guild Master
+        (990100, 530, 0, 0, 1, 1, -1838.16, 5301.79, -12.43, 3.86, 300, 0, 0);   -- Shattrath City -- central terrace, by A'dal (no guild master here)
     ELSEIF EXISTS (SELECT 1 FROM information_schema.COLUMNS
                    WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'creature' AND COLUMN_NAME = 'wander_distance') THEN
         DELETE FROM `creature` WHERE `id` = 990100;
         INSERT INTO `creature` (`id`, `map`, `zoneId`, `areaId`, `spawnMask`, `phaseMask`, `position_x`, `position_y`, `position_z`, `orientation`, `spawntimesecs`, `wander_distance`, `MovementType`)
         VALUES
-        (990100, 0, 1519, 1519, 1, 1, -8842.09, 626.358, 94.0867, 3.61283, 300, 0, 0),   -- Stormwind, Trade District
-        (990100, 0, 1537, 1537, 1, 1, -4918.88, -940.406, 501.564, 5.44, 300, 0, 0),   -- Ironforge, The Commons
-        (990100, 1, 1657, 1657, 1, 1, 9947.52, 2482.73, 1316.2, 4.71, 300, 0, 0),   -- Darnassus
-        (990100, 530, 3557, 3557, 1, 1, -3965.7, -11653.5, -138.8, 0.98, 300, 0, 0),   -- The Exodar
-        (990100, 1, 1637, 1637, 1, 1, 1633.33, -4439.11, 15.7588, 1.06465, 300, 0, 0),   -- Orgrimmar, Valley of Strength
-        (990100, 1, 1638, 1638, 1, 1, -1196.6, 29.24, 176.0, 4.36, 300, 0, 0),   -- Thunder Bluff
-        (990100, 0, 1497, 1497, 1, 1, 1633.75, 240.167, -43.1, 6.24, 300, 0, 0),   -- Undercity
-        (990100, 530, 3487, 3487, 1, 1, 9738.0, -7454.0, 13.65, 1.5, 300, 0, 0),   -- Silvermoon City
-        (990100, 571, 4395, 4395, 1, 1, 5813.9, 448.14, 658.75, 2.19, 300, 0, 0),   -- Dalaran, Krasus' Landing
-        (990100, 530, 3703, 3703, 1, 1, -1838.16, 5301.79, -12.43, 3.86, 300, 0, 0);   -- Shattrath City
+        (990100, 0, 0, 0, 1, 1, -8883.25, 614.395, 95.3576, 3.526, 300, 0, 0),   -- Stormwind -- by Aldwin Laughlin, Guild Master (Trade District)
+        (990100, 0, 0, 0, 1, 1, -5014.19, -997.442, 503.966, 2.793, 300, 0, 0),   -- Ironforge -- by Jondor Steelbrow, Guild Master (The Commons)
+        (990100, 1, 0, 0, 1, 1, 10077.9, 2199.74, 1346.7, 1.833, 300, 0, 0),   -- Darnassus -- by Lysheana, Guild Master
+        (990100, 530, 0, 0, 1, 1, -4090.43, -11626.6, -138.665, 4.224, 300, 0, 0),   -- The Exodar -- by Funaam, Guild Master
+        (990100, 1, 0, 0, 1, 1, 1577.8, -4292.67, 26.2826, 4.381, 300, 0, 0),   -- Orgrimmar -- by Urtrun Clanbringer, Guild Master (Valley of Strength)
+        (990100, 1, 0, 0, 1, 1, -1289.81, 127.206, 131.703, 6.056, 300, 0, 0),   -- Thunder Bluff -- by Krumn, Guild Master
+        (990100, 0, 0, 0, 1, 1, 1593.25, 204.498, -55.2596, 1.728, 300, 0, 0),   -- Undercity -- by Christopher Drakul, Guild Master
+        (990100, 530, 0, 0, 1, 1, 9476.5, -7345.44, 16.183, 3.142, 300, 0, 0),   -- Silvermoon City -- by Tandrine, Guild Master
+        (990100, 571, 0, 0, 1, 1, 5769.96, 627.193, 650.175, 3.613, 300, 0, 0),   -- Dalaran -- by Andrew Matthews, Guild Master
+        (990100, 530, 0, 0, 1, 1, -1838.16, 5301.79, -12.43, 3.86, 300, 0, 0);   -- Shattrath City -- central terrace, by A'dal (no guild master here)
     ELSE
         -- oldest schema variant: spawndist instead of wander_distance
         DELETE FROM `creature` WHERE `id` = 990100;
         INSERT INTO `creature` (`id`, `map`, `spawnMask`, `phaseMask`, `position_x`, `position_y`, `position_z`, `orientation`, `spawntimesecs`, `spawndist`, `MovementType`)
         VALUES
-        (990100, 0, 1, 1, -8842.09, 626.358, 94.0867, 3.61283, 300, 0, 0),   -- Stormwind, Trade District
-        (990100, 0, 1, 1, -4918.88, -940.406, 501.564, 5.44, 300, 0, 0),   -- Ironforge, The Commons
-        (990100, 1, 1, 1, 9947.52, 2482.73, 1316.2, 4.71, 300, 0, 0),   -- Darnassus
-        (990100, 530, 1, 1, -3965.7, -11653.5, -138.8, 0.98, 300, 0, 0),   -- The Exodar
-        (990100, 1, 1, 1, 1633.33, -4439.11, 15.7588, 1.06465, 300, 0, 0),   -- Orgrimmar, Valley of Strength
-        (990100, 1, 1, 1, -1196.6, 29.24, 176.0, 4.36, 300, 0, 0),   -- Thunder Bluff
-        (990100, 0, 1, 1, 1633.75, 240.167, -43.1, 6.24, 300, 0, 0),   -- Undercity
-        (990100, 530, 1, 1, 9738.0, -7454.0, 13.65, 1.5, 300, 0, 0),   -- Silvermoon City
-        (990100, 571, 1, 1, 5813.9, 448.14, 658.75, 2.19, 300, 0, 0),   -- Dalaran, Krasus' Landing
-        (990100, 530, 1, 1, -1838.16, 5301.79, -12.43, 3.86, 300, 0, 0);   -- Shattrath City
+        (990100, 0, 1, 1, -8883.25, 614.395, 95.3576, 3.526, 300, 0, 0),   -- Stormwind -- by Aldwin Laughlin, Guild Master (Trade District)
+        (990100, 0, 1, 1, -5014.19, -997.442, 503.966, 2.793, 300, 0, 0),   -- Ironforge -- by Jondor Steelbrow, Guild Master (The Commons)
+        (990100, 1, 1, 1, 10077.9, 2199.74, 1346.7, 1.833, 300, 0, 0),   -- Darnassus -- by Lysheana, Guild Master
+        (990100, 530, 1, 1, -4090.43, -11626.6, -138.665, 4.224, 300, 0, 0),   -- The Exodar -- by Funaam, Guild Master
+        (990100, 1, 1, 1, 1577.8, -4292.67, 26.2826, 4.381, 300, 0, 0),   -- Orgrimmar -- by Urtrun Clanbringer, Guild Master (Valley of Strength)
+        (990100, 1, 1, 1, -1289.81, 127.206, 131.703, 6.056, 300, 0, 0),   -- Thunder Bluff -- by Krumn, Guild Master
+        (990100, 0, 1, 1, 1593.25, 204.498, -55.2596, 1.728, 300, 0, 0),   -- Undercity -- by Christopher Drakul, Guild Master
+        (990100, 530, 1, 1, 9476.5, -7345.44, 16.183, 3.142, 300, 0, 0),   -- Silvermoon City -- by Tandrine, Guild Master
+        (990100, 571, 1, 1, 5769.96, 627.193, 650.175, 3.613, 300, 0, 0),   -- Dalaran -- by Andrew Matthews, Guild Master
+        (990100, 530, 1, 1, -1838.16, 5301.79, -12.43, 3.86, 300, 0, 0);   -- Shattrath City -- central terrace, by A'dal (no guild master here)
     END IF;
 END//
 DELIMITER ;
