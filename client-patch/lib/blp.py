@@ -4,20 +4,22 @@ Only what the client patch needs: encode a 256-colour palettized BLP2 (the most
 broadly supported uncompressed BLP format) and render the class-icon atlas so
 every class shows one "Hero" emblem instead of its old class icon.
 
-Palettized BLP2 layout (encoding 1, 8-bit alpha, no mipmaps):
+Palettized BLP2 layout (encoding 1, 8-bit alpha, full mip chain) -- matched
+byte-for-byte against the genuine enc=1 textures the 3.3.5a client ships
+(header 01 08 08 01: encoding 1, alphaDepth 8, alphaType 8, hasMips 1):
 
     "BLP2"                     4 bytes
     type            uint32     1
     encoding        uint8      1  (palettized)
     alphaDepth      uint8      8
-    alphaEncoding   uint8      0
-    hasMips         uint8      0
+    alphaType       uint8      8  (8-bit alpha; NOT 0 -- 0 fails to load)
+    hasMips         uint8      1  (a full mip chain IS required, or icons break)
     width           uint32
     height          uint32
-    mipOffsets[16]  uint32     [0] points at the pixel data
-    mipSizes[16]    uint32     [0] = width*height*2 (indices + alpha)
+    mipOffsets[16]  uint32
+    mipSizes[16]    uint32
     palette[256]    BGRA       1024 bytes
-    <width*height index bytes><width*height alpha bytes>
+    per mip level:  <w*h index bytes><w*h alpha bytes>, halving down to 1x1
 
 Rendering uses Pillow if present; if it is not, the whole Hero-icon step is
 skipped by the installer, so this stays an optional extra with no hard
@@ -33,51 +35,71 @@ _PALETTE_BYTES = 256 * 4
 _PIXELS_OFFSET = _HEADER_BYTES + _PALETTE_BYTES
 
 
-def encode_palettized(rgba, width, height) -> bytes:
-    """Encode a flat RGBA byte sequence (len == width*height*4) as BLP2."""
-    if len(rgba) != width * height * 4:
-        raise ValueError("rgba length does not match dimensions")
+def encode_palettized(image) -> bytes:
+    """Encode a Pillow RGBA image as a palettized BLP2 with a full mip chain."""
+    from PIL import Image
 
-    # build a <=256 colour palette from the opaque RGB values
+    width, height = image.size
+
+    # one palette, built from the base level and reused for every mip
     palette = []
     palette_index = {}
-    indices = bytearray(width * height)
-    alpha = bytearray(width * height)
 
-    for i in range(width * height):
-        r, g, b, a = rgba[i * 4:i * 4 + 4]
-        alpha[i] = a
-        key = (r, g, b)
-        idx = palette_index.get(key)
+    def index_of(rgb):
+        idx = palette_index.get(rgb)
         if idx is None:
             if len(palette) < 256:
                 idx = len(palette)
-                palette_index[key] = idx
-                palette.append(key)
+                palette_index[rgb] = idx
+                palette.append(rgb)
             else:
-                idx = _nearest(palette, key)
-        indices[i] = idx
+                idx = _nearest(palette, rgb)
+                palette_index[rgb] = idx
+        return idx
+
+    # build the mip chain: (indices, alpha) per level
+    levels = []
+    mip = image.convert("RGBA")
+    w, h = width, height
+    while True:
+        rgba = mip.tobytes()
+        indices = bytearray(w * h)
+        alpha = bytearray(w * h)
+        for i in range(w * h):
+            r, g, b, a = rgba[i * 4:i * 4 + 4]
+            alpha[i] = a
+            indices[i] = index_of((r, g, b))
+        levels.append((bytes(indices), bytes(alpha)))
+        if w == 1 and h == 1:
+            break
+        w = max(1, w // 2)
+        h = max(1, h // 2)
+        mip = mip.resize((w, h), Image.LANCZOS)
 
     pal_bytes = bytearray()
     for r, g, b in palette:
-        pal_bytes += bytes((b, g, r, 0))          # BGRA, pad alpha 0
+        pal_bytes += bytes((b, g, r, 0))          # BGRA, palette alpha unused
     pal_bytes += bytes(_PALETTE_BYTES - len(pal_bytes))
 
     mip_offsets = [0] * 16
     mip_sizes = [0] * 16
-    mip_offsets[0] = _PIXELS_OFFSET
-    mip_sizes[0] = width * height * 2
+    offset = _PIXELS_OFFSET
+    body = bytearray()
+    for i, (indices, alpha) in enumerate(levels):
+        mip_offsets[i] = offset
+        mip_sizes[i] = len(indices) + len(alpha)
+        body += indices + alpha
+        offset += mip_sizes[i]
 
     out = bytearray()
     out += b"BLP2"
     out += struct.pack("<I", 1)                    # type
-    out += bytes((1, 8, 0, 0))                     # enc, alphaDepth, alphaEnc, mips
+    out += bytes((1, 8, 8, 1))                     # enc, alphaDepth, alphaType, hasMips
     out += struct.pack("<II", width, height)
     out += struct.pack("<16I", *mip_offsets)
     out += struct.pack("<16I", *mip_sizes)
     out += bytes(pal_bytes)
-    out += bytes(indices)
-    out += bytes(alpha)
+    out += bytes(body)
     return bytes(out)
 
 
@@ -119,8 +141,7 @@ def render_hero_class_atlas(size=256, cells=4):
         for cx in range(cells):
             img.paste(emblem, (cx * cell, cy * cell), emblem)
 
-    rgba = img.tobytes()
-    return encode_palettized(rgba, size, size)
+    return encode_palettized(img)
 
 
 def _draw_emblem(cell):

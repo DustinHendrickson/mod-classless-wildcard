@@ -125,9 +125,9 @@ modifies `Wow.exe` (only the optional `--creation-text` does, with a backup), an
   nothing — the server converts every new character to its chassis regardless — so the
   screen stops asking a question that has no answer.
 - **A themed creation screen** (optional, `--creation-text`) — the Hero pitch as the class
-  description, the leftover single-class selector hidden, an armored Hero starting outfit
-  (which also fixes Blood Elf, who has no vanilla Warrior outfit), and a **Hero** emblem in
-  place of the class icon. Off by default because it edits a signed interface file and therefore also
+  description, the leftover single-class selector hidden, and an armored Hero starting outfit
+  (which also fixes Blood Elf, who has no vanilla Warrior outfit). A separate `--hero-icon`
+  swaps the class icon for a **Hero** emblem. Off by default because it edits a signed interface file and therefore also
   applies the well-known "allow custom interface" patch to `Wow.exe` (backed up first,
   reversible). The Hero name and single-class list above do not need it.
 

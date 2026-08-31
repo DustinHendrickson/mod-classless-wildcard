@@ -196,35 +196,43 @@ def build_data_patch(files, name, report, theme=False):
     return payload
 
 
-def build_locale_patch(files, name, report, locale, theme=False):
-    """Assemble the locale patch archive contents for one locale."""
-    raw, source = files.find(GLUESTRINGS)
-    text = raw.decode("utf-8", "surrogateescape")
-    new_text, replaced = gluestrings.rewrite(text, name)
-    if not replaced:
-        raise Abort(
-            "Found GlueStrings.lua for %s but none of the class description "
-            "keys matched, so the creation screen would be unchanged.\n"
-            "This locale names its strings differently and needs a look. "
-            "Drop --creation-text to install everything else." % locale)
-    report.append("  GlueStrings.lua  %d class strings rewritten (from %s)"
-                  % (len(replaced), os.path.basename(source)))
-    payload = {GLUESTRINGS: new_text.encode("utf-8", "surrogateescape")}
+def build_locale_patch(files, name, report, locale, theme=False, icon=False):
+    """Assemble the locale patch archive contents for one locale.
 
-    # hide the leftover single-class selector on the creation screen
-    try:
-        raw, source = files.find(CHARCREATE_LUA)
-    except FileNotFoundError:
-        report.append("  CharacterCreate.lua  not found; class selector left visible")
-    else:
-        lua = raw.decode("utf-8", "surrogateescape")
-        hooked = charcreate.add_hide_class_hook(lua)
-        payload[CHARCREATE_LUA] = hooked.encode("utf-8", "surrogateescape")
-        report.append("  CharacterCreate.lua  class selector hidden (from %s)"
-                      % os.path.basename(source))
+    theme -> the Hero creation-screen text + hidden class selector.
+    icon  -> the Hero emblem over the class icon (independent; needs no exe
+             patch, but replaces UI-Classes-Circles, used all over the UI, so
+             it is its own opt-in).
+    Returns a possibly-empty payload.
+    """
+    payload = {}
 
-    # a single "Hero" emblem in place of every class icon
     if theme:
+        raw, source = files.find(GLUESTRINGS)
+        text = raw.decode("utf-8", "surrogateescape")
+        new_text, replaced = gluestrings.rewrite(text, name)
+        if not replaced:
+            raise Abort(
+                "Found GlueStrings.lua for %s but none of the class description "
+                "keys matched, so the creation screen would be unchanged.\n"
+                "This locale names its strings differently and needs a look. "
+                "Drop --creation-text to install everything else." % locale)
+        report.append("  GlueStrings.lua  %d class strings rewritten (from %s)"
+                      % (len(replaced), os.path.basename(source)))
+        payload[GLUESTRINGS] = new_text.encode("utf-8", "surrogateescape")
+
+        try:
+            raw, source = files.find(CHARCREATE_LUA)
+        except FileNotFoundError:
+            report.append("  CharacterCreate.lua  not found; selector left visible")
+        else:
+            lua = raw.decode("utf-8", "surrogateescape")
+            hooked = charcreate.add_hide_class_hook(lua)
+            payload[CHARCREATE_LUA] = hooked.encode("utf-8", "surrogateescape")
+            report.append("  CharacterCreate.lua  class selector hidden (from %s)"
+                          % os.path.basename(source))
+
+    if icon:
         atlas = blp.render_hero_class_atlas()
         if atlas is None:
             report.append("  Hero class icon      skipped (Python 'Pillow' not "
@@ -363,11 +371,14 @@ def do_install(args, wow_dir):
     written.append("Data/patch-%s.MPQ" % suffix)
     report.append("  -> Data/patch-%s.MPQ" % suffix)
 
-    # locale patches: the creation-screen copy, per locale
-    if args.glue:
+    # locale patches: creation-screen copy and/or Hero icon, per locale
+    if args.glue or args.hero_icon:
         for locale in locales:
             with clientfs.ClientFiles(data_dir, locale) as files:
-                payload = build_locale_patch(files, args.name, report, locale, theme=args.glue)
+                payload = build_locale_patch(files, args.name, report, locale,
+                                             theme=args.glue, icon=args.hero_icon)
+            if not payload:
+                continue
             name = "patch-%s-%s.MPQ" % (locale, suffix)
             target = os.path.join(data_dir, locale, name)
             if not args.dry_run:
@@ -595,6 +606,10 @@ def main(argv=None):
                         help="with --creation-text, install the text but do NOT "
                              "patch Wow.exe (only for clients that already accept "
                              "custom interface files)")
+    parser.add_argument("--hero-icon", action="store_true",
+                        help="replace the class icon with a Hero emblem. Separate "
+                             "opt-in because it swaps UI-Classes-Circles, used "
+                             "across the whole UI. Needs no exe patch.")
     args = parser.parse_args(argv)
     # Wow.exe is patched only when installing the creation text, and only with
     # the verified community pattern set in lib/exepatch.py.

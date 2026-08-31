@@ -7,8 +7,9 @@ This folder is the optional polish — run one installer and your client will:
 - reduce the class list to a **single choice per race** — there are no classes to
   pick between, so the screen stops offering ten
 - install the **ClasslessWildcard** addon
-- with `--creation-text`: hide the leftover class selector, dress the Hero in an
-  armored starting outfit, and replace the class icon with a **Hero** emblem
+- with `--creation-text`: hide the leftover class selector and dress the Hero in an
+  armored starting outfit
+- with `--hero-icon` (separate opt-in): replace the class icon with a **Hero** emblem
 
 It is one command and `--uninstall` puts your client back exactly as it was. The
 default install writes only new patch files plus the addon and **never touches
@@ -132,6 +133,7 @@ running it — a running client locks `Wow.exe`.
 | `--name Champion`   | Call every class something other than `Hero`                            |
 | `--creation-text`   | Also rewrite the creation-screen class blurb (patches `Wow.exe` — see below) |
 | `--no-exe`          | With `--creation-text`, install the text but do not patch `Wow.exe`     |
+| `--hero-icon`       | Replace the class icon with a Hero emblem (needs Pillow; no exe patch)   |
 | `--no-addon`        | Do not install the addon                                                |
 | `--locale enUS`     | Patch one locale only, on a multi-language client                       |
 
