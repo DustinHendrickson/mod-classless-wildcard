@@ -108,10 +108,11 @@ training, the Hero Advancement NPC and the addon UI. Players choose a path per c
 #### Client-side (optional)
 
 Players run **one installer** ([`client-patch/install.py`](client-patch/README.md), or
-double-click `install.bat` on Windows) and get all of the below. It needs nothing but
-Python 3 — no compiler, no MPQ tools, no manual file copying. The default install never
-modifies `Wow.exe` (only the optional `--creation-text` does, with a backup), and
-`--uninstall` puts the client back to stock.
+double-click `install.bat` on Windows) and get the **full Hero client** by default. It
+needs nothing but Python 3 — no compiler, no MPQ tools, no manual file copying. The
+install patches `Wow.exe` (backed up first) so the client accepts the custom
+creation-screen text; `--minimal` skips that for just the name + class list + addon, and
+`--uninstall` puts the client back to stock. Close the game before installing.
 
 - **Addon UI** ([`client-addon/ClasslessWildcard/`](client-addon/ClasslessWildcard/)) — a
   Character Advancement panel for the stock client: class-tabbed ability browser with icons,
@@ -124,12 +125,15 @@ modifies `Wow.exe` (only the optional `--creation-text` does, with a backup), an
   cosmetic shell (shown as *Hero*, with the Hero pitch and bullets). The pick means
   nothing — the server converts every new character to its chassis regardless — so the
   screen stops asking a question that has no answer.
-- **A themed creation screen** (optional, `--creation-text`) — the Hero pitch as the class
-  description, the leftover single-class selector hidden, and an armored Hero starting outfit
-  (which also fixes Blood Elf, who has no vanilla Warrior outfit). A separate `--hero-icon`
-  swaps the class icon for a **Hero** emblem. Off by default because it edits a signed interface file and therefore also
-  applies the well-known "allow custom interface" patch to `Wow.exe` (backed up first,
-  reversible). The Hero name and single-class list above do not need it.
+- **A themed creation screen** — the Hero pitch as the class description, the leftover
+  single-class selector hidden, and an armored Hero starting outfit (which also fixes Blood
+  Elf, who has no vanilla Warrior outfit).
+- **A Hero emblem** on the Hero's own class icon — the other class icons are kept, so the
+  addon can still group abilities by their source class.
+
+The text and outfit edit a signed interface file, so the installer applies the well-known
+"allow custom interface" patch to `Wow.exe` (backed up first, reversible). All of this is
+the default; `--minimal` reduces it to just the Hero name, single-class list and addon.
 
 ---
 
@@ -181,12 +185,13 @@ is applied automatically by the DB updater.
 
 
 **Set your players up.** Hand them the `client-patch` and `client-addon` folders and point
-them at [`client-patch/README.md`](client-patch/README.md). They double-click `install.bat`
-(or run `python3 install.py "/path/to/WoW"`) once and get the addon, the *Hero* renaming and
-the single-class creation list. It only needs Python 3, does not modify `Wow.exe`, and
-`--uninstall` reverts it. Rewriting the creation-screen *description* is a separate opt-in
-(`--creation-text`) that also applies the known "allow custom interface" patch to
-`Wow.exe` (backed up first) so the client accepts the edited file.
+them at [`client-patch/README.md`](client-patch/README.md). They **close World of Warcraft**,
+double-click `install.bat` (or run `python3 install.py "/path/to/WoW"`) once, and get the
+full Hero client: the addon, the *Hero* renaming, the single-class creation screen with the
+Hero text and armored outfit, and the Hero emblem. It only needs Python 3, applies the known
+"allow custom interface" patch to `Wow.exe` (backed up first) so the client accepts the
+custom text, and `--uninstall` reverts everything. `--minimal` installs just the name,
+class list and addon without touching `Wow.exe`.
 
 </details>
 

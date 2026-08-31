@@ -139,10 +139,21 @@ records).
 ### `UI-Classes-Circles.blp` — the Hero emblem (`--hero-icon`)
 
 The class icon is a 4×4 grid in a 256×256 atlas (`CLASS_ICON_TCOORDS` maps each
-token to a cell; Hero uses the Warrior cell). `lib/blp.py` renders one gold
-emblem (Pillow) and fills every cell with it, then writes it over both
+token to a cell; Hero uses the Warrior cell, top-left). `lib/blp.py` **decodes**
+the client's own atlas (`decode_blp`, handling palettized and DXT1/3/5), pastes
+the gold emblem into **only the Warrior cell**, and re-encodes. Every other class
+icon is preserved untouched -- essential, because the addon groups abilities by
+their source class using those icons. Writes over
 `Interface\TargetingFrame\UI-Classes-Circles.blp` (in-game, character select,
 the addon's icons) and the creation-screen atlas.
+
+> An earlier version filled *every* cell with the emblem, which erased the class
+> icons the addon needs and drew the Hero mark over every ability group. Only the
+> Hero's own cell may change.
+
+To read the pristine original on a reinstall (not the installer's own previous
+output), `install.py` builds its `ClientFiles` with `exclude=` set to the patch
+archives it is about to write.
 
 The BLP **format matters** — a wrong header makes the client draw a green
 "missing texture" box everywhere the icon is used. Matched byte-for-byte against
@@ -152,10 +163,11 @@ chain** (256→1, `w*h` index bytes + `w*h` alpha bytes per level). alphaType 0 
 a missing mip chain both fail to load. Pillow is optional; without it the icon
 step is skipped, not fatal.
 
-`--hero-icon` is deliberately separate from `--creation-text`: the icon replaces
-a texture used across the whole UI, so a bad one must not be able to take down
-the text/outfit/hide-class features. It needs no exe patch (textures are not
-signature-checked). Swap `_draw_emblem` in `lib/blp.py` to change the mark.
+The full Hero client -- name, single-class list, text, outfit, icon, exe patch,
+addon -- installs by **default**; `--minimal` and the `--no-*` flags turn pieces
+off. The icon needs no exe patch (textures are not signature-checked) and can be
+skipped with `--no-hero-icon`. Swap `_draw_emblem` in `lib/blp.py` to change the
+mark.
 
 ### `Wow.exe` — the "allow custom interface" patch
 

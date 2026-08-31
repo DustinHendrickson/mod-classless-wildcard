@@ -1,25 +1,26 @@
 # Client setup
 
 The classless system works on a stock 3.3.5a client with nothing installed.
-This folder is the optional polish — run one installer and your client will:
+This folder is the optional polish. **One installer sets up the full Hero client:**
 
-- show every class as **Hero**, everywhere it appears
-- reduce the class list to a **single choice per race** — there are no classes to
-  pick between, so the screen stops offering ten
-- install the **ClasslessWildcard** addon
-- with `--creation-text`: hide the leftover class selector and dress the Hero in an
-  armored starting outfit
-- with `--hero-icon` (separate opt-in): replace the class icon with a **Hero** emblem
+- every class shows as **Hero**, everywhere it appears
+- the creation screen offers a **single class per race** (no class to choose)
+- the creation-screen **class description** is the Hero pitch, and the leftover
+  class selector is hidden
+- new characters wear an **armored Hero outfit** on the creation screen
+- the **Hero emblem** replaces the class icon *for the Hero only* — every other
+  class icon is kept, so your addon can still group abilities by class
+- the **ClasslessWildcard** addon is installed
 
-It is one command and `--uninstall` puts your client back exactly as it was. The
-default install writes only new patch files plus the addon and **never touches
-`Wow.exe`**.
+The creation-screen text is a *signed* interface file, so the installer also applies
+the well-known "allow custom interface" patch to `Wow.exe` (backed up first,
+reversible with `--uninstall`). **Close World of Warcraft before installing.**
 
-> The creation-screen **class description** is left as-is by default. Rewriting it to
-> the Hero pitch means editing a *signed* interface file, so `--creation-text` also
-> applies the well-known "allow custom interface" patch to `Wow.exe` (backed up first,
-> reversible with `--uninstall`) so the client accepts it — see [Options](#options).
-> The Hero name and single-class list do not need it.
+Want less? `--minimal` installs only the Hero name, the single-class list and the
+addon, and never touches `Wow.exe`. `--uninstall` always restores everything.
+
+> The Hero emblem needs the Python **Pillow** library (`pip install pillow`). Without
+> it the icon step is skipped and the rest installs normally.
 
 ---
 
@@ -45,11 +46,10 @@ Nothing else. No compiler, no StormLib, no MPQ editor, no extra downloads.
 
 **Double-click `install.bat`.**
 
-It finds your WoW folder, asks whether to also install the Hero creation-screen
-text (see below), shows what it is about to do, and confirms once before touching
-anything. If it cannot find your client, drag your WoW folder onto `install.bat`
-and drop it. **Close World of Warcraft first** if you say yes to the creation-screen
-text, since that patches `Wow.exe`.
+It finds your WoW folder, shows what it is about to do, and confirms once before
+touching anything. If it cannot find your client, drag your WoW folder onto
+`install.bat` and drop it. **Close World of Warcraft first** — the install patches
+`Wow.exe`, which the running game locks.
 
 ### macOS / Linux
 
@@ -79,24 +79,31 @@ mod-classless-wildcard client installer
 
 World of Warcraft : C:\Games\World of Warcraft
 Locales           : enUS
-Patch archive     : patch-Z.MPQ
 Class name        : Hero
-Creation text     : no (safe default; class description unchanged)
+Creation text     : yes
+Armored outfit    : yes
+Hero class icon   : yes
+Patch Wow.exe     : yes
+Addon             : yes
 
 Install to this client? [Y/n] y
 
-  ChrClasses.dbc   10 classes renamed to Hero (from patch-enUS-3.MPQ)
+  ChrClasses.dbc   10 classes renamed to Hero
   CharBaseInfo.dbc all 10 races, one cosmetic class (shown as Hero)
+  CharStartOutfit.dbc  armored Hero look on 18 races +Blood Elf
   -> Data/patch-Z.MPQ
+  GlueStrings.lua  76 class strings rewritten
+  CharacterCreate.lua  class selector hidden
+  Hero class icon      emblem on the Hero cell, other class icons kept
+  -> Data/enUS/patch-enUS-Z.MPQ
+  Wow.exe          patched 6 site(s) to accept custom interface files
   addon            12 files -> Interface/AddOns/ClasslessWildcard
   cache            cleared (the client rebuilds it on next login)
 
 Done. Start the game and every class will read Hero.
 ```
 
-Then just start the game. The default install writes only new patch files and the
-addon — it never modifies `Wow.exe`, so it does not matter whether the game is open,
-though a running client keeps the old files loaded until you restart it.
+Then just start the game.
 
 ---
 
@@ -116,31 +123,24 @@ back to stock.
 
 ## Options
 
-You will not normally need any of these.
+The full Hero client installs by default. These turn pieces off.
 
-**`--creation-text` is the one to know about.** The Hero *name* and the single-class
-creation list come from data files (DBCs) that no client checks, so they always work.
-The creation-screen *description paragraph* lives in `GlueStrings.lua`, a signed
-interface file, so editing it also requires patching `Wow.exe` to accept custom
-interface files. `--creation-text` does both: it installs the text **and** applies the
-well-known "allow custom interface" byte patch (the same one the Project Reforged
-patcher uses), after backing `Wow.exe` up to `Wow.exe.classless-bak`. `--uninstall`
-restores the backup. This is confirmed working on a stock 3.3.5a build 12340 client. It is off by default because it modifies your executable, and
-because if anything is off you would rather opt in deliberately: if the login screen
-still shows *"interface files are corrupt"*, run `--uninstall`. Close the game before
-running it — a running client locks `Wow.exe`.
+| Option                | Effect                                                                |
+| --------------------- | --------------------------------------------------------------------- |
+| `--dry-run`           | Print the plan and write nothing                                      |
+| `--uninstall`         | Undo everything the installer did                                     |
+| `--yes` / `-y`        | Skip the confirmation prompt                                          |
+| `--name Champion`     | Call the class something other than `Hero`                            |
+| `--minimal`           | Only the Hero name + single-class list + addon (no text, outfit, icon, or exe patch) |
+| `--no-creation-text`  | Skip the Hero text + armored outfit (and the `Wow.exe` patch they need) |
+| `--no-hero-icon`      | Keep the stock class icon instead of the Hero emblem                  |
+| `--no-exe`            | Install the text but not the `Wow.exe` patch (only for clients that already accept custom UI) |
+| `--no-addon`          | Do not install the addon                                              |
+| `--locale enUS`       | Patch one locale only, on a multi-language client                     |
 
-| Option              | Effect                                                                  |
-| ------------------- | ----------------------------------------------------------------------- |
-| `--dry-run`         | Print the plan and write nothing                                        |
-| `--uninstall`       | Undo everything the installer did                                       |
-| `--yes` / `-y`      | Skip the confirmation prompt                                            |
-| `--name Champion`   | Call every class something other than `Hero`                            |
-| `--creation-text`   | Also rewrite the creation-screen class blurb (patches `Wow.exe` — see below) |
-| `--no-exe`          | With `--creation-text`, install the text but do not patch `Wow.exe`     |
-| `--hero-icon`       | Replace the class icon with a Hero emblem (needs Pillow; no exe patch)   |
-| `--no-addon`        | Do not install the addon                                                |
-| `--locale enUS`     | Patch one locale only, on a multi-language client                       |
+The `Wow.exe` patch is the well-known "allow custom interface" patch (the same one the
+Project Reforged patcher uses), confirmed working on a stock 3.3.5a build 12340 client.
+It is backed up to `Wow.exe.classless-bak` and restored by `--uninstall`.
 
 ---
 
@@ -173,13 +173,13 @@ installer does this for you, but a client left running can write it back.
 **Class icons show as a green box.**
 That means a `--hero-icon` install wrote a texture the client could not read.
 Current versions match the client's own texture format, so update and re-run; if
-it persists, reinstall without `--hero-icon` (everything else is unaffected — the
-icon is a separate opt-in for exactly this reason).
+it persists, reinstall with `--no-hero-icon` to keep the stock icon; everything else
+is unaffected.
 
 **The creation screen still shows the old class descriptions.**
-That is the default — the description paragraph is only changed by `--creation-text`,
-which is off because it can break clients that enforce interface signatures. The Hero
-name and the single-class list are already applied.
+The `Wow.exe` patch that lets the client load the custom text did not take — usually
+because the game was open during install (it locks `Wow.exe`). Close the game fully and
+run the installer again, or check with `--dry-run` whether it reports the exe as patched.
 
 ---
 

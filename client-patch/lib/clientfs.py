@@ -112,12 +112,20 @@ def free_patch_suffix(data_dir, locales):
 
 
 class ClientFiles:
-    """Read files as the client would see them, across the whole archive stack."""
+    """Read files as the client would see them, across the whole archive stack.
 
-    def __init__(self, data_dir, locale):
+    `exclude` is a set of archive basenames (lower-case) to leave out of the
+    chain -- used to read the PRISTINE original of a file while the installer's
+    own previous patch archives are still present, so a reinstall never reads
+    its own output back as the source.
+    """
+
+    def __init__(self, data_dir, locale, exclude=None):
         self.data_dir = data_dir
         self.locale = locale
-        self.chain = archive_chain(data_dir, locale)
+        drop = {x.lower() for x in (exclude or ())}
+        self.chain = [p for p in archive_chain(data_dir, locale)
+                      if os.path.basename(p).lower() not in drop]
         self._open = {}
 
     def close(self):

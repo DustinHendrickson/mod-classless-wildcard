@@ -113,6 +113,127 @@ def _nearest(palette, key):
     return best
 
 
+# ----------------------------------------------------------------- decoding
+
+def decode_blp(data):
+    """Decode a BLP2 (palettized or DXT1/3/5) into (width, height, RGBA bytes).
+
+    Only mip level 0 is decoded -- that is all we need to re-skin one cell.
+    """
+    if data[:4] != b"BLP2":
+        raise ValueError("not a BLP2 file")
+    encoding = data[8]
+    alpha_depth = data[9]
+    alpha_type = data[10]
+    width, height = struct.unpack_from("<II", data, 12)
+    mip_offsets = struct.unpack_from("<16I", data, 20)
+    off = mip_offsets[0]
+
+    if encoding == 1:  # palettized
+        palette = data[_HEADER_BYTES:_HEADER_BYTES + _PALETTE_BYTES]
+        npx = width * height
+        indices = data[off:off + npx]
+        alpha = data[off + npx:off + npx * 2] if alpha_depth == 8 else None
+        out = bytearray(npx * 4)
+        for i in range(npx):
+            p = indices[i] * 4
+            out[i * 4] = palette[p + 2]      # R (palette is BGRA)
+            out[i * 4 + 1] = palette[p + 1]  # G
+            out[i * 4 + 2] = palette[p]      # B
+            out[i * 4 + 3] = alpha[i] if alpha else 255
+        return width, height, bytes(out)
+
+    if encoding == 2:  # DXT
+        return width, height, _decode_dxt(data[off:], width, height, alpha_type)
+
+    raise ValueError("unsupported BLP encoding %d" % encoding)
+
+
+def _c565(v):
+    r = (v >> 11) & 0x1F
+    g = (v >> 5) & 0x3F
+    b = v & 0x1F
+    return (r << 3) | (r >> 2), (g << 2) | (g >> 4), (b << 3) | (b >> 2)
+
+
+def _decode_dxt(data, width, height, alpha_type):
+    # alpha_type: 0 = DXT1, 1 = DXT3, 7 = DXT5
+    out = bytearray(width * height * 4)
+    bw = (width + 3) // 4
+    pos = 0
+    for by in range(0, height, 4):
+        for bx in range(0, width, 4):
+            alphas = [255] * 16
+            if alpha_type == 7:  # DXT5 alpha block
+                a0, a1 = data[pos], data[pos + 1]
+                bits = int.from_bytes(data[pos + 2:pos + 8], "little")
+                atab = _dxt5_alpha_table(a0, a1)
+                for i in range(16):
+                    alphas[i] = atab[(bits >> (3 * i)) & 7]
+                pos += 8
+            elif alpha_type == 1:  # DXT3 alpha block (4 bits/pixel)
+                ablock = data[pos:pos + 8]
+                for i in range(16):
+                    nib = (ablock[i // 2] >> (4 * (i % 2))) & 0xF
+                    alphas[i] = nib * 17
+                pos += 8
+            # color block
+            c0, c1 = struct.unpack_from("<HH", data, pos)
+            idx = struct.unpack_from("<I", data, pos + 4)[0]
+            pos += 8
+            r0, g0, b0 = _c565(c0)
+            r1, g1, b1 = _c565(c1)
+            colors = [(r0, g0, b0), (r1, g1, b1), None, None]
+            if alpha_type != 0 or c0 > c1:
+                colors[2] = ((2 * r0 + r1) // 3, (2 * g0 + g1) // 3, (2 * b0 + b1) // 3)
+                colors[3] = ((r0 + 2 * r1) // 3, (g0 + 2 * g1) // 3, (b0 + 2 * b1) // 3)
+            else:
+                colors[2] = ((r0 + r1) // 2, (g0 + g1) // 2, (b0 + b1) // 2)
+                colors[3] = (0, 0, 0)
+            for i in range(16):
+                px = bx + (i % 4)
+                py = by + (i // 4)
+                if px >= width or py >= height:
+                    continue
+                cr, cg, cb = colors[(idx >> (2 * i)) & 3]
+                o = (py * width + px) * 4
+                out[o], out[o + 1], out[o + 2], out[o + 3] = cr, cg, cb, alphas[i]
+    return bytes(out)
+
+
+def _dxt5_alpha_table(a0, a1):
+    a = [a0, a1, 0, 0, 0, 0, 0, 0]
+    if a0 > a1:
+        for i in range(1, 7):
+            a[i + 1] = ((7 - i) * a0 + i * a1) // 7
+    else:
+        for i in range(1, 5):
+            a[i + 1] = ((5 - i) * a0 + i * a1) // 5
+        a[6], a[7] = 0, 255
+    return a
+
+
+def reskin_hero_cell(original_blp, cells=4):
+    """Return BLP2 bytes: the client's class-icon atlas with only the Hero
+    (Warrior) cell replaced by the emblem; every other class icon untouched.
+
+    Returns None if Pillow is missing.
+    """
+    try:
+        from PIL import Image
+    except ImportError:
+        return None
+
+    w, h, rgba = decode_blp(original_blp)
+    atlas = Image.frombytes("RGBA", (w, h), rgba)
+
+    cw, ch = w // cells, h // cells
+    emblem = _draw_emblem(cw if cw == ch else min(cw, ch)).resize((cw, ch), Image.LANCZOS)
+    # WARRIOR cell = top-left (CLASS_ICON_TCOORDS["WARRIOR"] = {0,.25,0,.25})
+    atlas.paste(emblem, (0, 0), emblem)
+    return encode_palettized(atlas)
+
+
 def have_pillow() -> bool:
     try:
         import PIL  # noqa: F401

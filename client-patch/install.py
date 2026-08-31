@@ -233,14 +233,23 @@ def build_locale_patch(files, name, report, locale, theme=False, icon=False):
                           % os.path.basename(source))
 
     if icon:
-        atlas = blp.render_hero_class_atlas()
-        if atlas is None:
+        try:
+            raw, source = files.find(CLASSICONS_INGAME)
+        except FileNotFoundError:
+            raw = None
+        atlas = blp.reskin_hero_cell(raw) if raw else None
+        if atlas is None and raw is not None:
             report.append("  Hero class icon      skipped (Python 'Pillow' not "
                           "installed: pip install pillow)")
+        elif atlas is None:
+            report.append("  Hero class icon      skipped (class-icon atlas not found)")
         else:
+            # only the Hero (Warrior) cell becomes the emblem; the other class
+            # icons stay intact so the addon can still group abilities by class
             for tex in (CLASSICONS_INGAME, CLASSICONS_CREATE):
                 payload[tex] = atlas
-            report.append("  UI-Classes icons     replaced with the Hero emblem")
+            report.append("  Hero class icon      emblem on the Hero cell, other "
+                          "class icons kept (from %s)" % os.path.basename(source))
 
     return payload
 
@@ -317,53 +326,48 @@ def do_install(args, wow_dir):
         raise Abort("every patch letter from A to Z is already taken in %s"
                     % data_dir)
 
+    def yn(on):
+        return "yes" if on else "no"
+
     print("World of Warcraft : %s" % wow_dir)
     print("Locales           : %s" % ", ".join(locales))
-    if args.glue:
-        print("Patch archives    : patch-%s.MPQ  +  patch-<locale>-%s.MPQ"
-              % (suffix, suffix))
-    else:
-        print("Patch archive     : patch-%s.MPQ" % suffix)
     print("Class name        : %s" % args.name)
-    print("Creation text     : %s"
-          % ("YES -- replaces a signed file (see warning below)"
-             if args.glue else "no (safe default; class description unchanged)"))
+    print("Creation text     : %s" % yn(args.glue))
+    print("Armored outfit    : %s" % yn(args.glue))
+    print("Hero class icon   : %s" % yn(args.hero_icon))
+    print("Patch Wow.exe     : %s" % yn(args.exe))
+    print("Addon             : %s" % yn(args.addon))
     if previous:
         print("Note              : replacing a previous install (same letter)")
     print()
 
-    if args.glue:
-        print("  --creation-text rewrites GlueStrings.lua (the creation-screen")
-        print("  class description), which is a signed interface file. To make the")
-        if args.exe:
-            print("  client accept it, it also applies the well-known \"allow custom")
-            print("  interface\" patch to Wow.exe -- backed up first to")
-            print("  Wow.exe.classless-bak, and reversible with --uninstall.")
-        else:
-            print("  client accept it you asked to skip the Wow.exe patch (--no-exe),")
-            print("  so this only works if your client already loads custom UI files.")
-        print('  If the login screen still says "interface files are corrupt", run')
-        print("  this installer again with --uninstall. The Hero name and single-")
-        print("  class list do NOT need any of this and install either way.")
+    if args.exe:
+        print("  This installs the full Hero client. The creation-screen text edits")
+        print("  a signed interface file, so Wow.exe is patched (the well-known")
+        print("  \"allow custom interface\" patch) to accept it -- backed up first to")
+        print("  Wow.exe.classless-bak and reversible with --uninstall. CLOSE THE")
+        print("  GAME before running this, or the patch cannot be written.")
+        print("  (Use --minimal for just the Hero name + single-class list + addon.)")
         print()
 
     if not args.yes and not args.dry_run:
         if sys.stdin and sys.stdin.isatty():
-            prompt = ("Install the creation text too? [y/N] " if args.glue
-                      else "Install to this client? [Y/n] ")
-            answer = input(prompt).strip().lower()
-            if args.glue:
-                if not answer.startswith("y"):
-                    raise Abort("cancelled; nothing was changed")
-            elif answer and not answer.startswith("y"):
+            answer = input("Install to this client? [Y/n] ").strip().lower()
+            if answer and not answer.startswith("y"):
                 raise Abort("cancelled; nothing was changed")
         print()
 
     report = []
     written = []
 
+    # read sources as if OUR OWN previous archives were not there, so a
+    # reinstall always builds from the pristine client files, never its output
+    def own_archives(locale):
+        return {"patch-%s.MPQ" % suffix, "patch-%s-%s.MPQ" % (locale, suffix)}
+
     # base patch: built once, from the highest-priority locale's chain
-    with clientfs.ClientFiles(data_dir, locales[0]) as files:
+    with clientfs.ClientFiles(data_dir, locales[0],
+                              exclude=own_archives(locales[0])) as files:
         payload = build_data_patch(files, args.name, report, theme=args.glue)
     target = os.path.join(data_dir, "patch-%s.MPQ" % suffix)
     if not args.dry_run:
@@ -374,7 +378,8 @@ def do_install(args, wow_dir):
     # locale patches: creation-screen copy and/or Hero icon, per locale
     if args.glue or args.hero_icon:
         for locale in locales:
-            with clientfs.ClientFiles(data_dir, locale) as files:
+            with clientfs.ClientFiles(data_dir, locale,
+                                      exclude=own_archives(locale)) as files:
                 payload = build_locale_patch(files, args.name, report, locale,
                                              theme=args.glue, icon=args.hero_icon)
             if not payload:
@@ -595,22 +600,24 @@ def main(argv=None):
                         help="what every class is called (default: Hero)")
     parser.add_argument("--no-addon", dest="addon", action="store_false",
                         help="do not install the in-game addon")
-    parser.add_argument("--creation-text", dest="glue", action="store_true",
-                        help="ALSO replace the creation-screen class description "
-                             "with the Hero pitch. This edits a signed interface "
-                             "file, so it also applies the well-known 'allow "
-                             "custom interface' patch to Wow.exe (backed up "
-                             "first) so the client accepts it. OFF by default; "
-                             "fully reversible with --uninstall.")
+    # The full Hero client is the default. These turn pieces OFF.
+    parser.add_argument("--minimal", action="store_true",
+                        help="install only the Hero name + single-class list + "
+                             "addon: no creation-screen text, no Wow.exe patch, "
+                             "no armored outfit, no Hero icon")
+    parser.add_argument("--no-creation-text", dest="glue", action="store_false",
+                        help="skip the Hero creation-screen text and armored "
+                             "outfit (and the Wow.exe patch they need)")
+    parser.add_argument("--no-hero-icon", dest="hero_icon", action="store_false",
+                        help="keep the stock class icon instead of the Hero emblem")
     parser.add_argument("--no-exe", dest="exe_ok", action="store_false",
-                        help="with --creation-text, install the text but do NOT "
-                             "patch Wow.exe (only for clients that already accept "
-                             "custom interface files)")
-    parser.add_argument("--hero-icon", action="store_true",
-                        help="replace the class icon with a Hero emblem. Separate "
-                             "opt-in because it swaps UI-Classes-Circles, used "
-                             "across the whole UI. Needs no exe patch.")
+                        help="install the creation text but do NOT patch Wow.exe "
+                             "(only for clients that already accept custom "
+                             "interface files)")
     args = parser.parse_args(argv)
+    if args.minimal:
+        args.glue = False
+        args.hero_icon = False
     # Wow.exe is patched only when installing the creation text, and only with
     # the verified community pattern set in lib/exepatch.py.
     args.exe = args.glue and args.exe_ok

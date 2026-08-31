@@ -35,22 +35,13 @@ if not defined PYTHON (
 
 echo Using Python: %PYTHON%
 echo.
+echo This installs the full Hero client (name, single-class creation screen,
+echo Hero text + armored outfit + emblem). It patches Wow.exe to accept the
+echo custom interface, backing it up first. CLOSE WORLD OF WARCRAFT before
+echo continuing. For just the name and class list, run with --minimal.
+echo.
 
-rem If the user double-clicked (no arguments), offer the creation-screen text.
-rem If they passed arguments, respect them and don't prompt.
-set "EXTRA="
-if "%~1"=="" (
-    echo The creation screen can also show the "Hero" class description instead
-    echo of the old class blurb. This patches Wow.exe to accept the custom text
-    echo ^(it is backed up first, and --uninstall reverts it^). Close the game first.
-    echo.
-    set /p "WANTTEXT=Also install the Hero creation-screen text? [y/N] "
-    echo.
-)
-if /i "%WANTTEXT%"=="y"   set "EXTRA=--creation-text"
-if /i "%WANTTEXT%"=="yes" set "EXTRA=--creation-text"
-
-call %PYTHON% install.py %EXTRA% %*
+call %PYTHON% install.py %*
 set "RESULT=%ERRORLEVEL%"
 
 echo.
