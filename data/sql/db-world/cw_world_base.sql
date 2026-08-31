@@ -69,8 +69,10 @@ INSERT INTO `npc_vendor` (`entry`, `slot`, `item`, `maxcount`, `incrtime`, `Exte
 -- Current AzerothCore master uses `creature_template_model` and `creature.id1`;
 -- older cores / forks / repacks use `creature_template.modelid1` and
 -- `creature.id`. Only the branch matching this database executes.
--- Spawns: Stormwind (Trade District), Orgrimmar (Valley of Strength), Dalaran
--- (Krasus' Landing). Move/delete to taste; `.npc add 990100` adds more.
+-- Spawns: one in every major city -- Stormwind, Ironforge, Darnassus, the
+-- Exodar, Orgrimmar, Thunder Bluff, Undercity, Silvermoon, Dalaran and
+-- Shattrath. Coordinates can be adjusted per realm: `.npc del` an unwanted
+-- one, or `.go` to a spot and `.npc add 990100` to place more.
 -- ---------------------------------------------------------------------------
 
 DROP PROCEDURE IF EXISTS cw_world_setup;
@@ -94,25 +96,46 @@ BEGIN
         DELETE FROM `creature` WHERE `id1` = 990100;
         INSERT INTO `creature` (`id1`, `map`, `zoneId`, `areaId`, `spawnMask`, `phaseMask`, `position_x`, `position_y`, `position_z`, `orientation`, `spawntimesecs`, `wander_distance`, `MovementType`)
         VALUES
-        (990100, 0, 1519, 1519, 1, 1, -8842.09, 626.358, 94.0867, 3.61283, 300, 0, 0),
-        (990100, 1, 1637, 1637, 1, 1, 1633.33, -4439.11, 15.7588, 1.06465, 300, 0, 0),
-        (990100, 571, 4395, 4395, 1, 1, 5813.9, 448.14, 658.75, 2.19, 300, 0, 0);
+        (990100, 0, 1519, 1519, 1, 1, -8842.09, 626.358, 94.0867, 3.61283, 300, 0, 0),   -- Stormwind, Trade District
+        (990100, 0, 1537, 1537, 1, 1, -4918.88, -940.406, 501.564, 5.44, 300, 0, 0),   -- Ironforge, The Commons
+        (990100, 1, 1657, 1657, 1, 1, 9947.52, 2482.73, 1316.2, 4.71, 300, 0, 0),   -- Darnassus
+        (990100, 530, 3557, 3557, 1, 1, -3965.7, -11653.5, -138.8, 0.98, 300, 0, 0),   -- The Exodar
+        (990100, 1, 1637, 1637, 1, 1, 1633.33, -4439.11, 15.7588, 1.06465, 300, 0, 0),   -- Orgrimmar, Valley of Strength
+        (990100, 1, 1638, 1638, 1, 1, -1196.6, 29.24, 176.0, 4.36, 300, 0, 0),   -- Thunder Bluff
+        (990100, 0, 1497, 1497, 1, 1, 1633.75, 240.167, -43.1, 6.24, 300, 0, 0),   -- Undercity
+        (990100, 530, 3487, 3487, 1, 1, 9738.0, -7454.0, 13.65, 1.5, 300, 0, 0),   -- Silvermoon City
+        (990100, 571, 4395, 4395, 1, 1, 5813.9, 448.14, 658.75, 2.19, 300, 0, 0),   -- Dalaran, Krasus' Landing
+        (990100, 530, 3703, 3703, 1, 1, -1838.16, 5301.79, -12.43, 3.86, 300, 0, 0);   -- Shattrath City
     ELSEIF EXISTS (SELECT 1 FROM information_schema.COLUMNS
                    WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'creature' AND COLUMN_NAME = 'wander_distance') THEN
         DELETE FROM `creature` WHERE `id` = 990100;
         INSERT INTO `creature` (`id`, `map`, `zoneId`, `areaId`, `spawnMask`, `phaseMask`, `position_x`, `position_y`, `position_z`, `orientation`, `spawntimesecs`, `wander_distance`, `MovementType`)
         VALUES
-        (990100, 0, 1519, 1519, 1, 1, -8842.09, 626.358, 94.0867, 3.61283, 300, 0, 0),
-        (990100, 1, 1637, 1637, 1, 1, 1633.33, -4439.11, 15.7588, 1.06465, 300, 0, 0),
-        (990100, 571, 4395, 4395, 1, 1, 5813.9, 448.14, 658.75, 2.19, 300, 0, 0);
+        (990100, 0, 1519, 1519, 1, 1, -8842.09, 626.358, 94.0867, 3.61283, 300, 0, 0),   -- Stormwind, Trade District
+        (990100, 0, 1537, 1537, 1, 1, -4918.88, -940.406, 501.564, 5.44, 300, 0, 0),   -- Ironforge, The Commons
+        (990100, 1, 1657, 1657, 1, 1, 9947.52, 2482.73, 1316.2, 4.71, 300, 0, 0),   -- Darnassus
+        (990100, 530, 3557, 3557, 1, 1, -3965.7, -11653.5, -138.8, 0.98, 300, 0, 0),   -- The Exodar
+        (990100, 1, 1637, 1637, 1, 1, 1633.33, -4439.11, 15.7588, 1.06465, 300, 0, 0),   -- Orgrimmar, Valley of Strength
+        (990100, 1, 1638, 1638, 1, 1, -1196.6, 29.24, 176.0, 4.36, 300, 0, 0),   -- Thunder Bluff
+        (990100, 0, 1497, 1497, 1, 1, 1633.75, 240.167, -43.1, 6.24, 300, 0, 0),   -- Undercity
+        (990100, 530, 3487, 3487, 1, 1, 9738.0, -7454.0, 13.65, 1.5, 300, 0, 0),   -- Silvermoon City
+        (990100, 571, 4395, 4395, 1, 1, 5813.9, 448.14, 658.75, 2.19, 300, 0, 0),   -- Dalaran, Krasus' Landing
+        (990100, 530, 3703, 3703, 1, 1, -1838.16, 5301.79, -12.43, 3.86, 300, 0, 0);   -- Shattrath City
     ELSE
         -- oldest schema variant: spawndist instead of wander_distance
         DELETE FROM `creature` WHERE `id` = 990100;
         INSERT INTO `creature` (`id`, `map`, `spawnMask`, `phaseMask`, `position_x`, `position_y`, `position_z`, `orientation`, `spawntimesecs`, `spawndist`, `MovementType`)
         VALUES
-        (990100, 0, 1, 1, -8842.09, 626.358, 94.0867, 3.61283, 300, 0, 0),
-        (990100, 1, 1, 1, 1633.33, -4439.11, 15.7588, 1.06465, 300, 0, 0),
-        (990100, 571, 1, 1, 5813.9, 448.14, 658.75, 2.19, 300, 0, 0);
+        (990100, 0, 1, 1, -8842.09, 626.358, 94.0867, 3.61283, 300, 0, 0),   -- Stormwind, Trade District
+        (990100, 0, 1, 1, -4918.88, -940.406, 501.564, 5.44, 300, 0, 0),   -- Ironforge, The Commons
+        (990100, 1, 1, 1, 9947.52, 2482.73, 1316.2, 4.71, 300, 0, 0),   -- Darnassus
+        (990100, 530, 1, 1, -3965.7, -11653.5, -138.8, 0.98, 300, 0, 0),   -- The Exodar
+        (990100, 1, 1, 1, 1633.33, -4439.11, 15.7588, 1.06465, 300, 0, 0),   -- Orgrimmar, Valley of Strength
+        (990100, 1, 1, 1, -1196.6, 29.24, 176.0, 4.36, 300, 0, 0),   -- Thunder Bluff
+        (990100, 0, 1, 1, 1633.75, 240.167, -43.1, 6.24, 300, 0, 0),   -- Undercity
+        (990100, 530, 1, 1, 9738.0, -7454.0, 13.65, 1.5, 300, 0, 0),   -- Silvermoon City
+        (990100, 571, 1, 1, 5813.9, 448.14, 658.75, 2.19, 300, 0, 0),   -- Dalaran, Krasus' Landing
+        (990100, 530, 1, 1, -1838.16, 5301.79, -12.43, 3.86, 300, 0, 0);   -- Shattrath City
     END IF;
 END//
 DELIMITER ;

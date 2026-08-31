@@ -443,6 +443,26 @@ respecBtn:SetPoint("BOTTOMRIGHT", -20, 26)
 respecBtn:SetText("Respec")
 respecBtn:SetScript("OnClick", function() Send("RESPEC") end)
 
+-- Rebirth: full reset + switch path, for gold (server enforces the cost).
+StaticPopupDialogs["CW_CLASSLESS_REBIRTH"] = {
+    text = "Rebirth wipes your Hero's abilities and talents and lets you start a\nnew path for |cffffd100%d gold|r. Choose your new path:",
+    button1 = "Classless",
+    button2 = "Cancel",
+    button3 = "Wildcard",
+    OnAccept = function() Send("REBIRTH 0") end,   -- Classless
+    OnAlt    = function() Send("REBIRTH 1") end,   -- Wildcard
+    timeout = 0, whileDead = 1, hideOnEscape = 1, preferredIndex = 3,
+}
+local rebirthBtn = CreateFrame("Button", nil, frame, "UIPanelButtonTemplate")
+rebirthBtn:SetWidth(90); rebirthBtn:SetHeight(22)
+rebirthBtn:SetPoint("RIGHT", respecBtn, "LEFT", -6, 0)
+rebirthBtn:SetText("Rebirth")
+rebirthBtn:Hide()
+rebirthBtn:SetScript("OnClick", function()
+    StaticPopup_Show("CW_CLASSLESS_REBIRTH", CW.state.rebirthCost or 0)
+end)
+CW.rebirthBtn = rebirthBtn
+
 -- stats flyout -------------------------------------------------------------------
 local statFly = CreateFrame("Frame", "ClasslessWildcardStats", frame)
 statFly:SetWidth(260); statFly:SetHeight(250)
@@ -586,14 +606,17 @@ local function UpdateStatus()
         subStatusText:SetText("Level " .. s.level)
         bottomText:SetText("Ability Essence: |cff00ff00" .. s.ae .. "|r    Talent Essence: |cff00ff00" .. s.te .. "|r    Scrolls of Fortune: " .. s.scrolls)
         respecBtn:Enable()
+        if s.rebirth == 1 then CW.rebirthBtn:Show() else CW.rebirthBtn:Hide() end
     elseif s.mode == 1 then
         statusText:SetText(modeText .. "   Rerolls: |cff00ff00" .. s.abilityRerolls .. "|r ability / |cff00ff00" .. s.talentRerolls .. "|r talent")
         subStatusText:SetText("Level " .. s.level .. "   Scrolls: " .. s.scrolls .. "   Synergy chance: " .. s.chance .. "%   Pity: " .. s.pity)
         bottomText:SetText("Rerolls: |cff00ff00" .. s.abilityRerolls .. "|r ability / |cff00ff00" .. s.talentRerolls .. "|r talent    Scrolls of Fortune: " .. s.scrolls)
         respecBtn:Disable()
+        if s.rebirth == 1 then CW.rebirthBtn:Show() else CW.rebirthBtn:Hide() end
     else
         statusText:SetText(modeText)
         subStatusText:SetText("Choose your path before level " .. s.deadline .. "!")
+        CW.rebirthBtn:Hide()
         bottomText:SetText("")
     end
 end
