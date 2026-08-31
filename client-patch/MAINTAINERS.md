@@ -107,27 +107,25 @@ change the pitch.
 > `WARRIOR_ROLE_TANK`. Those do not exist in any 3.3.5a client, so it silently
 > rewrote nothing. If you change the key set, verify against a real client.
 
-### `Wow.exe` — accepting the custom glue
+### `Wow.exe` — not touched
 
-The client rejects interface files whose `## Signature:` scope does not match,
-which blocks the custom creation screen. One conditional jump enforces it:
+**The installer no longer patches `Wow.exe`.** An earlier version flipped one
+byte at file offset `0x243F` (`74 28` → `EB 28`) intending to disable the
+GlueXML `## Signature:` scope check so a custom creation-screen would be
+accepted. It did not work: on a real stock build-12340 client the patch applied
+cleanly yet the client still rejected the custom `GlueStrings.lua` with *"Your
+login interface files are corrupt"*. The exact site was never verified against a
+disassembly, so shipping it did nothing but risk bricking clients.
 
-```
-83 ff 02        cmp edi, 2       ; parsed signature scope
-74 28           je  +0x28        ; -> EB 28, always skip the rejection
-68 98 0f 00 00  push 0xf98
-68 94 0e 9e 00  push 0x9e0e94    ; "signature does not match"
-```
+`lib/exepatch.py` is kept only for its `inspect()` / `restore()` — so
+`--uninstall` can undo an exe that an older version patched — and its `apply()`
+is unused. If you want to revisit accepting custom GlueXML, verify the check in a
+debugger against the specific client first; do not re-enable a blind byte-flip.
 
-`lib/exepatch.py` locates it by that 15-byte anchor, requires exactly one match,
-and checks the target bytes are `74 28` before writing. That structural check is
-the safety, not the hash: private-server clients are usually repacks, so an
-unrecognised SHA-256 is normal and only produces a note in the output. The known
-build-12340 hash (`aa63a575…e88cb8`) is still recognised and labelled. It copies
-to `Wow.exe.classless-bak` first and spots an already-patched exe by searching
-for the patched anchor.
-
-On the stock client the patch site is file offset `0x243F`.
+This is why `--creation-text` is opt-in and carries a loud warning: replacing
+`GlueStrings.lua` only works on clients that do not enforce interface signatures,
+and there is currently no reliable in-installer way to make one that does accept
+it.
 
 ## Testing
 
@@ -152,9 +150,9 @@ especially a non-enUS one.
 - Incremental MPQ patch files (`MPQ_FILE_PATCH_FILE`) are not applied. No
   3.3.5a archive in the normal load order uses them; if one did, the reader
   raises rather than returning wrong bytes.
-- Only the build-12340 `Wow.exe` is recognised by hash. Other builds still get
-  patched when the anchor is unambiguous, but add their SHA-256 to
-  `KNOWN_SHA256` to have them labelled instead of noted.
+- `Wow.exe` is never modified, so the creation-screen *description text*
+  (`--creation-text`) only works on clients that do not enforce GlueXML
+  signatures. There is no in-installer bypass for clients that do.
 
 ## Extending the patch
 

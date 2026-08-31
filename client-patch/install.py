@@ -4,12 +4,15 @@
 Point this at a World of Warcraft 3.3.5a folder and it does everything the
 client side needs:
 
-  * builds the data patch from the player's OWN client files and drops it in
-    Data/ (every class shows as Hero, every race/class pair selectable)
-  * builds the matching locale patch with the classless creation-screen copy
-  * lets Wow.exe accept that custom creation screen, backing the exe up first
+  * builds a data patch from the player's OWN client files and drops it in
+    Data/ (every class shows as Hero; the creation screen lists one class)
   * installs the ClasslessWildcard addon
   * clears the client Cache so the new data is picked up
+
+Wow.exe is NEVER modified. The optional --creation-text flag also rewrites the
+creation-screen class blurb, but that touches a signed interface file and only
+works on clients that do not enforce GlueXML signatures, so it is off by
+default.
 
 Everything is reversible with --uninstall.
 
@@ -104,19 +107,6 @@ def find_wow_exe(wow_dir):
     return None
 
 
-def exe_writable(exe):
-    """True if Wow.exe can be opened for writing right now.
-
-    The running game holds an exclusive lock on Windows, so this is how we tell
-    the player up front instead of failing halfway through.
-    """
-    try:
-        with open(exe, "r+b"):
-            return True
-    except OSError:
-        return False
-
-
 def autodetect_client():
     """Look in the obvious places before asking the player to type a path."""
     candidates = []
@@ -194,7 +184,7 @@ def build_locale_patch(files, name, report, locale):
             "Found GlueStrings.lua for %s but none of the class description "
             "keys matched, so the creation screen would be unchanged.\n"
             "This locale names its strings differently and needs a look. "
-            "Re-run with --no-glue to install everything else." % locale)
+            "Drop --creation-text to install everything else." % locale)
     report.append("  GlueStrings.lua  %d class strings rewritten (from %s)"
                   % (len(replaced), os.path.basename(source)))
     return {GLUESTRINGS: new_text.encode("utf-8", "surrogateescape")}
@@ -274,23 +264,37 @@ def do_install(args, wow_dir):
 
     print("World of Warcraft : %s" % wow_dir)
     print("Locales           : %s" % ", ".join(locales))
-    print("Patch archives    : patch-%s.MPQ  (+ patch-<locale>-%s.MPQ)"
-          % (suffix, suffix))
+    if args.glue:
+        print("Patch archives    : patch-%s.MPQ  +  patch-<locale>-%s.MPQ"
+              % (suffix, suffix))
+    else:
+        print("Patch archive     : patch-%s.MPQ" % suffix)
     print("Class name        : %s" % args.name)
+    print("Creation text     : %s"
+          % ("YES -- replaces a signed file (see warning below)"
+             if args.glue else "no (safe default; class description unchanged)"))
     if previous:
         print("Note              : replacing a previous install (same letter)")
     print()
 
-    if not args.dry_run and exe and args.exe and args.glue and not exe_writable(exe):
-        print("NOTE: Wow.exe is locked (the game looks like it is running). The")
-        print("      patches and addon will still install; close the game first")
-        print("      if you want the creation-screen text finished in one pass.")
+    if args.glue:
+        print("  !! --creation-text modifies GlueStrings.lua, a signed interface")
+        print("  !! file. If your client enforces GlueXML signatures you will get")
+        print('  !! "Your login interface files are corrupt" at the login screen.')
+        print("  !! If that happens, run this installer again with --uninstall.")
+        print("  !! The Hero name and single-class creation list do NOT need this")
+        print("  !! and are installed either way.")
         print()
 
     if not args.yes and not args.dry_run:
         if sys.stdin and sys.stdin.isatty():
-            answer = input("Install to this client? [Y/n] ").strip().lower()
-            if answer and not answer.startswith("y"):
+            prompt = ("Install the creation text too? [y/N] " if args.glue
+                      else "Install to this client? [Y/n] ")
+            answer = input(prompt).strip().lower()
+            if args.glue:
+                if not answer.startswith("y"):
+                    raise Abort("cancelled; nothing was changed")
+            elif answer and not answer.startswith("y"):
                 raise Abort("cancelled; nothing was changed")
         print()
 
@@ -318,30 +322,7 @@ def do_install(args, wow_dir):
             written.append("Data/%s/%s" % (locale, name))
             report.append("  -> Data/%s/%s" % (locale, name))
 
-    # exe -- the one step that edits a file in place, and the one the running
-    # game locks. A failure here must not throw away the archives and addon
-    # that already installed: report it and let the player close the game and
-    # re-run (which skips the finished steps and only redoes the exe).
-    exe_patched = False
-    exe_locked = False
-    if args.exe and args.glue:
-        if not exe:
-            report.append("  Wow.exe          SKIPPED, not found")
-        elif args.dry_run:
-            state, _offset, digest, label = exepatch.inspect(exe)
-            report.append("  Wow.exe          %s (%s)"
-                          % (state, label or "sha256 " + digest[:16]))
-        else:
-            try:
-                report.append("  Wow.exe          %s" % exepatch.apply(exe))
-                exe_patched = True
-            except PermissionError:
-                exe_locked = True
-                report.append("  Wow.exe          COULD NOT WRITE -- the game is "
-                              "open, or the file is read-only")
-            except (OSError, RuntimeError) as error:
-                exe_locked = True
-                report.append("  Wow.exe          SKIPPED -- %s" % error)
+    # Wow.exe is never modified -- see the note in main().
 
     addon_rel = None
     if args.addon:
@@ -356,7 +337,7 @@ def do_install(args, wow_dir):
         "name": args.name,
         "files": written,
         "addon": addon_rel,
-        "exe_patched": exe_patched or bool((previous or {}).get("exe_patched")),
+        "creation_text": bool(args.glue),
     }, args.dry_run)
 
     print("\n".join(report))
@@ -365,19 +346,10 @@ def do_install(args, wow_dir):
         print("Dry run: nothing was written.")
         return 0
 
-    if exe_locked:
-        print("Almost done -- but Wow.exe could not be written, so the custom")
-        print("creation-screen text is not active yet.")
-        print()
-        print("  1. Fully close World of Warcraft (check the taskbar/system tray).")
-        print("  2. Run this installer again. It will skip what is already done")
-        print("     and just finish Wow.exe.")
-        print()
-        print("Everything else installed. If your client pack already accepts")
-        print("custom interface files, you can ignore this and the text works too.")
-        return 0
-
     print("Done. Start the game and every class will read %s." % args.name)
+    if args.glue:
+        print("If the login screen says the interface is corrupt, your client")
+        print("enforces GlueXML signatures -- re-run with --uninstall to revert.")
     print("To undo everything:  python install.py --uninstall \"%s\"" % wow_dir)
     return 0
 
@@ -473,14 +445,20 @@ def do_uninstall(args, wow_dir):
                     locked.append(addon_rel)
                     report.append("  LOCKED, not removed: %s" % addon_rel)
 
+    # Current versions never touch Wow.exe, but an install from an older
+    # version might have, so always offer to restore it -- restore() is a
+    # no-op ("was not patched; left alone") when there is nothing to undo.
     exe = find_wow_exe(wow_dir)
-    if exe and args.exe:
+    if exe:
         if args.dry_run:
             state, _o, _d, _l = exepatch.inspect(exe)
-            report.append("  Wow.exe is %s" % state)
+            if state != "unpatched":
+                report.append("  Wow.exe is %s (would restore)" % state)
         else:
             try:
-                report.append("  Wow.exe %s" % exepatch.restore(exe))
+                result = exepatch.restore(exe)
+                if "left alone" not in result:
+                    report.append("  Wow.exe %s" % result)
             except OSError:
                 locked.append("Wow.exe")
                 report.append("  Wow.exe          LOCKED, not restored")
@@ -522,13 +500,21 @@ def main(argv=None):
     parser.add_argument("--locale", help="patch only this locale, e.g. enUS")
     parser.add_argument("--name", default="Hero",
                         help="what every class is called (default: Hero)")
-    parser.add_argument("--no-glue", dest="glue", action="store_false",
-                        help="skip the creation-screen text and the exe patch")
-    parser.add_argument("--no-exe", dest="exe", action="store_false",
-                        help="do not touch Wow.exe")
     parser.add_argument("--no-addon", dest="addon", action="store_false",
                         help="do not install the in-game addon")
+    parser.add_argument("--creation-text", dest="glue", action="store_true",
+                        help="ALSO replace the creation-screen class description "
+                             "with the Hero pitch. OFF by default because it "
+                             "modifies a signed interface file: on a client that "
+                             "enforces GlueXML signatures it causes 'Your login "
+                             "interface files are corrupt'. Only enable it if you "
+                             "know your client accepts custom GlueXML. Fully "
+                             "reversible with --uninstall.")
     args = parser.parse_args(argv)
+    # The exe is never modified. The 2-byte signature-check patch that used to
+    # live here could not be verified and did not reliably work, so it is gone;
+    # --creation-text now just installs the text and warns.
+    args.exe = False
 
     print("mod-classless-wildcard client installer")
     print("=" * 39)
