@@ -7,3 +7,4 @@
 ## SavedVariablesPerCharacter: ClasslessWildcardCharDB
 
 ClasslessWildcard.lua
+Bindings.xml

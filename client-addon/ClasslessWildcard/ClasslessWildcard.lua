@@ -615,7 +615,7 @@ local HELP_TEXT = table.concat({
 "   |cffffd100Proficiencies|r -- every armor and weapon type, dual wield included, is trained for you automatically.",
 "   |cffffd100Rebirth|r -- after your path locks in, Rebirth wipes everything and lets you start fresh on either path for gold.",
 "",
-"|cffaaaaaaEverything here can also be done at the Hero Advancement NPC, found in every major city beside the guild master. Open this panel any time with |r|cffffff00/cw|r|cffaaaaaa.|r",
+"|cffaaaaaaEverything here can also be done at the Hero Advancement NPC, found in every major city beside the guild master. Open this panel any time with |r|cffffff00H|r|cffaaaaaa, |r|cffffff00/cw|r|cffaaaaaa, or the dice button on your minimap -- rebind the key under Key Bindings > ClasslessWildcard.|r",
 }, "\n")
 
 local helpText = helpContent:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
@@ -1905,6 +1905,7 @@ events:SetScript("OnEvent", function(self, event, arg1, arg2, arg3, arg4)
         end
     elseif event == "PLAYER_ENTERING_WORLD" then
         Send("HELLO")
+        if CW.ClaimHotkey then CW.ClaimHotkey() end
     end
 end)
 
@@ -1939,6 +1940,65 @@ SlashCmdList["CLASSLESSWILDCARD"] = function(msg)
         return
     end
     if frame:IsShown() then frame:Hide() else frame:Show() end
+end
+
+-- ---------------------------------------------------------------------------
+-- key bindings (Bindings.xml declares the actions; these are their handlers)
+-- ---------------------------------------------------------------------------
+BINDING_HEADER_CLASSLESSWILDCARD = "ClasslessWildcard"
+BINDING_NAME_CLASSLESSWILDCARD_TOGGLE = "Toggle Hero Advancement"
+BINDING_NAME_CLASSLESSWILDCARD_HELP = "Toggle the Help guide"
+BINDING_NAME_CLASSLESSWILDCARD_BARS = "Toggle the resource bars"
+
+function ClasslessWildcard_TogglePanel()
+    if frame:IsShown() then frame:Hide() else frame:Show() end
+end
+
+function ClasslessWildcard_ToggleHelp()
+    if not frame:IsShown() then frame:Show() end
+    if CW.helpFly then
+        if CW.helpFly:IsShown() then CW.helpFly:Hide() else CW.helpFly:Show() end
+    end
+end
+
+function ClasslessWildcard_ToggleBars()
+    SlashCmdList["CLASSLESSWILDCARDBARS"]("")
+end
+
+-- Claim a hotkey the first time this account runs the addon. "H" for Hero is
+-- the mnemonic pick; we ask the LIVE client whether each candidate is actually
+-- unbound rather than assuming a default layout, and we never steal a key that
+-- is already doing something. The player can always rebind under
+-- Key Bindings > ClasslessWildcard.
+local HOTKEY_CANDIDATES = { "H", "J", "Y", "G", "K" }
+
+function CW.ClaimHotkey()
+    ClasslessWildcardDB = ClasslessWildcardDB or {}
+    if ClasslessWildcardDB.hotkeyClaimed then return end
+    -- bindings can't be changed in combat; try again on the next load
+    if InCombatLockdown and InCombatLockdown() then return end
+    if not SetBinding or not SaveBindings or not GetBindingAction then return end
+
+    -- already bound (by us before, or by the player): leave it alone
+    if GetBindingKey and GetBindingKey("CLASSLESSWILDCARD_TOGGLE") then
+        ClasslessWildcardDB.hotkeyClaimed = true
+        return
+    end
+
+    for _, key in ipairs(HOTKEY_CANDIDATES) do
+        local inUse = GetBindingAction(key)
+        if not inUse or inUse == "" then
+            if SetBinding(key, "CLASSLESSWILDCARD_TOGGLE") then
+                pcall(SaveBindings, GetCurrentBindingSet and GetCurrentBindingSet() or 1)
+                ClasslessWildcardDB.hotkeyClaimed = true
+                Print("Hotkey |cffffff00" .. key .. "|r opens the Hero Advancement panel (rebind under Key Bindings > ClasslessWildcard).")
+                return
+            end
+        end
+    end
+
+    ClasslessWildcardDB.hotkeyClaimed = true
+    Print("No free hotkey was available — bind |cffffff00Toggle Hero Advancement|r under Key Bindings > ClasslessWildcard.")
 end
 
 -- exposed for debugging and third-party extensions

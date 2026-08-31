@@ -221,7 +221,21 @@ Everything the NPC and addon do is also available as a chat command.
 | Command               | What it does                            |
 | --------------------- | --------------------------------------- |
 | `/cw` or `/classless` | Open the Character Advancement panel    |
+| `/cw help`            | Open the built-in guide to both systems |
 | `/cwbars`             | Toggle the universal-resource mini-bars |
+
+### Addon key bindings
+
+The addon claims **`H`** (for *Hero*) for the advancement panel the first time it runs,
+but only if that key is genuinely unbound — it never overwrites an existing binding, and
+falls back through `J`, `Y`, `G`, `K` if `H` is taken. All three actions live under
+**Key Bindings → ClasslessWildcard**, so players can rebind them freely:
+
+| Binding                    | Default        |
+| -------------------------- | -------------- |
+| Toggle Hero Advancement    | `H`            |
+| Toggle the Help guide      | *(unbound)*    |
+| Toggle the resource bars   | *(unbound)*    |
 
 ---
 

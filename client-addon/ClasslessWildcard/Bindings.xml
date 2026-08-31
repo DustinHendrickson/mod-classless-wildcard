@@ -1,0 +1,11 @@
+<Bindings>
+    <Binding name="CLASSLESSWILDCARD_TOGGLE" header="CLASSLESSWILDCARD">
+        ClasslessWildcard_TogglePanel()
+    </Binding>
+    <Binding name="CLASSLESSWILDCARD_HELP">
+        ClasslessWildcard_ToggleHelp()
+    </Binding>
+    <Binding name="CLASSLESSWILDCARD_BARS">
+        ClasslessWildcard_ToggleBars()
+    </Binding>
+</Bindings>
