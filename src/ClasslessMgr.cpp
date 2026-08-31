@@ -172,8 +172,9 @@ void ClasslessMgr::LoadConfig(bool /*reload*/)
     cfg.proficiencySpells = ParseUintList(sConfigMgr->GetOption<std::string>(
         "ClasslessWildcard.ProficiencySpells",
         // cloth, leather, mail, plate, shield, swords 1h/2h, axes 1h/2h, maces 1h/2h,
-        // polearms, staves, daggers, fist, bows, guns, crossbows, thrown, wands, shoot, dual wield
-        "9078,9077,8737,750,9116,201,202,196,197,198,199,200,227,1180,15590,264,266,5011,2567,5009,5019,674"));
+        // polearms, staves, daggers, fist, bows, guns, crossbows, thrown, wands,
+        // Shoot wand (5019), Shoot bow/gun/crossbow (3018), Throw (2764), dual wield
+        "9078,9077,8737,750,9116,201,202,196,197,198,199,200,227,1180,15590,264,266,5011,2567,5009,5019,3018,2764,674"));
 
     cfg.suppressTalentPoints = sConfigMgr->GetOption<bool>("ClasslessWildcard.SuppressTalentPoints", true);
     cfg.blockOutsideSpellSources = sConfigMgr->GetOption<bool>("ClasslessWildcard.BlockOutsideSpellSources", true);
@@ -1012,6 +1013,23 @@ void ClasslessMgr::TeachProficiencies(Player* player)
     GrantGuard guard(_applyingGrant);
 
     for (uint32 spellId : cfg.proficiencySpells)
+        if (sSpellMgr->GetSpellInfo(spellId) && !player->HasSpell(spellId))
+            player->learnSpell(spellId);
+
+    // A ranged proficiency without its use-ability is a dead skill: 5019 only
+    // shoots WANDS -- bows/guns/crossbows fire with 3018 (Shoot) and thrown
+    // weapons with 2764 (Throw). Teach those alongside their proficiencies
+    // even when an older conf list predates them.
+    auto listed = [&](uint32 id)
+    {
+        return std::find(cfg.proficiencySpells.begin(), cfg.proficiencySpells.end(), id) != cfg.proficiencySpells.end();
+    };
+    std::vector<uint32> useAbilities;
+    if (listed(264) || listed(266) || listed(5011))
+        useAbilities.push_back(3018);   // Shoot (bow / gun / crossbow)
+    if (listed(2567))
+        useAbilities.push_back(2764);   // Throw
+    for (uint32 spellId : useAbilities)
         if (sSpellMgr->GetSpellInfo(spellId) && !player->HasSpell(spellId))
             player->learnSpell(spellId);
 

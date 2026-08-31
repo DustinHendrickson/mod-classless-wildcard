@@ -101,9 +101,13 @@ ClasslessWildcard.RespectLevelRequirements = 1
 #        Default: 1
 #
 #    ClasslessWildcard.ProficiencySpells
-#        The proficiency spells taught.
+#        The proficiency spells taught, plus the ranged use-abilities:
+#        Shoot 5019 fires WANDS only; bows/guns/crossbows need Shoot 3018 and
+#        thrown weapons need Throw 2764. (Those two are also auto-taught
+#        whenever the matching proficiency is in this list, so older lists
+#        keep working.)
 #        Default: cloth/leather/mail/plate/shield, all weapon types, wands,
-#                 shoot, throw, dual wield
+#                 wand Shoot, ranged Shoot, Throw, dual wield
 #
 #    ClasslessWildcard.SuppressTalentPoints
 #        Zero out native talent points (talents flow through the module).
@@ -159,7 +163,7 @@ ClasslessWildcard.StarterKit.Items = "25:1,2362:1,2092:2,36:1,1194:1,2361:1,1228
 
 ClasslessWildcard.TeachProficiencies = 1
 ClasslessWildcard.BlockOutsideSpellSources = 1
-ClasslessWildcard.ProficiencySpells = "9078,9077,8737,750,9116,201,202,196,197,198,199,200,227,1180,15590,264,266,5011,2567,5009,5019,674"
+ClasslessWildcard.ProficiencySpells = "9078,9077,8737,750,9116,201,202,196,197,198,199,200,227,1180,15590,264,266,5011,2567,5009,5019,3018,2764,674"
 ClasslessWildcard.SuppressTalentPoints = 1
 
 ########################################
