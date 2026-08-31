@@ -2,7 +2,17 @@
  * mod-classless-wildcard
  *
  * Ascension-style classless system + Season 10 "Wildcard" mode for AzerothCore.
- * Released under GNU AGPL v3, like AzerothCore.
+ * Copyright (C) 2026 Dustin Hendrickson
+ *
+ * This program is free software; you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation; either version 2 of the License, or
+ * (at your option) any later version.
+ *
+ * This program is distributed in the hope that it will be useful, but
+ * WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the GNU
+ * General Public License for more details.
  */
 
 #ifndef MOD_CLASSLESS_WILDCARD_H
@@ -224,11 +234,30 @@ namespace ClasslessWildcard
         uint32 wcFreeScrollEveryLevels = 0;    // optional extra: scrolls every N levels (0 = off)
         uint32 wcFreeScrollCount = 1;          // scrolls granted per milestone
 
+        // SINGLE CHASSIS
+        //
+        // Every Hero is forced onto one class, whatever the creation screen
+        // sent. This is the whole point: as long as characters keep different
+        // classes, the core's own per-class math differs between them — base
+        // stats, base health and mana, which stat converts into attack power —
+        // and "roll a mana class if you want to cast" creeps back in. One
+        // chassis makes that math identical by construction rather than by
+        // correction, so the class you picked is purely cosmetic.
+        //
+        // Paladin is the default: it has a real mana pool with proper base
+        // mana (so %-of-base-mana spell costs work) and spirit regen, and no
+        // forms, stances or runes to suppress. Rage and energy are layered on
+        // top by the universal-resource code below.
+        bool   chassisEnable = true;
+        uint8  chassisClass = 2;          // CLASS_PALADIN
+
         // universal resources: every Hero maintains mana, rage AND energy
         // pools simultaneously (druid-style — the client tracks all pools,
         // only the chassis bar is displayed; the addon shows the others)
         bool   universalResources = true;
-        // synthetic mana for non-mana chassis, using the real WoW conversion:
+        // synthetic mana, used only when the configured chassis has no native
+        // mana pool. With the default Paladin chassis this never runs. Uses
+        // the real WoW conversion:
         // the first 20 Intellect give 1 mana each, points beyond 20 give
         // ManaPerIntellect each; plus a flat base and per-level growth
         uint32 urBaseMana = 100;
@@ -243,10 +272,13 @@ namespace ClasslessWildcard
         float  urManaRegenPerSpirit = 0.3f;
         uint32 urManaRegenPct = 0;
 
-        // universal stat layer: fills the gaps the (warrior) chassis math
-        // leaves so EVERY stat is worth allocating on a classless Hero:
+        // universal stat layer: fills the gaps the chassis math leaves so
+        // EVERY stat is worth allocating on a classless Hero:
         //   AGI -> melee + ranged attack power, INT -> spell power,
         //   SPI -> mana regen (above). STR/STA already work via the core.
+        // Because every Hero shares one chassis, these apply identically to
+        // everyone -- there is no class whose native conversions make it a
+        // better caster or a better melee.
         bool   universalStats = true;
         float  usMeleeAPPerAgi = 1.0f;
         float  usRangedAPPerAgi = 1.0f;
@@ -261,9 +293,6 @@ namespace ClasslessWildcard
         // rebirth (late mode switch / full reset)
         bool   rebirthEnable = true;
         uint32 rebirthCostGold = 100;
-
-        // experimental
-        bool   crossPowerCasting = false;
 
         uint32 npcEntry = 990100;
     };

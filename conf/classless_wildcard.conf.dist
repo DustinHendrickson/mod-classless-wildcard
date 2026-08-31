@@ -215,6 +215,51 @@ ClasslessWildcard.Wildcard.FreeScrollEveryLevels = 0
 ClasslessWildcard.Wildcard.FreeScrollCount = 1
 
 ########################################
+# Chassis
+########################################
+#
+#    Every Hero runs on ONE class, whatever was picked on the creation screen.
+#    That is what makes this classless rather than "classless with a class
+#    underneath": while characters keep different classes, the core's own
+#    per-class math differs between them -- base stats, base health and mana,
+#    which stat feeds attack power, the crit and dodge conversion ratios --
+#    and the class you pick quietly becomes a build decision again.
+#
+#    With one chassis that math is identical for everyone by construction, so
+#    the class chosen at creation is nothing but the model and the name (and
+#    the name reads "Hero" once the client patch is installed). Every stat
+#    matters to every Hero, and no build is better served by one class than
+#    another.
+#
+#    Characters are converted at creation, and existing characters convert on
+#    their next login. Accounts matched by ExemptAccountPrefixes are left on
+#    their real class.
+#
+#    ClasslessWildcard.Chassis.Enable
+#        Force every character onto Chassis.Class. Turning this OFF returns
+#        the module to per-class chassis behaviour, where a character's class
+#        still affects its stats and resources.
+#        Default: 1
+#
+#    ClasslessWildcard.Chassis.Class
+#        The class id every Hero runs on.
+#          1 Warrior   2 Paladin   3 Hunter   4 Rogue    5 Priest
+#          6 DK        7 Shaman    8 Mage     9 Warlock  11 Druid
+#        Paladin is the default: a real mana pool with proper base mana (so
+#        percentage-of-base-mana spell costs work) and spirit regen, plate
+#        base armour, and no forms, stances or runes to suppress. Rage and
+#        energy are layered on top by the universal-resource system below.
+#        Pick a non-mana class and mana becomes synthetic instead -- it works,
+#        but it is the harder direction.
+#        Default: 2
+#
+#        Changing this on a live realm re-converts every character on their
+#        next login and shifts their base stats. Decide before launch.
+
+ClasslessWildcard.Chassis.Enable = 1
+ClasslessWildcard.Chassis.Class = 2
+
+########################################
 # Universal resources
 ########################################
 #
@@ -225,10 +270,13 @@ ClasslessWildcard.Wildcard.FreeScrollCount = 1
 #    bar shows with ".classless bar mana|rage|energy|default" or by clicking
 #    a mini-bar; the choice persists per character.
 #    Spells always draw from their native pool, energy/mana regenerate through
-#    the core's normal regeneration, rage decays normally, and rage GAIN for
-#    non-rage chassis mirrors the warrior formulas (scalable below).
+#    the core's normal regeneration, rage decays normally, and rage GAIN
+#    mirrors the warrior formulas when the chassis is not natively rage
+#    (scalable below). A spell whose power type is not the chassis's own is
+#    always castable -- it pays out of the pool it actually uses.
 #
-#    The synthetic mana pool (chassis with no native mana) follows the real
+#    If the configured chassis has no native mana (it does by default), a
+#    synthetic mana pool is built instead. It follows the real
 #    WoW conversion so values look normal at every level:
 #      max mana = BaseMana + ManaPerLevel*(level-1)
 #                 + Intellect (first 20 points, 1 mana each)
@@ -309,16 +357,8 @@ ClasslessWildcard.Rebirth.CostGold = 100
 # Misc
 ########################################
 #
-#    ClasslessWildcard.CrossPowerCasting
-#        EXPERIMENTAL: waive the "not enough mana/rage/energy" check when a
-#        spell uses a power type the character's chassis class doesn't have,
-#        so e.g. a Warrior chassis can cast learned mana spells (costing
-#        whatever of that power it has — usually nothing). Off by default.
-#        Default: 0
-#
 #    ClasslessWildcard.NpcEntry
 #        creature_template entry of the Hero Advancement NPC.
 #        Default: 990100
 
-ClasslessWildcard.CrossPowerCasting = 0
 ClasslessWildcard.NpcEntry = 990100

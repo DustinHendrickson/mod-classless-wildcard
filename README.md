@@ -8,7 +8,7 @@
 [![Client](https://img.shields.io/badge/client-WotLK%203.3.5a-c8952f?style=flat-square)](https://www.azerothcore.org/)
 [![Language](https://img.shields.io/badge/C%2B%2B-17-00599C?style=flat-square)](src/)
 [![Addon](https://img.shields.io/badge/client%20addon-included-a335ee?style=flat-square)](client-addon/)
-[![License](https://img.shields.io/badge/license-AGPL--3.0-green?style=flat-square)](#license)
+[![License](https://img.shields.io/badge/license-GPL--2.0--or--later-green?style=flat-square)](#license)
 
 **Every character can learn every spell and every talent from every class** — buy them
 with Essence like Ascension's classless realms, or let the dice decide in Wildcard mode.
@@ -22,8 +22,10 @@ with Essence like Ascension's classless realms, or let the dice decide in Wildca
 ## Overview
 
 `mod-classless-wildcard` is a server-side AzerothCore module that removes the class system
-from WotLK. A character still has a *chassis* class for its power type and base stats, but
-its abilities and talents can come from anywhere in the game.
+from WotLK. Not "softened" — removed. Every character runs on one shared chassis class no
+matter what the creation screen sent, so base stats, health, resources and every stat
+conversion are identical for everyone, and the class you picked is just a model and a name.
+Abilities and talents come from anywhere in the game.
 
 Two progression paths ship in the box:
 
@@ -74,11 +76,16 @@ training, the Hero Advancement NPC and the addon UI. Players choose a path per c
 
 #### Making every build actually work
 
+- **One chassis for everyone** — every character is converted to a single class (Paladin by
+  default) at creation, and existing characters convert on next login. This is the part that
+  makes it classless: with ten different classes underneath, the core's own per-class math —
+  base stats, base health and mana, which stat feeds attack power, the crit and dodge ratios —
+  differs between them, and picking a class quietly becomes a build decision again.
 - **Universal resources** — every Hero runs mana, rage *and* energy at once, druid-style, with
-  **no client patch**. The client already tracks all three pools; the chassis picks the
-  displayed bar and the addon draws mini-bars for the rest (`/cwbars`). Spells always draw
-  their native resource, so a Warrior chassis really casts Fireball on mana and a Mage chassis
-  really Bloodthirsts on rage.
+  **no client patch**. The client already tracks all three pools; one is displayed and the
+  addon draws mini-bars for the rest (`/cwbars`). Spells always draw their native resource and
+  a spell is never unusable because of the pool it costs — the same Hero casts Fireball on
+  mana and Bloodthirsts on rage.
 - **Primary stat allocation** — a per-level point budget spent freely across
   STR / AGI / STA / INT / SPI, applied live, reallocation free.
 - **All proficiencies taught** — armor, weapons and dual wield, each configurable.
@@ -227,6 +234,8 @@ which documents all 70+ settings inline. The ones you are most likely to touch:
 | `ClasslessWildcard.ModeChoiceDeadline`              | `5`         | Level after which the path locks                      |
 | `ClasslessWildcard.IncludeDeathKnight`              | `0`         | Include DK spells — rune costs make these awkward     |
 | `ClasslessWildcard.NpcEntry`                        | `990100`    | Hero Advancement NPC entry                            |
+| `Chassis.Enable`                                    | `1`         | Force every character onto one class                  |
+| `Chassis.Class`                                     | `2`         | Which class that is (2 = Paladin)                     |
 | `Classless.StartingAbilityEssence`                  | `9`         | AE granted at character creation                      |
 | `Classless.AbilityCostByRarity`                     | `1,2,3,5,8` | AE cost per rarity tier                               |
 | `Classless.AbilityEssencePerLevel`                  | `1`         | AE per level from `EssenceStartLevel`                 |
@@ -255,9 +264,10 @@ These follow from the stock 3.3.5a client, and are not bugs:
 
 - **The talent frame is unused.** Talents are granted as their underlying spells through the
   module, and native talent points are zeroed. Everything you learn shows in the spellbook.
-- **The chassis class still matters** for base stats and power type. Mana chassis are the most
-  flexible base for spell-heavy builds. `ClasslessWildcard.CrossPowerCasting` (experimental,
-  off by default) lets non-mana chassis cast mana spells.
+- **The class you pick at creation has no mechanical effect.** Every character is converted to
+  the configured chassis, so there is no "better base" for casters or for melee. Set
+  `ClasslessWildcard.Chassis.Class` before your realm launches; changing it later re-converts
+  every character and shifts their base stats.
 - **Death Knight spells are excluded by default** because of rune costs. Configurable.
 - Mystic enchants and multispec are Phase 2/3 — see [`PLAN.md`](PLAN.md).
 
@@ -322,7 +332,9 @@ the worldserver log around the failure.
 
 ## License
 
-GNU AGPL v3, matching AzerothCore.
+GNU General Public License v2 or later, matching AzerothCore
+(`acore.json` declares GPL2 and every core source header reads "version 2 of the
+License, or (at your option) any later version"). Full text in [`LICENSE`](LICENSE).
 
 ## Credits
 

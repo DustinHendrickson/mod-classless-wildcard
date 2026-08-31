@@ -1,6 +1,16 @@
 /*
  * mod-classless-wildcard
- * Released under GNU AGPL v3, like AzerothCore.
+ * Copyright (C) 2026 Dustin Hendrickson
+ *
+ * This program is free software; you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation; either version 2 of the License, or
+ * (at your option) any later version.
+ *
+ * This program is distributed in the hope that it will be useful, but
+ * WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the GNU
+ * General Public License for more details.
  *
  * Addon bridge: the ClasslessWildcard client addon talks to the server by
  * whispering ITSELF on the addon channel ("CWCL\t<command>"). We intercept

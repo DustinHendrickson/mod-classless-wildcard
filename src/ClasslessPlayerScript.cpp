@@ -1,6 +1,16 @@
 /*
  * mod-classless-wildcard
- * Released under GNU AGPL v3, like AzerothCore.
+ * Copyright (C) 2026 Dustin Hendrickson
+ *
+ * This program is free software; you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation; either version 2 of the License, or
+ * (at your option) any later version.
+ *
+ * This program is distributed in the hope that it will be useful, but
+ * WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the GNU
+ * General Public License for more details.
  */
 
 #include "Chat.h"
@@ -14,12 +24,22 @@
 
 using namespace ClasslessWildcard;
 
-// Chassis classes whose native power is not mana (warrior, rogue, DK) get a
-// SYNTHETIC mana pool. Detected via ChrClasses — NOT GetCreatePowers(), since
-// we deliberately set a create-mana on these players (see below).
+// Does the chassis need a SYNTHETIC mana pool?
+//
+// Every Hero runs the same chassis, so this is one answer for the whole realm,
+// not a per-character quirk. With the default Paladin chassis mana is native
+// and this is always false; it only fires on a realm configured onto a
+// rage/energy chassis. Read from the configured class rather than the
+// player's, so it is already correct during the login before conversion.
+//
+// Detected via ChrClasses — NOT GetCreatePowers(), since we deliberately set a
+// create-mana on these players (see below).
 static bool SyntheticManaChassis(Player* player)
 {
-    ChrClassesEntry const* ce = sChrClassesStore.LookupEntry(player->getClass());
+    Config const& cfg = sClasslessMgr->cfg;
+    uint8 const cls = cfg.chassisEnable && cfg.chassisClass ? cfg.chassisClass
+                                                            : player->getClass();
+    ChrClassesEntry const* ce = sChrClassesStore.LookupEntry(cls);
     return ce && Powers(ce->powerType) != POWER_MANA;
 }
 
@@ -59,6 +79,7 @@ class ClasslessPlayerScript : public PlayerScript
 
 public:
     ClasslessPlayerScript() : PlayerScript("ClasslessPlayerScript", {
+        PLAYERHOOK_ON_CREATE,
         PLAYERHOOK_ON_FIRST_LOGIN,
         PLAYERHOOK_ON_LOGIN,
         PLAYERHOOK_ON_LOGOUT,
@@ -104,6 +125,15 @@ public:
         }
     }
 
+    // Put the character on the one chassis the moment it is created, so the
+    // character list, its starting stats and its saved class all agree from
+    // the very first byte written.
+    void OnPlayerCreate(Player* player) override
+    {
+        if (sClasslessMgr->cfg.enabled)
+            sClasslessMgr->EnforceChassis(player);
+    }
+
     void OnPlayerFirstLogin(Player* player) override
     {
         if (sClasslessMgr->cfg.enabled)
@@ -115,6 +145,11 @@ public:
         Config const& cfg = sClasslessMgr->cfg;
         if (!cfg.enabled)
             return;
+
+        // characters that predate the module, or predate a chassis change,
+        // convert here on their next login
+        sClasslessMgr->EnforceChassis(player);
+
         sClasslessMgr->HandleLogin(player);
 
         // synthetic mana pools (non-mana chassis) load in at 0 — fill them once
@@ -139,8 +174,8 @@ public:
     }
 
     // 2-second maintenance tick:
-    //  * universal STAT layer — fills the gaps the (warrior) chassis math
-    //    leaves so every allocatable stat matters on a classless Hero:
+    //  * universal STAT layer — fills the gaps the chassis math leaves so
+    //    every allocatable stat matters on a classless Hero:
     //    AGI -> melee/ranged AP, INT -> spell power, SPI -> mana regen.
     //    (STR->AP/block, STA->health, AGI->crit/dodge, INT->mana/spell crit
     //    already work uniformly through the shared chassis.)
@@ -284,9 +319,17 @@ public:
     }
 };
 
-// EXPERIMENTAL: allow casting spells that use a power type the chassis class lacks
-// (e.g. a Warrior chassis casting mana spells). The power check is waived; the cast
-// then drains whatever the player has of that power (usually nothing).
+// Every Hero runs one chassis, so exactly one power type is the "displayed" one
+// and every spell drawing on a different pool would otherwise be uncastable.
+// That is not an edge case here, it is the normal state of a classless build:
+// the same character casts mana spells, rage abilities and energy abilities.
+//
+// So the core's power check is waived whenever the spell's power type differs
+// from the chassis's. The cost is still paid, out of the pool the spell
+// actually uses -- universal resources keeps all three pools alive, so there
+// is something there to spend. This is unconditional by design; there is no
+// build in which a Hero should be told a spell is unusable because of the
+// chassis it happens to run on.
 class ClasslessSpellScript : public AllSpellScript
 {
 public:
@@ -296,7 +339,7 @@ public:
 
     void OnSpellCheckCast(Spell* spell, bool /*strict*/, SpellCastResult& res) override
     {
-        if (!sClasslessMgr->cfg.enabled || !sClasslessMgr->cfg.crossPowerCasting)
+        if (!sClasslessMgr->cfg.enabled || !sClasslessMgr->cfg.universalResources)
             return;
         if (res != SPELL_FAILED_NO_POWER)
             return;

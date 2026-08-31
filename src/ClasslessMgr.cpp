@@ -1,6 +1,16 @@
 /*
  * mod-classless-wildcard
- * Released under GNU AGPL v3, like AzerothCore.
+ * Copyright (C) 2026 Dustin Hendrickson
+ *
+ * This program is free software; you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation; either version 2 of the License, or
+ * (at your option) any later version.
+ *
+ * This program is distributed in the hope that it will be useful, but
+ * WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the GNU
+ * General Public License for more details.
  */
 
 #include "ClasslessMgr.h"
@@ -225,6 +235,9 @@ void ClasslessMgr::LoadConfig(bool /*reload*/)
     cfg.urManaRegenPerSpirit = sConfigMgr->GetOption<float>("ClasslessWildcard.UniversalResources.ManaRegenPerSpirit", 0.3f);
     cfg.urManaRegenPct = sConfigMgr->GetOption<uint32>("ClasslessWildcard.UniversalResources.ManaRegenPct", 0);
 
+    cfg.chassisEnable = sConfigMgr->GetOption<bool>("ClasslessWildcard.Chassis.Enable", true);
+    cfg.chassisClass = uint8(sConfigMgr->GetOption<uint32>("ClasslessWildcard.Chassis.Class", CLASS_PALADIN));
+
     cfg.universalStats = sConfigMgr->GetOption<bool>("ClasslessWildcard.UniversalStats.Enable", true);
     cfg.usMeleeAPPerAgi = sConfigMgr->GetOption<float>("ClasslessWildcard.UniversalStats.MeleeAPPerAgility", 1.0f);
     cfg.usRangedAPPerAgi = sConfigMgr->GetOption<float>("ClasslessWildcard.UniversalStats.RangedAPPerAgility", 1.0f);
@@ -238,7 +251,6 @@ void ClasslessMgr::LoadConfig(bool /*reload*/)
     cfg.rebirthEnable = sConfigMgr->GetOption<bool>("ClasslessWildcard.Rebirth.Enable", true);
     cfg.rebirthCostGold = sConfigMgr->GetOption<uint32>("ClasslessWildcard.Rebirth.CostGold", 100);
 
-    cfg.crossPowerCasting = sConfigMgr->GetOption<bool>("ClasslessWildcard.CrossPowerCasting", false);
     cfg.npcEntry = sConfigMgr->GetOption<uint32>("ClasslessWildcard.NpcEntry", 990100);
 }
 
@@ -963,6 +975,69 @@ void ClasslessMgr::TeachProficiencies(Player* player)
     player->UpdateSkillsToMaxSkillsForLevel();
 }
 
+// Force every Hero onto the single configured chassis class.
+//
+// This is what makes the system genuinely classless. While characters keep
+// whatever class the creation screen sent, the core's own per-class math
+// differs between them — base stats, base health and mana, which stat feeds
+// attack power, the crit and dodge conversion ratios — and picking a class
+// quietly becomes a build decision again. One chassis for everyone makes that
+// math identical by construction instead of by correction, so the class chosen
+// at creation is nothing but the model and the name (which reads "Hero"
+// anyway once the client patch is installed).
+//
+// Called at creation and at every login, so characters made before the module
+// was installed convert on their next login.
+bool ClasslessMgr::EnforceChassis(Player* player)
+{
+    if (!cfg.enabled || !cfg.chassisEnable || !player)
+        return false;
+    if (IsExempt(player))          // bots/system accounts keep vanilla classes
+        return false;
+
+    uint8 const want = cfg.chassisClass;
+    if (!want || player->getClass() == want)
+        return false;
+
+    ChrClassesEntry const* entry = sChrClassesStore.LookupEntry(want);
+    if (!entry)
+    {
+        LOG_ERROR("module.classless",
+                  "mod-classless-wildcard: ClasslessWildcard.Chassis.Class = {} is not a "
+                  "valid class id — leaving characters on their original class", want);
+        return false;
+    }
+
+    uint8 const from = player->getClass();
+
+    // the core's own way of changing a unit's class
+    player->SetByteValue(UNIT_FIELD_BYTES_0, 1, want);
+    player->setPowerType(Powers(entry->powerType));
+
+    // rebuild everything that is derived from the class
+    player->InitStatsForLevel(true);
+    player->InitTaxiNodesForLevel();
+    player->InitTalentForLevel();
+    player->UpdateAllStats();
+    player->SetFullHealth();
+    if (player->getPowerType() == POWER_MANA)
+        player->SetPower(POWER_MANA, player->GetMaxPower(POWER_MANA));
+
+    // armor/weapon skills came from the old class; the chassis re-teaches the
+    // full classless set anyway
+    TeachProficiencies(player);
+
+    // persist immediately: characters.class is written from this field, and a
+    // crash before the next periodic save would leave the client and the DB
+    // disagreeing about what the character is
+    player->SaveToDB(false, false);
+
+    LOG_INFO("module.classless",
+             "mod-classless-wildcard: {} converted from class {} to chassis class {} ({})",
+             player->GetName(), from, want, entry->name[0] ? entry->name[0] : "?");
+    return true;
+}
+
 void ClasslessMgr::HandleFirstLogin(Player* player)
 {
     if (!cfg.enabled)
@@ -1018,9 +1093,10 @@ void ClasslessMgr::HandleFirstLogin(Player* player)
     {
         if (st.mode == Mode::Unchosen)
         {
-            Msg(player, "Welcome, Hero! Your class is only a |cffffff00chassis|r now — it sets your resource bar "
-                        "(mana, rage or energy) and base stats. Every spell, talent, weapon and armor type of every "
-                        "class is open to you.");
+            Msg(player, "Welcome, Hero! You have no class. Every Hero shares the same |cffffff00chassis|r, so the "
+                        "one you picked at creation changes nothing — you carry mana, rage and energy at once, every "
+                        "stat is worth having, and every spell, talent, weapon and armor type in the game is open "
+                        "to you.");
             Msg(player, "Speak to the |cffffff00Hero Advancement|r NPC (or use |cffffff00.classless mode|r / the "
                         "|cffffff00/cw|r addon) to choose your path: Classless free-pick or Wildcard random rolls.");
         }

@@ -1,6 +1,16 @@
 /*
  * mod-classless-wildcard
- * Released under GNU AGPL v3, like AzerothCore.
+ * Copyright (C) 2026 Dustin Hendrickson
+ *
+ * This program is free software; you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation; either version 2 of the License, or
+ * (at your option) any later version.
+ *
+ * This program is distributed in the hope that it will be useful, but
+ * WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the GNU
+ * General Public License for more details.
  */
 
 #ifndef MOD_CW_CLASSLESS_MGR_H
@@ -37,6 +47,9 @@ public:
     bool IsWildcard(Player* player) { return GetState(player).mode == ClasslessWildcard::Mode::Wildcard; }
 
     // ------- lifecycle -------
+    // Force the character onto the one configured chassis class. Returns true
+    // if it actually converted one. Safe to call repeatedly.
+    bool EnforceChassis(Player* player);
     void HandleFirstLogin(Player* player);
     void HandleLogin(Player* player);
     void HandleLevelUp(Player* player, uint8 oldLevel);
