@@ -153,9 +153,18 @@ double-click `install.bat` (or run `python3 install.py "/path/to/WoW"`), and the
 This is required — the mod expects a patched client.
 
 <details>
-<summary><b>Optional: unlock every item for every class</b></summary>
+<summary><b>Optional: unlock every item and every class quest</b></summary>
 
 <br>
+
+Both of these are **destructive** to core world tables, never auto-applied, and
+back-uppable only by you "—" so they are opt-in. Back up the table first each time.
+
+**Let Heroes take any class quest.** Apply `data/sql/manual/cw_class_quests.sql`
+to your world DB by hand. It clears the class lock on every quest so a Hero can
+pick up class quests from any class. Ability rewards are still blocked by the
+module (`BlockOutsideSpellSources`), so no quest ever grants an ability "—" only
+its item, XP, gold and reputation rewards. Back up `quest_template` first.
 
 **Unlock every item for every class.** Apply
 `data/sql/manual/cw_classless_items.sql` to your world DB by hand.
@@ -299,10 +308,11 @@ Do this **with the worldserver stopped**:
 
 **What does not revert automatically:**
 
-- **`manual/cw_classless_items.sql`**, if you applied it, overwrote
-  `item_template.AllowableClass` with `-1` for every item. The original masks cannot be
-  recomputed — restore `item_template` from your pre-install backup, or re-import it from the
-  AzerothCore base SQL matching your core revision.
+- **The manual `manual/*.sql` scripts**, if you applied them, overwrote core world tables:
+  `cw_classless_items.sql` set `item_template.AllowableClass` to `-1` for every item, and
+  `cw_class_quests.sql` set `quest_template.AllowableClasses` to `0` for every quest. Neither
+  original can be recomputed — restore those tables from your pre-install backup, or
+  re-import them from the AzerothCore base SQL matching your core revision.
 - **Same-class spells** a Hero was granted that are legal for its base class survive validation.
   Harmless; a GM can `.unlearn` them individually.
 - Characters **created while the module was active** had their class starter spells and gear

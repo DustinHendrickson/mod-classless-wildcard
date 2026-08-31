@@ -1,0 +1,21 @@
+-- mod-classless-wildcard: let Heroes take any class-locked quest
+--
+-- Every Hero shares one base class, so quests locked to other classes are
+-- normally unavailable at the quest giver. This clears the class requirement on
+-- every quest (quest_template.AllowableClasses -> 0 = all classes), so a Hero
+-- can pick up and complete any class quest.
+--
+-- Ability rewards are still blocked: the module reverts any class-library spell
+-- learned outside its own system (ClasslessWildcard.BlockOutsideSpellSources,
+-- on by default), so a quest that would teach a class ability grants nothing.
+-- Item, XP, gold and reputation rewards work as normal.
+--
+-- DESTRUCTIVE, and never auto-applied. AllowableClasses is overwritten with 0
+-- and the original masks cannot be recomputed. Back up quest_template first; to
+-- revert, restore it from that backup or re-import quest_template from the
+-- AzerothCore base SQL matching your core revision.
+--
+-- Apply by hand:
+--     mysql acore_world < cw_class_quests.sql
+
+UPDATE `quest_template` SET `AllowableClasses` = 0 WHERE `AllowableClasses` <> 0;
