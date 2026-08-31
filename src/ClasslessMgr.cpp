@@ -1065,13 +1065,21 @@ void ClasslessMgr::HandleFirstLogin(Player* player)
     // neutral Hero starter kit
     if (cfg.starterKitEnable)
     {
-        // strip every piece of gear the shell class was created wearing, so
-        // the Hero starts bare -- otherwise the kit armour finds the slots
-        // occupied and falls through to the bags, leaving the default gear on
+        // Wipe EVERY class starting item -- both the equipped gear and the
+        // default backpack contents -- so a Hero begins from a clean slate.
+        // Stripping only the equipped slots left the shell class's starting
+        // bag items behind, which then duplicated the neutral kit; and it left
+        // the kit armour falling through to the bags because equip slots were
+        // still full.
         if (cfg.starterKitStripEquipped)
+        {
             for (uint8 slot = EQUIPMENT_SLOT_START; slot < EQUIPMENT_SLOT_END; ++slot)
                 if (player->GetItemByPos(INVENTORY_SLOT_BAG_0, slot))
                     player->DestroyItem(INVENTORY_SLOT_BAG_0, slot, true);
+            for (uint8 slot = INVENTORY_SLOT_ITEM_START; slot < INVENTORY_SLOT_ITEM_END; ++slot)
+                if (player->GetItemByPos(INVENTORY_SLOT_BAG_0, slot))
+                    player->DestroyItem(INVENTORY_SLOT_BAG_0, slot, true);
+        }
 
         // the basic armour (shirt/pants/boots) goes onto the character; the now
         // empty slots mean StoreNewItemInBestSlots equips it rather than bagging
