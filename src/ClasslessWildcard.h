@@ -183,12 +183,16 @@ namespace ClasslessWildcard
         std::vector<uint32> proficiencySpells;
 
         // clean-slate start: strip the chassis class's default spells at
-        // creation and hand out one of each basic weapon type instead
+        // creation and hand out the neutral Hero kit instead
         bool   stripStartingSpells = true;
         bool   starterKitEnable = true;
-        bool   starterKitReplaceWeapons = true;
+        // strip EVERY piece of default gear the shell class was created with,
+        // so the Hero starts bare and the kit armour actually equips (the old
+        // "replace weapons only" left the shell's shirt/pants/boots on, so the
+        // kit armour fell through to the bags)
+        bool   starterKitStripEquipped = true;
         std::vector<std::pair<uint32, uint32>> starterKitItems;  // into bags
-        std::vector<std::pair<uint32, uint32>> starterKitEquip;  // auto-equipped
+        std::vector<std::pair<uint32, uint32>> starterKitEquip;  // auto-equipped (armour)
 
         // accounts whose name starts with one of these prefixes play VANILLA
         // rules (no essences/rolls, native talents, trainers work) — for

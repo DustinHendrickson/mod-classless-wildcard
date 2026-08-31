@@ -129,7 +129,7 @@ void ClasslessMgr::LoadConfig(bool /*reload*/)
 
     cfg.stripStartingSpells = sConfigMgr->GetOption<bool>("ClasslessWildcard.StripStartingSpells", true);
     cfg.starterKitEnable = sConfigMgr->GetOption<bool>("ClasslessWildcard.StarterKit.Enable", true);
-    cfg.starterKitReplaceWeapons = sConfigMgr->GetOption<bool>("ClasslessWildcard.StarterKit.ReplaceWeapons", true);
+    cfg.starterKitStripEquipped = sConfigMgr->GetOption<bool>("ClasslessWildcard.StarterKit.StripEquipped", true);
     auto parseKit = [](std::string const& list, std::vector<std::pair<uint32, uint32>>& out)
     {
         out.clear();
@@ -1062,18 +1062,23 @@ void ClasslessMgr::HandleFirstLogin(Player* player)
                     player->removeSpell(rank, SPEC_MASK_ALL, false);
     }
 
-    // neutral starter kit: one of each basic weapon type instead of the
-    // chassis class's weapons
+    // neutral Hero starter kit
     if (cfg.starterKitEnable)
     {
-        if (cfg.starterKitReplaceWeapons)
-            for (uint8 slot : { EQUIPMENT_SLOT_MAINHAND, EQUIPMENT_SLOT_OFFHAND, EQUIPMENT_SLOT_RANGED })
+        // strip every piece of gear the shell class was created wearing, so
+        // the Hero starts bare -- otherwise the kit armour finds the slots
+        // occupied and falls through to the bags, leaving the default gear on
+        if (cfg.starterKitStripEquipped)
+            for (uint8 slot = EQUIPMENT_SLOT_START; slot < EQUIPMENT_SLOT_END; ++slot)
                 if (player->GetItemByPos(INVENTORY_SLOT_BAG_0, slot))
                     player->DestroyItem(INVENTORY_SLOT_BAG_0, slot, true);
-        // standard armor + sword & shield go straight onto the character
-        // (falls back to bags if a slot is somehow taken)
+
+        // the basic armour (shirt/pants/boots) goes onto the character; the now
+        // empty slots mean StoreNewItemInBestSlots equips it rather than bagging
         for (auto const& [itemId, count] : cfg.starterKitEquip)
             player->StoreNewItemInBestSlots(itemId, count);
+        // weapons and consumables go into the bags, unequipped -- the Hero picks
+        // up the neutral weapons from there when they want them
         for (auto const& [itemId, count] : cfg.starterKitItems)
             player->AddItem(itemId, count);
     }

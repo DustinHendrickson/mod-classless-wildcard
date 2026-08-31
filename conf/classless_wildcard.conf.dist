@@ -127,23 +127,30 @@ ClasslessWildcard.RespectLevelRequirements = 1
 #        Default: 1
 #
 #    ClasslessWildcard.StarterKit.*
-#        Neutral starting weapons: destroy the class starting weapons
-#        (ReplaceWeapons) and grant one of each basic weapon type instead.
-#        Items is a comma list of item:count. The default kit: 2x Worn Dagger,
-#        Worn Shortsword, Worn Mace, Bastard Sword (2H), Battleworn Hammer (2H),
-#        Worn Battleaxe (2H), Bent Staff, Worn Shortbow + 200 Rough Arrows,
-#        Old Blunderbuss + 200 Light Shot, Worn Wooden Shield, 200 Crude
-#        Throwing Axes.
-
-#        StarterKit.Equip is auto-equipped on creation (standard armor —
-#        Recruit's shirt/pants/boots — plus a 1H sword and shield in hand);
-#        StarterKit.Items go into the bags.
+#        The neutral Hero kit given at creation.
+#
+#        StripEquipped (default 1): destroy EVERY piece of gear the shell class
+#        was created wearing, so the Hero starts bare. Without this the shell's
+#        default shirt/pants/boots stay on and the kit armour below falls
+#        through to the bags instead of equipping.
+#
+#        StarterKit.Equip is auto-equipped after the strip (armour only, so it
+#        lands on the character): Recruit's shirt/pants/boots by default.
+#
+#        StarterKit.Items go into the BAGS, unequipped -- the neutral weapons
+#        and consumables. The Hero equips a weapon from the bag when they want
+#        one. Default: Worn Shortsword, Worn Wooden Shield, Worn Mace, 2x Worn
+#        Dagger, Worn Battleaxe, Bastard Sword (2H), Battleworn Hammer (2H),
+#        Bent Staff, Worn Shortbow + 200 Rough Arrows, Old Blunderbuss + 200
+#        Light Shot, 200 Crude Throwing Axes.
+#
+#        Each list is comma-separated item:count.
 
 ClasslessWildcard.StripStartingSpells = 1
 ClasslessWildcard.StarterKit.Enable = 1
-ClasslessWildcard.StarterKit.ReplaceWeapons = 1
-ClasslessWildcard.StarterKit.Equip = "38:1,39:1,40:1,25:1,2362:1"
-ClasslessWildcard.StarterKit.Items = "2092:2,36:1,1194:1,2361:1,12282:1,35:1,2504:1,2512:200,2508:1,2516:200,25861:200"
+ClasslessWildcard.StarterKit.StripEquipped = 1
+ClasslessWildcard.StarterKit.Equip = "38:1,39:1,40:1"
+ClasslessWildcard.StarterKit.Items = "25:1,2362:1,2101:1,2092:2,36:1,1194:1,2361:1,12282:1,35:1,2504:1,2512:200,2508:1,2516:200,25861:200"
 
 ClasslessWildcard.TeachProficiencies = 1
 ClasslessWildcard.BlockOutsideSpellSources = 1
