@@ -4,5 +4,6 @@
 ## Author: mod-classless-wildcard
 ## Version: 1.0
 ## SavedVariables: ClasslessWildcardDB
+## SavedVariablesPerCharacter: ClasslessWildcardCharDB
 
 ClasslessWildcard.lua

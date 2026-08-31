@@ -1980,12 +1980,25 @@ end)
 frame:SetScript("OnShow", function()
     Send("STATE")
     CW.SetTab(CW.tab)
+    -- The first time this character opens the panel, greet them with the Help
+    -- guide so both systems are explained up front (once per character).
+    ClasslessWildcardCharDB = ClasslessWildcardCharDB or {}
+    if not ClasslessWildcardCharDB.helpSeen and CW.helpFly then
+        ClasslessWildcardCharDB.helpSeen = true
+        CW.helpFly:Show()
+    end
 end)
 
 SLASH_CLASSLESSWILDCARD1 = "/cw"
 SLASH_CLASSLESSWILDCARD2 = "/classless"
 SlashCmdList["CLASSLESSWILDCARD"] = function(msg)
-    if msg == "hand" then
+    if msg == "help" then
+        if not frame:IsShown() then frame:Show() end
+        if CW.helpFly then
+            if CW.helpFly:IsShown() then CW.helpFly:Hide() else CW.helpFly:Show() end
+        end
+        return
+    elseif msg == "hand" then
         if hand:IsShown() then hand:Hide() else hand:Show() end
         return
     elseif msg == "testroll" then
@@ -2000,4 +2013,4 @@ end
 -- exposed for debugging and third-party extensions
 _G.ClasslessWildcard_API = CW
 
-Print("ClasslessWildcard |cffffd100v" .. ADDON_VERSION .. "|r loaded. Type |cffffff00/cw|r to open the Hero Advancement panel.")
+Print("ClasslessWildcard |cffffd100v" .. ADDON_VERSION .. "|r loaded. Type |cffffff00/cw|r to open the Hero Advancement panel, or |cffffff00/cw help|r for a guide.")
