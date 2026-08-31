@@ -9,7 +9,9 @@ DROP TABLE IF EXISTS `cw_archetypes`;
 
 -- module items: scrolls + classless item pack
 DELETE FROM `item_template` WHERE `entry` IN (990101, 990102)
-   OR (`entry` BETWEEN 990201 AND 990212);
+   OR (`entry` BETWEEN 990201 AND 990212)   -- classless item pack
+   OR (`entry` BETWEEN 990250 AND 990272)   -- Hero heirlooms
+   OR (`entry` BETWEEN 990280 AND 990295);  -- classless item pack II
 
 -- Hero Advancement NPC: vendor, template and spawns (schema-adaptive:
 -- playerbots forks use creature.id1, stock uses creature.id)
