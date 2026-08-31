@@ -226,14 +226,17 @@ Everything the NPC and addon do is also available as a chat command.
 
 ### Addon key bindings
 
-The addon claims **`H`** (for *Hero*) for the advancement panel the first time it runs,
-but only if that key is genuinely unbound — it never overwrites an existing binding, and
-falls back through `J`, `Y`, `G`, `K` if `H` is taken. All three actions live under
-**Key Bindings → ClasslessWildcard**, so players can rebind them freely:
+The addon claims **`N`** — the stock Talents key — for the advancement panel the first
+time it runs. Native talents are suppressed by this module, so that key otherwise opens a
+dead frame; talents now live in the Hero Advancement panel instead. It only takes `N`
+while it is still bound to the talent frame: if a player has rebound it themselves, the
+addon leaves it alone and falls back to the first genuinely free key among `J`, `Y`, `G`,
+`K`. All three actions live under **Key Bindings → ClasslessWildcard** and can be
+rebound freely:
 
 | Binding                    | Default        |
 | -------------------------- | -------------- |
-| Toggle Hero Advancement    | `H`            |
+| Toggle Hero Advancement    | `N`            |
 | Toggle the Help guide      | *(unbound)*    |
 | Toggle the resource bars   | *(unbound)*    |
 

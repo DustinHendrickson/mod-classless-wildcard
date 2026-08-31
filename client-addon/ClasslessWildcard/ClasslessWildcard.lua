@@ -615,7 +615,7 @@ local HELP_TEXT = table.concat({
 "   |cffffd100Proficiencies|r -- every armor and weapon type, dual wield included, is trained for you automatically.",
 "   |cffffd100Rebirth|r -- after your path locks in, Rebirth wipes everything and lets you start fresh on either path for gold.",
 "",
-"|cffaaaaaaEverything here can also be done at the Hero Advancement NPC, found in every major city beside the guild master. Open this panel any time with |r|cffffff00H|r|cffaaaaaa, |r|cffffff00/cw|r|cffaaaaaa, or the dice button on your minimap -- rebind the key under Key Bindings > ClasslessWildcard.|r",
+"|cffaaaaaaEverything here can also be done at the Hero Advancement NPC, found in every major city beside the guild master. Open this panel any time with |r|cffffff00N|r|cffaaaaaa (the old Talents key -- talents live here now), |r|cffffff00/cw|r|cffaaaaaa, or the dice button on your minimap. Rebind the key under Key Bindings > ClasslessWildcard.|r",
 }, "\n")
 
 local helpText = helpContent:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
@@ -1965,12 +1965,17 @@ function ClasslessWildcard_ToggleBars()
     SlashCmdList["CLASSLESSWILDCARDBARS"]("")
 end
 
--- Claim a hotkey the first time this account runs the addon. "H" for Hero is
--- the mnemonic pick; we ask the LIVE client whether each candidate is actually
--- unbound rather than assuming a default layout, and we never steal a key that
--- is already doing something. The player can always rebind under
--- Key Bindings > ClasslessWildcard.
-local HOTKEY_CANDIDATES = { "H", "J", "Y", "G", "K" }
+-- Claim a hotkey the first time this account runs the addon.
+--
+-- "N" is the stock Talents key, and this mod suppresses native talents
+-- outright (no talent points, talent-frame purchases blocked), so that key
+-- opens a dead frame -- taking it over is the whole point. We only claim N
+-- while it still IS the talent binding: if the player has put something of
+-- their own there we leave it alone and fall back to a genuinely free key.
+-- Everything is rebindable under Key Bindings > ClasslessWildcard.
+local PREFERRED_KEY = "N"
+local REPLACEABLE_ACTIONS = { TOGGLETALENTS = true }
+local FALLBACK_KEYS = { "J", "Y", "G", "K" }
 
 function CW.ClaimHotkey()
     ClasslessWildcardDB = ClasslessWildcardDB or {}
@@ -1985,16 +1990,26 @@ function CW.ClaimHotkey()
         return
     end
 
-    for _, key in ipairs(HOTKEY_CANDIDATES) do
+    local function Claim(key, allowReplace)
         local inUse = GetBindingAction(key)
-        if not inUse or inUse == "" then
-            if SetBinding(key, "CLASSLESSWILDCARD_TOGGLE") then
-                pcall(SaveBindings, GetCurrentBindingSet and GetCurrentBindingSet() or 1)
-                ClasslessWildcardDB.hotkeyClaimed = true
-                Print("Hotkey |cffffff00" .. key .. "|r opens the Hero Advancement panel (rebind under Key Bindings > ClasslessWildcard).")
-                return
-            end
+        local occupied = inUse and inUse ~= ""
+        if occupied and not (allowReplace and REPLACEABLE_ACTIONS[inUse]) then
+            return false
         end
+        if not SetBinding(key, "CLASSLESSWILDCARD_TOGGLE") then
+            return false
+        end
+        pcall(SaveBindings, GetCurrentBindingSet and GetCurrentBindingSet() or 1)
+        ClasslessWildcardDB.hotkeyClaimed = true
+        Print("Hotkey |cffffff00" .. key .. "|r opens the Hero Advancement panel"
+            .. (occupied and " (it replaced the unused Talents frame)" or "")
+            .. ". Rebind it under Key Bindings > ClasslessWildcard.")
+        return true
+    end
+
+    if Claim(PREFERRED_KEY, true) then return end
+    for _, key in ipairs(FALLBACK_KEYS) do
+        if Claim(key, false) then return end
     end
 
     ClasslessWildcardDB.hotkeyClaimed = true

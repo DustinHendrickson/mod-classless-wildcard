@@ -207,7 +207,12 @@ public:
             CharState& cpSt = sClasslessMgr->GetState(player);
             if (!cpSt.exempt)
             {
-                uint8 cp = player->GetComboPoints();
+                // Report points for the CURRENT target only, matching what the
+                // client would show: combo points stay attached to the unit
+                // they were built on, so selecting another mob (or deselecting)
+                // must read as zero rather than leaving stale pips lit.
+                Unit* selected = player->GetSelectedUnit();
+                uint8 cp = selected ? player->GetComboPoints(selected) : 0;
                 if (cp != cpSt.lastComboPush)
                 {
                     cpSt.lastComboPush = cp;
