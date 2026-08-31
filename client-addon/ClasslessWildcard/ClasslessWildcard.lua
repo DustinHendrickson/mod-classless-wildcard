@@ -1383,9 +1383,11 @@ local function ShowResult()
     rvDie:SetTexCoord(col / 4, (col + 1) / 4, rowi / 2, (rowi + 1) / 2)
     rvDie:SetWidth(170); rvDie:SetHeight(170)
     rvDie:Show()
-    rvIcon:SetWidth(72); rvIcon:SetHeight(72)
+    -- the icon is the point of the whole reveal, so it fills the die's window
+    -- rather than floating in the middle of it
+    rvIcon:SetWidth(108); rvIcon:SetHeight(108)
     rvIcon:SetTexture(SpellIcon(d.spell))
-    rvIcon:SetTexCoord(0.08, 0.92, 0.08, 0.92)
+    rvIcon:SetTexCoord(0.12, 0.88, 0.12, 0.88)
     rvIcon:Show()
     if d.isTalent then
         rvTitle:SetText("Talent Unlocked!")
@@ -1420,6 +1422,7 @@ end
 local function StartReveal(d)
     rvAnim.phase = "spin"
     rvAnim.t0 = GetTime()
+    rvAnim.awaiting = false   -- any reveal starting fresh is no longer a pending reroll
     rvAnim.data = d
     rvTitle:SetText("The Wildcard rolls...")
     rvGlow:SetVertexColor(0.45, 0.75, 1) -- cyan rim light while spinning
@@ -1444,6 +1447,15 @@ end
 
 function CW.EnqueueReveal(d)
     if CW.suppressReveals or CW.pendingHand then return end
+    -- A reroll we asked for replaces the reveal being rerolled, in place. It
+    -- must NOT go to the back of the queue: on a level that rolled both a
+    -- talent and an ability, queueing it made an unrelated reveal appear
+    -- between the reroll and its own result.
+    if rvAnim.awaiting then
+        rvAnim.awaiting = false
+        StartReveal(d)
+        return
+    end
     if rvAnim.phase == "idle" and not reveal:IsShown() then
         StartReveal(d)
     else
@@ -1451,10 +1463,41 @@ function CW.EnqueueReveal(d)
     end
 end
 
+-- Put the die back into its spin and wait for the server to send the
+-- replacement roll. Used by the Reroll button.
+local function AwaitReroll()
+    rvAnim.phase = "spin"
+    rvAnim.t0 = GetTime()
+    rvAnim.awaiting = true
+    rvAnim.awaitT0 = GetTime()
+    rvTitle:SetText("The Wildcard rolls...")
+    rvGlow:SetVertexColor(0.45, 0.75, 1)
+    rvGlow:SetAlpha(0)
+    rvIcon:Hide()
+    rvName:Hide(); rvSub:Hide()
+    rvKeep:Hide(); rvReroll:Hide()
+    rvDie:SetTexture(SPIN_ATLAS)
+    SetDieFrame(0)
+    rvDie:SetWidth(124); rvDie:SetHeight(124)
+    rvDie:Show()
+end
+CW.AwaitReroll = AwaitReroll
+
 reveal:SetScript("OnUpdate", function()
     if rvAnim.phase == "spin" then
         local p = (GetTime() - rvAnim.t0) / SPIN_TIME
         if p >= 1 then
+            -- still waiting on the server's replacement roll: keep spinning
+            -- rather than bursting back into the ability we just rerolled
+            if rvAnim.awaiting then
+                if GetTime() - rvAnim.awaitT0 > 5 then
+                    rvAnim.awaiting = false   -- no answer came; don't hang the die
+                    NextReveal()
+                else
+                    rvAnim.t0 = GetTime()
+                end
+                return
+            end
             rvAnim.phase = "burst"
             rvAnim.t0 = GetTime()
             rvGlow:SetAlpha(1)
@@ -1478,11 +1521,25 @@ end)
 rvKeep:SetScript("OnClick", NextReveal)
 rvReroll:SetScript("OnClick", function()
     local d = rvAnim.data
-    if d then
-        Send((d.isTalent and "RRT " or "RR ") .. d.entry)
+    if not d then
+        NextReveal()
+        return
     end
-    NextReveal()
+    Send((d.isTalent and "RRT " or "RR ") .. d.entry)
+    AwaitReroll()   -- hold this reveal open; the replacement lands in its place
 end)
+
+-- the server refused the reroll (no charges, locked, ...): put the die back
+function CW.CancelReroll()
+    if not rvAnim.awaiting then return false end
+    rvAnim.awaiting = false
+    if rvAnim.data then
+        ShowResult()
+    else
+        NextReveal()
+    end
+    return true
+end
 
 -- ---------------------------------------------------------------------------
 -- starting hand (Wildcard onboarding): lock what you like, roll the rest
@@ -1889,6 +1946,8 @@ local function HandleMessage(msg)
 
     elseif kind == "ERR" then
         Print("|cffff4444" .. (p[2] or "Error") .. "|r")
+        -- a refused reroll must not leave the die spinning forever
+        if CW.CancelReroll then CW.CancelReroll() end
     end
 end
 
