@@ -32,7 +32,7 @@ import sys
 HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, HERE)
 
-from lib import charcreate, clientfs, dbc, exepatch, gluestrings, mpq, outfit  # noqa: E402
+from lib import blp, charcreate, clientfs, dbc, exepatch, gluestrings, mpq, outfit  # noqa: E402
 
 MANIFEST_NAME = "ClasslessWildcard-install.json"
 ADDON_NAME = "ClasslessWildcard"
@@ -42,6 +42,8 @@ CHARBASEINFO = "DBFilesClient\\CharBaseInfo.dbc"
 CHARSTARTOUTFIT = "DBFilesClient\\CharStartOutfit.dbc"
 GLUESTRINGS = "Interface\\GlueXML\\GlueStrings.lua"
 CHARCREATE_LUA = "Interface\\GlueXML\\CharacterCreate.lua"
+CLASSICONS_INGAME = "Interface\\TargetingFrame\\UI-Classes-Circles.blp"
+CLASSICONS_CREATE = "Interface\\Glues\\CharacterCreate\\UI-CharacterCreate-Classes.blp"
 
 COMMON_INSTALL_DIRS = [
     r"C:\World of Warcraft",
@@ -194,7 +196,7 @@ def build_data_patch(files, name, report, theme=False):
     return payload
 
 
-def build_locale_patch(files, name, report, locale):
+def build_locale_patch(files, name, report, locale, theme=False):
     """Assemble the locale patch archive contents for one locale."""
     raw, source = files.find(GLUESTRINGS)
     text = raw.decode("utf-8", "surrogateescape")
@@ -220,6 +222,17 @@ def build_locale_patch(files, name, report, locale):
         payload[CHARCREATE_LUA] = hooked.encode("utf-8", "surrogateescape")
         report.append("  CharacterCreate.lua  class selector hidden (from %s)"
                       % os.path.basename(source))
+
+    # a single "Hero" emblem in place of every class icon
+    if theme:
+        atlas = blp.render_hero_class_atlas()
+        if atlas is None:
+            report.append("  Hero class icon      skipped (Python 'Pillow' not "
+                          "installed: pip install pillow)")
+        else:
+            for tex in (CLASSICONS_INGAME, CLASSICONS_CREATE):
+                payload[tex] = atlas
+            report.append("  UI-Classes icons     replaced with the Hero emblem")
 
     return payload
 
@@ -354,7 +367,7 @@ def do_install(args, wow_dir):
     if args.glue:
         for locale in locales:
             with clientfs.ClientFiles(data_dir, locale) as files:
-                payload = build_locale_patch(files, args.name, report, locale)
+                payload = build_locale_patch(files, args.name, report, locale, theme=args.glue)
             name = "patch-%s-%s.MPQ" % (locale, suffix)
             target = os.path.join(data_dir, locale, name)
             if not args.dry_run:
@@ -425,24 +438,21 @@ def do_install(args, wow_dir):
 
 # --------------------------------------------------------------- uninstall
 
-# The exact file sets our two archives ever contain. An archive whose listfile
-# is one of these (plus the "(listfile)" entry itself) is ours; anything else,
-# including a client pack's own patch archive, is left alone.
-_OUR_ARCHIVE_CONTENTS = (
-    frozenset({CHRCLASSES.lower(), CHARBASEINFO.lower()}),                 # base
-    frozenset({CHRCLASSES.lower(), CHARBASEINFO.lower(),
-               CHARSTARTOUTFIT.lower()}),                                  # base + outfit
-    frozenset({CHRCLASSES.lower()}),                                       # base, minimal
-    frozenset({GLUESTRINGS.lower()}),                                      # locale, text only
-    frozenset({GLUESTRINGS.lower(), CHARCREATE_LUA.lower()}),             # locale + hide-class
-)
+# Every file the installer ever writes into a patch archive. An archive is ours
+# only if EVERY file in it is one of these -- a client pack's own archive always
+# has something else in it, so it can never be matched by luck of the letter.
+_OUR_FILES = frozenset(x.lower() for x in (
+    CHRCLASSES, CHARBASEINFO, CHARSTARTOUTFIT,
+    GLUESTRINGS, CHARCREATE_LUA,
+    CLASSICONS_INGAME, CLASSICONS_CREATE,
+))
 
 
 def _is_our_archive(path):
-    """True only if this MPQ's contents are exactly one of ours.
+    """True only if every file in this MPQ is one the installer writes.
 
     Used by uninstall when there is no manifest. Reads the listfile and refuses
-    to claim anything that has an unexpected file in it, so a client pack's own
+    to claim anything with an unexpected file in it, so a client pack's own
     patch archive can never be matched by luck of the patch letter.
     """
     try:
@@ -458,7 +468,7 @@ def _is_our_archive(path):
     names = {n.strip().lower().replace("/", "\\")
              for n in raw.decode("utf-8", "replace").replace("\r", "\n").split("\n")
              if n.strip() and n.strip().lower() != "(listfile)"}
-    return names in _OUR_ARCHIVE_CONTENTS
+    return bool(names) and names <= _OUR_FILES
 
 
 def do_uninstall(args, wow_dir):

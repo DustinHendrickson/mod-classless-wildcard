@@ -7,6 +7,8 @@ This folder is the optional polish — run one installer and your client will:
 - reduce the class list to a **single choice per race** — there are no classes to
   pick between, so the screen stops offering ten
 - install the **ClasslessWildcard** addon
+- with `--creation-text`: hide the leftover class selector, dress the Hero in an
+  armored starting outfit, and replace the class icon with a **Hero** emblem
 
 It is one command and `--uninstall` puts your client back exactly as it was. The
 default install writes only new patch files plus the addon and **never touches
