@@ -20,13 +20,15 @@ CLASS_TOKENS = ("WARRIOR", "PALADIN", "HUNTER", "ROGUE", "PRIEST",
                 "DEATHKNIGHT", "SHAMAN", "MAGE", "WARLOCK", "DRUID")
 
 PARAGRAPH = (
-    "{name}es belong to no class. Every spell, talent, weapon and armor type "
-    "in the game is yours to learn -- buy what you want with Ability Essence, "
-    "or let the Wildcard roll your abilities and talents as you level."
+    "There is only one class here: the {name}. Every spell, talent, weapon "
+    "and armor type in the game is yours to learn -- buy what you want with "
+    "Ability Essence, or let the Wildcard roll your abilities and talents as "
+    "you level."
     "|n|n"
-    "The class you pick here only sets your starting look and your base "
-    "stats. It does not limit a single thing you can learn afterwards, so "
-    "choose the race and appearance you want to play."
+    "Every {name} shares the same base stats, health and resources, so the "
+    "class is purely cosmetic and nothing you can learn is ever locked away. "
+    "Your race is the real choice -- it keeps its own racial traits -- so "
+    "pick the race and appearance you want to play."
 )
 
 BULLETS = (
@@ -35,7 +37,7 @@ BULLETS = (
     "- Carries mana, rage and energy at the same time.",
     "- Allocate your own primary stats, and reallocate them freely.",
     "- Learn any spell or talent from any class.",
-    "- Visit the Hero Advancement trainer in any capital city.",
+    "- In game press N, or visit a Hero Advancement NPC in any major city.",
 )
 
 _ASSIGNMENT = re.compile(
