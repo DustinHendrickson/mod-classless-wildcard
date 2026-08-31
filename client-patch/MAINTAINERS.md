@@ -107,6 +107,56 @@ change the pitch.
 > `WARRIOR_ROLE_TANK`. Those do not exist in any 3.3.5a client, so it silently
 > rewrote nothing. If you change the key set, verify against a real client.
 
+The remaining three edits below are the `--creation-text` / `--hero-icon`
+visual extras. Text and hide-class ride in the locale patch and need the exe
+patch; the outfit and icon are plain data and do not.
+
+### `CharacterCreate.lua` — hide the single-class selector (`--creation-text`)
+
+The server offers one class per race, so the creation screen shows a lone class
+button. `lib/charcreate.py` appends a hook to the client's own
+`CharacterCreate.lua` that wraps `CharacterCreateEnumerateClasses` and hides
+every `CharacterCreateClassButton` after the original runs. Append-only: the
+original file is passed through untouched. Class selection is separate state
+(`SetCharacterClass`, driven by `GetSelectedClass`), so hiding the buttons does
+not affect Accept. The override ships in the locale patch, which outranks the
+client pack's copy.
+
+### `CharStartOutfit.dbc` — the armored Hero look (`--creation-text`)
+
+74 `uint32` per record: ID, packed `(race,class,gender,outfit)`, then
+`ItemID[24]`, `DisplayInfoID[24]`, `InventoryType[24]`. The model is drawn from
+the **DisplayInfoID** array, not the item IDs.
+
+`lib/outfit.py` rewrites the shell-class (Warrior) rows to wear the Death Knight
+starting plate: DK (class 6) has a row for every race and gender, so the display
+IDs are real and verified rather than invented. The head slot (InventoryType 1)
+is dropped so the customized face stays visible, and a two-hander is kept so the
+Hero is armed. It also **adds** a shell-class row for Blood Elf, which has no
+vanilla Warrior outfit and would otherwise appear in underwear (126 → 128
+records).
+
+### `UI-Classes-Circles.blp` — the Hero emblem (`--hero-icon`)
+
+The class icon is a 4×4 grid in a 256×256 atlas (`CLASS_ICON_TCOORDS` maps each
+token to a cell; Hero uses the Warrior cell). `lib/blp.py` renders one gold
+emblem (Pillow) and fills every cell with it, then writes it over both
+`Interface\TargetingFrame\UI-Classes-Circles.blp` (in-game, character select,
+the addon's icons) and the creation-screen atlas.
+
+The BLP **format matters** — a wrong header makes the client draw a green
+"missing texture" box everywhere the icon is used. Matched byte-for-byte against
+the genuine enc=1 textures the client ships: header `01 08 08 01` (encoding 1
+palettized, alphaDepth 8, **alphaType 8**, **hasMips 1**) with a **full mip
+chain** (256→1, `w*h` index bytes + `w*h` alpha bytes per level). alphaType 0 or
+a missing mip chain both fail to load. Pillow is optional; without it the icon
+step is skipped, not fatal.
+
+`--hero-icon` is deliberately separate from `--creation-text`: the icon replaces
+a texture used across the whole UI, so a bad one must not be able to take down
+the text/outfit/hide-class features. It needs no exe patch (textures are not
+signature-checked). Swap `_draw_emblem` in `lib/blp.py` to change the mark.
+
 ### `Wow.exe` — the "allow custom interface" patch
 
 Replacing `GlueStrings.lua` makes the client reject the whole interface set with

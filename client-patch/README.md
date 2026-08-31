@@ -32,6 +32,11 @@ default install writes only new patch files plus the addon and **never touches
 
 Nothing else. No compiler, no StormLib, no MPQ editor, no extra downloads.
 
+> The one exception is `--hero-icon` (the custom class emblem), which needs the
+> Python **Pillow** imaging library (`pip install pillow`). Every other feature,
+> including the default install, needs nothing beyond Python 3. Without Pillow the
+> icon step is simply skipped.
+
 ---
 
 ## Install
@@ -164,6 +169,12 @@ folder lives under `C:\Program Files`.
 **Classes still show their old names.**
 Delete the `Cache` folder in your WoW directory and start the game again. The
 installer does this for you, but a client left running can write it back.
+
+**Class icons show as a green box.**
+That means a `--hero-icon` install wrote a texture the client could not read.
+Current versions match the client's own texture format, so update and re-run; if
+it persists, reinstall without `--hero-icon` (everything else is unaffected — the
+icon is a separate opt-in for exactly this reason).
 
 **The creation screen still shows the old class descriptions.**
 That is the default — the description paragraph is only changed by `--creation-text`,

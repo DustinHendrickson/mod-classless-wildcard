@@ -18,11 +18,14 @@ import tempfile
 HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, HERE)
 
-from lib import clientfs, dbc, exepatch, gluestrings, mpq  # noqa: E402
+from lib import (blp, charcreate, clientfs, dbc, exepatch, gluestrings,  # noqa: E402
+                 mpq, outfit)
 
 CHRCLASSES = "DBFilesClient\\ChrClasses.dbc"
 CHARBASEINFO = "DBFilesClient\\CharBaseInfo.dbc"
+CHARSTARTOUTFIT = "DBFilesClient\\CharStartOutfit.dbc"
 GLUESTRINGS = "Interface\\GlueXML\\GlueStrings.lua"
+CHARCREATE_LUA = "Interface\\GlueXML\\CharacterCreate.lua"
 
 FAILURES = []
 
@@ -102,6 +105,48 @@ def main(argv):
                   text.count("REALM_LIST") == new_text.count("REALM_LIST"))
             check("no key lost", len(text.splitlines()) == len(new_text.splitlines()))
 
+            # --- CharacterCreate hide-class hook ----------------------------
+            raw, source = files.find(CHARCREATE_LUA)
+            lua = raw.decode("utf-8", "surrogateescape")
+            hooked = charcreate.add_hide_class_hook(lua)
+            check("hide-class hook appended",
+                  "ClasslessWildcard_HideClass" in hooked
+                  and "function CharacterCreateEnumerateClasses(" in hooked)
+            check("hide-class hook idempotent",
+                  charcreate.add_hide_class_hook(hooked) == hooked)
+
+            # --- CharStartOutfit armored look -------------------------------
+            raw, source = files.find(CHARSTARTOUTFIT)
+            new_dbc, updated, be = outfit.build_hero_outfit(raw, 1)
+            oc, of, orc, oss = struct.unpack_from("<4I", new_dbc, 4)
+            check("outfit rows updated", updated == 18, "%d rows" % updated)
+            check("Blood Elf outfit added", be == 2 and oc == 128)
+            # no head slot (invtype 1) on the human-male Hero row
+            def _row(data, race, gender, cls):
+                rc = struct.unpack_from("<I", data, 4)[0]
+                rs = struct.unpack_from("<I", data, 12)[0]
+                for i in range(rc):
+                    b = 20 + i * rs
+                    r, c, g, o = struct.unpack_from("<4B", data, b + 4)
+                    if r == race and g == gender and c == cls:
+                        return struct.unpack_from("<%di" % (rs // 4), data, b)
+                return None
+            hm = _row(new_dbc, 1, 0, 1)
+            check("Hero outfit keeps the face (no helmet)",
+                  hm is not None and all(hm[50 + k] != 1 for k in range(24)))
+
+            # --- Hero icon BLP ----------------------------------------------
+            atlas = blp.render_hero_class_atlas()
+            if atlas is None:
+                print("  [skip] Pillow not installed; no Hero-icon check")
+            else:
+                mo = [x for x in struct.unpack_from("<16I", atlas, 20) if x]
+                ml = [x for x in struct.unpack_from("<16I", atlas, 84) if x]
+                check("BLP header matches genuine (01 08 08 01)",
+                      atlas[8:12] == bytes.fromhex("01080801"))
+                check("BLP full mip chain + self-consistent",
+                      len(mo) == 9 and len(atlas) == mo[-1] + ml[-1])
+
             # --- archives ---------------------------------------------------
             payload = {CHRCLASSES: patched, CHARBASEINFO: combos}
             glue = {GLUESTRINGS: new_text.encode("utf-8", "surrogateescape")}
@@ -145,9 +190,15 @@ def main(argv):
         check("Wow.exe present", False)
     else:
         state, offset, digest, label = exepatch.inspect(exe)
-        check("patch site located", offset is not None,
-              "state=%s offset=%s" % (state, offset and hex(offset)))
-        check("build recognised", label is not None, digest[:16] + "...")
+        # A client here may be pristine (patch sites found) or already patched
+        # by a prior install (sites consumed). Both are healthy; only "unknown"
+        # -- a client the pattern set does not fit -- is a failure.
+        check("interface patch applies or is applied", state != exepatch.UNKNOWN,
+              "state=%s%s" % (state, "" if label is None
+                              else " (%s)" % label))
+        if state == exepatch.UNPATCHED:
+            check("patch site located", offset is not None,
+                  "offset=%s" % (offset and hex(offset)))
 
     print()
     if FAILURES:
