@@ -463,6 +463,13 @@ rebirthBtn:SetScript("OnClick", function()
 end)
 CW.rebirthBtn = rebirthBtn
 
+-- Help: opens the "how advancement works" panel (wired to helpFly below).
+local helpBtn = CreateFrame("Button", nil, frame, "UIPanelButtonTemplate")
+helpBtn:SetWidth(70); helpBtn:SetHeight(22)
+helpBtn:SetPoint("BOTTOMLEFT", 20, 26)
+helpBtn:SetText("Help")
+CW.helpBtn = helpBtn
+
 -- Buy Scroll: purchase a Scroll of Fortune for coin (price scales with level --
 -- silver early, gold near cap; the server enforces it). Wildcard-only, where
 -- rerolls are spent. scrollCost is copper; GetCoinTextureString renders coins.
@@ -475,7 +482,7 @@ StaticPopupDialogs["CW_CLASSLESS_BUYSCROLL"] = {
 }
 local buyScrollBtn = CreateFrame("Button", nil, frame, "UIPanelButtonTemplate")
 buyScrollBtn:SetWidth(160); buyScrollBtn:SetHeight(22)
-buyScrollBtn:SetPoint("BOTTOMLEFT", 20, 26)
+buyScrollBtn:SetPoint("BOTTOMLEFT", helpBtn, "BOTTOMRIGHT", 8, 0)
 buyScrollBtn:SetText("Buy Scroll")
 buyScrollBtn:Hide()
 buyScrollBtn:SetScript("OnClick", function()
@@ -583,8 +590,88 @@ for i = 1, 8 do
     cardRows[i] = r
 end
 
+-- help flyout ---------------------------------------------------------------
+-- A scrollable "how it works" panel covering both systems. Static text, so it
+-- is built once here; the Help button toggles it.
+local helpFly = CreateFrame("Frame", "ClasslessWildcardHelp", frame)
+helpFly:SetWidth(600); helpFly:SetHeight(500)
+helpFly:SetPoint("CENTER", frame, "CENTER", 0, -6)
+helpFly:SetFrameStrata("DIALOG")
+helpFly:SetBackdrop({
+    bgFile = "Interface\\DialogFrame\\UI-DialogBox-Background",
+    edgeFile = "Interface\\Tooltips\\UI-Tooltip-Border",
+    tile = true, tileSize = 32, edgeSize = 14,
+    insets = { left = 4, right = 4, top = 4, bottom = 4 },
+})
+helpFly:Hide()
+
+local helpTitle = helpFly:CreateFontString(nil, "OVERLAY", "GameFontNormalLarge")
+helpTitle:SetPoint("TOP", 0, -14)
+helpTitle:SetText("How Advancement Works")
+
+local helpCloseBtn = CreateFrame("Button", nil, helpFly, "UIPanelCloseButton")
+helpCloseBtn:SetPoint("TOPRIGHT", -6, -6)
+helpCloseBtn:SetScript("OnClick", function() helpFly:Hide() end)
+
+local helpScroll = CreateFrame("ScrollFrame", "ClasslessWildcardHelpScroll", helpFly, "UIPanelScrollFrameTemplate")
+helpScroll:SetPoint("TOPLEFT", 16, -44)
+helpScroll:SetPoint("BOTTOMRIGHT", -34, 16)
+
+local helpContent = CreateFrame("Frame", nil, helpScroll)
+helpContent:SetWidth(540); helpContent:SetHeight(1)
+helpScroll:SetScrollChild(helpContent)
+
+local HELP_TEXT = table.concat({
+"|cffffd100You are a Hero.|r Every character shares one hidden base class, so your health, stats and resources never depend on your race -- race is purely cosmetic. All of your power comes from the abilities and talents you gain, and you may take them from |cffffffffany class in the game|r.",
+"",
+"You gain that power one of two ways. You choose a path per character, and can |cffffd100Rebirth|r later to switch.",
+"",
+"|cff00ccff==  CLASSLESS  --  you choose  ==|r",
+"Spend two currencies to buy exactly what you want:",
+"   |cffffd100Ability Essence (AE)|r  buys abilities.",
+"   |cffffd100Talent Essence (TE)|r  buys talent ranks.",
+"You start with a pool of AE and earn |cff00ff00+1 AE and +1 TE every level from 10|r.",
+"Abilities are priced by rarity -- |cff9d9d9d1|r / |cff1eff002|r / |cff0070dd3|r / |cffa335ee5|r / |cffff80008|r AE from common to legendary. Talents cost TE per rank and respect their tree's prerequisites and tier rules.",
+"Unlearning an ability refunds what you paid, |cffffd100Respec|r reshuffles your talents for gold, and every ability line you own |cff00ff00ranks up on its own|r as you level.",
+"",
+"|cffff8800==  WILDCARD  --  the dice choose  ==|r",
+"The server rolls abilities and talents for you on a fixed schedule:",
+"   |cff00ff00Level 1:|r  4 random abilities to begin.",
+"   |cff00ff00From level 10:|r  1 talent every level, 1 ability every 2 levels.",
+"Rolls are rarity-weighted, so legendaries are the rarest. You steer your luck:",
+"   |cffffd100Rerolls|r -- every roll also grants a reroll charge (rerolls are free below level 10). Spend one to reroll a result you don't want.",
+"   |cffffd100Lock|r -- protect an ability so a later roll can't overwrite it.",
+"   |cffffd100Skill Cards|r -- slot a card to guarantee a specific ability or talent on your next roll.",
+"   |cffffd100Synergy & pity|r -- rolls lean toward what fits your build, with a rising pity chance and bad-luck bans so a cold streak can't ruin you.",
+"   |cffffd100Scrolls of Fortune|r -- spare rerolls for when your charges run dry. Earn them, buy them from the Hero Advancement NPC, or use the |cffffd100Buy Scroll|r button on this panel (the price scales with level -- silver early, gold near the cap).",
+"Open the roll screen any time with the |cffffd100dice crest|r at the top-left of this window.",
+"",
+"|cff40ff40==  Shared by both paths  ==|r",
+"   |cffffd100Universal resources|r -- you carry mana, rage AND energy at once, and each spell draws its own, so nothing is ever unusable. Toggle the extra bars with |cffffd100/cwbars|r.",
+"   |cffffd100Primary stats|r -- spend a per-level point budget across STR / AGI / STA / INT / SPI. Reallocating is free; use the |cffffd100Stats|r button.",
+"   |cffffd100Proficiencies|r -- every armor and weapon type, dual wield included, is trained for you automatically.",
+"   |cffffd100Rebirth|r -- after your path locks in, Rebirth wipes everything and lets you start fresh on either path for gold.",
+"",
+"|cffaaaaaaEverything here can also be done at the Hero Advancement NPC, found in every major city beside the guild master. Open this panel any time with |r|cffffff00/cw|r|cffaaaaaa.|r",
+}, "\n")
+
+local helpText = helpContent:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
+helpText:SetPoint("TOPLEFT", 0, 0)
+helpText:SetWidth(540)
+helpText:SetJustifyH("LEFT")
+helpText:SetJustifyV("TOP")
+helpText:SetSpacing(3)
+helpText:SetText(HELP_TEXT)
+helpContent:SetHeight(helpText:GetStringHeight() + 20)
+CW.helpFly = helpFly
+
+helpBtn:SetScript("OnClick", function()
+    statFly:Hide(); cardFly:Hide()
+    if helpFly:IsShown() then helpFly:Hide() else helpFly:Show() end
+end)
+
 statsBtn:SetScript("OnClick", function()
-    cardFly:Hide()
+    cardFly:Hide(); helpFly:Hide()
     if statFly:IsShown() then
         statFly:Hide()
     else
@@ -594,7 +681,7 @@ statsBtn:SetScript("OnClick", function()
     end
 end)
 cardsBtn:SetScript("OnClick", function()
-    statFly:Hide()
+    statFly:Hide(); helpFly:Hide()
     if cardFly:IsShown() then
         cardFly:Hide()
     else

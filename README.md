@@ -109,7 +109,8 @@ client is set up. It needs nothing but Python 3 — no compiler, no MPQ tools, n
 copying — and `--uninstall` puts the client back to stock. It gives them:
 
 - the **ClasslessWildcard addon**: the Hero Advancement panel — an ability browser, talent
-  trees, your build with reroll and lock, the Wildcard roll UI, and the onboarding wizard
+  trees, your build with reroll and lock, the Wildcard roll UI, the onboarding wizard, and a
+  built-in **Help** panel explaining both the Classless and Wildcard systems
 - every class shown as **Hero** on the creation screen, character sheet, `/who` and tooltips
 - a **single class per race** on the creation screen, described as the Hero
 - the **Hero starter outfit** on the creation preview and a **Hero emblem** for your class icon
