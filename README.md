@@ -137,14 +137,18 @@ keep it, or spend a reroll and let the dice decide again.</em>
   Hero's starting essence on a coherent role. Add your own in `cw_archetypes`.
 - **First-login onboarding** — a welcome flow, plus an addon wizard that walks a fresh
   character through picking a path.
-- **Classless item packs** — 28 Ascension-flavored items sold by the NPC, built around stat
-  combinations the class system would never allow: intellect guns and wands with attack
-  power, strength javelins and staves, mail tanking and caster gear, plate caster sets,
-  spellpower fist weapons and shields, hybrid rings and necks. All server-side.
+- **Classless item packs** — **226 items** sold by the NPC, built around stat combinations the
+  class system would never allow: intellect guns and wands with attack power, strength staves
+  and bows, mail tanking and caster gear, plate caster sets, spellpower fist weapons and
+  shields, hybrid rings and necks. Most of it is **tiered across nine level bands from 1 to
+  80**, so there is something worth buying the whole way up rather than only at level 35, and
+  prices start in silver. The vendor only lists gear near your own level (a `conditions` row
+  per item), so the shop stays readable. All server-side.
 - **Hero heirlooms** — 23 items that **scale with you from level 1 to 80**, using the
   client's own heirloom system (no client patch needed). Weapons of every family plus
   "wrong armor" pieces the original classes could never wear: spellpower plate, strength
-  mail, agility cloth, and single-stat trinkets for spellpower, haste and crit.
+  mail, agility cloth, and single-stat trinkets for spellpower, haste and crit. Deliberately
+  cheap (80 silver to 2 gold) — they are meant to be bought early and grown into.
 
 #### Client setup
 

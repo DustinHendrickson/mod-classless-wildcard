@@ -11,7 +11,11 @@ DROP TABLE IF EXISTS `cw_archetypes`;
 DELETE FROM `item_template` WHERE `entry` IN (990101, 990102)
    OR (`entry` BETWEEN 990201 AND 990212)   -- classless item pack
    OR (`entry` BETWEEN 990250 AND 990272)   -- Hero heirlooms
-   OR (`entry` BETWEEN 990280 AND 990295);  -- classless item pack II
+   OR (`entry` BETWEEN 990280 AND 990295)   -- classless item pack II
+   OR (`entry` BETWEEN 990300 AND 990497);  -- tiered classless gear
+
+-- vendor visibility conditions for the tiered gear
+DELETE FROM `conditions` WHERE `SourceTypeOrReferenceId` = 23 AND `SourceGroup` = 990100;
 
 -- Hero Advancement NPC: vendor, template and spawns (schema-adaptive:
 -- playerbots forks use creature.id1, stock uses creature.id)
