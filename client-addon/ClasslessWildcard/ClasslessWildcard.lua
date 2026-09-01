@@ -1473,14 +1473,15 @@ local function ShowResult()
     local col, rowi = r % 4, math.floor(r / 4)
     rvDie:SetTexture(REVEAL_ATLAS)
     rvDie:SetTexCoord(col / 4, (col + 1) / 4, rowi / 2, (rowi + 1) / 2)
-    -- A 230px frame leaves a ~78px window. Overfill it slightly (92px) so the
-    -- icon reaches the window's edges with no seam, and let the frame mask the
-    -- square corners -- that overlap is what makes it read as set INTO the die.
+    -- The window is now the die's own decagon (inradius 52px at this size), so
+    -- the icon takes that shape instead of sitting in a porthole. 112px covers
+    -- the window's flats (56 >= 52) and its corners land at 79px, inside the
+    -- rarity fill that rings it, so the frame still does the masking.
     rvDie:SetWidth(230); rvDie:SetHeight(230)
     rvDie:Show()
-    rvIcon:SetWidth(92); rvIcon:SetHeight(92)
+    rvIcon:SetWidth(112); rvIcon:SetHeight(112)
     rvIcon:SetTexture(SpellIcon(d.spell))
-    rvIcon:SetTexCoord(0.1, 0.9, 0.1, 0.9)   -- trim the icon's own dark border
+    rvIcon:SetTexCoord(0.08, 0.92, 0.08, 0.92)   -- trim the icon's own dark border
     rvIcon:Show()
     if d.isTalent then
         rvTitle:SetText("Talent Unlocked!")
