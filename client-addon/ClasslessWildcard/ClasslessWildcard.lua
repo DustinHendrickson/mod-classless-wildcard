@@ -1492,7 +1492,9 @@ local function ShowResult()
         rvTitle:SetText("Ability Unlocked!")
         rvName:SetText(SpellLabel(d.spell, d.rarity))
     end
-    if d.flags == 1 then
+    if d.test then
+        rvSub:SetText((RARITY_NAMES[d.rarity or 0] or "") .. "  |cffff8800(preview — nothing is granted)|r")
+    elseif d.flags == 1 then
         rvSub:SetText("|cff00ff88Synergy roll — it complements your Hero!|r")
     elseif d.isTalent then
         -- one talent point buys the talent whatever rank it landed on
@@ -1625,6 +1627,14 @@ rvReroll:SetScript("OnClick", function()
     local d = rvAnim.data
     if not d then
         NextReveal()
+        return
+    end
+    if d.test then
+        -- /cw testroll preview: nothing is really owned, so re-roll the preview
+        -- here instead of asking the server to reroll an ability we do not have
+        NextReveal()
+        CW.EnqueueReveal({ isTalent = false, entry = 133, spell = 133,
+                           rarity = math.random(0, 4), flags = 0, test = true })
         return
     end
     Send((d.isTalent and "RRT " or "RR ") .. d.entry)
@@ -2136,9 +2146,11 @@ SlashCmdList["CLASSLESSWILDCARD"] = function(msg)
         end
         return
     elseif msg == "testroll" then
-        -- preview the d20 reveal without a real roll (Fireball, random rarity)
+        -- preview the reveal without a real roll (Fireball, random rarity).
+        -- test = true keeps Reroll local: the ability is not really owned, so
+        -- asking the server to reroll it just answers "you do not own that".
         CW.EnqueueReveal({ isTalent = false, entry = 133, spell = 133,
-                           rarity = math.random(0, 4), flags = 0 })
+                           rarity = math.random(0, 4), flags = 0, test = true })
         return
     end
     if frame:IsShown() then frame:Hide() else frame:Show() end
