@@ -78,7 +78,12 @@ namespace
             uint32(st.mode), st.abilityEssence, st.talentEssence, st.pity, chance,
             scrolls, player->GetLevel(), cfg.modeChoiceDeadline,
             cfg.rebirthEnable ? 1 : 0, cfg.rebirthCostGold,
-            st.rerolls, cfg.universalResources ? 1 : 0,
+            // The EFFECTIVE value for this character, not just the realm
+            // setting: OnPlayerLogin skips the resource work for exempt
+            // accounts, so telling their client "1" would draw mini-bars for
+            // pools they do not have. The addon uses this field alone to decide
+            // whether to show them.
+            st.rerolls, (cfg.universalResources && !sClasslessMgr->IsExempt(player)) ? 1 : 0,
             sClasslessMgr->ScrollBuyCost(player->GetLevel()),
             (cfg.wcScrollBuyEnable && player->GetLevel() >= cfg.wcFreeRerollLevel) ? 1 : 0));
 

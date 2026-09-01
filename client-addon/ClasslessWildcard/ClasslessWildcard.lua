@@ -36,6 +36,10 @@ local CW = {
     state = { mode = 255, ae = 0, te = 0, pity = 0, chance = 0, scrolls = 0,
               level = 1, deadline = 5, rebirth = 0, rebirthCost = 0,
               rerolls = 0, scrollCost = 0, scrollBuy = 0,
+              -- 0 until the first state packet: the resource bars stay hidden
+              -- until the server has told us this character actually has the
+              -- extra pools, rather than flashing up on a non-module realm
+              universalResources = 0,
               comboPoints = 0 },
     classIndex = 1,
     -- classless talent pricing; the server overrides these via the CFG message
@@ -1199,7 +1203,13 @@ end
 
 function CW.UpdateBarsVisibility()
     ClasslessWildcardDB = ClasslessWildcardDB or {}
-    local enabled = CW.state.universalResources == 1 and CW.state.mode ~= 255
+    -- universalResources is 0 until the server's first state packet arrives, so
+    -- it doubles as the "do we know anything yet" test. It used to also require
+    -- mode ~= 255, which was wrong: 255 is Unchosen, and a brand new character
+    -- IS unchosen until they pick a path. The server gives every Hero all three
+    -- pools at login regardless of mode, so gating on it hid the bars for
+    -- exactly the characters seeing them for the first time.
+    local enabled = CW.state.universalResources == 1
         and ClasslessWildcardDB.hideBars ~= true
     if enabled then
         barsFrame:Show()
