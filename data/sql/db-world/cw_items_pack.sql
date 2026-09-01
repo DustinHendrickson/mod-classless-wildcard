@@ -74,3 +74,16 @@ INSERT INTO `npc_vendor` (`entry`, `slot`, `item`, `maxcount`, `incrtime`, `Exte
 (990100, 11, 990210, 0, 0, 0, 12340),
 (990100, 12, 990211, 0, 0, 0, 12340),
 (990100, 13, 990212, 0, 0, 0, 12340);
+
+-- Only offer these once they are nearly usable. They require level 35, so
+-- showing them to a fresh Hero was 12 rows of noise on the vendor. The tiered
+-- gear covers every other level band. (23 = NPC_VENDOR, 27 = CONDITION_LEVEL,
+-- comparison 3 = >=.)
+DELETE FROM `conditions` WHERE `SourceTypeOrReferenceId` = 23 AND `SourceGroup` = 990100
+  AND `SourceEntry` BETWEEN 990201 AND 990212;
+INSERT INTO `conditions`
+  (`SourceTypeOrReferenceId`, `SourceGroup`, `SourceEntry`, `SourceId`, `ElseGroup`,
+   `ConditionTypeOrReference`, `ConditionTarget`, `ConditionValue1`, `ConditionValue2`,
+   `ConditionValue3`, `NegativeCondition`, `ErrorType`, `ErrorTextId`, `ScriptName`, `Comment`)
+SELECT 23, 990100, `entry`, 0, 0, 27, 0, 25, 3, 0, 0, 0, 0, '', 'CW item pack: level >= 25'
+FROM `item_template` WHERE `entry` BETWEEN 990201 AND 990212;

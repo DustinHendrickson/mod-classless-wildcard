@@ -92,3 +92,14 @@ DELETE FROM `npc_vendor` WHERE `entry` = 990100 AND `item` BETWEEN 990280 AND 99
 INSERT INTO `npc_vendor` (`entry`, `slot`, `item`, `maxcount`, `incrtime`, `ExtendedCost`, `VerifiedBuild`)
 SELECT 990100, 50 + (`entry` - 990280), `entry`, 0, 0, 0, 12340
 FROM `item_template` WHERE `entry` BETWEEN 990280 AND 990295;
+
+-- Same level gate as the first pack: these require level 35, so they stay off
+-- the vendor until a Hero is close to using them.
+DELETE FROM `conditions` WHERE `SourceTypeOrReferenceId` = 23 AND `SourceGroup` = 990100
+  AND `SourceEntry` BETWEEN 990280 AND 990295;
+INSERT INTO `conditions`
+  (`SourceTypeOrReferenceId`, `SourceGroup`, `SourceEntry`, `SourceId`, `ElseGroup`,
+   `ConditionTypeOrReference`, `ConditionTarget`, `ConditionValue1`, `ConditionValue2`,
+   `ConditionValue3`, `NegativeCondition`, `ErrorType`, `ErrorTextId`, `ScriptName`, `Comment`)
+SELECT 23, 990100, `entry`, 0, 0, 27, 0, 25, 3, 0, 0, 0, 0, '', 'CW item pack II: level >= 25'
+FROM `item_template` WHERE `entry` BETWEEN 990280 AND 990295;
