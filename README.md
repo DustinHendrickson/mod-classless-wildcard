@@ -137,40 +137,42 @@ keep it, or spend a reroll and let the dice decide again.</em>
 
 #### Getting players in the door
 
-- **Hero Advancement NPC** (entry `990100`) — one in every major city, standing beside that
-  city's guild master so it's easy to find (Shattrath's sits by A'dal). Each spawn carries the
-  full gossip UI plus the scroll and item vendor, and everything it offers is also reachable
-  from the addon panel. `.npc add 990100` places more anywhere.
-- **Starter archetypes** — six curated builds (*Blade Dancer*, *Battle Mage*,
-  *Ranger of the Light*, *Shadow Mender*, *Stealthy Healer*, *Storm Warrior*) that spend a new
-  Hero's starting essence on a coherent role. Add your own in `cw_archetypes`.
-- **First-login onboarding** — a welcome flow, plus an addon wizard that walks a fresh
-  character through picking a path.
-- **Classless item packs** — **226 items** sold by the NPC, built around stat combinations the
-  class system would never allow: intellect guns and wands with attack power, strength staves
-  and bows, mail tanking and caster gear, plate caster sets, spellpower fist weapons and
-  shields, hybrid rings and necks. Most of it is **tiered across nine level bands from 1 to
-  80**, so there is something worth buying the whole way up rather than only at level 35, and
-  prices follow the game's own spread (measured from ~15,000 real 3.3.5 items: about 16
-  silver at level 1, over 100 gold at 80). Every piece wears artwork borrowed from a real item
-  of the same class, subclass and slot, so the icon and the model always match the tooltip —
-  and the look climbs with the level band. All server-side.
-- **Classless gear also drops in the world** — the NPC is not the only source. Any mob has a
-  chance to drop a piece of the same catalogue, banded to the **mob's** level, so a level 20
-  zone yields level 20 gear whoever kills there and farming low-level mobs at 80 returns
-  low-level gear. Rares, rare elites and world bosses drop more often, and are the only things
-  that can drop a scaling **heirloom**. Rates are configurable and it can be turned off; no
-  `creature_loot_template` rows are touched, so there is nothing to revert.
-- **A shop you can actually browse** — one vendor packet holds at most 150 items, so the
-  catalogue is split across **16 vendor lists** the NPC's gossip menu opens: pick *Weapons*,
-  *Armor* or *Jewelry & off-hand*, then a level bracket (1–20, 21–40, 41–60, 61–80) or
-  *All levels*. Nothing is hidden by level — every item is reachable at any level, for buying
-  ahead or kitting out an alt.
-- **Hero heirlooms** — 23 items that **scale with you from level 1 to 80**, using the
-  client's own heirloom system (no client patch needed). Weapons of every family plus
-  "wrong armor" pieces the original classes could never wear: spellpower plate, strength
-  mail, agility cloth, and single-stat trinkets for spellpower, haste and crit. Priced near a
-  level-30 item (2–10 gold) — they are meant to be bought early and grown into.
+- **Hero Advancement NPC** (entry `990100`) — one in every major city, standing beside that city's
+  guild master so it's easy to find (Shattrath's sits by A'dal). Each spawn carries the full
+  gossip UI plus the scroll and item vendor, and everything it offers is also reachable from the
+  addon panel. `.npc add 990100` places more anywhere.
+- **Starter archetypes** — six curated builds (*Blade Dancer*, *Battle Mage*, *Ranger of the
+  Light*, *Shadow Mender*, *Stealthy Healer*, *Storm Warrior*) that spend a new Hero's starting
+  essence on a coherent role. Add your own in `cw_archetypes`.
+- **First-login onboarding** — a welcome flow, plus an addon wizard that walks a fresh character
+  through picking a path.
+- **Classless item packs** — **226 items** sold by the NPC *and* dropped by mobs, built around
+  stat combinations the class system would never allow: intellect guns and wands with attack
+  power, strength staves and bows, mail tanking and caster gear, plate caster sets, spellpower
+  fist weapons and shields, hybrid rings and necks. Most of it is **tiered across nine level bands
+  from 1 to 80**, so there is something worth buying the whole way up rather than only at level
+  35, and prices follow the game's own spread (measured from ~15,000 real 3.3.5 items: about 16
+  silver at level 1, over 100 gold at 80). Every piece wears artwork borrowed from a real item of
+  the same class, subclass and slot, so the icon and the model always match the tooltip — and the
+  look climbs with the level band. All server-side.
+- **A shop you can actually browse** — one vendor packet holds at most 150 items, so the catalogue
+  is split across **16 vendor lists** the NPC's gossip menu opens: pick *Weapons*, *Armor* or
+  *Jewelry & off-hand*, then a level bracket (1–20, 21–40, 41–60, 61–80) or *All levels*. Nothing
+  is hidden by level — every item is reachable at any level, for buying ahead or kitting out an
+  alt.
+- **Hero heirlooms** — 23 items that **scale with you from level 1 to 80**, using the client's own
+  heirloom system (no client patch needed). Weapons of every family plus "wrong armor" pieces the
+  original classes could never wear: spellpower plate, strength mail, agility cloth, and
+  single-stat trinkets for spellpower, haste and crit. Priced near a level-30 item (2–10 gold) —
+  they are meant to be bought early and grown into, and rares and world bosses can drop one
+  outright.
+- **Gear drops in the world too** — the NPC is not the only answer to "where does gear come from".
+  Any mob can drop a piece of the same catalogue, banded to the **mob's** level, so a level 20
+  zone yields level 20 gear whoever kills there and farming low-level mobs at 80 returns low-level
+  gear, exactly as ordinary loot behaves. Rares, rare elites and world bosses drop more often and
+  are the only kills that can yield a scaling heirloom. Rates are configurable and the whole thing
+  can be switched off — and because drops are added to the kill in C++, **no
+  `creature_loot_template` rows are touched**, so there is nothing to revert.
 
 #### Client setup
 
@@ -349,6 +351,11 @@ which documents all 70+ settings inline. The ones you are most likely to touch:
 | `Wildcard.ScrollBuyEnable`                          | `1`          | Buy Scroll button on the addon panel                 |
 | `Wildcard.ScrollBuyBaseCopper` / `…PerLevelCopper`  | `500` / `500`| Scroll price in copper = base + per-level × level    |
 | `UniversalResources.Enable`                         | `1`         | Mana + rage + energy on every character               |
+| `ClasslessWildcard.FormStarterKits`                 | `1`         | Forms/stances hand over their basic spells free       |
+| `ClasslessWildcard.WorldDrops.Enable`               | `1`         | Mobs can drop the classless gear                      |
+| `ClasslessWildcard.WorldDrops.Chance`               | `1.0`       | Percent per kill, banded to the mob's level           |
+| `ClasslessWildcard.WorldDrops.RareMultiplier`       | `5.0`       | Chance multiplier for rares, rare elites and bosses   |
+| `ClasslessWildcard.WorldDrops.HeirloomChance`       | `2.0`       | Percent for a heirloom — rares and bosses only; `0` keeps them vendor-only |
 | `Stats.Enable` / `Stats.PointsPerLevel`             | `1` / `2`   | Primary stat allocation                               |
 | `Rebirth.Enable` / `Rebirth.CostGold`               | `1` / `100` | Path switching after the mode lock                    |
 
@@ -357,6 +364,10 @@ which documents all 70+ settings inline. The ones you are most likely to touch:
 Rarity, cost, roll weight and an enable flag can be overridden for any individual spell or
 talent through the `cw_ability_override` and `cw_talent_override` world tables — the way to
 ban a problem ability, or make one legendary, without recompiling.
+
+The spells a form or stance hands over are data too, in `cw_form_kits`: two plain spell id
+columns, so you can pair anything with anything, or set a row's `enabled` to `0` to drop just
+that pair. Restart the worldserver after editing it.
 
 ---
 
