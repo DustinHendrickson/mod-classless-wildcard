@@ -1372,14 +1372,14 @@ local SPIN_TIME, BURST_TIME = 1.6, 0.35
 -- frameless, Ascension-style: the die floats over the world on a soft shadow,
 -- no dialog box
 local reveal = CreateFrame("Frame", "ClasslessWildcardReveal", UIParent)
-reveal:SetWidth(340); reveal:SetHeight(346)
+reveal:SetWidth(360); reveal:SetHeight(404)
 reveal:SetPoint("CENTER", 0, 170)
 reveal:SetFrameStrata("FULLSCREEN_DIALOG") -- always clearly above the panel
 reveal:EnableMouse(true)                   -- and never leaks clicks through
 reveal:Hide()
 
 local rvShadow = reveal:CreateTexture(nil, "BACKGROUND")
-rvShadow:SetWidth(400); rvShadow:SetHeight(400)
+rvShadow:SetWidth(470); rvShadow:SetHeight(470)
 rvShadow:SetPoint("CENTER", 0, 0)
 rvShadow:SetTexture("Interface\\AddOns\\ClasslessWildcard\\shadow")
 
@@ -1394,8 +1394,8 @@ local function TextScrim(parent, y, height, alpha)
     t:SetAlpha(alpha)
     return t
 end
-local rvTitleScrim = TextScrim(reveal, 140, 96, 0.85)
-local rvTextScrim = TextScrim(reveal, -104, 116, 0.9)
+local rvTitleScrim = TextScrim(reveal, 176, 96, 0.85)
+local rvTextScrim = TextScrim(reveal, -148, 122, 0.9)
 
 local rvTitle = reveal:CreateFontString(nil, "OVERLAY", "GameFontNormalHuge")
 rvTitle:SetPoint("TOP", 0, -8)
@@ -1403,8 +1403,8 @@ rvTitle:SetPoint("TOP", 0, -8)
 local REVEAL_ATLAS = "Interface\\AddOns\\ClasslessWildcard\\die_reveal"
 
 local rvGlow = reveal:CreateTexture(nil, "BORDER")
-rvGlow:SetWidth(250); rvGlow:SetHeight(250)
-rvGlow:SetPoint("CENTER", 0, 34)
+rvGlow:SetWidth(310); rvGlow:SetHeight(310)
+rvGlow:SetPoint("CENTER", 0, 26)
 rvGlow:SetTexture("Interface\\AddOns\\ClasslessWildcard\\glow")
 rvGlow:SetBlendMode("ADD")
 
@@ -1413,17 +1413,17 @@ rvGlow:SetBlendMode("ADD")
 -- window is 34% of the frame (measured from the art), so the icon is sized just
 -- over that: it fills the hole edge to edge and the frame trims its corners.
 local rvIcon = reveal:CreateTexture(nil, "ARTWORK")
-rvIcon:SetPoint("CENTER", 0, 34)
+rvIcon:SetPoint("CENTER", 0, 26)
 
 local rvDie = reveal:CreateTexture(nil, "OVERLAY")
-rvDie:SetWidth(168); rvDie:SetHeight(168)
-rvDie:SetPoint("CENTER", 0, 34)
+rvDie:SetWidth(205); rvDie:SetHeight(205)
+rvDie:SetPoint("CENTER", 0, 26)
 rvDie:SetTexture(SPIN_ATLAS)
 
 -- hover the revealed ability to read its tooltip
 local rvHover = CreateFrame("Button", nil, reveal)
-rvHover:SetWidth(200); rvHover:SetHeight(200)
-rvHover:SetPoint("CENTER", 0, 34)
+rvHover:SetWidth(250); rvHover:SetHeight(250)
+rvHover:SetPoint("CENTER", 0, 26)
 rvHover:SetScript("OnEnter", function(self)
     -- CW.revealAnim: rvAnim is declared below, so reach it through CW
     local anim = CW.revealAnim
@@ -1437,10 +1437,10 @@ end)
 rvHover:SetScript("OnLeave", function() GameTooltip:Hide() end)
 
 local rvName = reveal:CreateFontString(nil, "OVERLAY", "GameFontNormalLarge")
-rvName:SetPoint("CENTER", 0, -96)
+rvName:SetPoint("CENTER", 0, -138)
 
 local rvSub = reveal:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
-rvSub:SetPoint("CENTER", 0, -120)
+rvSub:SetPoint("CENTER", 0, -164)
 
 local rvKeep = CreateFrame("Button", nil, reveal, "UIPanelButtonTemplate")
 rvKeep:SetWidth(110); rvKeep:SetHeight(24)
@@ -1473,13 +1473,13 @@ local function ShowResult()
     local col, rowi = r % 4, math.floor(r / 4)
     rvDie:SetTexture(REVEAL_ATLAS)
     rvDie:SetTexCoord(col / 4, (col + 1) / 4, rowi / 2, (rowi + 1) / 2)
-    -- The window is now the die's own decagon (inradius 52px at this size), so
-    -- the icon takes that shape instead of sitting in a porthole. 112px covers
-    -- the window's flats (56 >= 52) and its corners land at 79px, inside the
-    -- rarity fill that rings it, so the frame still does the masking.
-    rvDie:SetWidth(230); rvDie:SetHeight(230)
+    -- The artwork's window is a circle 32% across the frame, so the die is
+    -- drawn large (280px) to make that opening a usable 90px. The icon is
+    -- sized just past it: it fills the window with no seam and the frame masks
+    -- the square corners, which land well inside the opaque face.
+    rvDie:SetWidth(280); rvDie:SetHeight(280)
     rvDie:Show()
-    rvIcon:SetWidth(112); rvIcon:SetHeight(112)
+    rvIcon:SetWidth(96); rvIcon:SetHeight(96)
     rvIcon:SetTexture(SpellIcon(d.spell))
     rvIcon:SetTexCoord(0.08, 0.92, 0.08, 0.92)   -- trim the icon's own dark border
     rvIcon:Show()
@@ -1533,7 +1533,7 @@ local function StartReveal(d)
     rvKeep:Hide(); rvReroll:Hide()
     rvDie:SetTexture(SPIN_ATLAS)
     SetDieFrame(0)
-    rvDie:SetWidth(168); rvDie:SetHeight(168)
+    rvDie:SetWidth(205); rvDie:SetHeight(205)
     rvDie:Show()
     reveal:Show()
 end
@@ -1580,7 +1580,7 @@ local function AwaitReroll()
     rvKeep:Hide(); rvReroll:Hide()
     rvDie:SetTexture(SPIN_ATLAS)
     SetDieFrame(0)
-    rvDie:SetWidth(168); rvDie:SetHeight(168)
+    rvDie:SetWidth(205); rvDie:SetHeight(205)
     rvDie:Show()
 end
 CW.AwaitReroll = AwaitReroll
@@ -1615,7 +1615,7 @@ reveal:SetScript("OnUpdate", function()
             return
         end
         rvGlow:SetAlpha(1 - p * 0.3)
-        local s = 168 + 62 * p               -- die "expands" into the light
+        local s = 205 + 75 * p               -- die "expands" into the light
         rvDie:SetWidth(s); rvDie:SetHeight(s)
     end
 end)
