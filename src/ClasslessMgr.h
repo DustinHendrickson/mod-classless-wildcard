@@ -125,9 +125,16 @@ private:
     ClasslessMgr() = default;
 
     void LoadOverrides();
+    void LoadFormKits();
+    // Hand over the basic spells that make a freshly gained form or stance
+    // usable. Called for every ability grant; does nothing for the vast
+    // majority that are not forms.
+    void GrantFormKit(Player* player, ClasslessWildcard::AbilityEntry const& form,
+                      ClasslessWildcard::GrantSource source);
     void LoadCharacter(Player* player, ClasslessWildcard::CharState& st);
     void GrantAbilityInternal(Player* player, ClasslessWildcard::AbilityEntry const& e,
-                              ClasslessWildcard::GrantSource source, bool persist = true);
+                              ClasslessWildcard::GrantSource source, bool persist = true,
+                              bool announce = true);
     void RemoveAbilityInternal(Player* player, ClasslessWildcard::AbilityEntry const& e, bool persist = true);
     void GrantTalentRankInternal(Player* player, ClasslessWildcard::TalentPoolEntry const& t, uint8 newRank, bool persist = true);
     void RemoveTalentInternal(Player* player, ClasslessWildcard::TalentPoolEntry const& t, bool persist = true);
@@ -142,18 +149,29 @@ private:
     std::map<uint32, ClasslessWildcard::TalentPoolEntry> _talents;     // talentId -> entry
     std::map<uint32, ClasslessWildcard::Archetype> _archetypes;
     std::unordered_map<uint32, uint32> _spellToFirst;                  // any rank -> firstSpellId
+    // form/stance spell (any rank) -> the basic spells that come with it
+    std::unordered_map<uint32, std::vector<uint32>> _formKits;
     std::unordered_map<ObjectGuid::LowType, ClasslessWildcard::CharState> _states;
     bool _libraryBuilt = false;
     bool _applyingGrant = false;
+    // true while handing out a form's starter kit, so a kit spell that is
+    // itself a form cannot start the whole thing over
+    bool _grantingKit = false;
     // true while batch-granting (starting hand, rebirth replay): the client
     // shows those results in bulk, so per-roll reveal popups are suppressed
     bool _revealSuppress = false;
 
+    // Saves and restores rather than clearing: granting a form now grants its
+    // starter kit too, so these nest. Clearing on the inner scope's exit would
+    // drop _applyingGrant while the outer grant is still running, and the
+    // learn-spell hook would take the rest of it for an outside source and
+    // revert it.
     struct GrantGuard
     {
-        explicit GrantGuard(bool& flag) : _flag(flag) { _flag = true; }
-        ~GrantGuard() { _flag = false; }
+        explicit GrantGuard(bool& flag) : _flag(flag), _prev(flag) { _flag = true; }
+        ~GrantGuard() { _flag = _prev; }
         bool& _flag;
+        bool  _prev;
     };
 };
 

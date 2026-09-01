@@ -123,6 +123,19 @@ ClasslessWildcard.RespectLevelRequirements = 1
 #        Default: 1
 
 #
+#    ClasslessWildcard.FormStarterKits
+#        A shapeshift form or a warrior stance does nothing on its own. Draw
+#        Bear Form out of the deck with nothing to go with it and you have
+#        turned into a creature that cannot attack. With this on, gaining a form
+#        also hands over the basic spells that go with it -- free, immediately,
+#        and counting as owned abilities like anything else: Cat Form brings
+#        Claw and Prowl, Bear Form brings Maul and Demoralizing Roar, Battle
+#        Stance brings Charge, Defensive Stance Taunt, Berserker Stance Pummel.
+#        The pairs are data, in the `cw_form_kits` world table -- add your own
+#        rows, or set a row's `enabled` to 0 to drop just that one.
+#        Default: 1
+
+#
 #    ClasslessWildcard.StripStartingSpells
 #        Clean-slate creation: remove the chassis class's default class
 #        abilities at first login. Heroes then get everything through essences
@@ -163,6 +176,7 @@ ClasslessWildcard.StarterKit.Items = "25:1,2362:1,2092:2,36:1,1194:1,2361:1,1228
 
 ClasslessWildcard.TeachProficiencies = 1
 ClasslessWildcard.BlockOutsideSpellSources = 1
+ClasslessWildcard.FormStarterKits = 1
 ClasslessWildcard.ProficiencySpells = "9078,9077,8737,750,9116,201,202,196,197,198,199,200,227,1180,15590,264,266,5011,2567,5009,5019,3018,2764,674"
 ClasslessWildcard.SuppressTalentPoints = 1
 

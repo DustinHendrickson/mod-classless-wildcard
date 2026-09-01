@@ -124,6 +124,15 @@ keep it, or spend a reroll and let the dice decide again.</em>
 - **Primary stat allocation** — a per-level point budget spent freely across
   STR / AGI / STA / INT / SPI, applied live, reallocation free.
 - **All proficiencies taught** — armor, weapons and dual wield, each configurable.
+- **Forms and stances arrive usable** — a form on its own does nothing, so gaining one hands
+  over the basic kit that goes with it, free and immediately: Cat Form brings Claw and Prowl,
+  Bear Form brings Maul and Demoralizing Roar, Battle Stance brings Charge, Defensive Stance
+  Taunt, Berserker Stance Pummel. Otherwise a Hero could roll Bear Form and find they had
+  turned into a creature with no way to attack. The pairs are rows in `cw_form_kits` — add
+  your own, or turn the whole thing off with one config flag.
+- **Universal quests** — every class's quest chains are open to every Hero, so the warrior's
+  Whirlwind Axe chain, the warlock's pet summoning quests and every class mount chain are
+  reachable content instead of dead weight. Applied automatically, and reversible.
 - **Optional item unlock** — one SQL script strips class restrictions from every item.
 
 #### Getting players in the door
@@ -210,21 +219,29 @@ double-click `install.bat` (or run `python3 install.py "/path/to/WoW"`), and the
 This is required — the mod expects a patched client.
 
 <details>
-<summary><b>Optional: unlock every item and every class quest</b></summary>
+<summary><b>Universal quests (on by default), and unlocking every item</b></summary>
 
 <br>
 
-Both of these are **destructive** to core world tables, never auto-applied, and
-back-uppable only by you "—" so they are opt-in. Back up the table first each time.
+**Any Hero can take any class's quests.** This one is applied automatically, by
+`data/sql/db-world/cw_world_class_quests.sql`. Every Hero shares one base class,
+so without it the only class quests anyone could ever see are that chassis
+class's — the warrior's Whirlwind Axe chain, the warlock's pet summoning quests,
+every class mount chain, all permanently unreachable. It clears
+`quest_template_addon`.`AllowableClasses`, and **saves the original masks in
+`cw_quest_class_backup` first**, so it is exactly reversible: run
+`data/sql/manual/cw_class_quests_revert.sql` (and delete the world SQL file, or
+the updater will re-apply it), or just uninstall — the world uninstall script
+restores them too.
 
-**Let Heroes take any class quest.** Apply `data/sql/manual/cw_class_quests.sql`
-to your world DB by hand. It clears the class lock on every quest so a Hero can
-pick up class quests from any class. Ability rewards are still blocked by the
-module (`BlockOutsideSpellSources`), so no quest ever grants an ability "—" only
-its item, XP, gold and reputation rewards. Back up `quest_template` first.
+Ability rewards are still governed by the module (`BlockOutsideSpellSources`),
+so a quest that would teach a class ability grants nothing — only its item, XP,
+gold and reputation rewards.
 
 **Unlock every item for every class.** Apply
-`data/sql/manual/cw_classless_items.sql` to your world DB by hand.
+`data/sql/manual/cw_classless_items.sql` to your world DB by hand. This one is
+**destructive** and never auto-applied: it overwrites `item_template`.`AllowableClass`
+for every item and keeps no backup, so back the table up first.
 
 > **Back up `item_template` first.** This overwrites `AllowableClass` with `-1` for every item
 > and the original masks cannot be recomputed. Players should clear their client `Cache`
@@ -382,11 +399,12 @@ Do this **with the worldserver stopped**:
 
 **What does not revert automatically:**
 
-- **The manual `manual/*.sql` scripts**, if you applied them, overwrote core world tables:
-  `cw_classless_items.sql` set `item_template.AllowableClass` to `-1` for every item, and
-  `cw_class_quests.sql` set `quest_template.AllowableClasses` to `0` for every quest. Neither
-  original can be recomputed — restore those tables from your pre-install backup, or
-  re-import them from the AzerothCore base SQL matching your core revision.
+- **`manual/cw_classless_items.sql`**, if you applied it, set
+  `item_template.AllowableClass` to `-1` for every item and kept no backup. The originals
+  cannot be recomputed — restore `item_template` from your pre-install backup, or re-import it
+  from the AzerothCore base SQL matching your core revision. (Quest class requirements *do*
+  revert automatically: they are saved in `cw_quest_class_backup` and the uninstall script
+  puts them back before dropping it.)
 - **Same-class spells** a Hero was granted that are legal for its base class survive validation.
   Harmless; a GM can `.unlearn` them individually.
 - Characters **created while the module was active** had their class starter spells and gear

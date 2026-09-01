@@ -178,6 +178,7 @@ void ClasslessMgr::LoadConfig(bool /*reload*/)
 
     cfg.suppressTalentPoints = sConfigMgr->GetOption<bool>("ClasslessWildcard.SuppressTalentPoints", true);
     cfg.blockOutsideSpellSources = sConfigMgr->GetOption<bool>("ClasslessWildcard.BlockOutsideSpellSources", true);
+    cfg.formKitsEnable = sConfigMgr->GetOption<bool>("ClasslessWildcard.FormStarterKits", true);
 
     cfg.startingAbilityEssence = sConfigMgr->GetOption<uint32>("ClasslessWildcard.Classless.StartingAbilityEssence", 9);
     cfg.essenceStartLevel = sConfigMgr->GetOption<uint8>("ClasslessWildcard.Classless.EssenceStartLevel", 10);
@@ -583,6 +584,7 @@ void ClasslessMgr::BuildLibrary()
     }
 
     LoadOverrides();
+    LoadFormKits();
     LoadArchetypes();
     _libraryBuilt = true;
 
@@ -627,6 +629,55 @@ void ClasslessMgr::LoadOverrides()
             t.enabled = f[3].Get<bool>();
         } while (result->NextRow());
     }
+}
+
+// The spells that come free with a form or stance, from `cw_form_kits`. Both
+// columns are plain spell ids so a realm can pair anything with anything; the
+// shipped rows are the kits the class system itself hands out.
+void ClasslessMgr::LoadFormKits()
+{
+    // Loaded whichever way the config is set: GrantFormKit checks the flag at
+    // grant time, so a `.reload config` can turn the feature on and off without
+    // a restart.
+    _formKits.clear();
+    QueryResult result = WorldDatabase.Query(
+        "SELECT form_spell, granted_spell FROM cw_form_kits WHERE enabled = 1");
+    if (!result)
+    {
+        LOG_INFO("module.classless", "mod-classless-wildcard: no form starter kits configured");
+        return;
+    }
+
+    uint32 skipped = 0;
+    do
+    {
+        Field* f = result->Fetch();
+        uint32 formSpell = f[0].Get<uint32>();
+        uint32 granted = f[1].Get<uint32>();
+
+        // A row naming a spell this core does not have would silently grant
+        // nothing, so say so rather than leaving it to be discovered in game.
+        if (!sSpellMgr->GetSpellInfo(formSpell) || !sSpellMgr->GetSpellInfo(granted))
+        {
+            LOG_WARN("module.classless",
+                     "mod-classless-wildcard: cw_form_kits row {} -> {} names a spell that does not exist, ignored",
+                     formSpell, granted);
+            ++skipped;
+            continue;
+        }
+
+        std::vector<uint32>& kit = _formKits[formSpell];
+        if (std::find(kit.begin(), kit.end(), granted) == kit.end())
+            kit.push_back(granted);
+    } while (result->NextRow());
+
+    uint32 pairs = 0;
+    for (auto const& entry : _formKits)
+        pairs += uint32(entry.second.size());
+    LOG_INFO("module.classless",
+             "mod-classless-wildcard: {} form starter kits ({} spells{})",
+             _formKits.size(), pairs,
+             skipped ? Acore::StringFormat(", {} rows ignored", skipped) : std::string());
 }
 
 void ClasslessMgr::LoadArchetypes()
@@ -1449,7 +1500,8 @@ void ClasslessMgr::AnnounceState(Player* player)
 // Grant / remove internals
 // -------------------------------------------------------------------------
 
-void ClasslessMgr::GrantAbilityInternal(Player* player, AbilityEntry const& e, GrantSource source, bool persist)
+void ClasslessMgr::GrantAbilityInternal(Player* player, AbilityEntry const& e, GrantSource source, bool persist,
+                                        bool announce)
 {
     GrantGuard guard(_applyingGrant);
     CharState& st = GetState(player);
@@ -1470,8 +1522,70 @@ void ClasslessMgr::GrantAbilityInternal(Player* player, AbilityEntry const& e, G
             "REPLACE INTO cw_char_abilities (guid, first_spell, source, locked) VALUES ({}, {}, {}, 0)",
             player->GetGUID().GetCounter(), e.firstSpellId, uint32(source));
 
-    Msg(player, Acore::StringFormat("You gained the ability {}{}|r ({}).",
-        RarityColor(e.rarity), SpellName(e.firstSpellId), RarityName(e.rarity)));
+    if (announce)
+        Msg(player, Acore::StringFormat("You gained the ability {}{}|r ({}).",
+            RarityColor(e.rarity), SpellName(e.firstSpellId), RarityName(e.rarity)));
+
+    GrantFormKit(player, e, source);
+}
+
+// A form or stance on its own does nothing: a Hero who draws Bear Form without
+// Maul has shapeshifted into a creature that cannot attack, and one who draws
+// Defensive Stance without Taunt has a stance with no reason to use it. Where
+// the class system hands these out together, so does this -- free, and the
+// moment the form lands.
+void ClasslessMgr::GrantFormKit(Player* player, AbilityEntry const& form, GrantSource source)
+{
+    if (!cfg.formKitsEnable || _formKits.empty() || _grantingKit)
+        return;
+
+    // Match on every rank, not just the first: Bear Form is 5487 and Dire Bear
+    // Form 9634, and either one arriving should hand over the same kit.
+    std::vector<uint32> kit;
+    for (uint32 rankSpell : form.ranks)
+    {
+        auto itr = _formKits.find(rankSpell);
+        if (itr == _formKits.end())
+            continue;
+        for (uint32 spellId : itr->second)
+            if (std::find(kit.begin(), kit.end(), spellId) == kit.end())
+                kit.push_back(spellId);
+    }
+    if (kit.empty())
+        return;
+
+    GrantGuard guard(_grantingKit);
+    std::vector<std::string> gained;
+
+    for (uint32 spellId : kit)
+    {
+        // Prefer granting it as a real owned ability so it shows up in My
+        // Build, survives a relog and is excluded from future rolls like
+        // anything else the Hero owns. A kit spell that is not in the library
+        // (disabled by an override, say) is simply taught.
+        if (AbilityEntry const* companion = FindAbilityBySpell(spellId))
+        {
+            // re-read the state each time: the grant below writes to it
+            if (GetState(player).abilities.count(companion->firstSpellId))
+                continue;
+            GrantAbilityInternal(player, *companion, source, true, false);
+            gained.push_back(SpellName(companion->firstSpellId));
+        }
+        else if (!player->HasSpell(spellId))
+        {
+            player->learnSpell(spellId);
+            gained.push_back(SpellName(spellId));
+        }
+    }
+
+    if (gained.empty())
+        return;
+
+    std::string list = gained[0];
+    for (size_t i = 1; i < gained.size(); ++i)
+        list += (i + 1 == gained.size() ? " and " : ", ") + gained[i];
+    Msg(player, Acore::StringFormat("{} comes with {} -- yours to use straight away.",
+        SpellName(form.firstSpellId), list));
 }
 
 void ClasslessMgr::RemoveAbilityInternal(Player* player, AbilityEntry const& e, bool persist)

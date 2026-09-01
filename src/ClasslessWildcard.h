@@ -202,6 +202,13 @@ namespace ClasslessWildcard
         // trainers, quest rewards) so essence/rolls stay the only path
         bool   blockOutsideSpellSources = true;
 
+        // A shapeshift form or a warrior stance is useless on its own: a Hero
+        // who draws Bear Form and nothing else cannot attack in it. Gaining one
+        // hands over the basic kit that goes with it (Maul, Demoralizing Roar),
+        // free, so it is usable the moment it lands. The pairs live in the
+        // `cw_form_kits` table.
+        bool   formKitsEnable = true;
+
         // classless (free-pick) economy
         uint32 startingAbilityEssence = 9;
         uint8  essenceStartLevel = 10;
