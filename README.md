@@ -155,6 +155,12 @@ keep it, or spend a reroll and let the dice decide again.</em>
   silver at level 1, over 100 gold at 80). Every piece wears artwork borrowed from a real item
   of the same class, subclass and slot, so the icon and the model always match the tooltip —
   and the look climbs with the level band. All server-side.
+- **Classless gear also drops in the world** — the NPC is not the only source. Any mob has a
+  chance to drop a piece of the same catalogue, banded to the **mob's** level, so a level 20
+  zone yields level 20 gear whoever kills there and farming low-level mobs at 80 returns
+  low-level gear. Rares, rare elites and world bosses drop more often, and are the only things
+  that can drop a scaling **heirloom**. Rates are configurable and it can be turned off; no
+  `creature_loot_template` rows are touched, so there is nothing to revert.
 - **A shop you can actually browse** — one vendor packet holds at most 150 items, so the
   catalogue is split across **16 vendor lists** the NPC's gossip menu opens: pick *Weapons*,
   *Armor* or *Jewelry & off-hand*, then a level bracket (1–20, 21–40, 41–60, 61–80) or

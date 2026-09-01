@@ -209,6 +209,16 @@ namespace ClasslessWildcard
         // `cw_form_kits` table.
         bool   formKitsEnable = true;
 
+        // Classless gear as world drops. The catalogue was vendor-only, which
+        // made the Hero Advancement NPC the only answer to "where does gear
+        // come from". Any mob can now drop a piece banded to ITS level, so a
+        // level 20 zone yields level 20 gear whoever kills there. Heirlooms are
+        // the premium reward and come only off rares and bosses.
+        bool   worldDropEnable = true;
+        float  worldDropChance = 1.0f;           // percent, per qualifying kill
+        float  worldDropRareMultiplier = 5.0f;   // rares/elites/bosses drop more often
+        float  worldDropHeirloomChance = 2.0f;   // percent, rares and bosses only
+
         // classless (free-pick) economy
         uint32 startingAbilityEssence = 9;
         uint8  essenceStartLevel = 10;

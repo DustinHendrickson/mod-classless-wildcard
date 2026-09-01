@@ -18,6 +18,7 @@ void AddClasslessPlayerScripts();
 void AddClasslessNpcScripts();
 void AddClasslessCommandScripts();
 void AddClasslessAddonScripts();
+void AddClasslessLootScripts();
 
 // Loader entry point — name must match the module folder
 // ("mod-classless-wildcard" -> Addmod_classless_wildcardScripts).
@@ -27,4 +28,5 @@ void Addmod_classless_wildcardScripts()
     AddClasslessNpcScripts();
     AddClasslessCommandScripts();
     AddClasslessAddonScripts();
+    AddClasslessLootScripts();
 }

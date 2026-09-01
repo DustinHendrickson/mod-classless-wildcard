@@ -136,6 +136,31 @@ ClasslessWildcard.RespectLevelRequirements = 1
 #        Default: 1
 
 #
+#    ClasslessWildcard.WorldDrops.*
+#        Classless gear as world drops, so the Hero Advancement NPC is not the
+#        only answer to "where does gear come from".
+#
+#        Enable (default 1): any mob can drop a piece of the classless
+#        catalogue. The piece is banded to the MOB's level, not the killer's, so
+#        a level 20 zone yields level 20 gear whoever kills there -- farming
+#        low-level mobs at 80 returns low-level gear, exactly as normal loot
+#        does. Critters, totems, pets and summons never drop.
+#
+#        Chance (default 1.0): percent chance per qualifying kill, so roughly
+#        one piece per hundred mobs.
+#
+#        RareMultiplier (default 5.0): Chance is multiplied by this for rares,
+#        rare elites and world bosses.
+#
+#        HeirloomChance (default 2.0): percent chance for a scaling heirloom,
+#        rolled ONLY on rares, rare elites and world bosses, and rolled before
+#        the ordinary drop as the better prize. Heirlooms scale to 80, so this
+#        is the one that really matters -- set it to 0 to keep them vendor-only.
+#
+#        Nothing here touches creature_loot_template: drops are added to the
+#        kill's loot in C++, so there is no world data to revert.
+
+#
 #    ClasslessWildcard.StripStartingSpells
 #        Clean-slate creation: remove the chassis class's default class
 #        abilities at first login. Heroes then get everything through essences
@@ -177,6 +202,10 @@ ClasslessWildcard.StarterKit.Items = "25:1,2362:1,2092:2,36:1,1194:1,2361:1,1228
 ClasslessWildcard.TeachProficiencies = 1
 ClasslessWildcard.BlockOutsideSpellSources = 1
 ClasslessWildcard.FormStarterKits = 1
+ClasslessWildcard.WorldDrops.Enable = 1
+ClasslessWildcard.WorldDrops.Chance = 1.0
+ClasslessWildcard.WorldDrops.RareMultiplier = 5.0
+ClasslessWildcard.WorldDrops.HeirloomChance = 2.0
 ClasslessWildcard.ProficiencySpells = "9078,9077,8737,750,9116,201,202,196,197,198,199,200,227,1180,15590,264,266,5011,2567,5009,5019,3018,2764,674"
 ClasslessWildcard.SuppressTalentPoints = 1
 
