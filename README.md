@@ -1,6 +1,6 @@
 <div align="center">
 
-<img src="docs/banner.svg" alt="mod-classless-wildcard — Ascension-style classless progression and Season 10 Wildcard rolls for AzerothCore" width="100%">
+<img src="docs/classless-wildcard-github-header.png" alt="Classless Wildcard — an AzerothCore module for WotLK 3.3.5a. Every spell. Every talent. Every class. Or let the dice decide." width="100%">
 
 <br>
 
