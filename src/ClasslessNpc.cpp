@@ -24,7 +24,6 @@
 #include "ScriptedGossip.h"
 #include "SpellInfo.h"
 #include "SpellMgr.h"
-#include "StringConvert.h"
 #include "StringFormat.h"
 #include "WorldSession.h"
 #include <algorithm>
@@ -47,8 +46,6 @@ namespace
         ACT_MY_TALENTS        = 31,
         ACT_RESPEC            = 40,
         ACT_RESPEC_CONFIRM    = 41,
-        ACT_LEARN_BY_ID       = 60,   // coded
-        ACT_TALENT_BY_ID      = 61,   // coded
         ACT_VENDOR            = 70,
         ACT_ARCHETYPES        = 80,
         ACT_REBIRTH           = 90,
@@ -108,8 +105,11 @@ namespace
         {
             AddGossipItemFor(player, GOSSIP_ICON_TRAINER, Acore::StringFormat("Browse abilities by class  |cff00ff00[{} AE]|r", st.abilityEssence), GOSSIP_SENDER_MAIN, ACT_BROWSE_CLASSES);
             AddGossipItemFor(player, GOSSIP_ICON_TRAINER, Acore::StringFormat("Browse talents  |cff00ff00[{} TE]|r", st.talentEssence), GOSSIP_SENDER_MAIN, ACT_BROWSE_TALENTS);
-            AddGossipItemFor(player, GOSSIP_ICON_CHAT, "Learn ability by spell ID...", GOSSIP_SENDER_MAIN, ACT_LEARN_BY_ID, "Enter the spell ID:", 0, true);
-            AddGossipItemFor(player, GOSSIP_ICON_CHAT, "Learn talent by talent ID...", GOSSIP_SENDER_MAIN, ACT_TALENT_BY_ID, "Enter the talent ID:", 0, true);
+            // The old "learn by spell ID" entries are gone: a coded gossip
+            // option opens the client's generic ENTER_CODE popup, which ignores
+            // the prompt we set and expects a raw spell id nobody has to hand.
+            // Browsing by class does the same job by clicking, and
+            // ".classless learn <id>" still covers entering one directly.
             AddGossipItemFor(player, GOSSIP_ICON_INTERACT_1, "My abilities (unlearn)", GOSSIP_SENDER_MAIN, BASE_MY_ABILITIES_PG);
             if (!sClasslessMgr->Archetypes().empty())
                 AddGossipItemFor(player, GOSSIP_ICON_TABARD, "Apply a starter archetype...", GOSSIP_SENDER_MAIN, ACT_ARCHETYPES);
@@ -119,8 +119,14 @@ namespace
         {
             AddGossipItemFor(player, GOSSIP_ICON_BATTLE, "My rolled abilities (reroll / lock)", GOSSIP_SENDER_MAIN, BASE_MY_ABILITIES_PG);
             AddGossipItemFor(player, GOSSIP_ICON_BATTLE, "My rolled talents (reroll)", GOSSIP_SENDER_MAIN, BASE_MY_TALENTS_PG);
-            AddGossipItemFor(player, GOSSIP_ICON_VENDOR, "Buy Reroll Scrolls", GOSSIP_SENDER_MAIN, ACT_VENDOR);
         }
+
+        // The vendor is for EVERY Hero, not just Wildcard ones: it carries the
+        // classless gear packs and the heirlooms as well as the Reroll Scrolls,
+        // and a Classless Hero could not reach any of it before.
+        if (st.mode != Mode::Unchosen)
+            AddGossipItemFor(player, GOSSIP_ICON_VENDOR, "Browse the Hero's wares (gear, heirlooms, Reroll Scrolls)",
+                             GOSSIP_SENDER_MAIN, ACT_VENDOR);
 
         if (st.mode != Mode::Unchosen && cfg.rebirthEnable)
             AddGossipItemFor(player, GOSSIP_ICON_BATTLE,
@@ -458,34 +464,6 @@ public:
         return true;
     }
 
-    bool OnGossipSelectCode(Player* player, Creature* creature, uint32 /*sender*/, uint32 action, char const* code) override
-    {
-        std::string err;
-        Optional<uint32> id = Acore::StringTo<uint32>(code ? code : "");
-        if (!id)
-        {
-            ChatHandler(player->GetSession()).SendSysMessage("That is not a valid numeric ID.");
-            ShowMain(player, creature);
-            return true;
-        }
-
-        switch (action)
-        {
-            case ACT_LEARN_BY_ID:
-                if (!sClasslessMgr->BuyAbility(player, *id, &err) && !err.empty())
-                    ChatHandler(player->GetSession()).SendSysMessage(err);
-                break;
-            case ACT_TALENT_BY_ID:
-                if (!sClasslessMgr->BuyTalentRank(player, *id, &err) && !err.empty())
-                    ChatHandler(player->GetSession()).SendSysMessage(err);
-                break;
-            default:
-                break;
-        }
-
-        ShowMain(player, creature);
-        return true;
-    }
 };
 
 void AddClasslessNpcScripts()
