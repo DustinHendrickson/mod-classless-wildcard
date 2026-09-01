@@ -67,6 +67,26 @@ training, the Hero Advancement NPC and the addon UI. Players choose a path per c
 
 ---
 
+## Screenshots
+
+<div align="center">
+
+<img src="docs/advancement_addon.webp" alt="The Character Advancement panel: an ability browser, talent trees for every class, and the current build side by side" width="92%">
+
+<em>The <b>Character Advancement</b> panel — browse every class's abilities and talent trees,<br>
+with your build on the right. Lock or reroll anything you own straight from it.</em>
+
+<br><br>
+
+<img src="docs/wildcard_addon.webp" alt="A Wildcard roll revealing Healing Wave, showing its rarity with Keep and Reroll buttons" width="62%">
+
+<em>A <b>Wildcard</b> roll. The die lands on a new ability and shows its rarity —<br>
+keep it, or spend a reroll and let the dice decide again.</em>
+
+</div>
+
+---
+
 ## Features
 
 #### Progression
