@@ -65,19 +65,17 @@ write_tga(atlas, "die_reveal.tga")
 print("icon.tga (panel crest / minimap):")
 write_tga(fitted("icon.png", 64), "icon.tga")
 
-# ---- 3. micro_die: the crest in the micro button's 128x256 layout ----------
-# the button art area is the top half; the bottom half is the pushed state
+# ---- 3. micro_die: ONE crest, placed where the original had it -------------
+# The 128x256 sheet is not two stacked frames -- the original holds a single
+# die low in the canvas (measured bbox x 11..116, y 120..228) and the pushed
+# variant is the same art nudged 4px down. Pasting it twice put a second die on
+# the micro button, which is exactly what it looked like.
 print("micro_die.tga / micro_die_down.tga:")
-crest = fitted("icon.png", 128)
-for name, dim in (("micro_die.tga", 1.0), ("micro_die_down.tga", 0.88)):
+CREST_PX, CREST_X, CREST_Y = 108, 10, 120
+crest = fitted("icon.png", CREST_PX)
+for name, dy in (("micro_die.tga", 0), ("micro_die_down.tga", 4)):
     sheet = Image.new("RGBA", (128, 256), (0, 0, 0, 0))
-    c = crest if dim == 1.0 else Image.eval(crest, lambda v: int(v * dim))
-    # keep alpha untouched when dimming
-    if dim != 1.0:
-        c = Image.merge("RGBA", (*[Image.eval(ch, lambda v: int(v * dim))
-                                   for ch in crest.split()[:3]], crest.split()[3]))
-    sheet.paste(c, (0, 0))
-    sheet.paste(c, (0, 128))
+    sheet.paste(crest, (CREST_X, CREST_Y + dy))
     write_tga(sheet, name)
 
 # ---- 4. d20_spin.tga: 8x2 atlas of 128px spin frames ----------------------
