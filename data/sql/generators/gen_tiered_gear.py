@@ -18,9 +18,10 @@ Run:  python gen_tiered_gear.py     (writes ../db-world/cw_items_tiered.sql)
 """
 import json, os, textwrap
 
+import displaypick
+
 HERE = os.path.dirname(os.path.abspath(__file__))
 OUT = os.path.join(HERE, os.pardir, "db-world", "cw_items_tiered.sql")
-DISPLAYS = os.path.join(HERE, "displays.json")
 
 FIRST_ENTRY = 990300
 VENDOR = 990100
@@ -132,7 +133,17 @@ TEMPLATES = [
       desc="An off-hand book carrying attack power."),
 ]
 
-displays = json.load(open(DISPLAYS, encoding="utf-8"))
+# Artwork, one look per band. displaypick only offers display ids that real
+# items of the same class/subclass/slot wear, so the icon, model and texture
+# always agree with the tooltip -- and it walks the art up with the level, so a
+# band-1 piece looks like starter gear rather than a raid drop.
+ART = {}
+for t in TEMPLATES:
+    ART[t["key"]] = displaypick.spread(t["cls"], t["sub"], t["inv"],
+                                       t["name"], BANDS)
+    if len(ART[t["key"]]) < len(BANDS):
+        raise SystemExit("no artwork for %s (class %d sub %d slot %d)"
+                         % (t["key"], t["cls"], t["sub"], t["inv"]))
 
 
 def esc(s):
@@ -172,8 +183,7 @@ def build_rows():
             sell = buy // 5
 
             quality = 2 if band <= 20 else (3 if band <= 60 else 4)
-            looks = displays[t["disp"]]
-            disp = looks[BANDS.index(band) % len(looks)]
+            disp = ART[t["key"]][BANDS.index(band)]
             durability = 0 if t["kind"] == "jewel" else (55 + band if t["kind"] == "weapon" else 40 + band)
 
             rows.append(dict(

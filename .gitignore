@@ -26,3 +26,6 @@ Thumbs.db
 # Python
 __pycache__/
 *.pyc
+
+# Parsed cache of the core item_template display pool (rebuilt on demand)
+data/sql/generators/displays_pool.json
