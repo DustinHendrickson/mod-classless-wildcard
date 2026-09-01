@@ -1,6 +1,6 @@
 <div align="center">
 
-<img src="docs/classless-wildcard-github-header.png" alt="Classless Wildcard — an AzerothCore module for WotLK 3.3.5a. Every spell. Every talent. Every class. Or let the dice decide." width="100%">
+<img src="docs/classless-wildcard-github-header.webp" alt="Classless Wildcard — an AzerothCore module for WotLK 3.3.5a. Every spell. Every talent. Every class. Or let the dice decide." width="100%">
 
 <br>
 
