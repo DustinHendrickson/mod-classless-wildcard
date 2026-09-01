@@ -18,6 +18,7 @@
 
 #include "Chat.h"
 #include "ClasslessMgr.h"
+#include "ClasslessVendorLists.h"
 #include "Creature.h"
 #include "Player.h"
 #include "ScriptMgr.h"
@@ -27,6 +28,7 @@
 #include "StringFormat.h"
 #include "WorldSession.h"
 #include <algorithm>
+#include <iterator>
 
 using namespace ClasslessWildcard;
 
@@ -47,10 +49,13 @@ namespace
         ACT_RESPEC            = 40,
         ACT_RESPEC_CONFIRM    = 41,
         ACT_VENDOR            = 70,
+        ACT_VENDOR_SUPPLIES   = 71,
         ACT_ARCHETYPES        = 80,
         ACT_REBIRTH           = 90,
         ACT_REBIRTH_CLASSLESS = 91,
         ACT_REBIRTH_WILDCARD  = 92,
+        BASE_VENDOR_CATEGORY  = 100,   // + index into VENDOR_CATEGORIES
+        BASE_VENDOR_LIST      = 200,   // + index into VENDOR_LISTS
         BASE_ARCHETYPE        = 90000, // + archetypeId (keep below BASE_CLASS_PAGE)
 
         BASE_CLASS_PAGE       = 100000000, // + classId * 100000 + page
@@ -125,7 +130,7 @@ namespace
         // classless gear packs and the heirlooms as well as the Reroll Scrolls,
         // and a Classless Hero could not reach any of it before.
         if (st.mode != Mode::Unchosen)
-            AddGossipItemFor(player, GOSSIP_ICON_VENDOR, "Browse the Hero's wares (gear, heirlooms, Reroll Scrolls)",
+            AddGossipItemFor(player, GOSSIP_ICON_VENDOR, "Browse the Hero's wares (gear, heirlooms, Reroll Scrolls)...",
                              GOSSIP_SENDER_MAIN, ACT_VENDOR);
 
         if (st.mode != Mode::Unchosen && cfg.rebirthEnable)
@@ -133,6 +138,78 @@ namespace
                 Acore::StringFormat("|cffff4444Rebirth|r — full reset / switch path ({} gold)", cfg.rebirthCostGold),
                 GOSSIP_SENDER_MAIN, ACT_REBIRTH);
 
+        SendGossipMenuFor(player, DEFAULT_GOSSIP_MESSAGE, creature->GetGUID());
+    }
+
+    // --- the shop -----------------------------------------------------------
+    //
+    // 250 items cannot go in one vendor packet: SMSG_LIST_INVENTORY stops at
+    // MAX_VENDOR_ITEMS = 150 and the core drops the rest without a word. They
+    // are split into per-category, per-level-bracket lists in
+    // cw_world_vendor_lists.sql, and SendListInventory(guid, vendorEntry) opens
+    // any one of them from this single NPC. ClasslessVendorLists.h is generated
+    // alongside that SQL, so the menu below always matches what is on the shelf.
+
+    uint32 CategoryTotal(uint8 category)
+    {
+        for (VendorList const& l : VENDOR_LISTS)
+            if (l.category == category && l.whole)
+                return l.count;
+        return 0;
+    }
+
+    uint32 ListsInCategory(uint8 category)
+    {
+        uint32 n = 0;
+        for (VendorList const& l : VENDOR_LISTS)
+            if (l.category == category)
+                ++n;
+        return n;
+    }
+
+    // The list holding the whole category, for the ones that do not bracket.
+    uint32 CategoryEntry(uint8 category)
+    {
+        for (VendorList const& l : VENDOR_LISTS)
+            if (l.category == category && l.whole)
+                return l.entry;
+        return 0;
+    }
+
+    void OpenVendorList(Player* player, Creature* creature, uint32 vendorEntry)
+    {
+        // Leaves the gossip window for the vendor frame, as any vendor does.
+        player->GetSession()->SendListInventory(creature->GetGUID(), vendorEntry);
+    }
+
+    void ShowVendorMenu(Player* player, Creature* creature)
+    {
+        ClearGossipMenuFor(player);
+        for (uint8 c = 0; c < uint8(std::size(VENDOR_CATEGORIES)); ++c)
+            AddGossipItemFor(player, GOSSIP_ICON_VENDOR,
+                Acore::StringFormat("{}  |cff888888— {} ({} items)|r",
+                    VENDOR_CATEGORIES[c].name, VENDOR_CATEGORIES[c].blurb, CategoryTotal(c)),
+                GOSSIP_SENDER_MAIN, BASE_VENDOR_CATEGORY + c);
+
+        AddGossipItemFor(player, GOSSIP_ICON_MONEY_BAG, "Supplies  |cff888888— Reroll Scrolls|r",
+                         GOSSIP_SENDER_MAIN, ACT_VENDOR_SUPPLIES);
+        AddGossipItemFor(player, GOSSIP_ICON_TALK, "<- Back", GOSSIP_SENDER_MAIN, ACT_MAIN);
+        SendGossipMenuFor(player, DEFAULT_GOSSIP_MESSAGE, creature->GetGUID());
+    }
+
+    void ShowVendorCategory(Player* player, Creature* creature, uint8 category)
+    {
+        ClearGossipMenuFor(player);
+        for (uint32 i = 0; i < std::size(VENDOR_LISTS); ++i)
+        {
+            VendorList const& l = VENDOR_LISTS[i];
+            if (l.category != category || !l.count)
+                continue;
+            AddGossipItemFor(player, l.whole ? GOSSIP_ICON_MONEY_BAG : GOSSIP_ICON_VENDOR,
+                Acore::StringFormat("{}  |cff888888({} items)|r", l.label, l.count),
+                GOSSIP_SENDER_MAIN, BASE_VENDOR_LIST + i);
+        }
+        AddGossipItemFor(player, GOSSIP_ICON_TALK, "<- Back to the wares", GOSSIP_SENDER_MAIN, ACT_VENDOR);
         SendGossipMenuFor(player, DEFAULT_GOSSIP_MESSAGE, creature->GetGUID());
     }
 
@@ -401,6 +478,18 @@ public:
                 ChatHandler(player->GetSession()).SendSysMessage(err);
             ShowMain(player, creature);
         }
+        else if (action >= BASE_VENDOR_LIST && action < BASE_VENDOR_LIST + std::size(VENDOR_LISTS))
+            OpenVendorList(player, creature, VENDOR_LISTS[action - BASE_VENDOR_LIST].entry);
+        else if (action >= BASE_VENDOR_CATEGORY && action < BASE_VENDOR_CATEGORY + std::size(VENDOR_CATEGORIES))
+        {
+            uint8 category = uint8(action - BASE_VENDOR_CATEGORY);
+            // A category with nothing to choose between (heirlooms do not
+            // bracket by level, since they scale) opens straight to its shelf.
+            if (ListsInCategory(category) == 1)
+                OpenVendorList(player, creature, CategoryEntry(category));
+            else
+                ShowVendorCategory(player, creature, category);
+        }
         else switch (action)
         {
             case ACT_MODE_CLASSLESS:
@@ -453,7 +542,12 @@ public:
                 ShowMain(player, creature);
                 break;
             case ACT_VENDOR:
-                player->GetSession()->SendListInventory(creature->GetGUID());
+                ShowVendorMenu(player, creature);
+                break;
+            case ACT_VENDOR_SUPPLIES:
+                // vendor entry 0 means the creature's own list, which holds the
+                // Reroll Scrolls -- so right-clicking the NPC still works too
+                OpenVendorList(player, creature, VENDOR_LIST_SUPPLIES);
                 break;
             case ACT_MAIN:
             default:

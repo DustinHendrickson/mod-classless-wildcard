@@ -143,13 +143,19 @@ keep it, or spend a reroll and let the dice decide again.</em>
   shields, hybrid rings and necks. Most of it is **tiered across nine level bands from 1 to
   80**, so there is something worth buying the whole way up rather than only at level 35, and
   prices follow the game's own spread (measured from ~15,000 real 3.3.5 items: about 16
-silver at level 1, over 100 gold at 80). The vendor lists three level bands at once (a `conditions` row
-  per item) — 118 items, under the 150 the vendor packet can carry. All server-side.
+  silver at level 1, over 100 gold at 80). Every piece wears artwork borrowed from a real item
+  of the same class, subclass and slot, so the icon and the model always match the tooltip —
+  and the look climbs with the level band. All server-side.
+- **A shop you can actually browse** — one vendor packet holds at most 150 items, so the
+  catalogue is split across **16 vendor lists** the NPC's gossip menu opens: pick *Weapons*,
+  *Armor* or *Jewelry & off-hand*, then a level bracket (1–20, 21–40, 41–60, 61–80) or
+  *All levels*. Nothing is hidden by level — every item is reachable at any level, for buying
+  ahead or kitting out an alt.
 - **Hero heirlooms** — 23 items that **scale with you from level 1 to 80**, using the
   client's own heirloom system (no client patch needed). Weapons of every family plus
   "wrong armor" pieces the original classes could never wear: spellpower plate, strength
-  mail, agility cloth, and single-stat trinkets for spellpower, haste and crit. Deliberately
-  cheap (80 silver to 2 gold) — they are meant to be bought early and grown into.
+  mail, agility cloth, and single-stat trinkets for spellpower, haste and crit. Priced near a
+  level-30 item (2–10 gold) — they are meant to be bought early and grown into.
 
 #### Client setup
 

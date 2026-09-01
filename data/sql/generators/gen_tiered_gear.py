@@ -1,18 +1,16 @@
-﻿"""Generate cw_items_tiered.sql -- classless gear across the whole level range.
+"""Generate cw_items_tiered.sql -- classless gear across the whole level range.
 
 The first two item packs all sat at item level 40 / required 35, so there was
 nothing to buy while levelling and nothing at the cap. This lays the same
 "stat combination the class system would never allow" idea across nine level
 bands, from a fresh Hero at level 1 to level 80.
 
-Two things keep it usable rather than a wall of 180 vendor entries:
+Prices come from the medians of real 3.3.5 items (analyze_prices.py), so band-1
+gear costs a few silver and a level 80 piece over a hundred gold.
 
-  * prices scale with level and start in silver, so band-1 gear is affordable
-    to a character that just left the starting zone;
-  * every item is gated by a `conditions` row on the vendor, so the shop only
-    offers the two bands around the player's own level. SendListInventory
-    filters through GetConditionsForNpcVendorEvent, so this is honoured by the
-    core with no custom code.
+This file only defines the items. Which shelf the Hero Advancement NPC puts
+each one on is gen_vendor_lists.py's job -- rerun it after changing anything
+here, since it reads the generated SQL back to lay the shop out.
 
 Run:  python gen_tiered_gear.py     (writes ../db-world/cw_items_tiered.sql)
 """
@@ -24,7 +22,6 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 OUT = os.path.join(HERE, os.pardir, "db-world", "cw_items_tiered.sql")
 
 FIRST_ENTRY = 990300
-VENDOR = 990100
 VERIFIED = 12340
 
 # stat ids (item_template.stat_type*)
@@ -45,10 +42,6 @@ ARMOR_PER_LEVEL = {"cloth": 2.0, "leather": 3.2, "mail": 5.0, "plate": 7.0,
 # pass priced a level 80 one-hander at 5g where the real median is over 100g.
 PRICES = json.load(open(os.path.join(HERE, "prices.json"), encoding="utf-8"))
 
-# How many bands of gear the vendor offers at once. SMSG_LIST_INVENTORY caps at
-# 150 items and the core drops the overflow silently, so check_vendor_size.py
-# verifies the worst case after any change here.
-WINDOW_BANDS = 3
 
 
 def T(key, name, cls, sub, inv, disp, stats, *, kind, price, speed=0,
@@ -155,7 +148,7 @@ def stat_budget(level):
 
 
 def build_rows():
-    rows, conds, entry = [], [], FIRST_ENTRY
+    rows, entry = [], FIRST_ENTRY
     for band in BANDS:
         for t in TEMPLATES:
             P = stat_budget(band)
@@ -195,17 +188,10 @@ def build_rows():
                 sheath=t["sheath"], desc=t["desc"], band=band))
             entry += 1
 
-    # vendor visibility: a band stays on the shelf for WINDOW_BANDS bands
-    for r in rows:
-        i = BANDS.index(r["band"])
-        lo = r["band"]
-        j = i + WINDOW_BANDS
-        hi = BANDS[j] - 1 if j < len(BANDS) else 80
-        conds.append((r["entry"], lo, hi))
-    return rows, conds
+    return rows
 
 
-rows, conds = build_rows()
+rows = build_rows()
 last = rows[-1]["entry"]
 
 L = []
@@ -218,13 +204,11 @@ L.append(textwrap.dedent("""\
     -- other packs, but spread across nine level bands from 1 to 80, so a Hero has
     -- something to buy the whole way up instead of only at level 35.
     --
-    -- Prices scale with level and start in silver: band-1 gear costs a few silver,
-    -- level 80 pieces a handful of gold.
+    -- Prices come from the medians of real 3.3.5 items (see analyze_prices.py):
+    -- a few silver at band 1, over a hundred gold at 80.
     --
-    -- Each item carries a `conditions` row (source type 23 = NPC_VENDOR) limiting
-    -- it to the two bands around the buyer's level, so the shop stays readable
-    -- instead of listing every piece at once. The core applies this itself in
-    -- SendListInventory via GetConditionsForNpcVendorEvent.
+    -- This file only defines the items. Which of them the Hero Advancement NPC
+    -- puts on which shelf is cw_world_vendor_lists.sql's job.
     """))
 L.append("DELETE FROM `item_template` WHERE `entry` BETWEEN %d AND %d;" % (FIRST_ENTRY, last))
 L.append("INSERT INTO `item_template`")
@@ -246,37 +230,13 @@ for n, r in enumerate(rows):
                 r["mat"], r["sheath"], esc(r["desc"]), VERIFIED, end))
 
 L.append("")
-L.append("-- sell them all from the Hero Advancement NPC")
-L.append("DELETE FROM `npc_vendor` WHERE `entry` = %d AND `item` BETWEEN %d AND %d;" % (VENDOR, FIRST_ENTRY, last))
-L.append("INSERT INTO `npc_vendor` (`entry`, `slot`, `item`, `maxcount`, `incrtime`, `ExtendedCost`, `VerifiedBuild`)")
-L.append("SELECT %d, 100 + (`entry` - %d), `entry`, 0, 0, 0, %d" % (VENDOR, FIRST_ENTRY, VERIFIED))
-L.append("FROM `item_template` WHERE `entry` BETWEEN %d AND %d;" % (FIRST_ENTRY, last))
-
-L.append("")
-L.append("-- only offer gear near the buyer's own level (23 = NPC_VENDOR,")
-L.append("-- 27 = CONDITION_LEVEL; comparison 3 = >=, 4 = <=)")
-L.append("DELETE FROM `conditions` WHERE `SourceTypeOrReferenceId` = 23 AND `SourceGroup` = %d" % VENDOR)
-L.append("  AND `SourceEntry` BETWEEN %d AND %d;" % (FIRST_ENTRY, last))
-L.append("INSERT INTO `conditions`")
-L.append("  (`SourceTypeOrReferenceId`, `SourceGroup`, `SourceEntry`, `SourceId`, `ElseGroup`,")
-L.append("   `ConditionTypeOrReference`, `ConditionTarget`, `ConditionValue1`, `ConditionValue2`,")
-L.append("   `ConditionValue3`, `NegativeCondition`, `ErrorType`, `ErrorTextId`, `ScriptName`, `Comment`)")
-L.append("VALUES")
-parts = []
-for e, lo, hi in conds:
-    parts.append("(23, %d, %d, 0, 0, 27, 0, %d, 3, 0, 0, 0, 0, '', 'CW tiered gear: level >= %d')"
-                 % (VENDOR, e, lo, lo))
-    parts.append("(23, %d, %d, 0, 0, 27, 0, %d, 4, 0, 0, 0, 0, '', 'CW tiered gear: level <= %d')"
-                 % (VENDOR, e, hi, hi))
-L.append(",\n".join(parts) + ";")
-L.append("")
 
 open(OUT, "w", encoding="utf-8", newline="\n").write("\n".join(L))
 
 print("wrote %s" % os.path.normpath(OUT))
 print("  %d items, entries %d..%d  (%d templates x %d bands)"
       % (len(rows), FIRST_ENTRY, last, len(TEMPLATES), len(BANDS)))
-print("  %d vendor conditions" % len(parts))
+print("  shelving is gen_vendor_lists.py's job -- rerun it after this")
 print()
 print("  price / stat sample:")
 for band in BANDS:

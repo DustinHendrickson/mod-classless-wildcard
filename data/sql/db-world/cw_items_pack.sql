@@ -1,8 +1,8 @@
--- mod-classless-wildcard: classless item pack
+﻿-- mod-classless-wildcard: classless item pack
 -- Ascension-style items that only make sense in a classless world: intellect
 -- guns, strength throwing weapons, mail tanking and caster gear, spellpower
 -- fist weapons. Pure server-side data (client reads them from the item query
--- cache; existing display ids are reused) — no client patch needed.
+-- cache; existing display ids are reused) â€” no client patch needed.
 -- Sold by the Hero Advancement NPC alongside the Reroll Scrolls.
 
 DELETE FROM `item_template` WHERE `entry` BETWEEN 990201 AND 990212;
@@ -59,31 +59,6 @@ VALUES
  7, 28, 5, 10, 4, 8, 0, 0, 0, 0, 197, 2, 100, 7, 0,
  'Woven for casters who insist on being hit.', 12340);
 
--- sell them on the Hero Advancement NPC
-DELETE FROM `npc_vendor` WHERE `entry` = 990100 AND `item` BETWEEN 990201 AND 990212;
-INSERT INTO `npc_vendor` (`entry`, `slot`, `item`, `maxcount`, `incrtime`, `ExtendedCost`, `VerifiedBuild`) VALUES
-(990100, 2, 990201, 0, 0, 0, 12340),
-(990100, 3, 990202, 0, 0, 0, 12340),
-(990100, 4, 990203, 0, 0, 0, 12340),
-(990100, 5, 990204, 0, 0, 0, 12340),
-(990100, 6, 990205, 0, 0, 0, 12340),
-(990100, 7, 990206, 0, 0, 0, 12340),
-(990100, 8, 990207, 0, 0, 0, 12340),
-(990100, 9, 990208, 0, 0, 0, 12340),
-(990100, 10, 990209, 0, 0, 0, 12340),
-(990100, 11, 990210, 0, 0, 0, 12340),
-(990100, 12, 990211, 0, 0, 0, 12340),
-(990100, 13, 990212, 0, 0, 0, 12340);
-
--- Only offer these once they are nearly usable. They require level 35, so
--- showing them to a fresh Hero was 12 rows of noise on the vendor. The tiered
--- gear covers every other level band. (23 = NPC_VENDOR, 27 = CONDITION_LEVEL,
--- comparison 3 = >=.)
-DELETE FROM `conditions` WHERE `SourceTypeOrReferenceId` = 23 AND `SourceGroup` = 990100
-  AND `SourceEntry` BETWEEN 990201 AND 990212;
-INSERT INTO `conditions`
-  (`SourceTypeOrReferenceId`, `SourceGroup`, `SourceEntry`, `SourceId`, `ElseGroup`,
-   `ConditionTypeOrReference`, `ConditionTarget`, `ConditionValue1`, `ConditionValue2`,
-   `ConditionValue3`, `NegativeCondition`, `ErrorType`, `ErrorTextId`, `ScriptName`, `Comment`)
-SELECT 23, 990100, `entry`, 0, 0, 27, 0, 25, 3, 0, 0, 0, 0, '', 'CW item pack: level >= 25'
-FROM `item_template` WHERE `entry` BETWEEN 990201 AND 990212;
+-- Shelving lives in cw_world_vendor_lists.sql, which reads this file back and
+-- lays every item out by category and level bracket across several vendor
+-- lists. Adding npc_vendor rows here as well would put duplicates on the shop.

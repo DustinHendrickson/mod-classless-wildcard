@@ -129,13 +129,47 @@ for name in FILES:
           % (name, len(rows), len(cols), lo, hi,
              "OK" if not arity_bad else "BAD", "OK" if not disp_bad else "BAD"))
 
-tier = io.open(os.path.join(WORLD, "cw_items_tiered.sql"), encoding="utf-8").read()
-cond_entries = set(int(x) for x in re.findall(r"\(23, 990100, (\d+), 0, 0, 27,", tier))
-item_entries = set(int(x) for x in re.findall(r"^\((99\d{4}), \d+, \d+, '", tier, re.M))
-print("\nvendor conditions: %d rows covering %d of %d items"
-      % (tier.count("(23, 990100,"), len(cond_entries), len(item_entries)))
-if cond_entries != item_entries:
-    print("  !! %d items have no condition" % len(item_entries - cond_entries)); bad += 1
+# --- every item must actually be on a shelf, and reachable from the menu ---
+#
+# The shop is split across vendor lists because SMSG_LIST_INVENTORY stops at 150
+# items. An item that exists but sits on no list is invisible and unbuyable, and
+# nothing else would catch it, so check the shelving against the packs.
+shop = io.open(os.path.join(WORLD, "cw_world_vendor_lists.sql"), encoding="utf-8").read()
+shelved = {}
+for entry, item in re.findall(r"^\((99\d{4}), \d+, (99\d{4}), 0, 0, 0, \d+\)", shop, re.M):
+    shelved.setdefault(int(item), []).append(int(entry))
+
+SCROLL = 990101
+sellable = set(e for e in seen if e != SCROLL and seen[e] != "cw_world_base.sql")
+missing = sellable - set(shelved)
+orphan = set(shelved) - sellable
+
+print("\nvendor lists: %d lists holding %d placements of %d items"
+      % (len(set(sum(shelved.values(), []))), sum(len(v) for v in shelved.values()),
+         len(shelved)))
+if missing:
+    print("  !! %d items are on no vendor list at all: %s"
+          % (len(missing), sorted(missing)[:8])); bad += 1
+if orphan:
+    print("  !! %d shelved items do not exist: %s"
+          % (len(orphan), sorted(orphan)[:8])); bad += 1
+
+# Heirlooms get one list; everything else gets a level bracket plus the
+# category's "all levels" list, so exactly two placements.
+odd = {e: v for e, v in shelved.items() if len(v) not in (1, 2)}
+if odd:
+    print("  !! %d items shelved an unexpected number of times: %s"
+          % (len(odd), sorted(odd)[:8])); bad += 1
+
+sizes = {}
+for item, entries in shelved.items():
+    for e in entries:
+        sizes[e] = sizes.get(e, 0) + 1
+over = {e: n for e, n in sizes.items() if n > 150}
+if over:
+    print("  !! lists over the 150-item packet cap: %s" % over); bad += 1
+else:
+    print("  largest list holds %d items, cap is 150" % max(sizes.values()))
 
 print("\ntotal items across all packs: %d" % len(seen))
 print("%s" % ("FAILED" if bad else "all item SQL validated"))

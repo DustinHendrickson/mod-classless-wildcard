@@ -1,4 +1,4 @@
--- mod-classless-wildcard: Hero heirlooms (level-scaling gear)
+﻿-- mod-classless-wildcard: Hero heirlooms (level-scaling gear)
 --
 -- Heirlooms are the 3.3.5 client's own level-scaling system, so these grow with
 -- the character from level 1 to 80 with no custom code:
@@ -115,8 +115,6 @@ VALUES
    104, 2, 0, 0, 1, 0, 0, 0,
  'Pure critical strike, whatever it is you are striking with.', 12340);
 
--- sell them on the Hero Advancement NPC (slots 20+; the base pack owns 0-13)
-DELETE FROM `npc_vendor` WHERE `entry` = 990100 AND `item` BETWEEN 990250 AND 990272;
-INSERT INTO `npc_vendor` (`entry`, `slot`, `item`, `maxcount`, `incrtime`, `ExtendedCost`, `VerifiedBuild`)
-SELECT 990100, 20 + (`entry` - 990250), `entry`, 0, 0, 0, 12340
-FROM `item_template` WHERE `entry` BETWEEN 990250 AND 990272;
+-- Shelving lives in cw_world_vendor_lists.sql, which reads this file back and
+-- lays every item out by category and level bracket across several vendor
+-- lists. Adding npc_vendor rows here as well would put duplicates on the shop.

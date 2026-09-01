@@ -68,7 +68,10 @@ INSERT INTO `creature_template`
 VALUES
 (990100, 'Hero Advancement', 'Classless & Wildcard', 80, 80, 35, 129, 1, 2, 7, 0, 1, 2, 'npc_hero_advancement', 12340);
 
--- scoped delete: cw_items_pack.sql manages its own rows on this vendor
+-- The NPC's own list is the supplies counter. Everything else it sells lives on
+-- separate vendor lists that cw_world_vendor_lists.sql builds and the gossip
+-- menu opens -- one packet cannot carry the whole catalogue. Scoped delete, so
+-- this does not disturb rows that file owns.
 DELETE FROM `npc_vendor` WHERE `entry` = 990100 AND `item` IN (990101, 990102);
 INSERT INTO `npc_vendor` (`entry`, `slot`, `item`, `maxcount`, `incrtime`, `ExtendedCost`, `VerifiedBuild`) VALUES
 (990100, 0, 990101, 0, 0, 0, 12340);
