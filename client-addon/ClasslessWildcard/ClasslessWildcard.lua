@@ -1408,17 +1408,17 @@ rvGlow:SetPoint("CENTER", 0, 34)
 rvGlow:SetTexture("Interface\\AddOns\\ClasslessWildcard\\glow")
 rvGlow:SetBlendMode("ADD")
 
-local rvDie = reveal:CreateTexture(nil, "ARTWORK")
+-- The icon sits BEHIND the die so the frame's own octagonal window masks it --
+-- a square icon drawn over the top covers the frame and looks pasted on. The
+-- window is 34% of the frame (measured from the art), so the icon is sized just
+-- over that: it fills the hole edge to edge and the frame trims its corners.
+local rvIcon = reveal:CreateTexture(nil, "ARTWORK")
+rvIcon:SetPoint("CENTER", 0, 34)
+
+local rvDie = reveal:CreateTexture(nil, "OVERLAY")
 rvDie:SetWidth(168); rvDie:SetHeight(168)
 rvDie:SetPoint("CENTER", 0, 34)
 rvDie:SetTexture(SPIN_ATLAS)
-
--- The die frames only leave a small transparent medallion -- 34% of the frame,
--- measured from the art -- so an icon drawn BEHIND them loses most of itself to
--- the surround. Draw it ON TOP instead, sized to that window, so the whole icon
--- reads while still sitting inside the frame like a set gem.
-local rvIcon = reveal:CreateTexture(nil, "OVERLAY")
-rvIcon:SetPoint("CENTER", 0, 34)
 
 -- hover the revealed ability to read its tooltip
 local rvHover = CreateFrame("Button", nil, reveal)
@@ -1473,13 +1473,14 @@ local function ShowResult()
     local col, rowi = r % 4, math.floor(r / 4)
     rvDie:SetTexture(REVEAL_ATLAS)
     rvDie:SetTexCoord(col / 4, (col + 1) / 4, rowi / 2, (rowi + 1) / 2)
-    -- 230px frame leaves a ~78px medallion (34% of the art); the icon is sized
-    -- to that and drawn over the top, so all of it is visible
+    -- A 230px frame leaves a ~78px window. Overfill it slightly (92px) so the
+    -- icon reaches the window's edges with no seam, and let the frame mask the
+    -- square corners -- that overlap is what makes it read as set INTO the die.
     rvDie:SetWidth(230); rvDie:SetHeight(230)
     rvDie:Show()
-    rvIcon:SetWidth(78); rvIcon:SetHeight(78)
+    rvIcon:SetWidth(92); rvIcon:SetHeight(92)
     rvIcon:SetTexture(SpellIcon(d.spell))
-    rvIcon:SetTexCoord(0.12, 0.88, 0.12, 0.88)
+    rvIcon:SetTexCoord(0.1, 0.9, 0.1, 0.9)   -- trim the icon's own dark border
     rvIcon:Show()
     if d.isTalent then
         rvTitle:SetText("Talent Unlocked!")
