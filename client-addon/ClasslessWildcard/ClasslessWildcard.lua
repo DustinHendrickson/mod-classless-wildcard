@@ -1915,12 +1915,21 @@ CW.handFrame, CW.handRoll, CW.handKeep = hand, handRoll, handKeep
 -- ---------------------------------------------------------------------------
 -- protocol handling
 -- ---------------------------------------------------------------------------
+-- Split on "|" into exactly one field per separator. The old gmatch version
+-- ("([^|]*)|?") also produced a trailing empty capture at the end of the
+-- string, so #p was always one more than the field count -- which quietly
+-- broke any check that counted fields.
 local function SplitPipes(msg)
-    local out = {}
-    for piece in string.gmatch(msg, "([^|]*)|?") do
-        tinsert(out, piece)
+    local out, pos = {}, 1
+    while true do
+        local a, b = string.find(msg, "|", pos, true)
+        if not a then
+            tinsert(out, string.sub(msg, pos))
+            return out
+        end
+        tinsert(out, string.sub(msg, pos, a - 1))
+        pos = b + 1
     end
-    return out
 end
 
 local function ParseEntries(blob, fieldCount)
@@ -1948,9 +1957,15 @@ local function HandleMessage(msg)
         s.mode, s.ae, s.te, s.pity, s.chance = tonumber(p[2]) or 255, tonumber(p[3]) or 0, tonumber(p[4]) or 0, tonumber(p[5]) or 0, tonumber(p[6]) or 0
         s.scrolls, s.level, s.deadline = tonumber(p[7]) or 0, tonumber(p[8]) or 1, tonumber(p[9]) or 5
         s.rebirth, s.rebirthCost = tonumber(p[10]) or 0, tonumber(p[11]) or 0
-        if p[16] ~= nil then
-            -- older server still sending separate ability/talent reroll fields:
-            -- fold them so the addon keeps working until the core is rebuilt
+        -- Count fields, don't probe for nil: the current packet is 15 fields
+        -- and the pre-merge one was 16 (it carried ability and talent rerolls
+        -- separately). Probing p[16] matched BOTH, because SplitPipes used to
+        -- append a trailing empty string -- so every field after it was read
+        -- one place out, and universalResources picked up the scroll price,
+        -- which is why the resource bars vanished.
+        if #p >= 16 then
+            -- older server, still sending the two reroll fields: fold them so
+            -- the addon keeps working until the core is rebuilt
             s.rerolls = (tonumber(p[12]) or 0) + (tonumber(p[13]) or 0)
             s.universalResources = tonumber(p[14]) or 0
             s.scrollCost = tonumber(p[15]) or 0
