@@ -1,4 +1,4 @@
-"""Generate cw_items_tiered.sql -- classless gear across the whole level range.
+﻿"""Generate cw_items_tiered.sql -- classless gear across the whole level range.
 
 The first two item packs all sat at item level 40 / required 35, so there was
 nothing to buy while levelling and nothing at the cap. This lays the same
@@ -38,9 +38,16 @@ TIER_NAME = {1: "Apprentice's", 10: "Journeyman's", 20: "Adept's",
 ARMOR_PER_LEVEL = {"cloth": 2.0, "leather": 3.2, "mail": 5.0, "plate": 7.0,
                    "shield": 26.0}
 
-# (base copper, copper per level) by price class
-PRICE = {"weapon2h": (400, 900), "weapon1h": (300, 700), "big_armor": (250, 600),
-         "small_armor": (200, 420), "jewel": (250, 500)}
+# Prices come from the game's own data: analyze_prices.py takes the median
+# BuyPrice of ~15,000 real uncommon/rare/epic weapons and armour per level band
+# and writes prices.json. Anything invented here was wildly off -- the first
+# pass priced a level 80 one-hander at 5g where the real median is over 100g.
+PRICES = json.load(open(os.path.join(HERE, "prices.json"), encoding="utf-8"))
+
+# How many bands of gear the vendor offers at once. SMSG_LIST_INVENTORY caps at
+# 150 items and the core drops the overflow silently, so check_vendor_size.py
+# verifies the worst case after any change here.
+WINDOW_BANDS = 3
 
 
 def T(key, name, cls, sub, inv, disp, stats, *, kind, price, speed=0,
@@ -161,8 +168,7 @@ def build_rows():
             elif t["armor_class"]:
                 armor = int(round(ARMOR_PER_LEVEL[t["armor_class"]] * band * t["slot"]))
 
-            base, per = PRICE[t["price"]]
-            buy = base + band * per
+            buy = int(PRICES[t["price"]][str(band)])
             sell = buy // 5
 
             quality = 2 if band <= 20 else (3 if band <= 60 else 4)
@@ -179,11 +185,12 @@ def build_rows():
                 sheath=t["sheath"], desc=t["desc"], band=band))
             entry += 1
 
-    # vendor visibility: show a band from its own level until two bands on
+    # vendor visibility: a band stays on the shelf for WINDOW_BANDS bands
     for r in rows:
         i = BANDS.index(r["band"])
         lo = r["band"]
-        hi = BANDS[i + 2] - 1 if i + 2 < len(BANDS) else 80
+        j = i + WINDOW_BANDS
+        hi = BANDS[j] - 1 if j < len(BANDS) else 80
         conds.append((r["entry"], lo, hi))
     return rows, conds
 

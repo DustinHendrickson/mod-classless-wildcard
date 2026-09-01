@@ -1,4 +1,4 @@
-"""Reprice the hand-written item packs and the heirlooms.
+﻿"""Reprice the hand-written item packs and the heirlooms.
 
 Everything was priced far too high: the packs asked 15-30 gold for level-35
 gear, and the heirlooms 70-120 gold. Heirlooms in particular are meant to be
@@ -18,9 +18,14 @@ import io, os, re
 HERE = os.path.dirname(os.path.abspath(__file__))
 WORLD = os.path.join(HERE, os.pardir, "db-world")
 
-# same curve as gen_tiered_gear.py: (base copper, copper per level)
-PRICE = {"weapon2h": (400, 900), "weapon1h": (300, 700), "big_armor": (250, 600),
-         "small_armor": (200, 420), "jewel": (250, 500)}
+# Prices come from the game's own data (see analyze_prices.py): the median real
+# BuyPrice per slot class and level band, written to prices.json.
+import json
+PRICES = json.load(open(os.path.join(HERE, "prices.json"), encoding="utf-8"))
+
+
+def band_of(level):
+    return max(1, (level // 10) * 10)
 
 # InventoryType -> price class
 INV_PRICE = {
@@ -33,14 +38,18 @@ INV_PRICE = {
     2: "jewel", 11: "jewel", 12: "jewel", 23: "jewel",
 }
 
-# heirlooms are bought once and scale to 80, so they are cheap on purpose
+# Heirlooms are bought once and then scale to 80, so they sit deliberately off
+# the curve: priced near a real level-30 item of the same slot plus a premium,
+# they are a genuine investment a levelling Hero can save for, and obviously
+# worth it. Pricing them at their level-80 equivalent (100g+) would put them out
+# of reach of exactly the characters they exist for.
 HEIRLOOM_PRICE = {
-    17: 20000,                       # two-hand      2g
-    13: 15000, 15: 15000, 26: 15000, # one-hand / ranged   1g 50s
-    5: 15000, 20: 15000,             # chest / robe        1g 50s
-    3: 10000,                        # shoulder            1g
-    16: 8000,                        # cloak               80s
-    12: 12500,                       # trinket             1g 25s
+    17: 100000,                         # two-hand           10g
+    13: 65000, 15: 65000, 26: 65000,    # one-hand / ranged  6g 50s
+    5: 37500, 20: 37500,                # chest / robe       3g 75s
+    3: 22500,                           # shoulder           2g 25s
+    16: 22500,                          # cloak              2g 25s
+    12: 24000,                          # trinket            2g 40s
 }
 
 
@@ -118,8 +127,7 @@ def reprice(path, heirloom=False):
         if heirloom:
             buy = HEIRLOOM_PRICE.get(inv, 12000)
         else:
-            base, per = PRICE[INV_PRICE.get(inv, "jewel")]
-            buy = base + req * per
+            buy = int(PRICES[INV_PRICE.get(inv, "jewel")][str(band_of(req))])
         sell = buy // 5
         old = int(vals[iBuy].strip())
         vals[iBuy] = (" " if vals[iBuy].startswith(" ") else "") + str(buy)
@@ -140,11 +148,11 @@ for name, is_heir in (("cw_items_pack.sql", False),
     io.open(path, "w", encoding="utf-8", newline="\n").write(new)
     print("%-26s repriced %d rows" % (name, n))
 
-print("\nexample prices now:")
+print("\nexample prices now (medians from real 3.3.5 items):")
 for lvl in (1, 35, 80):
     for cls in ("weapon1h", "big_armor"):
-        b, p = PRICE[cls]
-        print("  level %-2d %-11s %s" % (lvl, cls, money(b + lvl * p)))
+        print("  level %-2d %-11s %s" % (lvl, cls, money(int(PRICES[cls][str(band_of(lvl))]))))
 print("  heirloom weapon   %s" % money(HEIRLOOM_PRICE[13]))
 print("  heirloom chest    %s" % money(HEIRLOOM_PRICE[5]))
 print("  heirloom cloak    %s" % money(HEIRLOOM_PRICE[16]))
+

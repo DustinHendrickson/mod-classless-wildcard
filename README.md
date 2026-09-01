@@ -142,8 +142,9 @@ keep it, or spend a reroll and let the dice decide again.</em>
   and bows, mail tanking and caster gear, plate caster sets, spellpower fist weapons and
   shields, hybrid rings and necks. Most of it is **tiered across nine level bands from 1 to
   80**, so there is something worth buying the whole way up rather than only at level 35, and
-  prices start in silver. The vendor only lists gear near your own level (a `conditions` row
-  per item), so the shop stays readable. All server-side.
+  prices follow the game's own spread (measured from ~15,000 real 3.3.5 items: about 16
+silver at level 1, over 100 gold at 80). The vendor lists three level bands at once (a `conditions` row
+  per item) — 118 items, under the 150 the vendor packet can carry. All server-side.
 - **Hero heirlooms** — 23 items that **scale with you from level 1 to 80**, using the
   client's own heirloom system (no client patch needed). Weapons of every family plus
   "wrong armor" pieces the original classes could never wear: spellpower plate, strength
