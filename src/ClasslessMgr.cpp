@@ -540,6 +540,48 @@ void ClasslessMgr::BuildLibrary()
         _talents[t.talentId] = t;
     }
 
+    // Talent-granted spells lie about their level: Unstable Affliction reports
+    // SpellLevel 6 although it is a 41-point talent, so level gating alone
+    // would still hand it to a level 6 Hero. Gate them by the tree row that
+    // actually grants them (row R unlocks at 10 + R*5). Runs before
+    // LoadOverrides so an admin override still wins.
+    {
+        std::unordered_map<uint32, uint32> spellRow; // talent rank spell -> row
+        for (auto const& [talentId, t] : _talents)
+            for (uint8 r = 0; r < t.maxRank; ++r)
+                if (t.rankSpells[r])
+                    spellRow[t.rankSpells[r]] = t.row;
+
+        uint32 regated = 0;
+        for (auto& [firstSpell, e] : _abilities)
+        {
+            uint32 row = 0;
+            bool fromTalent = false;
+            for (uint32 sp : e.ranks)
+                if (auto it = spellRow.find(sp); it != spellRow.end())
+                {
+                    fromTalent = true;
+                    row = std::max(row, it->second);
+                }
+            if (!fromTalent || e.rankLevels.empty())
+                continue;
+
+            uint8 need = uint8(std::min<uint32>(255, 10 + row * 5));
+            if (e.rankLevels[0] >= need)
+                continue;
+
+            uint8 shift = need - e.rankLevels[0];
+            for (uint8& lv : e.rankLevels)
+                lv = uint8(std::min<uint32>(255, uint32(lv) + shift));
+            e.rarity = RarityFromSpellLevel(e.rankLevels[0]);
+            e.cost = cfg.abilityCostByRarity[uint8(e.rarity)];
+            ++regated;
+        }
+        if (regated)
+            LOG_INFO("module.classless",
+                     "mod-classless-wildcard: re-gated {} talent-granted ability lines to their talent tier", regated);
+    }
+
     LoadOverrides();
     LoadArchetypes();
     _libraryBuilt = true;
@@ -1822,8 +1864,21 @@ uint32 ClasslessMgr::RollAbility(Player* player, GrantSource source)
         if (!cfg.respectLevelReqs || e.rankLevels.empty() || e.rankLevels[0] <= player->GetLevel())
             candidates.push_back(&e);
     }
-    if (candidates.empty())
-        candidates = std::move(anyLevel);
+    // Nothing left at or below the Hero's level -- which happens constantly at
+    // level 1, where the only level-legal spells are the ones already owned.
+    // Fall back to the LOWEST-level entries rather than to the whole library:
+    // the old "anyLevel" fallback is how a level 1 Hero got dealt Unstable
+    // Affliction. A roll is still never lost, it just stays as close to the
+    // Hero's level as the remaining pool allows.
+    if (candidates.empty() && !anyLevel.empty())
+    {
+        uint32 best = 0xFFFFFFFF;
+        for (AbilityEntry const* e : anyLevel)
+            best = std::min<uint32>(best, e->rankLevels.empty() ? 0 : e->rankLevels[0]);
+        for (AbilityEntry const* e : anyLevel)
+            if ((e->rankLevels.empty() ? 0u : uint32(e->rankLevels[0])) == best)
+                candidates.push_back(e);
+    }
 
     if (candidates.empty())
         return 0;
@@ -1909,8 +1964,17 @@ uint32 ClasslessMgr::RollTalent(Player* player)
             if (!cfg.respectLevelReqs || player->GetLevel() >= 10 + t.row * 5)
                 candidates.push_back(&t);
         }
-        if (candidates.empty())
-            candidates = std::move(anyLevel);
+        // same rule as abilities: when nothing is level-legal, drop to the
+        // LOWEST tier still available rather than opening up the whole tree
+        if (candidates.empty() && !anyLevel.empty())
+        {
+            uint32 best = 0xFFFFFFFF;
+            for (TalentPoolEntry const* t : anyLevel)
+                best = std::min<uint32>(best, t->row);
+            for (TalentPoolEntry const* t : anyLevel)
+                if (t->row == best)
+                    candidates.push_back(t);
+        }
 
         if (candidates.empty())
             return lastGranted;
