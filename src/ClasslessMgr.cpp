@@ -178,6 +178,7 @@ void ClasslessMgr::LoadConfig(bool /*reload*/)
 
     cfg.suppressTalentPoints = sConfigMgr->GetOption<bool>("ClasslessWildcard.SuppressTalentPoints", true);
     cfg.blockOutsideSpellSources = sConfigMgr->GetOption<bool>("ClasslessWildcard.BlockOutsideSpellSources", true);
+    cfg.classlessClassChecks = sConfigMgr->GetOption<bool>("ClasslessWildcard.ClasslessClassChecks", true);
     cfg.formKitsEnable = sConfigMgr->GetOption<bool>("ClasslessWildcard.FormStarterKits", true);
     cfg.worldDropEnable = sConfigMgr->GetOption<bool>("ClasslessWildcard.WorldDrops.Enable", true);
     cfg.worldDropChance = sConfigMgr->GetOption<float>("ClasslessWildcard.WorldDrops.Chance", 1.0f);

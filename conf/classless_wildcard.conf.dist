@@ -123,6 +123,29 @@ ClasslessWildcard.RespectLevelRequirements = 1
 #        Default: 1
 
 #
+#    ClasslessWildcard.ClasslessClassChecks
+#        The core asks "is this player a <class>?" wherever behaviour is
+#        class-specific. Every Hero runs one chassis, so by default the chassis
+#        answers -- and a classless character inherits its restrictions. With
+#        this on the module answers YES for the cases where classless should
+#        mean every class at once:
+#
+#          * equipping ANY relic. Libram, Idol, Totem, Sigil and the warlock
+#            relic all share slot 17, but the core hands that slot to one class
+#            each. On the Paladin chassis a Hero could wear a Libram and nothing
+#            else, however much druid or shaman their build had bought.
+#          * shields, which the core limits to Paladin/Warrior/Shaman. The
+#            default chassis passes anyway; this keeps it true on any chassis.
+#          * the reactive-ability aura states behind Overpower, Revenge,
+#            Riposte and Counterattack, which the core sets only for the class
+#            each belongs to.
+#
+#        Everything else keeps answering with the real chassis class on
+#        purpose: rune handling, pet ownership and the stat/talent maths break
+#        if a character claims to be every class at once.
+#        Default: 1
+
+#
 #    ClasslessWildcard.FormStarterKits
 #        A shapeshift form or a warrior stance does nothing on its own. Draw
 #        Bear Form out of the deck with nothing to go with it and you have
@@ -201,6 +224,7 @@ ClasslessWildcard.StarterKit.Items = "25:1,2362:1,2092:2,36:1,1194:1,2361:1,1228
 
 ClasslessWildcard.TeachProficiencies = 1
 ClasslessWildcard.BlockOutsideSpellSources = 1
+ClasslessWildcard.ClasslessClassChecks = 1
 ClasslessWildcard.FormStarterKits = 1
 ClasslessWildcard.WorldDrops.Enable = 1
 ClasslessWildcard.WorldDrops.Chance = 1.0

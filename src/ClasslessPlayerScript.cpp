@@ -17,6 +17,7 @@
 #include "ClasslessMgr.h"
 #include "DBCStores.h"
 #include "Duration.h"
+#include "Optional.h"
 #include "Player.h"
 #include "ScriptMgr.h"
 #include "Spell.h"
@@ -89,8 +90,62 @@ public:
         PLAYERHOOK_CAN_LEARN_TALENT,
         PLAYERHOOK_ON_LEARN_SPELL,
         PLAYERHOOK_ON_AFTER_UPDATE_MAX_POWER,
+        PLAYERHOOK_ON_PLAYER_IS_CLASS,
         PLAYERHOOK_ON_UPDATE
     }) { }
+
+    // "Does this Hero count as a <class> for the purposes of X?"
+    //
+    // The core asks this wherever behaviour is class-specific, tagging each
+    // question with a ClassContext. Every Hero runs one chassis (Paladin by
+    // default), so without an answer here the chassis quietly decides what a
+    // classless character may do -- a Hero could equip a Libram but never an
+    // Idol, Totem or Sigil, however much druid or shaman a build had bought.
+    //
+    // Answered YES only for the contexts where "every class at once" is what
+    // classless means and is safe. std::nullopt everywhere else means "use my
+    // real class", deliberately: the untouched contexts drive rune machinery,
+    // pet ownership rules and stat/talent maths where claiming to be every
+    // class at once breaks things rather than freeing them.
+    Optional<bool> OnPlayerIsClass(Player const* player, Classes /*playerClass*/, ClassContext context) override
+    {
+        Config const& cfg = sClasslessMgr->cfg;
+        if (!cfg.enabled || !cfg.classlessClassChecks)
+            return std::nullopt;
+
+        // Decide on the context BEFORE looking the character up. IsClass runs
+        // in combat paths and during login, and the state lookup can pull a
+        // character in from the database; every context we do not answer must
+        // cost nothing but this switch.
+        switch (context)
+        {
+            // Relics: Libram, Idol, Totem, Sigil and the warlock relic all
+            // live in slot 17, but the core hands that slot out only to the
+            // one class each belongs to -- in FindEquipSlot and again in
+            // CanUseItem. A Hero should be able to wear whichever matches the
+            // spells they actually bought.
+            case CLASS_CONTEXT_EQUIP_RELIC:
+            // Shields are restricted to Paladin/Warrior/Shaman. The default
+            // chassis already passes that test, but a realm configured onto
+            // any other chassis would silently lose shields.
+            case CLASS_CONTEXT_EQUIP_SHIELDS:
+            // Reactive abilities -- Overpower, Revenge, Riposte, Counterattack
+            // -- only light up if the core sets the matching aura state, and
+            // it sets each one only for its own class. A Hero who bought
+            // Overpower needs the warrior state to exist. Harmless when the
+            // ability is not owned: an aura state nothing reads costs nothing.
+            case CLASS_CONTEXT_ABILITY_REACTIVE:
+                break;
+            default:
+                return std::nullopt;
+        }
+
+        // bots and system accounts play by vanilla class rules
+        if (sClasslessMgr->IsExempt(const_cast<Player*>(player)))
+            return std::nullopt;
+
+        return true;
+    }
 
     // Universal resources: every Hero keeps mana, rage AND energy pools alive
     // simultaneously (the client already tracks all pools — druids prove it —

@@ -207,6 +207,12 @@ namespace ClasslessWildcard
         // hands over the basic kit that goes with it (Maul, Demoralizing Roar),
         // free, so it is usable the moment it lands. The pairs live in the
         // `cw_form_kits` table.
+        // Answer the core's "is this player a <class>?" questions as YES for the
+        // contexts where classless means every class at once: equipping any
+        // relic, shields, and the reactive-ability aura states. Off = the
+        // chassis class decides, which is the stock behaviour.
+        bool   classlessClassChecks = true;
+
         bool   formKitsEnable = true;
 
         // Classless gear as world drops. The catalogue was vendor-only, which

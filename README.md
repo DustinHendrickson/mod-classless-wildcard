@@ -124,6 +124,15 @@ keep it, or spend a reroll and let the dice decide again.</em>
 - **Primary stat allocation** — a per-level point budget spent freely across
   STR / AGI / STA / INT / SPI, applied live, reallocation free.
 - **All proficiencies taught** — armor, weapons and dual wield, each configurable.
+- **The chassis never restricts you** — the core asks "is this player a Paladin/Druid/Shaman?"
+  wherever behaviour is class-specific, and on a classless realm the chassis would otherwise
+  answer for everyone. The module answers for it where classless means *every* class: any
+  **relic** equips (Libram, Idol, Totem, Sigil and the warlock relic all share one slot that
+  the core normally hands to one class each), shields work on any chassis, and the aura states
+  behind **Overpower, Revenge, Riposte and Counterattack** exist so those abilities actually
+  fire. The client patch matches it by turning that slot back into a real ranged slot, so
+  bows, guns and wands are drawn on the character, the **ammo slot appears**, and ranged
+  attack power stops reading "N/A".
 - **Forms and stances arrive usable** — a form on its own does nothing, so gaining one hands
   over the basic kit that goes with it, free and immediately: Cat Form brings Claw and Prowl,
   Bear Form brings Maul and Demoralizing Roar, Battle Stance brings Charge, Defensive Stance
@@ -351,6 +360,7 @@ which documents all 70+ settings inline. The ones you are most likely to touch:
 | `Wildcard.ScrollBuyEnable`                          | `1`          | Buy Scroll button on the addon panel                 |
 | `Wildcard.ScrollBuyBaseCopper` / `…PerLevelCopper`  | `500` / `500`| Scroll price in copper = base + per-level × level    |
 | `UniversalResources.Enable`                         | `1`         | Mana + rage + energy on every character               |
+| `ClasslessWildcard.ClasslessClassChecks`            | `1`         | Any relic equips; shields and reactive abilities work |
 | `ClasslessWildcard.FormStarterKits`                 | `1`         | Forms/stances hand over their basic spells free       |
 | `ClasslessWildcard.WorldDrops.Enable`               | `1`         | Mobs can drop the classless gear                      |
 | `ClasslessWildcard.WorldDrops.Chance`               | `1.0`       | Percent per kill, banded to the mob's level           |
