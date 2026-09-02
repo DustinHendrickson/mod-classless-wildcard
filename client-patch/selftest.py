@@ -124,7 +124,14 @@ def main(argv):
                 by_skill.setdefault(row[1], []).append(row)
             still_locked = [sk for sk in dbc.CLASS_SKILL_LINES
                             if sk in by_skill
-                            and not any(r[2] == 0 and r[3] == 0 for r in by_skill[sk])]
+                            and not any(dbc._open_to_all(r) for r in by_skill[sk])]
+            # and they must be written the way the CLIENT reads "everyone" --
+            # the server's 0/0 wildcard draws no tab
+            client_form = [sk for sk in opened
+                           if not any((r[3] & dbc.ALL_CLASSES_MASK) == dbc.ALL_CLASSES_MASK
+                                      for r in by_skill.get(sk, []))]
+            check("opened rows use the client's all-classes mask, not 0/0",
+                  not client_form, "%d rows written with a 0 mask" % len(client_form))
             check("class skill lines opened to every class",
                   not still_locked and len(opened) + len(already) > 0,
                   "%d opened, %d already open, %d still locked"

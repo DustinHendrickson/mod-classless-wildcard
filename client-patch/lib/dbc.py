@@ -68,6 +68,16 @@ CLASS_SKILL_LINES = (
 # of the client's own (max 970).
 CLASS_SKILL_LINES_FIRST_ID = 990000
 
+# How the CLIENT spells "everyone". The server's GetSkillRaceClassInfo treats a
+# mask of 0 as a wildcard, and the server SQL uses 0/0 -- but that is the
+# server's own convention. The shipped client table has no 0/0 row anywhere;
+# Blizzard writes every-class as 0x5FF (all ten playable classes, bit = class-1)
+# and every-race as 0x7FF or 0xFFFFFFFF, and the client tests the character's
+# own bit. A 0/0 row is therefore invisible to it, which is exactly how the
+# first cut of this patch failed: the rows were there and no tab ever drew.
+ALL_CLASSES_MASK = 0x5FF
+ALL_RACES_MASK = 0xFFFFFFFF
+
 
 class DbcError(ValueError):
     pass
@@ -180,6 +190,17 @@ def clear_relic_slot(data: bytes):
     return header + bytes(records) + data[strings_off:], changed
 
 
+def _open_to_all(row) -> bool:
+    """Does this SkillRaceClassInfo row admit every playable race and class?
+
+    Either the client's own all-bits form, or the server's 0 wildcard -- the
+    latter so a table someone already patched the old way still reads as open.
+    """
+    race_ok = row[2] == 0 or (row[2] & 0x7FF) == 0x7FF
+    class_ok = row[3] == 0 or (row[3] & ALL_CLASSES_MASK) == ALL_CLASSES_MASK
+    return race_ok and class_ok
+
+
 def open_class_skill_lines(data: bytes):
     """Let every class hold every class skill line.
 
@@ -190,12 +211,13 @@ def open_class_skill_lines(data: bytes):
     ignored it, because its table still said Balance belongs to Druids. Holy
     drew a tab only because the chassis is a Paladin.
 
-    Mirror the server: for each line in CLASS_SKILL_LINES append one row with
-    RaceMask 0 and ClassMask 0 -- "anyone" -- copying Flags, MinLevel, tier and
-    cost from the line's most permissive existing row so nothing else about it
-    changes. Existing rows are left untouched and lines that already have an
-    all-comers row are skipped, so this is idempotent over an already-patched
-    file.
+    Mirror the server's intent, in the client's own dialect: for each line in
+    CLASS_SKILL_LINES append one row whose RaceMask and ClassMask cover every
+    playable race and class the way Blizzard's own universal rows do (see
+    ALL_CLASSES_MASK), copying Flags, MinLevel, tier and cost from the line's
+    most permissive existing row so nothing else about it changes. Existing
+    rows are left untouched and lines that already have an all-comers row are
+    skipped, so this is idempotent over an already-patched file.
 
     Returns (new_dbc_bytes, [skill ids added], [skill ids already open]).
     """
@@ -225,13 +247,13 @@ def open_class_skill_lines(data: bytes):
         rows = by_skill.get(skill)
         if not rows:
             continue                      # not in this client's table at all
-        if any(r[2] == 0 and r[3] == 0 for r in rows):
+        if any(_open_to_all(r) for r in rows):
             already.append(skill)
             continue
         # most permissive existing row: fewest restrictions, lowest MinLevel
         base = sorted(rows, key=lambda r: (bin(r[3]).count("1") if r[3] else 0,
                                            r[5]))[0]
-        records += struct.pack("<8I", next_id, skill, 0, 0,
+        records += struct.pack("<8I", next_id, skill, ALL_RACES_MASK, ALL_CLASSES_MASK,
                                base[4], base[5], base[6], base[7])
         added.append(skill)
         next_id += 1
