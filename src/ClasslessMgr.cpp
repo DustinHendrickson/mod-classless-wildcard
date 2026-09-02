@@ -1360,10 +1360,9 @@ void ClasslessMgr::HandleFirstLogin(Player* player)
         StripUnearnedSpells(player);
 
     // With the chassis spells gone there is nothing left under the chassis
-    // class's own tab, so take the tab away too -- this is the one moment it
-    // costs nothing, and it is what stops a Hero starting life with a "Holy"
-    // heading they never asked for.
-    SyncSpellbookTabs(player);
+    // class's own tab, so take the tab away too. This is the one moment it
+    // costs nothing, and the only time the module removes a skill line.
+    SyncSpellbookTabs(player, true);
 
     // neutral Hero starter kit
     if (cfg.starterKitEnable)
@@ -1789,17 +1788,17 @@ uint32 ClasslessMgr::StripUnearnedSpells(Player* player)
 // in a lonely class tab. Giving the Hero the skill lines their spells belong to
 // puts every spell under its own heading.
 //
-// It cuts both ways: a line the Hero has nothing in is taken away, which is
-// what removes the chassis class's own tab, and a line they do have something
-// in is added. The result is exactly one tab per school they know.
+// Adding is free and happens whenever a Hero gains something. Removing is the
+// dangerous direction -- Player::SetSkill unlearns every spell attached to a
+// skill line it removes -- so it happens at FIRST LOGIN ONLY, the one moment
+// the clean-slate strip has just emptied those lines and there is provably
+// nothing to lose. That is what takes away the chassis class's own tab, and it
+// never runs again on a character that has spells.
 //
-// Adding is free. Removing is the dangerous direction -- Player::SetSkill
-// unlearns every spell attached to a skill it removes -- so it is only ever
-// done for a line holding nothing the Hero earned, where by construction there
-// is nothing to lose. learnSkillRewardedSpells, on the add side, hands out
-// nothing but abilities marked learned-on-skill, which class trainer spells are
-// not, and the login sweep catches anything unexpected regardless.
-void ClasslessMgr::SyncSpellbookTabs(Player* player)
+// learnSkillRewardedSpells, on the add side, hands out nothing but abilities
+// marked learned-on-skill, which class trainer spells are not, and the login
+// sweep catches anything unexpected regardless.
+void ClasslessMgr::SyncSpellbookTabs(Player* player, bool clearChassisLines)
 {
     if (!cfg.spellbookTabs || _classSkillLines.empty())
         return;
@@ -1828,16 +1827,15 @@ void ClasslessMgr::SyncSpellbookTabs(Player* player)
 
     GrantGuard guard(_applyingGrant);
 
-    // Drop the chassis class's own skill lines, and any other the Hero has
-    // nothing in. This is what removes the lonely "Holy" tab a Paladin chassis
-    // starts with: the character never chose it and, once their own spells are
-    // stripped, has nothing filed under it.
+    // First login only: drop the chassis class's own skill lines, and any
+    // other the Hero has nothing in. This is what removes the lonely "Holy" tab
+    // a Paladin chassis starts with -- the character never chose it and, with
+    // their spells just stripped, has nothing filed under it.
     //
-    // Removing a skill line DOES unlearn every spell attached to it, which is
-    // why this is only ever done for lines holding nothing the Hero earned --
-    // by construction there is nothing to lose. Anything unearned that was
-    // sitting there is exactly what StripUnearnedSpells would have taken next.
-    if (cfg.spellbookTabs < 2)
+    // Deliberately not repeated on later logins. Removing a skill line unlearns
+    // every spell attached to it, and there is no reason to run that risk again
+    // once the slate is clean: from here on the Hero only ever gains lines.
+    if (clearChassisLines && cfg.spellbookTabs < 2)
         for (uint16 line : _classSkillLines)
             if (!want.count(line) && player->HasSkill(line))
                 player->SetSkill(line, 0, 0, 0);

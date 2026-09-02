@@ -108,7 +108,10 @@ public:
     void TeachProficiencies(Player* player);
     // Give the Hero the skill lines their spells belong to, so the client files
     // each one under its own spellbook tab instead of dumping them in General.
-    void SyncSpellbookTabs(Player* player);
+    // `clearChassisLines` is for FIRST LOGIN ONLY: it also takes away the class
+    // lines the Hero has nothing in, which is only safe while the clean-slate
+    // strip has just emptied them.
+    void SyncSpellbookTabs(Player* player, bool clearChassisLines = false);
     void UpdateAbilityRanks(Player* player); // learn newly available ranks of owned lines
     // Remove class-library spells the Hero did not earn. Runs at every login,
     // not just the first: anything the core re-teaches afterwards would
