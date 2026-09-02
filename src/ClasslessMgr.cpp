@@ -1437,8 +1437,8 @@ void ClasslessMgr::HandleFirstLogin(Player* player)
     {
         if (st.mode == Mode::Unchosen)
         {
-            Msg(player, "Welcome, Hero! You have no class. Every Hero shares the same |cffffff00chassis|r, so the "
-                        "class you picked at creation changes nothing (your race keeps its own racial traits) — you "
+            Msg(player, "Welcome, Hero! You have no class — there was none to pick. Every Hero shares the "
+                        "same |cffffff00chassis|r, and it grants nothing (your race keeps its own racial traits) — you "
                         "carry mana, rage and energy at once, every stat is worth having, and every spell, talent, "
                         "weapon and armor type in the game is open to you.");
             Msg(player, "Speak to the |cffffff00Hero Advancement|r NPC (or use |cffffff00.classless mode|r / the "

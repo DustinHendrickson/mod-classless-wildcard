@@ -707,7 +707,7 @@ end
 
 local function BuildHelpText()
     return table.concat({
-"|cffffd100You are a Hero.|r Every character runs on the same hidden base class, so the |cffffffffclass you pick at creation is just for show|r -- it grants no special abilities and locks nothing away. Your |cffffffffrace|r is the real choice at creation: its racial traits are yours to keep. Everything else -- every ability and talent -- you earn yourself, and you can take it from |cffffffffany class in the game|r.",
+"|cffffd100You are a Hero.|r |cffffffffThere is no class to pick|r -- character creation offers races only, and every character becomes a Hero. Every Hero runs on the same hidden base class, which grants no special abilities and locks nothing away. Your |cffffffffrace|r is the choice that carries anything: its racial traits are yours to keep. Everything else -- every ability and talent -- you earn yourself, and you can take it from |cffffffffany class in the game|r.",
 "",
 "You gain that power one of two ways. You choose a path per character, and can |cffffd100Rebirth|r later to switch.",
 "",
@@ -1200,7 +1200,7 @@ wizTitle:SetText("Choose Your Path, Hero")
 local wizText = wizard:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
 wizText:SetPoint("TOP", 0, -46)
 wizText:SetWidth(370)
-wizText:SetText("Every spell and talent of every class awaits — the class you picked is only your chassis (resource bar and base stats). Will you choose each ability yourself, or let the Wildcard decide your fate?")
+wizText:SetText("Every spell and talent of every class awaits — you have no class of your own, only a shared chassis (resource bar and base stats). Will you choose each ability yourself, or let the Wildcard decide your fate?")
 
 local wizClassless = CreateFrame("Button", nil, wizard, "UIPanelButtonTemplate")
 wizClassless:SetWidth(340); wizClassless:SetHeight(30)

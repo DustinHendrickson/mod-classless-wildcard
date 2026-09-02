@@ -39,10 +39,11 @@ Essence, or let the server roll for you in Wildcard mode.
 `mod-classless-wildcard` is a **total server overhaul**, not a feature you bolt onto an
 otherwise normal realm. It removes the class system from WotLK 3.3.5a and rebuilds progression,
 resources, stats, gear and quest access around a single classless character. Every character is
-a **Hero**. All Heroes run on one shared base class, so the class picked at character creation is
-cosmetic: it grants no class abilities and locks nothing away. Race still provides its racial
-traits. Everything else, every ability and every talent, is earned in game and can come from any
-class.
+a **Hero**. Character creation offers a race and nothing else: there is no class list to choose
+from, because there are no classes. Every Hero runs on one shared base class behind the scenes,
+which grants no abilities and locks nothing away. Your race is the choice that carries anything,
+and it keeps its racial traits. Everything else, every ability and every talent, is earned in game
+and can come from any class.
 
 Because it changes that much, **the client patch is required**, not optional polish. A stock
 3.3.5a client will connect and play, but it still renders the class system it was built for: it
@@ -127,9 +128,10 @@ Keep it, or spend a reroll.</em>
 
 ### Making every build work
 
-- **One base class for everyone.** Every Hero runs on a single base class, Paladin by default.
-  The class picked at creation grants no class abilities and locks no build away. Race is the
-  meaningful choice, because it keeps its racial traits.
+- **No class to pick.** Character creation shows races only. There is no class list, and every
+  new character is a Hero. Behind the scenes all Heroes share one base class, Paladin by default,
+  which grants no class abilities and locks no build away, so race is the only choice at creation
+  that carries anything and it keeps its racial traits.
 - **Universal resources.** Every Hero carries mana, rage and energy at the same time. One shows
   on the main bar and the addon draws mini-bars for the rest (`/cwbars`). Each spell draws from
   its own resource, so the same Hero casts Fireball on mana and Bloodthirst on rage, and no

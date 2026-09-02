@@ -451,7 +451,8 @@ ClasslessWildcard.Wildcard.ScrollBuyPerLevelCopper = 500
 #    underneath": while characters keep different classes, the core's own
 #    per-class math differs between them -- base stats, base health and mana,
 #    which stat feeds attack power, the crit and dodge conversion ratios --
-#    and the class you pick quietly becomes a build decision again.
+#    and the class a character happens to run on quietly becomes a build
+#    decision again.
 #
 #    With one chassis that math is identical for everyone by construction, so
 #    the class chosen at creation is nothing but the model and the name (and
