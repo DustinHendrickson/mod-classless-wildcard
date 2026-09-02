@@ -181,6 +181,8 @@ void ClasslessMgr::LoadConfig(bool /*reload*/)
     cfg.classlessClassChecks = sConfigMgr->GetOption<bool>("ClasslessWildcard.ClasslessClassChecks", true);
     cfg.spellbookTabs = uint8(sConfigMgr->GetOption<uint32>("ClasslessWildcard.SpellbookTabs", 1));
     cfg.formKitsEnable = sConfigMgr->GetOption<bool>("ClasslessWildcard.FormStarterKits", true);
+    cfg.elementalEnable = sConfigMgr->GetOption<bool>("ClasslessWildcard.Elemental.Enable", true);
+    cfg.elementalRarityBump = sConfigMgr->GetOption<uint32>("ClasslessWildcard.Elemental.RarityBump", 1);
     cfg.worldDropEnable = sConfigMgr->GetOption<bool>("ClasslessWildcard.WorldDrops.Enable", true);
     cfg.worldDropChance = sConfigMgr->GetOption<float>("ClasslessWildcard.WorldDrops.Chance", 1.0f);
     cfg.worldDropRareMultiplier = sConfigMgr->GetOption<float>("ClasslessWildcard.WorldDrops.RareMultiplier", 5.0f);
@@ -609,6 +611,11 @@ void ClasslessMgr::BuildLibrary()
                      "mod-classless-wildcard: re-gated {} talent-granted ability lines to their talent tier", regated);
     }
 
+    // Variants come after the base pool is final (dedupe and talent re-gating
+    // done) and before overrides, so a realm can still tune any variant row
+    // in cw_ability_override like any other ability.
+    LoadVariants();
+
     LoadOverrides();
     BuildFormSpellMap();
     LoadFormKits();
@@ -729,6 +736,107 @@ void ClasslessMgr::GrantRequiredForm(Player* player, AbilityEntry const& e, Gran
     GrantAbilityInternal(player, *formEntry, source, true, false);
     Msg(player, Acore::StringFormat("{} can only be used in {} -- so that comes with it.",
         SpellName(e.firstSpellId), SpellName(best)));
+}
+
+// Elemental variants: the same strike dealt as an element, generated into
+// spell_dbc by data/sql/generators/gen_elemental_variants.py and listed in
+// cw_ability_variants. Each row names the variant line's first spell and the
+// base line it varies. The variant becomes an ordinary AbilityEntry -- bought,
+// rolled, rerolled, locked, ranked up on level like anything else -- with its
+// base's levels, class mask (so synergy counts it toward the same classes) and
+// spellbook tab, and one rarity tier above the base because it is strictly
+// the more interesting spell.
+//
+// A variant whose base is not in the pool is skipped and logged rather than
+// registered: the generator mirrors BuildLibrary's filters, but a realm that
+// excluded the base by config should not get the variant either.
+void ClasslessMgr::LoadVariants()
+{
+    if (!cfg.elementalEnable)
+        return;
+
+    QueryResult result = WorldDatabase.Query(
+        "SELECT variant_first_spell, base_first_spell FROM cw_ability_variants WHERE enabled = 1");
+    if (!result)
+    {
+        LOG_INFO("module.classless", "mod-classless-wildcard: no elemental variants configured");
+        return;
+    }
+
+    uint32 added = 0, skipped = 0;
+    do
+    {
+        Field* f = result->Fetch();
+        uint32 const variantFirst = f[0].Get<uint32>();
+        uint32 const baseFirst = f[1].Get<uint32>();
+
+        auto baseItr = _abilities.find(baseFirst);
+        if (baseItr == _abilities.end() || !baseItr->second.enabled)
+        {
+            LOG_WARN("module.classless",
+                     "mod-classless-wildcard: variant {} skipped, base {} is not in the ability pool",
+                     variantFirst, baseFirst);
+            ++skipped;
+            continue;
+        }
+        if (_abilities.count(variantFirst))
+            continue;
+
+        AbilityEntry const& base = baseItr->second;
+        AbilityEntry e;
+        e.firstSpellId = variantFirst;
+        e.passive = false;
+
+        // rank chain from spell_ranks, exactly as the stock pass walks it
+        for (uint32 sp = variantFirst; sp; sp = sSpellMgr->GetNextSpellInChain(sp))
+        {
+            SpellInfo const* info = sSpellMgr->GetSpellInfo(sp);
+            if (!info)
+                break;
+            e.ranks.push_back(sp);
+            // the spell's own level, raised to the base rank's trainer level
+            // where one exists, so a variant is never learnable before its base
+            uint8 level = uint8(info->SpellLevel ? info->SpellLevel : info->BaseLevel);
+            size_t const ri = e.ranks.size() - 1;
+            if (ri < base.rankLevels.size())
+                level = std::max(level, base.rankLevels[ri]);
+            e.rankLevels.push_back(level);
+        }
+        if (e.ranks.empty())
+        {
+            LOG_WARN("module.classless",
+                     "mod-classless-wildcard: variant {} skipped, spell is missing from spell_dbc", variantFirst);
+            ++skipped;
+            continue;
+        }
+        for (size_t ri = 1; ri < e.rankLevels.size(); ++ri)
+            if (e.rankLevels[ri] < e.rankLevels[ri - 1])
+                e.rankLevels[ri] = e.rankLevels[ri - 1];
+
+        if (SpellInfo const* firstInfo = sSpellMgr->GetSpellInfo(variantFirst))
+            if (firstInfo->SpellName[0])
+                e.name = firstInfo->SpellName[0];
+
+        e.classMask = base.classMask;
+        uint8 const bumped = uint8(std::min<uint32>(uint32(base.rarity) + cfg.elementalRarityBump,
+                                                    uint32(Rarity::Legendary)));
+        e.rarity = static_cast<Rarity>(bumped);
+        e.cost = cfg.abilityCostByRarity[bumped];
+        e.weight = 0; // 0 = use rarity weight
+
+        // same spellbook tab as the base
+        if (auto lineItr = _spellSkillLine.find(base.firstSpellId); lineItr != _spellSkillLine.end())
+            for (uint32 sp : e.ranks)
+                _spellSkillLine[sp] = lineItr->second;
+        for (uint32 sp : e.ranks)
+            _spellToFirst[sp] = variantFirst;
+
+        _abilities.emplace(variantFirst, std::move(e));
+        ++added;
+    } while (result->NextRow());
+
+    LOG_INFO("module.classless", "mod-classless-wildcard: {} elemental variants registered ({} skipped)",
+             added, skipped);
 }
 
 // The spells that come free with a form or stance, from `cw_form_kits`. Both

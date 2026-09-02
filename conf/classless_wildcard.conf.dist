@@ -293,6 +293,19 @@ ClasslessWildcard.BlockOutsideSpellSources = 1
 ClasslessWildcard.ClasslessClassChecks = 1
 ClasslessWildcard.SpellbookTabs = 1
 ClasslessWildcard.FormStarterKits = 1
+# Elemental ability variants: every physical strike in the pool also exists as
+# Fiery, Frozen, Earthen, Venomous, Arcane, Shadow and Holy versions that deal
+# their damage as that element, keep a little less of the weapon damage, add an
+# elemental hit that scales with spell power, and where a slot allows carry one
+# rider the element is known for. They roll and are bought like any ability, one
+# rarity tier above their base (RarityBump). The rows live in
+# cw_ability_variants and spell_dbc and are generated, not hand-written:
+# data/sql/generators/gen_elemental_variants.py takes the weapon coefficient
+# (85% by default, 75% for Holy) and the spell power coefficient (0.15) as its
+# arguments, and writes the client manifest in the same run so tooltips match.
+# Every player must reinstall the client patch after the rows change.
+ClasslessWildcard.Elemental.Enable = 1
+ClasslessWildcard.Elemental.RarityBump = 1
 ClasslessWildcard.WorldDrops.Enable = 1
 ClasslessWildcard.WorldDrops.Chance = 1.0
 ClasslessWildcard.WorldDrops.RareMultiplier = 5.0

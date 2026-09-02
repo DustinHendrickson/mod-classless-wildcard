@@ -11,6 +11,9 @@ Required for every player on a Classless Wildcard realm. The
 - new characters wear an **armored Hero outfit** on the creation screen
 - the **Hero emblem** replaces the class icon *for the Hero only*. Every other
   class icon is kept, so your addon can still group abilities by class
+- the **elemental ability variants**: the spell rows, tooltips and recoloured icons
+  for the Fiery, Frozen, Earthen, Venomous, Arcane, Shadow and Holy versions of
+  every physical strike (`--no-elemental` leaves them out)
 - the **ClasslessWildcard** addon is installed
 
 The creation-screen text is a *signed* interface file, so the installer also applies

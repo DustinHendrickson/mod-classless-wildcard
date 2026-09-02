@@ -32,7 +32,8 @@ import sys
 HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, HERE)
 
-from lib import blp, charcreate, clientfs, dbc, exepatch, gluestrings, mpq, outfit  # noqa: E402
+from lib import (blp, charcreate, clientfs, dbc, elemental, exepatch,  # noqa: E402
+                 gluestrings, mpq, outfit)
 
 MANIFEST_NAME = "ClasslessWildcard-install.json"
 ADDON_NAME = "ClasslessWildcard"
@@ -390,6 +391,7 @@ def do_install(args, wow_dir):
     print("Creation text     : %s" % yn(args.glue))
     print("Armored outfit    : %s" % yn(args.glue))
     print("Hero class icon   : %s" % yn(args.hero_icon))
+    print("Elemental variants: %s" % yn(args.elemental))
     print("Patch Wow.exe     : %s" % yn(args.exe))
     print("Addon             : %s" % yn(args.addon))
     if previous:
@@ -424,6 +426,21 @@ def do_install(args, wow_dir):
     with clientfs.ClientFiles(data_dir, locales[0],
                               exclude=own_archives(locales[0])) as files:
         dbc_payload = build_data_patch(files, args.name, report, theme=args.glue)
+        # Elemental ability variants: the server's generated spell rows have
+        # to exist in the client's own Spell.dbc too, or the game has no name,
+        # icon or tooltip for them. Appended to the player's tables, with one
+        # painted icon per base icon and element when Pillow is available.
+        if args.elemental:
+            manifest_file = elemental.manifest_path()
+            if os.path.exists(manifest_file):
+                try:
+                    manifest = elemental.load_manifest(manifest_file)
+                    elemental.apply(files, dbc_payload, manifest, report,
+                                    want_icons=args.hero_icon)
+                except (elemental.ElementalError, dbc.DbcError, FileNotFoundError) as error:
+                    report.append("  elemental variants  skipped (%s)" % error)
+            else:
+                report.append("  elemental variants  skipped (no elemental_manifest.json shipped)")
     target = os.path.join(data_dir, "patch-%s.MPQ" % suffix)
     if not args.dry_run:
         mpq.write_archive(target, dbc_payload)
@@ -529,7 +546,15 @@ _OUR_FILES = frozenset(x.lower() for x in (
     CHRCLASSES, CHARBASEINFO, CHARSTARTOUTFIT, SKILLRACECLASSINFO, SKILLLINEABILITY,
     GLUESTRINGS, CHARCREATE_LUA,
     CLASSICONS_INGAME, CLASSICONS_CREATE,
+    elemental.SPELL, elemental.SPELLVISUAL, elemental.SPELLICON,
 ))
+# the elemental step paints one icon per (base icon, element); the names are
+# derived, so ownership of those is decided by prefix rather than by list
+_OUR_ICON_PREFIX = (elemental.ICON_DIR + "cw_").lower()
+
+
+def _is_ours(name: str) -> bool:
+    return name in _OUR_FILES or (name.startswith(_OUR_ICON_PREFIX) and name.endswith(".blp"))
 
 
 def _is_our_archive(path):
@@ -552,7 +577,7 @@ def _is_our_archive(path):
     names = {n.strip().lower().replace("/", "\\")
              for n in raw.decode("utf-8", "replace").replace("\r", "\n").split("\n")
              if n.strip() and n.strip().lower() != "(listfile)"}
-    return bool(names) and names <= _OUR_FILES
+    return bool(names) and all(_is_ours(n) for n in names)
 
 
 def do_uninstall(args, wow_dir):
@@ -676,6 +701,8 @@ def main(argv=None):
     parser.add_argument("--no-creation-text", dest="glue", action="store_false",
                         help="skip the Hero creation-screen text and armored "
                              "outfit (and the Wow.exe patch they need)")
+    parser.add_argument("--no-elemental", dest="elemental", action="store_false",
+                        help="leave out the elemental ability variants (spell rows and icons)")
     parser.add_argument("--no-hero-icon", dest="hero_icon", action="store_false",
                         help="keep the stock class icon instead of the Hero emblem")
     parser.add_argument("--no-exe", dest="exe_ok", action="store_false",
@@ -686,6 +713,7 @@ def main(argv=None):
     if args.minimal:
         args.glue = False
         args.hero_icon = False
+        args.elemental = False
     # Wow.exe is patched only when installing the creation text, and only with
     # the verified community pattern set in lib/exepatch.py.
     args.exe = args.glue and args.exe_ok

@@ -242,6 +242,11 @@ namespace ClasslessWildcard
 
         bool   formKitsEnable = true;
 
+        // elemental ability variants (cw_ability_variants, generated): a
+        // variant is registered one rarity tier above its base
+        bool   elementalEnable = true;
+        uint32 elementalRarityBump = 1;
+
         // Classless gear as world drops. The catalogue was vendor-only, which
         // made the Hero Advancement NPC the only answer to "where does gear
         // come from". Any mob can now drop a piece banded to ITS level, so a

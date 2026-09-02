@@ -1,0 +1,252 @@
+{
+ "version": 1,
+ "run": "bases=Sinister Strike elements=fire ranks=first coefficient=85 spellpower=0.15",
+ "spell_block": [
+  950000,
+  957167
+ ],
+ "elements": [
+  {
+   "key": "fire",
+   "idx": 1,
+   "prefix": "Fiery",
+   "school": 4,
+   "impact_kit": 728,
+   "hue": [
+    255,
+    110,
+    30
+   ],
+   "rim": [
+    255,
+    150,
+    40
+   ],
+   "glyph": "flame"
+  },
+  {
+   "key": "frost",
+   "idx": 2,
+   "prefix": "Frozen",
+   "school": 16,
+   "impact_kit": 4991,
+   "hue": [
+    90,
+    200,
+    255
+   ],
+   "rim": [
+    170,
+    220,
+    255
+   ],
+   "glyph": "snowflake"
+  },
+  {
+   "key": "earth",
+   "idx": 3,
+   "prefix": "Earthen",
+   "school": 8,
+   "impact_kit": 3055,
+   "hue": [
+    170,
+    120,
+    50
+   ],
+   "rim": [
+    110,
+    150,
+    60
+   ],
+   "glyph": "boulder"
+  },
+  {
+   "key": "poison",
+   "idx": 4,
+   "prefix": "Venomous",
+   "school": 8,
+   "impact_kit": 3031,
+   "hue": [
+    120,
+    200,
+    60
+   ],
+   "rim": [
+    40,
+    110,
+    30
+   ],
+   "glyph": "drop"
+  },
+  {
+   "key": "arcane",
+   "idx": 5,
+   "prefix": "Arcane",
+   "school": 64,
+   "impact_kit": 1005,
+   "hue": [
+    190,
+    110,
+    255
+   ],
+   "rim": [
+    230,
+    80,
+    230
+   ],
+   "glyph": "star"
+  },
+  {
+   "key": "shadow",
+   "idx": 6,
+   "prefix": "Shadow",
+   "school": 32,
+   "impact_kit": 6898,
+   "hue": [
+    110,
+    70,
+    140
+   ],
+   "rim": [
+    25,
+    15,
+    35
+   ],
+   "glyph": "eye"
+  },
+  {
+   "key": "holy",
+   "idx": 7,
+   "prefix": "Holy",
+   "school": 2,
+   "impact_kit": 6359,
+   "hue": [
+    255,
+    225,
+    140
+   ],
+   "rim": [
+    255,
+    240,
+    190
+   ],
+   "glyph": "sunburst"
+  }
+ ],
+ "variants": [
+  {
+   "id": 950672,
+   "first": 950672,
+   "base": 1752,
+   "element": "fire",
+   "rank": 1,
+   "name": "Fiery Sinister Strike",
+   "rank_text": "Rank 1",
+   "description": "An instant strike that deals $s1% of your weapon damage as Fire damage, plus $s2 Fire damage. Awards $s3 combo $lpoint:points;.",
+   "fields": {
+    "0": 950672,
+    "225": 4,
+    "40": 0,
+    "71": 31,
+    "80": 84,
+    "74": 1,
+    "86": 6,
+    "89": 0,
+    "95": 0,
+    "98": 0,
+    "110": 0,
+    "113": 0,
+    "116": 0,
+    "229": 0.0,
+    "77": 0.0,
+    "83": 0,
+    "92": 0,
+    "104": 0,
+    "122": 0,
+    "123": 0,
+    "124": 0,
+    "119": 0.0,
+    "72": 2,
+    "81": 6,
+    "75": 1,
+    "87": 6,
+    "90": 0,
+    "96": 0,
+    "99": 0,
+    "111": 0,
+    "114": 0,
+    "117": 0,
+    "230": 0.15,
+    "78": 0.0,
+    "84": 0,
+    "93": 0,
+    "105": 0,
+    "125": 0,
+    "126": 0,
+    "127": 0,
+    "120": 0.0,
+    "73": 80,
+    "82": 0,
+    "76": 1,
+    "88": 6,
+    "91": 0,
+    "97": 0,
+    "100": 0,
+    "112": 0,
+    "115": 0,
+    "118": 0,
+    "231": 0.0,
+    "79": 0.0,
+    "85": 0,
+    "94": 0,
+    "106": 0,
+    "128": 0,
+    "129": 0,
+    "130": 0,
+    "121": 0.0,
+    "232": 0,
+    "131": 17672,
+    "133": 5042
+   },
+   "visual": {
+    "id": 17672,
+    "base": 253,
+    "impact_kit": 728
+   },
+   "icon": {
+    "id": 5042,
+    "base_icon": 130,
+    "base_path": "Interface\\Icons\\Spell_Shadow_RitualOfSacrifice",
+    "element": "fire",
+    "hue": [
+     255,
+     110,
+     30
+    ],
+    "rim": [
+     255,
+     150,
+     40
+    ],
+    "glyph": "flame"
+   },
+   "sla": [
+    22672,
+    38,
+    950672,
+    0,
+    8,
+    0,
+    0,
+    1,
+    1757,
+    2,
+    0,
+    0,
+    0,
+    0
+   ],
+   "note": "rider dropped: no free slot"
+  }
+ ]
+}

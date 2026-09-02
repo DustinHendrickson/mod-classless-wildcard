@@ -18,8 +18,8 @@ import tempfile
 HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, HERE)
 
-from lib import (blp, charcreate, clientfs, dbc, exepatch, gluestrings,  # noqa: E402
-                 mpq, outfit)
+from lib import (blp, charcreate, clientfs, dbc, elemental, exepatch,  # noqa: E402
+                 gluestrings, mpq, outfit)
 
 CHRCLASSES = "DBFilesClient\\ChrClasses.dbc"
 CHARBASEINFO = "DBFilesClient\\CharBaseInfo.dbc"
@@ -226,6 +226,55 @@ def main(argv):
             _again, changed_again, _al = dbc.open_class_abilities(sla_dbc, categories)
             check("SkillLineAbility patch idempotent", not changed_again,
                   "%d changed on second pass" % changed_again)
+
+            # --- elemental variants ------------------------------------------
+            # The generated spell rows must land in THIS client's Spell.dbc,
+            # with the base's swing kit and an element impact, and the painted
+            # icons must decode. Skipped, not failed, when no manifest ships.
+            manifest_file = elemental.manifest_path()
+            if os.path.exists(manifest_file):
+                manifest = elemental.load_manifest(manifest_file)
+                variants = manifest["variants"]
+                payload = {SKILLLINEABILITY: sla_dbc}
+                notes = []
+                elemental.apply(files, payload, manifest, notes, want_icons=True)
+                check("elemental: Spell.dbc produced", elemental.SPELL in payload,
+                      "%d variant(s)" % len(variants))
+                if elemental.SPELL in payload and variants:
+                    raw_spell, _src = files.find(elemental.SPELL)
+                    c0, _f, r0, _s = dbc.parse_header(raw_spell)
+                    c1, f1, r1, _s1 = dbc.parse_header(payload[elemental.SPELL])
+                    check("elemental: one row per variant appended",
+                          c1 == c0 + len(variants) and f1 == 234 and r1 == r0,
+                          "%d -> %d rows" % (c0, c1))
+                    strings = dbc_strings(payload[elemental.SPELL])
+                    row = struct.unpack_from("<234I", payload[elemental.SPELL], 20 + (c1 - 1) * r1)
+                    wanted = variants[-1]["name"]
+                    check("elemental: last row names %s" % wanted,
+                          dbc.read_string(strings, row[136]) == wanted,
+                          dbc.read_string(strings, row[136]))
+                    check("elemental: last row is the variant's school",
+                          row[225] == int(variants[-1]["fields"].get("225", 0)),
+                          "school mask %d" % row[225])
+                check("elemental: SpellVisual.dbc produced", elemental.SPELLVISUAL in payload)
+                sc0, _f, sr0, _s = dbc.parse_header(sla_dbc)
+                sc1, _f, sr1, _s = dbc.parse_header(payload[SKILLLINEABILITY])
+                check("elemental: SkillLineAbility rows appended to the patched table",
+                      sc1 == sc0 + sum(1 for v in variants if v.get("sla")),
+                      "%d -> %d rows" % (sc0, sc1))
+                icons = [k for k in payload if k.lower().startswith(elemental.ICON_DIR.lower() + "cw_")]
+                if blp.have_pillow():
+                    check("elemental: icons painted", bool(icons), "%d icon(s)" % len(icons))
+                    if icons:
+                        w, h, _rgba = blp.decode_blp(payload[icons[0]])
+                        check("elemental: painted icon decodes", (w, h) == (64, 64), "%dx%d" % (w, h))
+                        check("elemental: SpellIcon.dbc produced", elemental.SPELLICON in payload)
+                else:
+                    check("elemental: no icons without Pillow, base icons kept", not icons)
+                for note in notes:
+                    print("       %s" % note.strip())
+            else:
+                print("  [skip] elemental: no elemental_manifest.json shipped")
 
             check("every race still creatable",
                   {race for race, _klass in pairs} == set(dbc.PLAYABLE_RACES))

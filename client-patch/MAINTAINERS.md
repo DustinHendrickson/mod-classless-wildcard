@@ -229,6 +229,20 @@ error.
 
 ## Testing
 
+`test_elemental.py` checks the elemental-variant step against a DBC extract, no
+client needed: it appends every variant in `elemental_manifest.json` to real
+Spell, SpellVisual, SpellIcon and SkillLineAbility tables, reads the rows back
+and compares them with the manifest, and paints every element's icon on a
+synthetic BLP.
+
+```bash
+python3 test_elemental.py --dbc "B:/New folder/dbc"
+```
+
+The manifest itself is generated, together with the server's SQL, by
+`data/sql/generators/gen_elemental_variants.py`; regenerate both from one run
+so the server's numbers and the client's tooltips stay identical.
+
 `selftest.py` runs the whole pipeline against a real client without writing to it:
 
 ```bash

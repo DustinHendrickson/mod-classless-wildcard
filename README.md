@@ -183,6 +183,17 @@ Keep it, or spend a reroll.</em>
   brings Taunt, Berserker Stance brings Pummel. Without this a Hero could roll Bear Form and find
   they had turned into a creature with no way to attack. The pairs are rows in `cw_form_kits`, so
   you can add your own, and one config flag turns the whole feature off.
+- **Elemental variants of every strike.** Each physical weapon attack in the pool also exists in
+  seven elemental forms: Fiery, Frozen, Earthen, Venomous, Arcane, Shadow and Holy. A variant is
+  the same attack with the same cost, cooldown and swing, but its damage is dealt as that element
+  instead of Physical, so armour does not reduce it and resistance does. It keeps 85% of the
+  weapon damage (75% for Holy), adds an elemental hit that grows with spell power, and where the
+  ability has room carries one effect the element is known for: Fire burns, Frost slows, Earth
+  slows attacks, Poison poisons, Shadow reduces healing taken, Holy heals you, and Arcane hits
+  harder instead. Variants roll and are bought like any other ability, one rarity tier above the
+  attack they come from. Their icons are the base attack's icon recoloured for the element,
+  painted by the client installer when Python's Pillow library is present; without it a
+  variant shows its base attack's icon.
 - **Class quests are open to everyone.** Every class's quest chains are available to every Hero,
   so the warrior's Whirlwind Axe chain, the warlock's pet summoning quests and every class mount
   chain are reachable instead of dead content. Applied automatically and reversible. See
@@ -518,6 +529,8 @@ inline. The ones most likely to need changing:
 | `UniversalStats.MeleeAPPerAgility`                  | `1`          | Melee attack power per Agility                                 |
 | `ClasslessWildcard.ClasslessClassChecks`            | `1`          | Any relic equips; shields and reactive abilities work          |
 | `ClasslessWildcard.FormStarterKits`                 | `1`          | Forms and stances hand over their basic spells free            |
+| `ClasslessWildcard.Elemental.Enable`                | `1`          | Elemental variants of physical strikes in the pool           |
+| `ClasslessWildcard.Elemental.RarityBump`            | `1`          | Rarity tiers a variant sits above its base attack            |
 | `ClasslessWildcard.WorldDrops.Enable`               | `1`          | Mobs can drop the classless gear                               |
 | `ClasslessWildcard.WorldDrops.Chance`               | `1.0`        | Percent per kill, banded to the mob's level                    |
 | `ClasslessWildcard.WorldDrops.RareMultiplier`       | `5.0`        | Chance multiplier for rares, rare elites and bosses            |

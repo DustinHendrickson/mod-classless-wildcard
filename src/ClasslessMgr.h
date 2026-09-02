@@ -137,6 +137,10 @@ private:
 
     void LoadOverrides();
     void LoadFormKits();
+    // Elemental variants of pool abilities, from cw_ability_variants. They are
+    // module-owned spells with no trainer, so they bypass TrainerTaughtOnly
+    // and inherit their base's levels, class mask and spellbook tab.
+    void LoadVariants();
     // form id -> the library ability that puts you in it, built from spell data
     void BuildFormSpellMap();
     // Give a Hero the stance or form an ability cannot be used without.
