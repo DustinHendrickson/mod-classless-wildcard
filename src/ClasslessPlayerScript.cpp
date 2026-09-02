@@ -104,11 +104,11 @@ public:
     // classless character may do -- a Hero could equip a Libram but never an
     // Idol, Totem or Sigil, however much druid or shaman a build had bought.
     //
-    // Answered YES only for the contexts where "every class at once" is what
-    // classless means and is safe. std::nullopt everywhere else means "use my
-    // real class", deliberately: the untouched contexts drive rune machinery,
-    // pet ownership rules and stat/talent maths where claiming to be every
-    // class at once breaks things rather than freeing them.
+    // Answered only for the contexts where the chassis would otherwise take
+    // something away. std::nullopt everywhere else means "use my real class",
+    // deliberately: the untouched contexts drive Death Knight rune machinery
+    // and the stat/talent maths this module already replaces, where claiming
+    // to be every class at once breaks things rather than freeing them.
     Optional<bool> OnPlayerIsClass(Player const* player, Classes playerClass, ClassContext context) override
     {
         Config const& cfg = sClasslessMgr->cfg;
@@ -138,18 +138,62 @@ public:
             // ability is not owned: an aura state nothing reads costs nothing.
             case CLASS_CONTEXT_ABILITY_REACTIVE:
                 break;
-            // Pets, and ONLY as a warlock. A blanket yes here is actively
-            // harmful: LoadPetFromDB bails out on
-            //   IsClass(DEATH_KNIGHT, PET) && !CanSeeDKPet()
-            // and CanSeeDKPet is a Death Knight talent flag no Hero has, so
-            // claiming to be a Death Knight would stop every pet loading from
-            // the database at all. Answering only for warlock is what makes a
-            // summoned demon count as permanent and record its summon spell, while
-            // leaving the Death Knight path answering with the real class.
-            case CLASS_CONTEXT_PET:
-                if (playerClass != CLASS_WARLOCK)
+            // Runes, and only the Death Knight question, and only when Death
+            // Knight content is switched on.
+            //
+            // Three sites share this context for CLASS_DEATH_KNIGHT and they
+            // must agree: Player::InitRunes allocates m_runes, Player::Update
+            // ticks rune cooldowns through it, and Regenerate(RUNIC_POWER)
+            // refills the bar. The rune accessors dereference m_runes with no
+            // null check, so answering some and not others would allocate
+            // nothing and then read it. Answering none -- which is where this
+            // module stood -- is self-consistent but leaves a Hero who has
+            // bought a rune-cost spell casting into a null rune block.
+            //
+            // Tied to IncludeDeathKnight so a realm that does not use Death
+            // Knight abilities pays neither the allocation nor the per-tick
+            // rune loop.
+            case CLASS_CONTEXT_ABILITY:
+                if (playerClass != CLASS_DEATH_KNIGHT || !cfg.includeDeathKnight)
                     return std::nullopt;
                 break;
+            // Pets. Answered from the pet the Hero actually has, not from the
+            // class alone, because two call sites need opposite answers.
+            //
+            // Pet::IsPermanentPetFor runs an if/else chain -- warlock, then
+            // death knight, then mage -- and permanence decides the pet
+            // spellbook, the pet tab and whether owner auras reach it. A flat
+            // "yes" to warlock wins that chain every time and answers
+            // "is it a demon?" for a ghoul, so a ghoul could never be
+            // permanent. Answering per class from the pet's creature type lets
+            // the core's own chain fall through to the right branch.
+            //
+            // Meanwhile LoadPetFromDB bails out on
+            //   IsClass(DEATH_KNIGHT, PET) && !CanSeeDKPet()
+            // and CanSeeDKPet is the Master of Ghouls flag no Hero has, so
+            // claiming death knight there would stop pets loading from the
+            // database at all. That call happens while the pet is being
+            // restored and the Hero therefore has none, so returning nullopt
+            // when there is no pet keeps that path on the real class -- the
+            // hazard is closed by construction rather than by remembering.
+            case CLASS_CONTEXT_PET:
+            {
+                // answers inline below, so it checks the exemption itself
+                if (sClasslessMgr->IsExempt(const_cast<Player*>(player)))
+                    return std::nullopt;
+                Pet* pet = player->GetPet();
+                if (!pet || !pet->GetCreatureTemplate())
+                    return std::nullopt;
+                uint32 const creatureType = pet->GetCreatureTemplate()->type;
+                switch (playerClass)
+                {
+                    case CLASS_WARLOCK:      return creatureType == CREATURE_TYPE_DEMON;
+                    case CLASS_DEATH_KNIGHT: return creatureType == CREATURE_TYPE_UNDEAD;
+                    case CLASS_MAGE:         return creatureType == CREATURE_TYPE_ELEMENTAL;
+                    case CLASS_HUNTER:       return creatureType == CREATURE_TYPE_BEAST;
+                    default:                 return std::nullopt;
+                }
+            }
             default:
                 return std::nullopt;
         }
@@ -257,6 +301,19 @@ public:
         sClasslessMgr->EnforceChassis(player);
 
         sClasslessMgr->HandleLogin(player);
+
+        // A Hero may keep an undead pet, so let them see one.
+        //
+        // CanSeeDKPet is the Master of Ghouls flag, and the core leans on it
+        // twice: LoadPetFromDB refuses to restore a pet for anyone who counts
+        // as a Death Knight without it, and the character-select screen hides
+        // a stored ghoul. Since the module answers the Death Knight pet
+        // question for a Hero holding an undead pet, leaving the flag off
+        // would let that refusal fire while a ghoul is already out and block
+        // the next pet from loading. Setting it makes the check moot in the
+        // right direction and shows the ghoul on the login screen besides.
+        if (cfg.classlessClassChecks && !sClasslessMgr->IsExempt(player))
+            player->SetShowDKPet(true);
 
         // synthetic mana pools (non-mana chassis) load in at 0 — fill them once
         // the login stat pass has settled, and give the player a real BASE mana

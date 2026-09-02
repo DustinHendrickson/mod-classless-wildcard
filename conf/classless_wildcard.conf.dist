@@ -52,10 +52,21 @@ ClasslessWildcard.ModeChoiceDeadline = 5
 ########################################
 #
 #    ClasslessWildcard.IncludeDeathKnight
-#        Include Death Knight spells/talents in the library. DK spells cost
-#        runes, which only DK chassis characters have — leave off unless you
-#        know what you're doing.
+#        Include Death Knight spells/talents in the library.
+#
+#        DK abilities cost RUNES, and the core only builds a character's rune
+#        block for a Death Knight. With this on, the module answers the "is
+#        this a Death Knight?" question the rune code asks, so every Hero gets
+#        a working rune block, rune cooldowns and runic power. With it off
+#        nothing is allocated and nothing ticks.
+#
+#        The remaining gap is the CLIENT: the stock UI draws the rune bar only
+#        for real Death Knight characters, so a Hero's runes are tracked by the
+#        server but not shown. Rune-cost abilities will fire when the runes are
+#        up and silently fail when they are not, with nothing on screen to say
+#        which. Treat this as experimental until the addon draws them.
 #        Default: 0
+
 #
 #    ClasslessWildcard.IncludeRacials
 #        Include racial spells in the library.
