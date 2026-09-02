@@ -27,7 +27,12 @@ local CLASS_NAMES = {
     [1] = "Warrior", [2] = "Paladin", [3] = "Hunter", [4] = "Rogue", [5] = "Priest",
     [6] = "Death Knight", [7] = "Shaman", [8] = "Mage", [9] = "Warlock", [11] = "Druid",
 }
-local CLASS_ORDER = { 1, 2, 3, 4, 5, 7, 8, 9, 11 } -- Death Knight (6) is the Hero class type; hidden from the browser
+-- Every class, Death Knight included. Whether its button is SHOWN depends on
+-- the server: with IncludeDeathKnight off there are no Death Knight abilities
+-- or talents in the library, so the button would open an empty page. The old
+-- list left 6 out permanently, which meant a realm that enabled Death Knight
+-- content had no way to browse it.
+local CLASS_ORDER = { 1, 2, 3, 4, 5, 6, 7, 8, 9, 11 }
 
 -- ---------------------------------------------------------------------------
 -- state
@@ -205,11 +210,10 @@ local CLASS_TCOORDS = { -- UI-CharacterCreate-Classes 4x4 atlas
 }
 local classButtons = {}
 local CLASS_BTN = 38
-local stripWidth = #CLASS_ORDER * (CLASS_BTN + 8) - 8
 for i, classId in ipairs(CLASS_ORDER) do
     local b = CreateFrame("Button", nil, frame)
+    b.classId = classId
     b:SetWidth(CLASS_BTN); b:SetHeight(CLASS_BTN)
-    b:SetPoint("TOPLEFT", (950 - stripWidth) / 2 + (i - 1) * (CLASS_BTN + 8), -70)
     b.icon = b:CreateTexture(nil, "ARTWORK")
     b.icon:SetAllPoints(b)
     -- the addon ships its OWN class-icon atlas (embedded, decoupled from the
@@ -253,6 +257,26 @@ for i, classId in ipairs(CLASS_ORDER) do
     b:SetScript("OnLeave", function() GameTooltip:Hide() end)
     classButtons[i] = b
 end
+
+-- Position the strip over the buttons that are actually visible, so hiding the
+-- Death Knight one leaves the rest centred instead of gapped.
+function CW.LayoutClassStrip()
+    local visible = {}
+    for _, b in ipairs(classButtons) do
+        if b.classId == 6 and not CW.dkEnabled then
+            b:Hide()
+        else
+            b:Show()
+            table.insert(visible, b)
+        end
+    end
+    local width = #visible * (CLASS_BTN + 8) - 8
+    for n, b in ipairs(visible) do
+        b:ClearAllPoints()
+        b:SetPoint("TOPLEFT", (950 - width) / 2 + (n - 1) * (CLASS_BTN + 8), -70)
+    end
+end
+CW.LayoutClassStrip()
 
 local function UpdateClassStrip()
     for i, b in ipairs(classButtons) do
@@ -2179,6 +2203,14 @@ local function HandleMessage(msg)
         -- classless pricing the browser needs to label costs honestly
         CW.talentCost = tonumber(p[2]) or 1
         CW.talentFlat = (tonumber(p[3]) or 1) == 1
+        -- Whether Death Knight content is in the library. Absent from older
+        -- servers, which is why the default is off rather than on: a missing
+        -- field must not conjure a class button with nothing behind it.
+        local dk = (tonumber(p[4]) or 0) == 1
+        if dk ~= CW.dkEnabled then
+            CW.dkEnabled = dk
+            CW.LayoutClassStrip()
+        end
         RenderList()
 
     elseif kind == "CP" then

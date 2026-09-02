@@ -91,8 +91,14 @@ namespace
         // costs instead of assuming. Sent as its own message rather than more
         // positional fields on S -- an addon that predates it simply ignores
         // the unknown kind.
-        SendAddon(player, Acore::StringFormat("CFG|{}|{}",
-            cfg.talentCostPerRank, cfg.talentFlatCost ? 1 : 0));
+        // The third field is whether Death Knight content is in the library.
+        // The addon hides the Death Knight class button and its talent trees
+        // unless it is, because with IncludeDeathKnight off there is nothing
+        // behind them -- and hard-coding that on the client meant the tab could
+        // never appear once a realm turned it on.
+        SendAddon(player, Acore::StringFormat("CFG|{}|{}|{}",
+            cfg.talentCostPerRank, cfg.talentFlatCost ? 1 : 0,
+            cfg.includeDeathKnight ? 1 : 0));
     }
 
     void SendErr(Player* player, std::string const& text)
