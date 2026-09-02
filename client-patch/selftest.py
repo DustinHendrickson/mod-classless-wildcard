@@ -67,9 +67,25 @@ def main(argv):
             # --- ChrClasses -------------------------------------------------
             raw, source = files.find(CHRCLASSES)
             patched, renamed = dbc.rename_all_classes(raw, "Hero")
+            patched, unrelic = dbc.clear_relic_slot(patched)
             check("ChrClasses resolved", bool(raw), os.path.basename(source))
             check("all classes renamed", len(renamed) >= 10,
                   "%d records" % len(renamed))
+
+            # Slot 17 is a relic slot for Paladin, DK, Shaman and Druid, and the
+            # client draws nothing there -- which made every bow, gun and wand
+            # invisible on the Paladin chassis.
+            relic_ids = {c[0] for c in unrelic}
+            check("relic slot cleared on exactly the 4 relic classes",
+                  relic_ids == {2, 6, 7, 11},
+                  "classes %s" % sorted(relic_ids))
+            still = []
+            rcount, rfields, rsize, _rs = dbc.parse_header(patched)
+            for index in range(rcount):
+                row = struct.unpack_from("<%dI" % rfields, patched, 20 + index * rsize)
+                if row[dbc.CHRCLASSES_FLAGS_FIELD] & dbc.CHRCLASSES_FLAG_RELIC_SLOT:
+                    still.append(row[0])
+            check("no class still has a relic slot", not still, "%s" % still)
 
             count, fields, size, _ = dbc.parse_header(patched)
             strings = dbc_strings(patched)

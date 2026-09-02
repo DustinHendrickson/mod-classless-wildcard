@@ -27,6 +27,15 @@ CHRCLASSES_NAME_COLUMNS = list(range(4, 20))
 CHRCLASSES_NAME_FEMALE_COLUMNS = list(range(21, 37))
 CHRCLASSES_NAME_MALE_COLUMNS = list(range(38, 54))
 CHRCLASSES_TOKEN_FIELD = 55
+#   57     Flags, a set of class capability bits. Verified against the shipped
+#          3.3.5a table, where they partition the classes exactly:
+#            0x04  has a pet          Hunter, Warlock
+#            0x08  RELIC slot         Paladin, Death Knight, Shaman, Druid
+#            0x10  mail or better     Warrior, Paladin, Hunter, DK, Shaman
+#            0x20  plate              Warrior, Paladin, Death Knight
+#            0x40  hero class         Death Knight
+CHRCLASSES_FLAGS_FIELD = 57
+CHRCLASSES_FLAG_RELIC_SLOT = 0x08
 
 # 3.3.5a playable races and classes. Race 9 (goblin) and class 10 are absent
 # from the client's own tables and stay absent here.
@@ -98,6 +107,51 @@ def rename_all_classes(data: bytes, new_name: str):
     header = WDBC_MAGIC + struct.pack("<4I", record_count, field_count,
                                       record_size, len(new_strings))
     return header + bytes(records) + new_strings, renamed
+
+
+def clear_relic_slot(data: bytes):
+    """Give every class an ordinary ranged slot instead of a relic slot.
+
+    Slot 17 is the relic slot for Paladins, Death Knights, Shamans and Druids
+    (Libram / Sigil / Totem / Idol), and the client never draws a relic on the
+    character. On a classless realm every Hero runs one chassis, and the
+    default chassis is Paladin -- so a Hero holding a bow or a gun was carrying
+    an invisible weapon, with nothing appearing when they shot.
+
+    Clearing ChrClasses flag 0x08 tells the client that slot is an ordinary
+    ranged slot, so bows, guns and wands are drawn and the paper doll labels it
+    correctly. Cleared on EVERY class, not just the chassis, because the realm
+    can be configured onto any of them and each is called "Hero" anyway.
+
+    Returns (new_dbc_bytes, [(class_id, old_flags, new_flags), ...]) listing
+    only the classes that actually changed.
+    """
+    record_count, field_count, record_size, string_size = parse_header(data)
+    if field_count != CHRCLASSES_FIELDS:
+        raise DbcError(
+            "ChrClasses.dbc has %d fields, expected %d. This client build is "
+            "not the 3.3.5a layout this patch understands."
+            % (field_count, CHRCLASSES_FIELDS))
+
+    records_off = 20
+    strings_off = records_off + record_count * record_size
+    records = bytearray(data[records_off:strings_off])
+
+    changed = []
+    for index in range(record_count):
+        base = index * record_size
+        class_id = struct.unpack_from("<I", records, base)[0]
+        offset = base + CHRCLASSES_FLAGS_FIELD * 4
+        flags = struct.unpack_from("<I", records, offset)[0]
+        if not (flags & CHRCLASSES_FLAG_RELIC_SLOT):
+            continue
+        new_flags = flags & ~CHRCLASSES_FLAG_RELIC_SLOT
+        struct.pack_into("<I", records, offset, new_flags)
+        changed.append((class_id, flags, new_flags))
+
+    header = WDBC_MAGIC + struct.pack("<4I", record_count, field_count,
+                                      record_size, string_size)
+    return header + bytes(records) + data[strings_off:], changed
 
 
 def single_class_combos(data: bytes, shell_class: int):

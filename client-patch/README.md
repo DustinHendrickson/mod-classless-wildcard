@@ -89,6 +89,7 @@ Addon             : yes
 Install to this client? [Y/n] y
 
   ChrClasses.dbc   10 classes renamed to Hero
+  ChrClasses.dbc   ranged slot restored on 4 relic classes (bows, guns and wands now show)
   CharBaseInfo.dbc all 10 races, one cosmetic class (shown as Hero)
   CharStartOutfit.dbc  armored Hero look on 18 races +Blood Elf
   -> Data/patch-Z.MPQ

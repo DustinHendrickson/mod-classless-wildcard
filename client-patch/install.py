@@ -172,9 +172,16 @@ def build_data_patch(files, name, report, theme=False):
 
     raw, source = files.find(CHRCLASSES)
     patched, renamed = dbc.rename_all_classes(raw, name)
+    # Slot 17 is a RELIC slot for Paladin, Death Knight, Shaman and Druid, and
+    # the client never draws a relic. With the default Paladin chassis that
+    # made every bow, gun and wand invisible on the character. Turn it back
+    # into an ordinary ranged slot.
+    patched, unrelic = dbc.clear_relic_slot(patched)
     payload[CHRCLASSES] = patched
     report.append("  ChrClasses.dbc   %d classes renamed to %s (from %s)"
                   % (len(renamed), name, os.path.basename(source)))
+    report.append("  ChrClasses.dbc   ranged slot restored on %d relic classes "
+                  "(bows, guns and wands now show)" % len(unrelic))
 
     raw, source = files.find(CHARBASEINFO)
     patched, races = dbc.single_class_combos(raw, SHELL_CLASS)
