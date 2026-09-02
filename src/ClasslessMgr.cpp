@@ -1359,6 +1359,12 @@ void ClasslessMgr::HandleFirstLogin(Player* player)
     if (cfg.stripStartingSpells)
         StripUnearnedSpells(player);
 
+    // With the chassis spells gone there is nothing left under the chassis
+    // class's own tab, so take the tab away too -- this is the one moment it
+    // costs nothing, and it is what stops a Hero starting life with a "Holy"
+    // heading they never asked for.
+    SyncSpellbookTabs(player);
+
     // neutral Hero starter kit
     if (cfg.starterKitEnable)
     {
@@ -1783,10 +1789,16 @@ uint32 ClasslessMgr::StripUnearnedSpells(Player* player)
 // in a lonely class tab. Giving the Hero the skill lines their spells belong to
 // puts every spell under its own heading.
 //
-// Adding a skill is safe: Player::SetSkill only unlearns spells when REMOVING a
-// skill, and learnSkillRewardedSpells hands out nothing but abilities marked
-// learned-on-skill, which class trainer spells are not. The login sweep catches
-// anything unexpected regardless.
+// It cuts both ways: a line the Hero has nothing in is taken away, which is
+// what removes the chassis class's own tab, and a line they do have something
+// in is added. The result is exactly one tab per school they know.
+//
+// Adding is free. Removing is the dangerous direction -- Player::SetSkill
+// unlearns every spell attached to a skill it removes -- so it is only ever
+// done for a line holding nothing the Hero earned, where by construction there
+// is nothing to lose. learnSkillRewardedSpells, on the add side, hands out
+// nothing but abilities marked learned-on-skill, which class trainer spells are
+// not, and the login sweep catches anything unexpected regardless.
 void ClasslessMgr::SyncSpellbookTabs(Player* player)
 {
     if (!cfg.spellbookTabs || _classSkillLines.empty())
@@ -1795,33 +1807,44 @@ void ClasslessMgr::SyncSpellbookTabs(Player* player)
     if (st.exempt)
         return;
 
+    // Which lines does the Hero have EARNED spells in? Built from what they
+    // own, so it is exactly the set of tabs that would have something in them.
     std::set<uint16> want;
-    if (cfg.spellbookTabs >= 2)
+    auto add = [&](uint32 spellId)
     {
-        want = _classSkillLines;      // every class tab, from the start
-    }
-    else
-    {
-        // only the lines the Hero has something in, so no tab is ever empty
-        auto add = [&](uint32 spellId)
-        {
-            auto itr = _spellSkillLine.find(spellId);
-            if (itr != _spellSkillLine.end())
-                want.insert(itr->second);
-        };
-        for (auto const& [firstSpell, owned] : st.abilities)
-            if (AbilityEntry const* e = GetAbility(firstSpell))
-                for (uint32 rank : e->ranks)
-                    add(rank);
-        for (auto const& [talentId, rank] : st.talents)
-            if (TalentPoolEntry const* t = GetTalent(talentId))
-                for (uint8 r = 0; r < rank && r < t->rankSpells.size(); ++r)
-                    if (t->rankSpells[r])
-                        add(t->rankSpells[r]);
-    }
+        auto itr = _spellSkillLine.find(spellId);
+        if (itr != _spellSkillLine.end())
+            want.insert(itr->second);
+    };
+    for (auto const& [firstSpell, owned] : st.abilities)
+        if (AbilityEntry const* e = GetAbility(firstSpell))
+            for (uint32 rank : e->ranks)
+                add(rank);
+    for (auto const& [talentId, rank] : st.talents)
+        if (TalentPoolEntry const* t = GetTalent(talentId))
+            for (uint8 r = 0; r < rank && r < t->rankSpells.size(); ++r)
+                if (t->rankSpells[r])
+                    add(t->rankSpells[r]);
 
     GrantGuard guard(_applyingGrant);
-    for (uint16 line : want)
+
+    // Drop the chassis class's own skill lines, and any other the Hero has
+    // nothing in. This is what removes the lonely "Holy" tab a Paladin chassis
+    // starts with: the character never chose it and, once their own spells are
+    // stripped, has nothing filed under it.
+    //
+    // Removing a skill line DOES unlearn every spell attached to it, which is
+    // why this is only ever done for lines holding nothing the Hero earned --
+    // by construction there is nothing to lose. Anything unearned that was
+    // sitting there is exactly what StripUnearnedSpells would have taken next.
+    if (cfg.spellbookTabs < 2)
+        for (uint16 line : _classSkillLines)
+            if (!want.count(line) && player->HasSkill(line))
+                player->SetSkill(line, 0, 0, 0);
+
+    // Then a tab for each school they actually know.
+    std::set<uint16> const& give = (cfg.spellbookTabs >= 2) ? _classSkillLines : want;
+    for (uint16 line : give)
         if (!player->HasSkill(line))
             player->SetSkill(line, 0, 1, 1);
 }
