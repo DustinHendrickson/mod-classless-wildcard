@@ -1372,7 +1372,7 @@ end)
 -- frame is only tall enough for 8 in a row.
 -- ---------------------------------------------------------------------------
 local CW_TAB_LIMIT = 40          -- comfortably above the 33 that carry spells
-local CW_TABS_PER_COLUMN = 8     -- what fits beside the frame, as Blizzard has it
+local CW_TABS_PER_COLUMN = 7     -- 8 fit, but the 8th lands on the page-turn row; 7 keeps clear of it
 local CW_TAB_STEP_Y = 49         -- 32px button + Blizzard's 17px gap
 local CW_TAB_STEP_X = 42
 
