@@ -139,10 +139,20 @@ ClasslessWildcard.RespectLevelRequirements = 1
 #          * the reactive-ability aura states behind Overpower, Revenge,
 #            Riposte and Counterattack, which the core sets only for the class
 #            each belongs to.
+#          * pets. Pet::Create types a pet from its owner's class, so on a
+#            one-chassis realm every summoned pet came out untyped: an error
+#            logged on each summon, no dismiss prompt, and the pet not recorded
+#            as the current one. The module types it from the pet instead --
+#            tamed beasts are hunter pets, everything else is a summoned pet --
+#            and answers the warlock pet question so a demon counts as
+#            permanent. The Death Knight pet question is deliberately left
+#            alone: LoadPetFromDB refuses to load a pet for a Death Knight
+#            without the Master of Ghouls flag, so answering it would stop
+#            pets loading at all.
 #
 #        Everything else keeps answering with the real chassis class on
-#        purpose: rune handling, pet ownership and the stat/talent maths break
-#        if a character claims to be every class at once.
+#        purpose: Death Knight rune handling and the stat/talent maths break if
+#        a character claims to be every class at once.
 #        Default: 1
 
 #

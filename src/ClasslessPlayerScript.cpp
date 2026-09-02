@@ -18,6 +18,7 @@
 #include "DBCStores.h"
 #include "Duration.h"
 #include "Optional.h"
+#include "Pet.h"
 #include "Player.h"
 #include "ScriptMgr.h"
 #include "Spell.h"
@@ -91,6 +92,7 @@ public:
         PLAYERHOOK_ON_LEARN_SPELL,
         PLAYERHOOK_ON_AFTER_UPDATE_MAX_POWER,
         PLAYERHOOK_ON_PLAYER_IS_CLASS,
+        PLAYERHOOK_ON_BEFORE_GUARDIAN_INIT_STATS_FOR_LEVEL,
         PLAYERHOOK_ON_UPDATE
     }) { }
 
@@ -107,7 +109,7 @@ public:
     // real class", deliberately: the untouched contexts drive rune machinery,
     // pet ownership rules and stat/talent maths where claiming to be every
     // class at once breaks things rather than freeing them.
-    Optional<bool> OnPlayerIsClass(Player const* player, Classes /*playerClass*/, ClassContext context) override
+    Optional<bool> OnPlayerIsClass(Player const* player, Classes playerClass, ClassContext context) override
     {
         Config const& cfg = sClasslessMgr->cfg;
         if (!cfg.enabled || !cfg.classlessClassChecks)
@@ -136,6 +138,18 @@ public:
             // ability is not owned: an aura state nothing reads costs nothing.
             case CLASS_CONTEXT_ABILITY_REACTIVE:
                 break;
+            // Pets, and ONLY as a warlock. A blanket yes here is actively
+            // harmful: LoadPetFromDB bails out on
+            //   IsClass(DEATH_KNIGHT, PET) && !CanSeeDKPet()
+            // and CanSeeDKPet is a Death Knight talent flag no Hero has, so
+            // claiming to be a Death Knight would stop every pet loading from
+            // the database at all. Answering only for warlock is what makes a
+            // summoned demon count as permanent and record its summon spell, while
+            // leaving the Death Knight path answering with the real class.
+            case CLASS_CONTEXT_PET:
+                if (playerClass != CLASS_WARLOCK)
+                    return std::nullopt;
+                break;
             default:
                 return std::nullopt;
         }
@@ -145,6 +159,34 @@ public:
             return std::nullopt;
 
         return true;
+    }
+
+    // What KIND of pet is this?
+    //
+    // Pet::Create works it out from the owner's class, so on a one-chassis
+    // realm it worked it out as "none": petType stayed MAX_PET_TYPE, the core
+    // logged "Unknown type pet ... summoned by player class 2" on every
+    // summon, the pet never got UNIT_FLAG_PLAYER_CONTROLLED (no dismiss
+    // prompt), and it was not recorded as the player's current pet. The pet
+    // still appeared and still took orders, which is why it looks fine.
+    //
+    // This hook takes petType by reference and runs before that guess, so
+    // decide from the pet instead of from the owner: hunters tame beasts,
+    // every other pet a class summons -- demon, undead, elemental -- is a
+    // summoned pet. Setting it here also skips the class chain entirely, so a
+    // tamed beast cannot be mistyped as a summon.
+    void OnPlayerBeforeGuardianInitStatsForLevel(Player* player, Guardian* guardian,
+                                                 CreatureTemplate const* cinfo, PetType& petType) override
+    {
+        Config const& cfg = sClasslessMgr->cfg;
+        if (!cfg.enabled || !cfg.classlessClassChecks || !player || !guardian || !cinfo)
+            return;
+        if (sClasslessMgr->IsExempt(player))
+            return;
+        if (!guardian->IsPet())
+            return;
+
+        petType = (cinfo->type == CREATURE_TYPE_BEAST) ? HUNTER_PET : SUMMON_PET;
     }
 
     // Universal resources: every Hero keeps mana, rage AND energy pools alive
