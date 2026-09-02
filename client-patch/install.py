@@ -409,28 +409,39 @@ def do_install(args, wow_dir):
     # base patch: built once, from the highest-priority locale's chain
     with clientfs.ClientFiles(data_dir, locales[0],
                               exclude=own_archives(locales[0])) as files:
-        payload = build_data_patch(files, args.name, report, theme=args.glue)
+        dbc_payload = build_data_patch(files, args.name, report, theme=args.glue)
     target = os.path.join(data_dir, "patch-%s.MPQ" % suffix)
     if not args.dry_run:
-        mpq.write_archive(target, payload)
+        mpq.write_archive(target, dbc_payload)
     written.append("Data/patch-%s.MPQ" % suffix)
     report.append("  -> Data/patch-%s.MPQ" % suffix)
 
-    # locale patches: creation-screen copy and/or Hero icon, per locale
-    if args.glue or args.hero_icon:
-        for locale in locales:
-            with clientfs.ClientFiles(data_dir, locale,
-                                      exclude=own_archives(locale)) as files:
-                payload = build_locale_patch(files, args.name, report, locale,
-                                             theme=args.glue, icon=args.hero_icon)
-            if not payload:
-                continue
-            name = "patch-%s-%s.MPQ" % (locale, suffix)
-            target = os.path.join(data_dir, locale, name)
-            if not args.dry_run:
-                mpq.write_archive(target, payload)
-            written.append("Data/%s/%s" % (locale, name))
-            report.append("  -> Data/%s/%s" % (locale, name))
+    # Locale patches -- and the DBCs go in here TOO, which is the part that
+    # actually matters. Wow.exe loads every locale patch archive above every
+    # base one (see clientfs.archive_chain), so a DBC that also ships in a
+    # patch-<loc>-N archive is shadowed if we only put ours in patch-Z.MPQ.
+    # That is every DBC we touch: ChrClasses lives in patch-enUS-3,
+    # CharStartOutfit and SkillRaceClassInfo in patch-enUS-2, CharBaseInfo in
+    # locale-enUS. For a long time the class rename, the relic-slot fix and
+    # the skill-line rows were all written correctly and never loaded, while
+    # the Lua and strings -- which always went to the locale archive -- worked,
+    # which made it look as though the patch was applying.
+    #
+    # The base archive is still written so a locale folder without a locale
+    # patch of its own is covered, but the locale copy is the one that wins.
+    for locale in locales:
+        with clientfs.ClientFiles(data_dir, locale,
+                                  exclude=own_archives(locale)) as files:
+            payload = build_locale_patch(files, args.name, report, locale,
+                                         theme=args.glue, icon=args.hero_icon)
+        payload.update(dbc_payload)
+        name = "patch-%s-%s.MPQ" % (locale, suffix)
+        target = os.path.join(data_dir, locale, name)
+        if not args.dry_run:
+            mpq.write_archive(target, payload)
+        written.append("Data/%s/%s" % (locale, name))
+        report.append("  -> Data/%s/%s  (DBCs here outrank the client's own locale patches)"
+                      % (locale, name))
 
     # Wow.exe -- only when installing the creation text, and only with the
     # verified pattern set. A running game locks it; that must not throw away

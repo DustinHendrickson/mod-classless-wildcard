@@ -215,7 +215,22 @@ def main(argv):
             # --- archives ---------------------------------------------------
             payload = {CHRCLASSES: patched, CHARBASEINFO: combos,
                        SKILLRACECLASSINFO: opened_dbc}
+            # the locale archive carries the DBCs as well: it is the one Wow.exe
+            # loads above the client's own patch-<loc>-N archives, so a DBC that
+            # only sits in patch-Z.MPQ is shadowed and never seen
             glue = {GLUESTRINGS: new_text.encode("utf-8", "surrogateescape")}
+            glue.update(payload)
+            # prove the shadowing claim against THIS client's chain: for every
+            # DBC we patch, the stock copy must resolve from a locale archive,
+            # which is exactly why the base patch alone could never win
+            shadowed_by_locale = []
+            for dbc_name in (CHRCLASSES, CHARBASEINFO, SKILLRACECLASSINFO):
+                _r, src_arch = files.find(dbc_name)
+                in_locale = os.sep + locale + os.sep in src_arch or ("-%s" % locale) in os.path.basename(src_arch)
+                shadowed_by_locale.append(in_locale)
+            check("stock DBCs live in locale archives (so ours must too)",
+                  all(shadowed_by_locale),
+                  "%d of %d resolve from a locale archive" % (sum(shadowed_by_locale), len(shadowed_by_locale)))
             with tempfile.TemporaryDirectory() as tmp:
                 base = os.path.join(tmp, "patch-Z.MPQ")
                 loc = os.path.join(tmp, "patch-%s-Z.MPQ" % locale)

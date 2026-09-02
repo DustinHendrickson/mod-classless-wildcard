@@ -97,7 +97,7 @@ Install to this client? [Y/n] y
   GlueStrings.lua  76 class strings rewritten
   CharacterCreate.lua  class selector hidden
   Hero class icon      emblem on the Hero cell, other class icons kept
-  -> Data/enUS/patch-enUS-Z.MPQ
+  -> Data/enUS/patch-enUS-Z.MPQ  (DBCs here outrank the client's own locale patches)
   Wow.exe          patched 6 site(s) to accept custom interface files
   addon            12 files -> Interface/AddOns/ClasslessWildcard
   cache            cleared (the client rebuilds it on next login)
