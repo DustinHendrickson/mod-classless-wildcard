@@ -117,10 +117,9 @@ Keep it, or spend a reroll.</em>
   it. Rank odds follow `RarityWeights`. The shipped Season 9 default weights every rank equally;
   use descending weights such as `100,60,30,10,3` to make rank 5 a rare prize. The exact rules
   are under [How Wildcard rolls work](#how-wildcard-rolls-work).
-- **Rerolls scale with leveling.** Every level from 10 grants 3 reroll charges, whichever kind of
-  roll that level carried. The starting hand at level 1 grants none. Charges are one pool spent on
-  abilities and talents alike, and anything you already own can be rerolled later from
-  **My Build**. Reroll Scrolls top the pool up when charges run out and work for either
+- **Rerolls scale with leveling.** Every level from 10 grants 3 reroll charges. Charges are one
+  pool spent on abilities and talents alike, and anything you already own can be rerolled later
+  from **My Build**. Reroll Scrolls top the pool up when charges run out and work for either
   kind. They are sold by the Hero Advancement NPC and by the addon's **Buy Scroll** button. The
   price scales with level, from silver in the early game to gold near the cap. Both the price
   and the button are configurable.

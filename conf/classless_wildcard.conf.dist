@@ -432,9 +432,8 @@ ClasslessWildcard.Wildcard.SynergyBanRolls = 25
 # one pool spent on abilities and talents alike, and are spent before any scroll
 # is touched.
 #
-# The grant is per LEVEL, not per roll, so it does not change when a level
-# happens to carry an ability roll rather than a talent roll. The starting hand
-# at level 1 grants none: charges begin with the first scheduled roll.
+# The grant is per LEVEL, not per roll. The starting hand at level 1 grants
+# none: charges begin at RollStartLevel.
 ClasslessWildcard.Wildcard.RerollsPerLevel = 3
 # Reroll top-up items (cheap, sold by the Hero Advancement NPC; shipped in the
 # module's world SQL). Consumed only when earned charges run out.
