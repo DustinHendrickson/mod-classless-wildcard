@@ -179,6 +179,7 @@ void ClasslessMgr::LoadConfig(bool /*reload*/)
     cfg.suppressTalentPoints = sConfigMgr->GetOption<bool>("ClasslessWildcard.SuppressTalentPoints", true);
     cfg.blockOutsideSpellSources = sConfigMgr->GetOption<bool>("ClasslessWildcard.BlockOutsideSpellSources", true);
     cfg.classlessClassChecks = sConfigMgr->GetOption<bool>("ClasslessWildcard.ClasslessClassChecks", true);
+    cfg.spellbookTabs = uint8(sConfigMgr->GetOption<uint32>("ClasslessWildcard.SpellbookTabs", 1));
     cfg.formKitsEnable = sConfigMgr->GetOption<bool>("ClasslessWildcard.FormStarterKits", true);
     cfg.worldDropEnable = sConfigMgr->GetOption<bool>("ClasslessWildcard.WorldDrops.Enable", true);
     cfg.worldDropChance = sConfigMgr->GetOption<float>("ClasslessWildcard.WorldDrops.Chance", 1.0f);
@@ -363,6 +364,12 @@ void ClasslessMgr::BuildLibrary()
         SkillLineEntry const* skillLine = sSkillLineStore.LookupEntry(sla->SkillLine);
         if (!skillLine || skillLine->categoryId != SKILL_CATEGORY_CLASS)
             continue;
+
+        // Remember which tab the client will file this spell under. Done
+        // before the pool filters below, so a spell kept out of the roll pool
+        // still lands in the right tab if a Hero gets it some other way.
+        _spellSkillLine[sla->Spell] = uint16(sla->SkillLine);
+        _classSkillLines.insert(uint16(sla->SkillLine));
 
         SpellInfo const* info = sSpellMgr->GetSpellInfo(sla->Spell);
         if (!info || !info->SpellName[0] || !*info->SpellName[0])
@@ -1458,6 +1465,10 @@ void ClasslessMgr::HandleLogin(Player* player)
     // spells come back on their own -- a Hero was showing Holy Light in the
     // Paladin tab of a spellbook they never trained -- and a first-login-only
     // strip leaves anything that arrives later in place permanently.
+    // Tabs first, then the sweep: adding a skill line can hand out the odd
+    // learned-on-skill spell, and the sweep is what takes those back.
+    SyncSpellbookTabs(player);
+
     if (cfg.stripStartingSpells)
         if (uint32 removed = StripUnearnedSpells(player))
             LOG_DEBUG("module.classless",
@@ -1613,6 +1624,8 @@ void ClasslessMgr::GrantAbilityInternal(Player* player, AbilityEntry const& e, G
 
     GrantFormKit(player, e, source);
     GrantRequiredForm(player, e, source);
+    // a newly gained spell needs its tab straight away, not at next login
+    SyncSpellbookTabs(player);
 }
 
 // A form or stance on its own does nothing: a Hero who draws Bear Form without
@@ -1759,6 +1772,58 @@ uint32 ClasslessMgr::StripUnearnedSpells(Player* player)
                 ++removed;
             }
     return removed;
+}
+
+// One spellbook tab per school of magic the Hero actually knows.
+//
+// The client files a spell under a tab by its skill line -- "Fire", "Holy",
+// "Feral Combat" -- but only for skill lines the character HAS. A Hero has just
+// the chassis class's, so a rolled Fireball had nowhere to go and fell into
+// General along with everything else, while the one or two chassis spells sat
+// in a lonely class tab. Giving the Hero the skill lines their spells belong to
+// puts every spell under its own heading.
+//
+// Adding a skill is safe: Player::SetSkill only unlearns spells when REMOVING a
+// skill, and learnSkillRewardedSpells hands out nothing but abilities marked
+// learned-on-skill, which class trainer spells are not. The login sweep catches
+// anything unexpected regardless.
+void ClasslessMgr::SyncSpellbookTabs(Player* player)
+{
+    if (!cfg.spellbookTabs || _classSkillLines.empty())
+        return;
+    CharState& st = GetState(player);
+    if (st.exempt)
+        return;
+
+    std::set<uint16> want;
+    if (cfg.spellbookTabs >= 2)
+    {
+        want = _classSkillLines;      // every class tab, from the start
+    }
+    else
+    {
+        // only the lines the Hero has something in, so no tab is ever empty
+        auto add = [&](uint32 spellId)
+        {
+            auto itr = _spellSkillLine.find(spellId);
+            if (itr != _spellSkillLine.end())
+                want.insert(itr->second);
+        };
+        for (auto const& [firstSpell, owned] : st.abilities)
+            if (AbilityEntry const* e = GetAbility(firstSpell))
+                for (uint32 rank : e->ranks)
+                    add(rank);
+        for (auto const& [talentId, rank] : st.talents)
+            if (TalentPoolEntry const* t = GetTalent(talentId))
+                for (uint8 r = 0; r < rank && r < t->rankSpells.size(); ++r)
+                    if (t->rankSpells[r])
+                        add(t->rankSpells[r]);
+    }
+
+    GrantGuard guard(_applyingGrant);
+    for (uint16 line : want)
+        if (!player->HasSkill(line))
+            player->SetSkill(line, 0, 1, 1);
 }
 
 void ClasslessMgr::UpdateAbilityRanks(Player* player)

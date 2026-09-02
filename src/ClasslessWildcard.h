@@ -22,6 +22,7 @@
 #include "ObjectGuid.h"
 #include <array>
 #include <map>
+#include <set>
 #include <string>
 #include <unordered_map>
 #include <unordered_set>
@@ -230,6 +231,14 @@ namespace ClasslessWildcard
         // relic, shields, and the reactive-ability aura states. Off = the
         // chassis class decides, which is the stock behaviour.
         bool   classlessClassChecks = true;
+
+        // Spellbook tabs. The client files a spell under a tab by its skill
+        // line, and only for skill lines the character HAS -- so a Hero saw one
+        // tab for the chassis class and everything else dumped in General.
+        //   0 = off (stock behaviour)
+        //   1 = a tab for every skill line the Hero owns spells in
+        //   2 = a tab for every class skill line, present from the start
+        uint8  spellbookTabs = 1;
 
         bool   formKitsEnable = true;
 

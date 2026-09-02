@@ -1358,6 +1358,74 @@ barsFrame:SetScript("OnUpdate", function(self, elapsed)
     end
 end)
 
+-- ---------------------------------------------------------------------------
+-- spellbook tabs
+--
+-- The client files a spell under a tab by its skill line -- "Fire", "Holy",
+-- "Feral Combat" -- and the server now gives a Hero the skill lines their
+-- spells belong to, so every spell has a heading to sit under instead of
+-- everything landing in General.
+--
+-- Blizzard only ever builds 8 tab buttons, because no real class needs more.
+-- A Hero can span all 33 class skill lines, so build the rest from Blizzard's
+-- own virtual template and wrap them into columns beside the spellbook: the
+-- frame is only tall enough for 8 in a row.
+-- ---------------------------------------------------------------------------
+local CW_TAB_LIMIT = 40          -- comfortably above the 33 that carry spells
+local CW_TABS_PER_COLUMN = 8     -- what fits beside the frame, as Blizzard has it
+local CW_TAB_STEP_Y = 49         -- 32px button + Blizzard's 17px gap
+local CW_TAB_STEP_X = 42
+
+local function CW_LayoutSpellbookTabs()
+    if not SpellBookFrame then return end
+    for i = 1, MAX_SKILLLINE_TABS do
+        local tab = _G["SpellBookSkillLineTab" .. i]
+        if tab then
+            local col = math.floor((i - 1) / CW_TABS_PER_COLUMN)
+            local row = math.fmod(i - 1, CW_TABS_PER_COLUMN)
+            tab:ClearAllPoints()
+            tab:SetPoint("TOPLEFT", SpellBookFrame, "TOPRIGHT",
+                         -32 + col * CW_TAB_STEP_X, -65 - row * CW_TAB_STEP_Y)
+        end
+    end
+end
+
+local function CW_BuildSpellbookTabs()
+    if not SpellBookFrame or not MAX_SKILLLINE_TABS then return end
+    if MAX_SKILLLINE_TABS >= CW_TAB_LIMIT then return end
+
+    for i = MAX_SKILLLINE_TABS + 1, CW_TAB_LIMIT do
+        if not _G["SpellBookSkillLineTab" .. i] then
+            -- Blizzard's own template, so these behave exactly like tabs 1-8:
+            -- same art, same click handler, same tooltip.
+            local tab = CreateFrame("CheckButton", "SpellBookSkillLineTab" .. i,
+                                    SpellBookFrame, "SpellBookSkillLineTabTemplate")
+            tab:SetID(i)
+            tab:Hide()
+        end
+    end
+    -- raise the ceiling only after the buttons exist, so Blizzard's update loop
+    -- can never index a tab that was not created
+    MAX_SKILLLINE_TABS = CW_TAB_LIMIT
+    CW_LayoutSpellbookTabs()
+end
+
+-- SpellBookFrame is loaded on demand, so wait for it rather than assuming.
+local tabWatcher = CreateFrame("Frame")
+tabWatcher:RegisterEvent("PLAYER_ENTERING_WORLD")
+tabWatcher:RegisterEvent("ADDON_LOADED")
+tabWatcher:SetScript("OnEvent", function()
+    if SpellBookFrame and not tabWatcher.done then
+        tabWatcher.done = true
+        CW_BuildSpellbookTabs()
+        -- Blizzard re-shows and re-textures tabs on every update but never
+        -- re-anchors them, so one layout pass after each update is enough.
+        if SpellBookFrame_Update then
+            hooksecurefunc("SpellBookFrame_Update", CW_LayoutSpellbookTabs)
+        end
+    end
+end)
+
 SLASH_CLASSLESSWILDCARDBARS1 = "/cwbars"
 SlashCmdList["CLASSLESSWILDCARDBARS"] = function()
     ClasslessWildcardDB = ClasslessWildcardDB or {}

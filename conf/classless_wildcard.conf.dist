@@ -173,6 +173,25 @@ ClasslessWildcard.RespectLevelRequirements = 1
 #        Default: 1
 
 #
+#    ClasslessWildcard.SpellbookTabs
+#        The client files a spell under a spellbook tab by its skill line --
+#        "Fire", "Holy", "Feral Combat" -- but only for skill lines the
+#        character HAS. A Hero has just the chassis class's, so a rolled
+#        Fireball had nowhere to go and landed in General with everything else,
+#        while the one or two chassis spells sat in a lonely class tab.
+#
+#        Giving the Hero the skill lines their spells belong to puts each spell
+#        under its own heading. The addon builds the extra tab buttons, because
+#        Blizzard only ever made 8 and a Hero can span all 33 class skill lines.
+#
+#          0 = off, stock behaviour (one class tab, everything else General)
+#          1 = a tab for every skill line the Hero owns spells in (no empty tabs)
+#          2 = every class tab present from the start
+#
+#        Requires the client addon; without it the extra tabs have no buttons.
+#        Default: 1
+
+#
 #    ClasslessWildcard.FormStarterKits
 #        A shapeshift form or a warrior stance does nothing on its own. Draw
 #        Bear Form out of the deck with nothing to go with it and you have
@@ -259,6 +278,7 @@ ClasslessWildcard.StarterKit.Items = "25:1,2362:1,2092:2,36:1,1194:1,2361:1,1228
 ClasslessWildcard.TeachProficiencies = 1
 ClasslessWildcard.BlockOutsideSpellSources = 1
 ClasslessWildcard.ClasslessClassChecks = 1
+ClasslessWildcard.SpellbookTabs = 1
 ClasslessWildcard.FormStarterKits = 1
 ClasslessWildcard.WorldDrops.Enable = 1
 ClasslessWildcard.WorldDrops.Chance = 1.0

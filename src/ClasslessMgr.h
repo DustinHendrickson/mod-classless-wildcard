@@ -106,6 +106,9 @@ public:
     // SaveToDB, so the caller must re-save for the change to persist.
     bool ApplyStarterGear(Player* player);
     void TeachProficiencies(Player* player);
+    // Give the Hero the skill lines their spells belong to, so the client files
+    // each one under its own spellbook tab instead of dumping them in General.
+    void SyncSpellbookTabs(Player* player);
     void UpdateAbilityRanks(Player* player); // learn newly available ranks of owned lines
     // Remove class-library spells the Hero did not earn. Runs at every login,
     // not just the first: anything the core re-teaches afterwards would
@@ -163,6 +166,10 @@ private:
     std::unordered_map<uint32, std::vector<uint32>> _formKits;
     // shapeshift form id -> the first-rank spell that grants that form
     std::unordered_map<uint32, uint32> _formSpells;
+    // spell (any rank) -> the class skill line it is filed under, and the set of
+    // every class skill line the library touches
+    std::unordered_map<uint32, uint16> _spellSkillLine;
+    std::set<uint16> _classSkillLines;
     std::unordered_map<ObjectGuid::LowType, ClasslessWildcard::CharState> _states;
     bool _libraryBuilt = false;
     bool _applyingGrant = false;
