@@ -1196,9 +1196,16 @@ CW.comboDots = comboDots
 -- which runes are up; the server mirrors the block over the addon channel
 -- ("RU|runic|max|type,cooldown x6") and these draw it.
 --
--- Solid colour rather than the game's rune artwork on purpose: the Death
--- Knight textures are not guaranteed to be present in every client's archive
--- stack, and a missing texture would show as nothing at all.
+-- The game's own rune art, which every 3.3.5a client ships in locale-enUS.MPQ
+-- (verified against the archive stack rather than assumed). The solid colours
+-- below are the fallback for a client whose archives are incomplete, since a
+-- missing texture would otherwise draw nothing at all.
+local RUNE_TEXTURE = {
+    [0] = "Interface\\PlayerFrame\\UI-PlayerFrame-Deathknight-Blood",
+    [1] = "Interface\\PlayerFrame\\UI-PlayerFrame-Deathknight-Unholy",
+    [2] = "Interface\\PlayerFrame\\UI-PlayerFrame-Deathknight-Frost",
+    [3] = "Interface\\PlayerFrame\\UI-PlayerFrame-Deathknight-Death",
+}
 local RUNE_COLOR = {
     [0] = { 0.80, 0.10, 0.10 },   -- blood
     [1] = { 0.30, 0.70, 0.20 },   -- unholy
@@ -1206,13 +1213,25 @@ local RUNE_COLOR = {
     [3] = { 0.70, 0.35, 0.90 },   -- death
 }
 
+local RUNE_SIZE = 18
 local runePips = {}
 for i = 1, 6 do
-    local pip = barsFrame:CreateTexture(nil, "ARTWORK")
-    pip:SetWidth(14); pip:SetHeight(14)
-    pip:SetTexture(0.3, 0.3, 0.3)
-    pip:Hide()
-    runePips[i] = pip
+    local holder = CreateFrame("Frame", nil, barsFrame)
+    holder:SetWidth(RUNE_SIZE); holder:SetHeight(RUNE_SIZE)
+
+    local rune = holder:CreateTexture(nil, "ARTWORK")
+    rune:SetAllPoints(holder)
+
+    -- the ring the player frame draws around a real Death Knight's runes
+    local ring = holder:CreateTexture(nil, "OVERLAY")
+    ring:SetWidth(RUNE_SIZE * 1.45); ring:SetHeight(RUNE_SIZE * 1.45)
+    ring:SetPoint("CENTER", holder, "CENTER", 0, 0)
+    if not ring:SetTexture("Interface\\PlayerFrame\\UI-PlayerFrame-Deathknight-Ring") then
+        ring:Hide()
+    end
+
+    holder:Hide()
+    runePips[i] = { frame = holder, rune = rune, ring = ring }
 end
 CW.runePips = runePips
 
@@ -1271,16 +1290,25 @@ function CW.RefreshBars()
             local r = runes[i]
             local pip = runePips[i]
             if r then
-                local color = RUNE_COLOR[r.kind] or RUNE_COLOR[0]
+                local kind = r.kind or 0
                 -- a rune on cooldown is dimmed rather than hidden, so the row
                 -- never changes width and the eye can count what is missing
                 local ready = r.ready
-                local scale = ready and 1 or 0.28
-                pip:SetTexture(color[1] * scale, color[2] * scale, color[3] * scale)
-                pip:SetPoint("TOPLEFT", 12 + (i - 1) * 18, top)
-                pip:Show()
+                if not pip.rune:SetTexture(RUNE_TEXTURE[kind] or RUNE_TEXTURE[0]) then
+                    local c = RUNE_COLOR[kind] or RUNE_COLOR[0]
+                    pip.rune:SetTexture(c[1], c[2], c[3])
+                end
+                pip.rune:SetVertexColor(1, 1, 1, 1)
+                pip.rune:SetAlpha(ready and 1 or 0.30)
+                if pip.rune.SetDesaturated then
+                    pip.rune:SetDesaturated(not ready)
+                end
+                pip.ring:SetAlpha(ready and 1 or 0.45)
+                pip.frame:ClearAllPoints()
+                pip.frame:SetPoint("TOPLEFT", barsFrame, "TOPLEFT", 14 + (i - 1) * 22, top)
+                pip.frame:Show()
             else
-                pip:Hide()
+                pip.frame:Hide()
             end
         end
         extra = extra + 20
@@ -1295,7 +1323,7 @@ function CW.RefreshBars()
             runicBar:Hide()
         end
     else
-        for i = 1, 6 do runePips[i]:Hide() end
+        for i = 1, 6 do runePips[i].frame:Hide() end
         runicBar:Hide()
     end
 
