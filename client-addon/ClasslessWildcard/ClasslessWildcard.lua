@@ -1395,13 +1395,28 @@ local function CW_BuildSpellbookTabs()
     if MAX_SKILLLINE_TABS >= CW_TAB_LIMIT then return end
 
     for i = MAX_SKILLLINE_TABS + 1, CW_TAB_LIMIT do
-        if not _G["SpellBookSkillLineTab" .. i] then
+        local name = "SpellBookSkillLineTab" .. i
+        if not _G[name] then
             -- Blizzard's own template, so these behave exactly like tabs 1-8:
             -- same art, same click handler, same tooltip.
-            local tab = CreateFrame("CheckButton", "SpellBookSkillLineTab" .. i,
-                                    SpellBookFrame, "SpellBookSkillLineTabTemplate")
+            local tab = CreateFrame("CheckButton", name, SpellBookFrame,
+                                    "SpellBookSkillLineTabTemplate")
             tab:SetID(i)
             tab:Hide()
+
+            -- The glow texture is NOT part of that template. Blizzard declares
+            -- eight of them by hand inside SpellBookTabFlashFrame, and
+            -- SpellBookFrame_Update calls
+            --     _G["SpellBookSkillLineTab"..i.."Flash"]:Hide()
+            -- for every tab up to MAX_SKILLLINE_TABS. Raising the ceiling
+            -- without making these is what threw "attempt to index field '?'".
+            local flashParent = SpellBookTabFlashFrame or SpellBookFrame
+            local flash = flashParent:CreateTexture(name .. "Flash", "OVERLAY")
+            flash:SetTexture("Interface\\Buttons\\CheckButtonGlow")
+            flash:SetBlendMode("ADD")
+            flash:SetWidth(64); flash:SetHeight(64)
+            flash:SetPoint("CENTER", tab, "CENTER", 0, 0)
+            flash:Hide()
         end
     end
     -- raise the ceiling only after the buttons exist, so Blizzard's update loop
