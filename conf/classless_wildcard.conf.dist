@@ -183,6 +183,13 @@ ClasslessWildcard.RespectLevelRequirements = 1
 #        Stance brings Charge, Defensive Stance Taunt, Berserker Stance Pummel.
 #        The pairs are data, in the `cw_form_kits` world table -- add your own
 #        rows, or set a row's `enabled` to 0 to drop just that one.
+#
+#        The same flag covers the reverse, which needs no table at all: an
+#        ability that can ONLY be used in a stance or form hands over that form
+#        when you gain it. Charge brings Battle Stance, Revenge Defensive
+#        Stance, Whirlwind Berserker Stance, Shred Cat Form. Read from each
+#        spell's own shapeshift mask, so it covers every stance-locked ability
+#        in the game without naming any of them.
 #        Default: 1
 
 #

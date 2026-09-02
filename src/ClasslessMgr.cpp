@@ -589,6 +589,7 @@ void ClasslessMgr::BuildLibrary()
     }
 
     LoadOverrides();
+    BuildFormSpellMap();
     LoadFormKits();
     LoadArchetypes();
     _libraryBuilt = true;
@@ -634,6 +635,79 @@ void ClasslessMgr::LoadOverrides()
             t.enabled = f[3].Get<bool>();
         } while (result->NextRow());
     }
+}
+
+// Which ability puts a Hero into each shapeshift form?
+//
+// Derived from spell data rather than a table: a form spell is simply one whose
+// aura is SPELL_AURA_MOD_SHAPESHIFT, and the form it grants is that effect's
+// MiscValue. Only library entries are considered, so the map can never point at
+// something a Hero has no way to obtain.
+void ClasslessMgr::BuildFormSpellMap()
+{
+    _formSpells.clear();
+    for (auto const& [firstSpell, e] : _abilities)
+    {
+        SpellInfo const* info = sSpellMgr->GetSpellInfo(firstSpell);
+        if (!info)
+            continue;
+        for (uint8 ei = 0; ei < MAX_SPELL_EFFECTS; ++ei)
+        {
+            if (info->Effects[ei].ApplyAuraName != SPELL_AURA_MOD_SHAPESHIFT)
+                continue;
+            uint32 form = uint32(info->Effects[ei].MiscValue);
+            if (form && !_formSpells.count(form))
+                _formSpells[form] = firstSpell;
+        }
+    }
+    LOG_INFO("module.classless", "mod-classless-wildcard: {} shapeshift forms mapped to abilities",
+             _formSpells.size());
+}
+
+// An ability that can only be used in a stance or form is useless without it.
+// Charge needs Battle Stance, Maul needs Bear Form, Shred needs Cat Form -- and
+// under the class system nobody could ever hold one without the other, because
+// the stance came with the class. A Hero can draw Charge on its own and find it
+// permanently greyed out.
+//
+// SpellInfo::Stances is a mask of the forms a spell may be cast in, so this is
+// general: it covers every stance- or form-locked ability in the game without
+// naming any of them.
+void ClasslessMgr::GrantRequiredForm(Player* player, AbilityEntry const& e, GrantSource source)
+{
+    if (!cfg.formKitsEnable || _grantingKit)
+        return;
+
+    SpellInfo const* info = sSpellMgr->GetSpellInfo(e.firstSpellId);
+    if (!info || !info->Stances)
+        return;
+
+    // Already able to use it? Any one of the allowed forms is enough, so a
+    // Hero who owns Berserker Stance is not handed Battle Stance as well.
+    for (auto const& [form, formSpell] : _formSpells)
+        if ((info->Stances & (1u << (form - 1))) && player->HasSpell(formSpell))
+            return;
+
+    // Otherwise hand over the lowest-numbered form that would unlock it, which
+    // keeps the choice stable rather than depending on map order.
+    uint32 best = 0, bestForm = 0;
+    for (auto const& [form, formSpell] : _formSpells)
+        if ((info->Stances & (1u << (form - 1))) && (!bestForm || form < bestForm))
+        {
+            bestForm = form;
+            best = formSpell;
+        }
+    if (!best)
+        return;
+
+    AbilityEntry const* formEntry = GetAbility(best);
+    if (!formEntry)
+        return;
+
+    GrantGuard guard(_grantingKit);
+    GrantAbilityInternal(player, *formEntry, source, true, false);
+    Msg(player, Acore::StringFormat("{} can only be used in {} -- so that comes with it.",
+        SpellName(e.firstSpellId), SpellName(best)));
 }
 
 // The spells that come free with a form or stance, from `cw_form_kits`. Both
@@ -1534,6 +1608,7 @@ void ClasslessMgr::GrantAbilityInternal(Player* player, AbilityEntry const& e, G
             RarityColor(e.rarity), SpellName(e.firstSpellId), RarityName(e.rarity)));
 
     GrantFormKit(player, e, source);
+    GrantRequiredForm(player, e, source);
 }
 
 // A form or stance on its own does nothing: a Hero who draws Bear Form without

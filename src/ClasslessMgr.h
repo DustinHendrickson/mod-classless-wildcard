@@ -127,6 +127,11 @@ private:
 
     void LoadOverrides();
     void LoadFormKits();
+    // form id -> the library ability that puts you in it, built from spell data
+    void BuildFormSpellMap();
+    // Give a Hero the stance or form an ability cannot be used without.
+    void GrantRequiredForm(Player* player, ClasslessWildcard::AbilityEntry const& e,
+                           ClasslessWildcard::GrantSource source);
     // Hand over the basic spells that make a freshly gained form or stance
     // usable. Called for every ability grant; does nothing for the vast
     // majority that are not forms.
@@ -152,6 +157,8 @@ private:
     std::unordered_map<uint32, uint32> _spellToFirst;                  // any rank -> firstSpellId
     // form/stance spell (any rank) -> the basic spells that come with it
     std::unordered_map<uint32, std::vector<uint32>> _formKits;
+    // shapeshift form id -> the first-rank spell that grants that form
+    std::unordered_map<uint32, uint32> _formSpells;
     std::unordered_map<ObjectGuid::LowType, ClasslessWildcard::CharState> _states;
     bool _libraryBuilt = false;
     bool _applyingGrant = false;
