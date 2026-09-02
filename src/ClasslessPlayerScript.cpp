@@ -394,22 +394,31 @@ public:
                     // cooldowns count down every frame, so comparing the
                     // rendered message would send one addon message per tick
                     // for the whole ten seconds a rune takes to come back.
-                    // What the bar shows is which runes are up, what type they
-                    // are, and roughly how much runic power -- so that is what
-                    // the signature covers, and runic power only to the
-                    // nearest twentieth.
+                    // The signature is what the bar SHOWS: rune types and
+                    // which are up. Runic power is handled separately below.
                     uint32 maxRunic = player->GetMaxPower(POWER_RUNIC_POWER);
                     uint32 runic = player->GetPower(POWER_RUNIC_POWER);
-                    uint32 sig = maxRunic ? (runic * 20 / maxRunic) : 0;
+                    uint32 sig = 0;
                     for (uint8 i = 0; i < MAX_RUNES; ++i)
                     {
                         sig = sig * 8 + uint32(player->GetCurrentRune(i));
                         sig = sig * 2 + (player->GetRuneCooldown(i) ? 0u : 1u);
                     }
+                    uint8 bucket = maxRunic ? uint8(runic * 20 / maxRunic) : uint8(0);
 
-                    if (sig != cpSt.lastRuneSig)
+                    // A rune changing state is an event and redraws at once.
+                    // Runic power moves continuously, so on its own it redraws
+                    // at most once a second -- otherwise it, not the runes,
+                    // sets the message rate.
+                    cpSt.runeAcc += p_time;
+                    bool const runesChanged = (sig != cpSt.lastRuneSig);
+                    bool const runicDue = (bucket != cpSt.lastRunicBucket) && cpSt.runeAcc >= 1000;
+
+                    if (runesChanged || runicDue)
                     {
                         cpSt.lastRuneSig = sig;
+                        cpSt.lastRunicBucket = bucket;
+                        cpSt.runeAcc = 0;
                         // "RU|<runic>|<maxRunic>|<type>,<ready>|... x6"
                         std::string msg = Acore::StringFormat("RU|{}|{}", runic, maxRunic);
                         for (uint8 i = 0; i < MAX_RUNES; ++i)

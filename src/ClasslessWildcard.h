@@ -153,11 +153,17 @@ namespace ClasslessWildcard
         // would let a `.reload config` turn the per-tick rune loop on for
         // characters InitRunes had already skipped, and read a null block.
         bool runes = false;
-        // Signature of the last rune state pushed to the addon. Runes are
-        // what changed, NOT how many milliseconds are left: cooldowns tick
-        // every frame, so keying on the raw numbers would send a message per
-        // tick. 0xFFFFFFFF is "nothing pushed yet".
+        // Last rune state pushed to the addon: which runes are up and what
+        // type they are, NOT how many milliseconds are left, because cooldowns
+        // tick every frame and keying on the raw numbers would send a message
+        // per tick. 0xFFFFFFFF is "nothing pushed yet".
         uint32 lastRuneSig = 0xFFFFFFFF;
+        // Runic power is tracked separately and in twentieths, because it is
+        // the one part that moves continuously. A rune coming up redraws at
+        // once; runic power drifting on its own redraws at most once a second,
+        // which is smooth enough for a bar and stops it dominating the traffic.
+        uint8  lastRunicBucket = 255;
+        uint32 runeAcc = 0;
         bool loaded = false;
     };
 
