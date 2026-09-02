@@ -107,6 +107,10 @@ public:
     bool ApplyStarterGear(Player* player);
     void TeachProficiencies(Player* player);
     void UpdateAbilityRanks(Player* player); // learn newly available ranks of owned lines
+    // Remove class-library spells the Hero did not earn. Runs at every login,
+    // not just the first: anything the core re-teaches afterwards would
+    // otherwise stay forever.
+    uint32 StripUnearnedSpells(Player* player);
     // true while the module itself is teaching spells (lets the learn-spell
     // hook distinguish module grants from trainers/quests)
     bool IsApplyingGrant() const { return _applyingGrant; }

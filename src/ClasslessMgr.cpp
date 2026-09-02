@@ -1350,13 +1350,7 @@ void ClasslessMgr::HandleFirstLogin(Player* player)
     // clean slate: a Hero starts with NO class abilities — everything comes
     // through essences (classless) or rolls (wildcard)
     if (cfg.stripStartingSpells)
-    {
-        GrantGuard guard(_applyingGrant);
-        for (auto const& [firstSpell, e] : _abilities)
-            for (uint32 rank : e.ranks)
-                if (player->HasSpell(rank))
-                    player->removeSpell(rank, SPEC_MASK_ALL, false);
-    }
+        StripUnearnedSpells(player);
 
     // neutral Hero starter kit
     if (cfg.starterKitEnable)
@@ -1459,6 +1453,16 @@ void ClasslessMgr::HandleLogin(Player* player)
 
     TeachProficiencies(player);
     ApplyStatMods(player);
+
+    // Sweep again on every login, not just the first. The chassis class's own
+    // spells come back on their own -- a Hero was showing Holy Light in the
+    // Paladin tab of a spellbook they never trained -- and a first-login-only
+    // strip leaves anything that arrives later in place permanently.
+    if (cfg.stripStartingSpells)
+        if (uint32 removed = StripUnearnedSpells(player))
+            LOG_DEBUG("module.classless",
+                      "mod-classless-wildcard: removed {} unearned spell(s) from {} at login",
+                      removed, player->GetName());
 
     // catch up levels gained while the module was off / before install
     if (st.lastProcessedLevel < player->GetLevel())
@@ -1722,6 +1726,39 @@ void ClasslessMgr::RemoveTalentInternal(Player* player, TalentPoolEntry const& t
         CharacterDatabase.Execute(
             "DELETE FROM cw_char_talents WHERE guid = {} AND talent_id = {}",
             player->GetGUID().GetCounter(), t.talentId);
+}
+
+// Every class-library spell the Hero has NOT earned, removed.
+//
+// "Earned" means a rank of an ability they own or a rank spell of a talent they
+// own -- so this cannot take away anything bought, rolled, or handed over with
+// a form. Everything else in the library is a spell the chassis class gave them
+// for free, which is the one thing the classless economy must not allow.
+uint32 ClasslessMgr::StripUnearnedSpells(Player* player)
+{
+    CharState& st = GetState(player);
+
+    std::unordered_set<uint32> earned;
+    for (auto const& [firstSpell, owned] : st.abilities)
+        if (AbilityEntry const* e = GetAbility(firstSpell))
+            for (uint32 rank : e->ranks)
+                earned.insert(rank);
+    for (auto const& [talentId, rank] : st.talents)
+        if (TalentPoolEntry const* t = GetTalent(talentId))
+            for (uint8 r = 0; r < rank && r < t->rankSpells.size(); ++r)
+                if (t->rankSpells[r])
+                    earned.insert(t->rankSpells[r]);
+
+    GrantGuard guard(_applyingGrant);
+    uint32 removed = 0;
+    for (auto const& [firstSpell, e] : _abilities)
+        for (uint32 rank : e.ranks)
+            if (!earned.count(rank) && player->HasSpell(rank))
+            {
+                player->removeSpell(rank, SPEC_MASK_ALL, false);
+                ++removed;
+            }
+    return removed;
 }
 
 void ClasslessMgr::UpdateAbilityRanks(Player* player)
