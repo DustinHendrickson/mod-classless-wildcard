@@ -48,7 +48,7 @@ public:
 
 class ClasslessPlayerScript : public PlayerScript
 {
-    std::unordered_map<uint64, uint32> _manaRegenAcc; // guid low -> ms accumulator
+    std::unordered_map<uint64, uint32> _tickAcc; // guid low -> ms accumulator
 
 public:
     ClasslessPlayerScript() : PlayerScript("ClasslessPlayerScript", {
@@ -295,18 +295,16 @@ public:
 
     void OnPlayerLogout(Player* player) override
     {
-        _manaRegenAcc.erase(player->GetGUID().GetCounter());
+        _tickAcc.erase(player->GetGUID().GetCounter());
         sClasslessMgr->UnloadState(player->GetGUID());
     }
 
     // 2-second maintenance tick:
     //  * universal STAT layer — fills the gaps the chassis math leaves so
     //    every allocatable stat matters on a classless Hero:
-    //    AGI -> melee/ranged AP, INT -> spell power, SPI -> mana regen.
+    //    AGI -> melee/ranged AP, INT -> spell power.
     //    (STR->AP/block, STA->health, AGI->crit/dodge, INT->mana/spell crit
     //    already work uniformly through the shared chassis.)
-    //  * mana regen floor — spirit-driven, and not subject to the core's
-    //    five-second rule, so allocated Spirit still pays during a cast.
     void OnPlayerUpdate(Player* player, uint32 p_time) override
     {
         Config const& cfg = sClasslessMgr->cfg;
@@ -388,11 +386,10 @@ public:
             }
         }
 
-        uint32& acc = _manaRegenAcc[player->GetGUID().GetCounter()];
+        uint32& acc = _tickAcc[player->GetGUID().GetCounter()];
         acc += p_time;
         if (acc < 2000)
             return;
-        uint32 ticks = acc / 2000;
         acc %= 2000;
 
         if (sClasslessMgr->IsExempt(player))
@@ -425,27 +422,6 @@ public:
             }
         }
 
-        // The core already regenerates mana from Spirit -- but the five-second
-        // rule zeroes that the instant a Hero starts casting, and the talents
-        // that lift it (Meditation, Arcane Meditation, Intensity) sit in class
-        // trees a Hero may never buy into. A classless Hero who allocated
-        // Spirit would otherwise watch it do nothing all fight. This tick is
-        // not subject to the rule, so it is the floor that makes the stat
-        // honest whatever the Hero picked.
-        if (cfg.universalResources)
-        {
-            uint32 maxMana = player->GetMaxPower(POWER_MANA);
-            uint32 curMana = player->GetPower(POWER_MANA);
-            if (maxMana && curMana < maxMana)
-            {
-                // mana per 5s: Base + Spirit*PerSpirit + Pct% of max
-                float mp5 = cfg.urManaRegenBase
-                    + player->GetStat(STAT_SPIRIT) * cfg.urManaRegenPerSpirit
-                    + float(maxMana) * float(cfg.urManaRegenPct) / 100.0f;
-                int32 add = std::max<int32>(1, int32(mp5 * 2.0f / 5.0f));
-                player->ModifyPower(POWER_MANA, add * int32(ticks));
-            }
-        }
     }
 
     void OnPlayerLevelChanged(Player* player, uint8 oldLevel) override

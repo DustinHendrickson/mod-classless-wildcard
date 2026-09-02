@@ -62,7 +62,8 @@ local CW = {
     heroPage = 0, wcPage = 0,
     stats = { budget = 0, unspent = 0, perPoint = 1, alloc = { 0, 0, 0, 0, 0 }, enabled = 1,
               uniStats = false, apPerAgi = 1, rapPerAgi = 1, spPerInt = 0.5,
-              mp5Base = 0, mp5PerSpi = 0, mp5Pct = 0 },
+              strMeleeAP = 2, agiMeleeAP = 0, agiRangedAP = 1,
+              critPerAgi = 0, spellCritPerInt = 0, mp5PerSpi = 0, hp5PerSpi = 0 },
     statsPending = nil, -- local unsaved edits
 }
 local STAT_NAMES = { "Strength", "Agility", "Stamina", "Intellect", "Spirit" }
@@ -646,7 +647,66 @@ local helpContent = CreateFrame("Frame", nil, helpScroll)
 helpContent:SetWidth(540); helpContent:SetHeight(1)
 helpScroll:SetScrollChild(helpContent)
 
-local HELP_TEXT = table.concat({
+-- Trim a rate for display: 2 not 2.0, 0.5 not 0.50.
+local function Rate(v)
+    if v == math.floor(v) then return tostring(math.floor(v)) end
+    return (string.format("%.2f", v):gsub("0+$", ""):gsub("%.$", ""))
+end
+
+-- A per-point percentage this small is unreadable (+0.02%), so invert it into
+-- the form players actually use: "1% per 52 Agility".
+local function PerPercent(pct)
+    if not pct or pct <= 0 then return nil end
+    return string.format("%.0f", 1 / pct)
+end
+
+-- What one point of a stat is worth. Health and mana come from the core's own
+-- fixed conversions; attack power and spell power combine what the chassis
+-- gives natively with what the classless layer adds on top. Anything that
+-- scales with level (crit, dodge, regeneration) is named rather than given a
+-- number, because there is no single per-point figure for it.
+local function StatPerPoint(i)
+    local s = CW.stats
+    local uni = s.uniStats
+    if i == 1 then
+        return "+" .. Rate(s.strMeleeAP or 2) .. " melee attack power, +0.5 block value"
+    elseif i == 2 then
+        local melee = (s.agiMeleeAP or 0) + (uni and (s.apPerAgi or 0) or 0)
+        local ranged = (s.agiRangedAP or 1) + (uni and (s.rapPerAgi or 0) or 0)
+        local ap
+        if melee > 0 then
+            ap = "+" .. Rate(melee) .. " melee and +" .. Rate(ranged) .. " ranged attack power"
+        else
+            ap = "+" .. Rate(ranged) .. " ranged attack power"
+        end
+        local per = PerPercent(s.critPerAgi)
+        if per then
+            return ap .. ", 1% critical strike per " .. per .. " Agility, plus dodge"
+        end
+        return ap .. ", plus critical strike and dodge"
+    elseif i == 3 then
+        return "+10 health (the first 20 points give +1 each)"
+    elseif i == 4 then
+        local sp = uni and (s.spPerInt or 0) or 0
+        local txt = "+15 mana (the first 20 points give +1 each)"
+        if sp > 0 then
+            txt = txt .. ", +" .. Rate(sp) .. " spell power (past your first 10 Intellect)"
+        end
+        local per = PerPercent(s.spellCritPerInt)
+        if per then
+            return txt .. ", 1% spell critical strike per " .. per .. " Intellect"
+        end
+        return txt .. ", plus spell critical strike"
+    end
+    if (s.mp5PerSpi or 0) > 0 then
+        return string.format("+%.2f mana and +%.2f health per 5 sec while not casting",
+                             s.mp5PerSpi, s.hp5PerSpi or 0)
+    end
+    return "mana and health regeneration, scaling with your level and Intellect"
+end
+
+local function BuildHelpText()
+    return table.concat({
 "|cffffd100You are a Hero.|r Every character runs on the same hidden base class, so the |cffffffffclass you pick at creation is just for show|r -- it grants no special abilities and locks nothing away. Your |cffffffffrace|r is the real choice at creation: its racial traits are yours to keep. Everything else -- every ability and talent -- you earn yourself, and you can take it from |cffffffffany class in the game|r.",
 "",
 "You gain that power one of two ways. You choose a path per character, and can |cffffd100Rebirth|r later to switch.",
@@ -664,7 +724,7 @@ local HELP_TEXT = table.concat({
 "   |cff00ff00Level 1:|r  4 random abilities to begin.",
 "   |cff00ff00From level 10:|r  1 talent every level, 1 ability every 2 levels.",
 "Rolls are rarity-weighted, so legendaries are the rarest.",
-"A rolled talent also lands on a random |cffffd100rank|r, and the rank IS its rarity: rank 1 common, rank 2 uncommon, rank 3 rare, rank 4 epic, |cffff8000rank 5 legendary|r. A high rank is the jackpot -- rolls cost you nothing, so a rank 5 is all five ranks handed over for free. (A Classless Hero would have to buy each of those ranks.)",
+"A talent roll also rolls the |cffffd100rank|r you land on, and the rank IS its rarity: rank 1 common, rank 2 uncommon, rank 3 rare, rank 4 epic, |cffff8000rank 5 legendary|r. The rank is drawn from anything above what you already have, not one step up, so a talent you hold at rank 2 can jump straight to rank 5 -- and a talent you have never seen can arrive at its top rank. A high rank is the jackpot: rolls cost you nothing, so landing on rank 5 hands you the full-strength talent for free, where a Classless Hero pays for every rank up to it. Rolling into a talent you already own upgrades it and rolls again, up to four times in one go.",
 "You steer your luck:",
 "   |cffffd100Rerolls|r -- every roll also grants a reroll charge (rerolls are free below level 10). One pool, spent on abilities or talents alike. Reroll straight from the popup, or later from |cffffd100My Build|r using the circular arrow next to anything you own.",
 "   |cffffd100Lock|r -- protect an ability so a later roll can't overwrite it.",
@@ -675,17 +735,18 @@ local HELP_TEXT = table.concat({
 "|cff40ff40==  Shared by both paths  ==|r",
 "   |cffffd100Universal resources|r -- you carry mana, rage AND energy at once, and each spell draws its own, so nothing is ever unusable. Toggle the extra bars with |cffffd100/cwbars|r.",
 "   |cffffd100Primary stats|r -- you get points every level to spend across STR / AGI / STA / INT / SPI, and reallocating them is free at any time. Open the |cffffd100Stats|r button and hover any stat to see exactly what it is doing for your Hero right now.",
-"      |cffffd100Strength|r -- melee attack power, and block value with a shield.",
-"      |cffffd100Agility|r -- melee and ranged attack power, critical strike chance, and dodge. On a normal realm only some classes turn Agility into attack power; here every Hero does.",
-"      |cffffd100Stamina|r -- health, and nothing else. Always useful, never exciting.",
-"      |cffffd100Intellect|r -- your mana pool, your spell power, and spell critical strike chance. This is the caster stat: normal WotLK gives no spell power from Intellect at all, and this realm does.",
-"      |cffffd100Spirit|r -- mana and health regeneration. It keeps paying out while you are casting, so you do not need a Meditation-style talent to make it work.",
-"   No point is ever wasted on a build: every stat does something for every Hero, whatever you learned or rolled.",
+"      |cffffd100Strength|r -- " .. StatPerPoint(1) .. " per point.",
+"      |cffffd100Agility|r -- " .. StatPerPoint(2) .. " per point.",
+"      |cffffd100Stamina|r -- " .. StatPerPoint(3) .. " per point.",
+"      |cffffd100Intellect|r -- " .. StatPerPoint(4) .. " per point.",
+"      |cffffd100Spirit|r -- increases " .. StatPerPoint(5) .. ". Mana regeneration pauses for 5 seconds after you cast. Talents such as Meditation, Arcane Meditation and Intensity let it continue while casting, and any Hero can learn them.",
+"   Every stat does something for every Hero, so spend toward the build you are playing.",
 "   |cffffd100Proficiencies|r -- every armor and weapon type, dual wield included, is trained for you automatically.",
 "   |cffffd100Rebirth|r -- after your path locks in, Rebirth wipes everything and lets you start fresh on either path for gold.",
 "",
 "|cffaaaaaaEverything here can also be done at the Hero Advancement NPC, found in every major city beside the guild master. Open this panel any time with |r|cffffff00N|r|cffaaaaaa (the old Talents key -- talents live here now), |r|cffffff00/cw|r|cffaaaaaa, or the dice button on your minimap. Rebind the key under Key Bindings > ClasslessWildcard.|r",
 }, "\n")
+end
 
 local helpText = helpContent:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
 helpText:SetPoint("TOPLEFT", 0, 0)
@@ -693,8 +754,12 @@ helpText:SetWidth(540)
 helpText:SetJustifyH("LEFT")
 helpText:SetJustifyV("TOP")
 helpText:SetSpacing(3)
-helpText:SetText(HELP_TEXT)
-helpContent:SetHeight(helpText:GetStringHeight() + 20)
+local function RefreshHelpText()
+    helpText:SetText(BuildHelpText())
+    helpContent:SetHeight(helpText:GetStringHeight() + 20)
+end
+CW.RefreshHelpText = RefreshHelpText
+RefreshHelpText()
 CW.helpFly = helpFly
 
 helpBtn:SetScript("OnClick", function()
@@ -942,12 +1007,8 @@ local STAT_DESC = {
     [2] = "Melee and ranged attack power, critical strike chance, dodge.",
     [3] = "Health.",
     [4] = "Mana, spell power, spell critical strike chance.",
-    [5] = "Mana regeneration and health regeneration.",
+    [5] = "Mana and health regeneration. Mana regeneration pauses for 5 seconds after you cast.",
 }
-
-local function Round(v)
-    return math.floor(v + 0.5)
-end
 
 -- The module's own contribution from a stat, worked out with the same maths
 -- the server uses so the two agree.
@@ -962,11 +1023,6 @@ local function StatContribution(i, value)
         local sp = math.floor(math.max(0, value - 10) * (s.spPerInt or 0))
         if sp <= 0 then return nil end
         return "+" .. sp .. " spell power"
-    elseif i == 5 then
-        local maxMana = UnitPowerMax and UnitPowerMax("player", 0) or 0
-        local mp5 = (s.mp5Base or 0) + value * (s.mp5PerSpi or 0) + maxMana * (s.mp5Pct or 0) / 100
-        if mp5 <= 0 then return nil end
-        return Round(mp5) .. " mana per 5 sec, even while casting"
     end
     return nil
 end
@@ -981,6 +1037,8 @@ local function ShowStatTooltip(row, i)
     GameTooltip:SetOwner(row, "ANCHOR_RIGHT")
     GameTooltip:AddLine(STAT_NAMES[i], 1, 0.82, 0)
     GameTooltip:AddLine(STAT_DESC[i], 1, 1, 1, true)
+    GameTooltip:AddLine(" ")
+    GameTooltip:AddLine("Each point: " .. StatPerPoint(i), 1, 0.82, 0, true)
     GameTooltip:AddLine(" ")
     GameTooltip:AddDoubleLine("Current total", tostring(total), 0.8, 0.8, 0.8, 1, 1, 1)
 
@@ -2426,9 +2484,15 @@ local function HandleMessage(msg)
         s.apPerAgi = tonumber(p[12]) or 1
         s.rapPerAgi = tonumber(p[13]) or 1
         s.spPerInt = tonumber(p[14]) or 0.5
-        s.mp5Base = tonumber(p[15]) or 0
-        s.mp5PerSpi = tonumber(p[16]) or 0
-        s.mp5Pct = tonumber(p[17]) or 0
+        s.strMeleeAP = tonumber(p[15]) or 2
+        s.agiMeleeAP = tonumber(p[16]) or 0
+        s.agiRangedAP = tonumber(p[17]) or 1
+        s.critPerAgi = tonumber(p[18]) or 0
+        s.spellCritPerInt = tonumber(p[19]) or 0
+        s.mp5PerSpi = tonumber(p[20]) or 0
+        s.hp5PerSpi = tonumber(p[21]) or 0
+        -- the help panel quotes these rates, so rebuild it now they are known
+        if CW.RefreshHelpText then CW.RefreshHelpText() end
         CW.statsPending = nil
         RenderList() -- refreshes the stats flyout when it is open
 

@@ -108,14 +108,14 @@ Keep it, or spend a reroll.</em>
   rank at a time with prerequisites and tier rules enforced. Unlearning refunds essence, a full
   respec costs gold, and owned spell lines rank up automatically as you level.
 - **Wildcard rolls.** The Season 10 schedule and mechanics: free rerolls below level 10,
-  rarity-weighted rolls, the rule that rolling into an owned talent upgrades it and rolls again,
-  ability locking, and synergy rolls. See
+  rarity-weighted rolls, rolled talent ranks, ability locking, and synergy rolls. See
   [How Wildcard rolls work](#how-wildcard-rolls-work).
-- **Talent rank is its rarity.** A rolled talent lands on a random rank, and that rank is the
-  tier: rank 1 is common, rank 5 is legendary. Rolls cost nothing, so a rank 5 hands over all
-  five ranks free, where a Classless Hero buys each rank separately. Rank odds follow
-  `RarityWeights`. The shipped Season 9 default weights every rank equally; use descending
-  weights such as `100,60,30,10,3` to make rank 5 a rare prize.
+- **Talent rank is its rarity.** A talent roll also rolls which rank you land on, and the rank
+  sets the tier: rank 1 common through rank 5 legendary. Rolls cost nothing, so landing on rank 5
+  hands you the full-strength talent for free, where a Classless Hero pays for every rank up to
+  it. Rank odds follow `RarityWeights`. The shipped Season 9 default weights every rank equally;
+  use descending weights such as `100,60,30,10,3` to make rank 5 a rare prize. The exact rules
+  are under [How Wildcard rolls work](#how-wildcard-rolls-work).
 - **Rerolls scale with leveling.** Every scheduled roll grants a reroll charge. Charges are one
   pool spent on abilities and talents alike, and anything you already own can be rerolled later
   from **My Build**. Reroll Scrolls top the pool up when charges run out and work for either
@@ -133,11 +133,11 @@ Keep it, or spend a reroll.</em>
 - **Universal resources.** Every Hero carries mana, rage and energy at the same time. One shows
   on the main bar and the addon draws mini-bars for the rest (`/cwbars`). Each spell draws from
   its own resource, so the same Hero casts Fireball on mana and Bloodthirst on rage, and no
-  spell is unusable because of what it costs. Mana belongs to the base class itself: Paladin has
-  a real pool, real base mana and real spirit regeneration, so nothing about mana is synthesised.
-  Only rage and energy are added on top. The module also runs a mana regeneration tick that is
-  not subject to the five-second rule, so allocated Spirit keeps paying out during a cast even
-  if the Hero never bought a Meditation-style talent.
+  spell is unusable because of what it costs. Mana, its base value, its Intellect scaling and its
+  Spirit regeneration all come from the base class, so they behave as they do anywhere else, five
+  second rule included. Rage and energy are what the module adds. A Hero who wants Spirit to
+  regenerate mana during a fight learns Meditation, Arcane Meditation or Intensity, any of which
+  any Hero can take.
 - **Death Knight abilities.** Off by default, because they cost runes and the core only builds a
   rune block for a real Death Knight. Set `IncludeDeathKnight` to `1` and every Hero gets one:
   runes, rune cooldowns and runic power. The stock UI cannot draw any of it, so the server sends
@@ -147,13 +147,25 @@ Keep it, or spend a reroll.</em>
   applied immediately, with free reallocation at any time from the addon's Stats tab or
   `.classless stat`. The budget is `StartingPoints + PointsPerLevel x (level - 1)`, which on the
   defaults is 4 points at level 1 and 162 at level 80.
-- **Every stat pays out, whatever you built.** The base class already turns STR into attack power
-  and block, STA into health, AGI into crit and dodge, and INT into mana and spell crit. That
-  leaves gaps on a classless realm, because a Hero can build in directions the base class never
-  could, so the module fills them: Agility also gives melee and ranged attack power, Intellect
-  also gives spell power (0.5 per point above 10), and Spirit drives the mana regeneration tick
-  described above. No allocated point is dead weight for any build. All three rates are
-  configurable under `UniversalStats`.
+- **What a point of each stat is worth.** On the default Paladin base class, one point gives:
+
+  | Stat | Per point, at level 80 |
+  | --------- | ------------------------------------------------------------------------------- |
+  | Strength  | +2 melee attack power, +0.5 block value                                            |
+  | Agility   | +1 melee and +2 ranged attack power, and 1% critical strike per 52 Agility         |
+  | Stamina   | +10 health (the first 20 points give +1 each)                                      |
+  | Intellect | +15 mana (first 20 give +1 each), +0.5 spell power, 1% spell crit per 167 Intellect |
+  | Spirit    | mana and health regeneration, rising with your Intellect                           |
+
+  Agility's melee attack power and Intellect's spell power are the module's addition, on top of
+  what the base class already converts, because a Hero's build can point in any direction. Both
+  rates are configurable under `UniversalStats`.
+
+  Critical strike, spell critical strike and regeneration are worth less per point the higher
+  your level: the same Agility that buys 1% critical strike per 8 points at level 20 needs 52 at
+  level 80. Dodge diminishes as you stack it, so it has no flat rate at all. Hovering a stat in
+  the addon's Stats panel reads the live values for your own level and base class, so it always
+  shows what a point is worth to you right now.
 - **All proficiencies taught.** Armor, weapons and dual wield, each configurable.
 - **The base class never restricts a build.** The core checks whether a player is a Paladin,
   Druid or Shaman wherever behaviour is class-specific, which on a classless realm would answer
@@ -403,7 +415,9 @@ cooldowns.
 Candidates are every ability you do not already own whose rank-1 learn level you have reached,
 minus anything on a reroll cooldown. One is picked at random, weighted by `RarityWeights`. If
 nothing is legal at your level, the roll drops to the lowest-level entries still available rather
-than the whole library, so a level 1 Hero is never dealt a level 70 ability. A roll is never lost.
+than the whole library, so it stays as close to your level as the remaining pool allows instead of
+reaching for a level 70 ability. A roll comes up empty only if you already own the entire library,
+at which point there is nothing left to hand you.
 
 ### Synergy and pity
 
@@ -421,6 +435,26 @@ makes the tenth certain. A synergy roll resets pity, and so does Rebirth.
 Synergy matters most early. Your mask only ever grows, and Wildcard opens with four random
 abilities from up to four different classes, so within a few levels it covers most of the game
 and the filter has little left to exclude.
+
+### Talent rolls
+
+A talent roll picks a talent, then rolls which rank you land on. The rank is drawn from every rank
+above the one you already hold, up to that talent's maximum, weighted the same way abilities are.
+It is **not** a step of one: roll into a talent you hold at rank 2 and you can land on rank 5
+directly. A fresh talent is drawn from rank 1 to its maximum, so your first sight of a talent can
+be its top rank.
+
+You are granted that rank's spell, and it replaces the lower rank if you had one. You never hold
+the intermediate ranks as separate things, which is the whole saving over the Classless path,
+where each rank is bought one at a time.
+
+The rank also sets the rarity shown, rank 1 common through rank 5 legendary, unless the talent's
+own rarity is higher. That acts as a floor, so a talent set to epic in `cw_talent_override` never
+reads as common at rank 1.
+
+If the roll lands on a talent you already own, it upgrades and the Wildcard rolls again. That
+chain runs to a maximum of four grants from one roll before it stops. Talents already at maximum
+rank are excluded from the pool, so a roll is never spent on something that cannot improve.
 
 ### Reroll cooldowns
 
@@ -473,7 +507,6 @@ inline. The ones most likely to need changing:
 | `Wildcard.ScrollBuyEnable`                          | `1`          | Buy Scroll button on the addon panel                           |
 | `Wildcard.ScrollBuyBaseCopper` / `...PerLevelCopper`  | `500` / `500`| Scroll price in copper: base + per-level x level               |
 | `UniversalResources.Enable`                         | `1`          | Mana, rage and energy on every character                       |
-| `UniversalResources.ManaRegenPerSpirit`             | `0.3`        | Mana per 5s per Spirit. Ignores the five-second rule           |
 | `UniversalStats.SpellPowerPerIntellect`             | `0.5`        | Spell power per Intellect. 1 INT is worth about 1 STR          |
 | `UniversalStats.MeleeAPPerAgility`                  | `1`          | Melee attack power per Agility                                 |
 | `ClasslessWildcard.ClasslessClassChecks`            | `1`          | Any relic equips; shields and reactive abilities work          |

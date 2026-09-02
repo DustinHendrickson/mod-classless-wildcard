@@ -314,11 +314,6 @@ namespace ClasslessWildcard
         uint32 urMaxEnergy = 100;
         uint32 urRageDealtPct = 100;       // % of warrior-formula rage gained when dealing melee damage
         uint32 urRageTakenPct = 100;       // % of warrior-formula rage gained when taking damage
-        // module mana regen (per 5s): Base + Spirit*PerSpirit + Pct% of max.
-        // Not subject to the five-second rule, so Spirit pays during a cast
-        float  urManaRegenBase = 4.0f;
-        float  urManaRegenPerSpirit = 0.3f;
-        uint32 urManaRegenPct = 0;
 
         // universal stat layer: fills the gaps the chassis math leaves so
         // EVERY stat is worth allocating on a classless Hero:

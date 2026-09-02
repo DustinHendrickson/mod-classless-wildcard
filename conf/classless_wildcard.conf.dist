@@ -478,7 +478,7 @@ ClasslessWildcard.Wildcard.ScrollBuyPerLevelCopper = 500
 #        casts whatever it learns, and a great many of those spells cost mana
 #        or a percentage of base mana; on a rage or energy chassis the
 #        character has neither pool, so those abilities would simply never
-#        fire. There is no synthetic mana pool to fall back on.
+#        fire.
 #
 #        Paladin is the default and the one this module is built around: a real
 #        base mana (so percentage-of-base-mana spell costs come out right),
@@ -510,37 +510,25 @@ ClasslessWildcard.Chassis.Class = 2
 #    (scalable below). A spell whose power type is not the chassis's own is
 #    always castable -- it pays out of the pool it actually uses.
 #
-#    Mana is NOT synthesised here. The chassis is required to be a real mana
-#    class (see Chassis.Class above), so the pool, its base mana and its
-#    intellect scaling all come from the core exactly as they would for that
-#    class. Only rage and energy are layered on, since the chassis has at most
-#    one of them natively. MaxRage is in internal units (1000 = 100 displayed
-#    rage).
+#    Mana is left entirely alone. The chassis is required to be a real mana
+#    class (see Chassis.Class above), so the pool, its base mana, its intellect
+#    scaling and its Spirit regeneration all come from the core exactly as they
+#    would for that class -- five-second rule included. Only rage and energy are
+#    layered on, since the chassis has at most one of them natively. MaxRage is
+#    in internal units (1000 = 100 displayed rage).
+#
+#    Spirit therefore behaves the way it does in the base game: it pays between
+#    fights, and pauses for five seconds after a cast. A Hero who wants it to
+#    pay DURING a fight buys a talent that lifts the rule -- Meditation, Arcane
+#    Meditation or Intensity. Every Hero can buy any of the three, so that is a
+#    build decision rather than a class one, and the module does not pre-empt
+#    it.
 
 ClasslessWildcard.UniversalResources.Enable = 1
 ClasslessWildcard.UniversalResources.MaxRage = 1000
 ClasslessWildcard.UniversalResources.MaxEnergy = 100
 ClasslessWildcard.UniversalResources.RageFromDealtPct = 100
 ClasslessWildcard.UniversalResources.RageFromTakenPct = 100
-# Mana regeneration: mana per 5s = ManaRegenBase
-#                      + Spirit * ManaRegenPerSpirit + ManaRegenPct% of max.
-# Spirit-driven by default, so allocating Spirit genuinely matters.
-#
-# This ticks on top of the core's own Spirit regen, and it is deliberately NOT
-# subject to the five-second rule. The core's regen stops paying the instant a
-# Hero starts casting, and the talents that lift that (Meditation, Arcane
-# Meditation, Intensity) sit in class trees a Hero may never buy into -- a
-# classless Hero who allocated Spirit would otherwise watch it do nothing for
-# the whole fight. This is the floor that keeps the stat honest.
-#
-# Note the default 0.3 was sized against a small pool. On a Paladin chassis at
-# level 80 a Hero carries some 19,000 mana, so 150 Spirit is about 49 mana per
-# 5s -- a real floor while levelling, close to noise at the cap. Raise
-# ManaRegenPerSpirit, or use ManaRegenPct, if you want it to scale with the
-# pool rather than sit under it.
-ClasslessWildcard.UniversalResources.ManaRegenBase = 4
-ClasslessWildcard.UniversalResources.ManaRegenPerSpirit = 0.3
-ClasslessWildcard.UniversalResources.ManaRegenPct = 0
 
 ########################################
 # Universal stats: every stat matters for every Hero
@@ -553,7 +541,8 @@ ClasslessWildcard.UniversalResources.ManaRegenPct = 0
 #      AGI  -> +MeleeAPPerAgility melee AP and +RangedAPPerAgility ranged AP
 #              per point (rogue/hunter-style)
 #      INT  -> +SpellPowerPerIntellect spell power per point above 10
-#      SPI  -> mana regen (see ManaRegenPerSpirit above) + health regen (core)
+#    Spirit and Stamina are untouched: the chassis already converts both, and
+#    they behave exactly as the base game defines them.
 #    Applies to all non-exempt players; bots keep vanilla stat rules.
 #
 #    Why SpellPowerPerIntellect is 0.5 and not 1.0: a point of spell power is

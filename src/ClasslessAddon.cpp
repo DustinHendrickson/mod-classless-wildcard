@@ -21,6 +21,7 @@
 
 #include "Chat.h"
 #include "ClasslessMgr.h"
+#include "DBCStores.h"
 #include "Player.h"
 #include "ScriptMgr.h"
 #include "SharedDefines.h"
@@ -30,6 +31,8 @@
 #include "Tokenize.h"
 #include "WorldPacket.h"
 #include "WorldSession.h"
+
+#include <cmath>
 
 using namespace ClasslessWildcard;
 
@@ -238,26 +241,89 @@ namespace
         SendAddon(player, "OTE|");
     }
 
+    // Native attack power per stat point for the configured chassis, mirroring
+    // the branches in Player::UpdateAttackPowerAndDamage. The addon quotes
+    // these in the stat tooltips, so they have to follow the chassis rather
+    // than assume Paladin: a Shaman chassis turns Agility into melee attack
+    // power where a Paladin one does not.
+    static void ChassisAPRates(uint8 cls, float& strMelee, float& agiMelee, float& agiRanged)
+    {
+        switch (cls)
+        {
+            case CLASS_WARRIOR:
+            case CLASS_PALADIN:
+            case CLASS_DEATH_KNIGHT:
+            case CLASS_DRUID:          // out of forms
+                strMelee = 2.0f; agiMelee = 0.0f; break;
+            case CLASS_HUNTER:
+            case CLASS_SHAMAN:
+            case CLASS_ROGUE:
+                strMelee = 1.0f; agiMelee = 1.0f; break;
+            default:                   // mage, priest, warlock
+                strMelee = 1.0f; agiMelee = 0.0f; break;
+        }
+        // Every class draws ranged attack power from Agility at 1 per point.
+        agiRanged = 1.0f;
+    }
+
+    // Per-point rates the core reads out of its game tables. These are indexed
+    // by class AND level, so there is no single number to print: a point of
+    // Agility is worth less crit at 80 than at 20. Reading the same stores the
+    // core reads, with the same indexing as Player::GetMeleeCritFromAgility and
+    // friends, keeps the tooltip honest at every level instead of quoting a
+    // level 80 figure to a level 12 Hero.
+    //
+    // Percentages come back per point; regeneration is per point of Spirit at
+    // the character's current Intellect, since the core's formula is
+    // sqrt(Intellect) * Spirit * ratio.
+    static void ChassisTableRates(Player* player, uint8 cls,
+                                  float& critPerAgi, float& spellCritPerInt,
+                                  float& mp5PerSpi, float& hp5PerSpi)
+    {
+        critPerAgi = spellCritPerInt = mp5PerSpi = hp5PerSpi = 0.0f;
+        uint8 level = player->GetLevel();
+        if (level > GT_MAX_LEVEL)
+            level = GT_MAX_LEVEL;
+        uint32 const row = (uint32(cls) - 1) * GT_MAX_LEVEL + level - 1;
+
+        if (GtChanceToMeleeCritEntry const* e = sGtChanceToMeleeCritStore.LookupEntry(row))
+            critPerAgi = e->ratio * 100.0f;
+        if (GtChanceToSpellCritEntry const* e = sGtChanceToSpellCritStore.LookupEntry(row))
+            spellCritPerInt = e->ratio * 100.0f;
+
+        // Mana regen is per 5 seconds in the client's own terms, and scales
+        // with the square root of Intellect, so quote it at what the Hero has.
+        if (GtRegenMPPerSptEntry const* e = sGtRegenMPPerSptStore.LookupEntry(row))
+            mp5PerSpi = std::sqrt(player->GetStat(STAT_INTELLECT)) * e->ratio * 5.0f;
+        if (GtRegenHPPerSptEntry const* e = sGtRegenHPPerSptStore.LookupEntry(row))
+            hp5PerSpi = std::sqrt(player->GetStat(STAT_INTELLECT)) * e->ratio * 5.0f;
+    }
+
     void SendStats(Player* player)
     {
         CharState& st = sClasslessMgr->GetState(player);
         Config const& cfg = sClasslessMgr->cfg;
         uint32 budget = sClasslessMgr->StatBudget(player);
         uint32 spent = sClasslessMgr->SpentStatPoints(st);
-        // Fields 11+ are the universal-stat and mana-regen RATES. The addon
-        // needs them to tell a player what a point of a stat is actually doing
-        // for them; hard-coding the shipped defaults client-side would lie on
-        // any realm that tuned them. Appended rather than inserted, so an addon
-        // that predates them keeps working on the fields it knows.
-        SendAddon(player, Acore::StringFormat("ST|{}|{}|{}|{}|{}|{}|{}|{}|{}|{}|{}|{}|{}|{}|{}|{}",
+        // Fields 11+ are the universal-stat RATES. The addon needs them to tell
+        // a player what a point of a stat is actually doing for them;
+        // hard-coding the shipped defaults client-side would lie on any realm
+        // that tuned them. Appended rather than inserted, so an addon that
+        // predates them keeps working on the fields it knows.
+        float strMeleeAP = 0.0f, agiMeleeAP = 0.0f, agiRangedAP = 0.0f;
+        ChassisAPRates(cfg.chassisEnable ? cfg.chassisClass : player->getClass(),
+                       strMeleeAP, agiMeleeAP, agiRangedAP);
+        float critPerAgi = 0.0f, spellCritPerInt = 0.0f, mp5PerSpi = 0.0f, hp5PerSpi = 0.0f;
+        ChassisTableRates(player, cfg.chassisEnable ? cfg.chassisClass : player->getClass(),
+                          critPerAgi, spellCritPerInt, mp5PerSpi, hp5PerSpi);
+        SendAddon(player, Acore::StringFormat("ST|{}|{}|{}|{}|{}|{}|{}|{}|{}|{}|{}|{}|{}|{}|{}|{}|{}|{}|{}|{}",
             budget, budget > spent ? budget - spent : 0, cfg.statValuePerPoint,
             st.statAlloc[0], st.statAlloc[1], st.statAlloc[2], st.statAlloc[3], st.statAlloc[4],
             cfg.statsEnable ? 1 : 0,
             (cfg.universalStats && !sClasslessMgr->IsExempt(player)) ? 1 : 0,
             cfg.usMeleeAPPerAgi, cfg.usRangedAPPerAgi, cfg.usSpellPowerPerInt,
-            (cfg.universalResources && !sClasslessMgr->IsExempt(player)) ? cfg.urManaRegenBase : 0.0f,
-            (cfg.universalResources && !sClasslessMgr->IsExempt(player)) ? cfg.urManaRegenPerSpirit : 0.0f,
-            (cfg.universalResources && !sClasslessMgr->IsExempt(player)) ? cfg.urManaRegenPct : 0u));
+            strMeleeAP, agiMeleeAP, agiRangedAP,
+            critPerAgi, spellCritPerInt, mp5PerSpi, hp5PerSpi));
     }
 
     void SendArchetypes(Player* player)

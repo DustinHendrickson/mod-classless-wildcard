@@ -236,9 +236,6 @@ void ClasslessMgr::LoadConfig(bool /*reload*/)
     cfg.urMaxEnergy = sConfigMgr->GetOption<uint32>("ClasslessWildcard.UniversalResources.MaxEnergy", 100);
     cfg.urRageDealtPct = sConfigMgr->GetOption<uint32>("ClasslessWildcard.UniversalResources.RageFromDealtPct", 100);
     cfg.urRageTakenPct = sConfigMgr->GetOption<uint32>("ClasslessWildcard.UniversalResources.RageFromTakenPct", 100);
-    cfg.urManaRegenBase = sConfigMgr->GetOption<float>("ClasslessWildcard.UniversalResources.ManaRegenBase", 4.0f);
-    cfg.urManaRegenPerSpirit = sConfigMgr->GetOption<float>("ClasslessWildcard.UniversalResources.ManaRegenPerSpirit", 0.3f);
-    cfg.urManaRegenPct = sConfigMgr->GetOption<uint32>("ClasslessWildcard.UniversalResources.ManaRegenPct", 0);
 
     cfg.chassisEnable = sConfigMgr->GetOption<bool>("ClasslessWildcard.Chassis.Enable", true);
     cfg.chassisClass = uint8(sConfigMgr->GetOption<uint32>("ClasslessWildcard.Chassis.Class", CLASS_PALADIN));
