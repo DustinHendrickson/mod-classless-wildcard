@@ -1470,9 +1470,11 @@ void ClasslessMgr::HandleLogin(Player* player)
     // spells come back on their own -- a Hero was showing Holy Light in the
     // Paladin tab of a spellbook they never trained -- and a first-login-only
     // strip leaves anything that arrives later in place permanently.
-    // Tabs first, then the sweep: adding a skill line can hand out the odd
-    // learned-on-skill spell, and the sweep is what takes those back.
-    SyncSpellbookTabs(player);
+    // Tabs first, then the sweep. LoadFromDB has already re-added the chassis
+    // class's skill lines on the way in, so this is where they come back off --
+    // and adding a line hands out its learned-on-skill spells, which the sweep
+    // then takes back.
+    SyncSpellbookTabs(player, true);
 
     if (cfg.stripStartingSpells)
         if (uint32 removed = StripUnearnedSpells(player))
@@ -1788,16 +1790,25 @@ uint32 ClasslessMgr::StripUnearnedSpells(Player* player)
 // in a lonely class tab. Giving the Hero the skill lines their spells belong to
 // puts every spell under its own heading.
 //
-// Adding is free and happens whenever a Hero gains something. Removing is the
-// dangerous direction -- Player::SetSkill unlearns every spell attached to a
-// skill line it removes -- so it happens at FIRST LOGIN ONLY, the one moment
-// the clean-slate strip has just emptied those lines and there is provably
-// nothing to lose. That is what takes away the chassis class's own tab, and it
-// never runs again on a character that has spells.
+// Removing is the dangerous direction -- Player::SetSkill unlearns every spell
+// attached to a skill line it removes -- so it is only ever done for a line the
+// Hero has no EARNED spell in, where by construction there is nothing to lose.
 //
-// learnSkillRewardedSpells, on the add side, hands out nothing but abilities
-// marked learned-on-skill, which class trainer spells are not, and the login
-// sweep catches anything unexpected regardless.
+// It has to run at every login, not once. Player::LoadFromDB calls
+// LearnDefaultSkills on the way in, which re-adds any default skill the
+// character is missing -- so the chassis class's line comes back every session
+// however cleanly it was removed. Worse, SetSkill then fires
+// learnSkillRewardedSpells, and Holy Light and Seal of Righteousness are
+// AcquireMethod 2 (LEARNED_ON_SKILL_VALUE) at MinSkillLineRank 1 on line 594, so
+// they are re-taught with it. That is the whole reason a Hero kept finding Holy
+// Light in a Paladin tab they never trained: stripping the spell alone could
+// never hold, because the line that hands it back was still there.
+//
+// Adding a line has the same property in reverse: SetSkill calls
+// learnSkillRewardedSpells, so giving a Hero the Fire line to file a rolled
+// Fireball under would also hand them the rest of that line's starter spells
+// free. Hence the sweep at the end -- everything unearned goes straight back
+// out, whichever direction it arrived from.
 void ClasslessMgr::SyncSpellbookTabs(Player* player, bool clearChassisLines)
 {
     if (!cfg.spellbookTabs || _classSkillLines.empty())
@@ -1827,14 +1838,12 @@ void ClasslessMgr::SyncSpellbookTabs(Player* player, bool clearChassisLines)
 
     GrantGuard guard(_applyingGrant);
 
-    // First login only: drop the chassis class's own skill lines, and any
-    // other the Hero has nothing in. This is what removes the lonely "Holy" tab
-    // a Paladin chassis starts with -- the character never chose it and, with
-    // their spells just stripped, has nothing filed under it.
+    // Drop the chassis class's own skill lines, and any other the Hero has
+    // nothing in. This is what removes the lonely "Holy" tab a Paladin chassis
+    // starts with, and what stops its auto-learned spells returning.
     //
-    // Deliberately not repeated on later logins. Removing a skill line unlearns
-    // every spell attached to it, and there is no reason to run that risk again
-    // once the slate is clean: from here on the Hero only ever gains lines.
+    // Only ever for lines with nothing earned in them, so the unlearn cascade
+    // SetSkill performs has nothing to take.
     if (clearChassisLines && cfg.spellbookTabs < 2)
         for (uint16 line : _classSkillLines)
             if (!want.count(line) && player->HasSkill(line))
@@ -1842,9 +1851,20 @@ void ClasslessMgr::SyncSpellbookTabs(Player* player, bool clearChassisLines)
 
     // Then a tab for each school they actually know.
     std::set<uint16> const& give = (cfg.spellbookTabs >= 2) ? _classSkillLines : want;
+    bool added = false;
     for (uint16 line : give)
         if (!player->HasSkill(line))
+        {
             player->SetSkill(line, 0, 1, 1);
+            added = true;
+        }
+
+    // SetSkill just fired learnSkillRewardedSpells for every line added, which
+    // hands out that line's learned-on-skill starter spells. Take back anything
+    // the Hero did not earn, right now rather than at next login -- otherwise a
+    // roll that opens a new tab pays out free spells until they relog.
+    if (added && cfg.stripStartingSpells)
+        StripUnearnedSpells(player);
 }
 
 void ClasslessMgr::UpdateAbilityRanks(Player* player)
