@@ -154,9 +154,15 @@ public:
             // Knight abilities pays neither the allocation nor the per-tick
             // rune loop.
             case CLASS_CONTEXT_ABILITY:
-                if (playerClass != CLASS_DEATH_KNIGHT || !cfg.includeDeathKnight)
+                if (playerClass != CLASS_DEATH_KNIGHT)
                     return std::nullopt;
-                break;
+                // From the character's own snapshot, NOT the live config: this
+                // same question gates both the one-time InitRunes allocation
+                // and the per-tick loop that reads the block it allocates. If
+                // a `.reload config` could change the answer underneath a
+                // logged-in character, the loop would read a block InitRunes
+                // never made.
+                return sClasslessMgr->GetState(const_cast<Player*>(player)).runes;
             // Pets. Answered from the pet the Hero actually has, not from the
             // class alone, because two call sites need opposite answers.
             //
@@ -371,6 +377,47 @@ public:
                 {
                     cpSt.lastComboPush = cp;
                     PushAddon(player, Acore::StringFormat("CP|{}", uint32(cp)));
+                }
+
+                // Runes have the same problem, one step worse: the stock UI
+                // draws the rune bar only for real Death Knight characters, so
+                // a Hero with rune-cost abilities gets no way at all to see
+                // which runes are up. Mirror the block over the addon channel
+                // and let the addon draw it.
+                //
+                // Guarded by the character's own snapshot, which is exactly
+                // the condition under which InitRunes allocated the block --
+                // reading it otherwise would dereference a null pointer.
+                if (cpSt.runes)
+                {
+                    // Summarise first, send only if it actually changed. Rune
+                    // cooldowns count down every frame, so comparing the
+                    // rendered message would send one addon message per tick
+                    // for the whole ten seconds a rune takes to come back.
+                    // What the bar shows is which runes are up, what type they
+                    // are, and roughly how much runic power -- so that is what
+                    // the signature covers, and runic power only to the
+                    // nearest twentieth.
+                    uint32 maxRunic = player->GetMaxPower(POWER_RUNIC_POWER);
+                    uint32 runic = player->GetPower(POWER_RUNIC_POWER);
+                    uint32 sig = maxRunic ? (runic * 20 / maxRunic) : 0;
+                    for (uint8 i = 0; i < MAX_RUNES; ++i)
+                    {
+                        sig = sig * 8 + uint32(player->GetCurrentRune(i));
+                        sig = sig * 2 + (player->GetRuneCooldown(i) ? 0u : 1u);
+                    }
+
+                    if (sig != cpSt.lastRuneSig)
+                    {
+                        cpSt.lastRuneSig = sig;
+                        // "RU|<runic>|<maxRunic>|<type>,<ready>|... x6"
+                        std::string msg = Acore::StringFormat("RU|{}|{}", runic, maxRunic);
+                        for (uint8 i = 0; i < MAX_RUNES; ++i)
+                            msg += Acore::StringFormat("|{},{}",
+                                uint32(player->GetCurrentRune(i)),
+                                player->GetRuneCooldown(i) ? 0 : 1);
+                        PushAddon(player, msg);
+                    }
                 }
             }
         }

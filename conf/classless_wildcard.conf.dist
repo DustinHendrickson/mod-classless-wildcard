@@ -60,11 +60,17 @@ ClasslessWildcard.ModeChoiceDeadline = 5
 #        a working rune block, rune cooldowns and runic power. With it off
 #        nothing is allocated and nothing ticks.
 #
-#        The remaining gap is the CLIENT: the stock UI draws the rune bar only
-#        for real Death Knight characters, so a Hero's runes are tracked by the
-#        server but not shown. Rune-cost abilities will fire when the runes are
-#        up and silently fail when they are not, with nothing on screen to say
-#        which. Treat this as experimental until the addon draws them.
+#        The stock UI draws the rune bar only for real Death Knight characters,
+#        so the server mirrors the rune block over the addon channel and the
+#        addon draws six pips -- coloured by rune type, dimmed while on
+#        cooldown -- plus a runic power bar, under the resource mini-bars. They
+#        appear only once the server actually sends runes, so nothing changes
+#        on a realm with this off.
+#
+#        Still experimental: rune COSTS and regeneration are the core's, but no
+#        Hero has the Death Knight talents and passives those abilities were
+#        balanced around, so expect the numbers to feel odd before they feel
+#        broken.
 #        Default: 0
 
 #

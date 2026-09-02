@@ -146,6 +146,18 @@ namespace ClasslessWildcard
         std::unordered_map<uint32 /*talentId*/, uint8 /*rank*/>   talents;
         std::vector<RollBan>   bans;
         bool exempt = false;   // bot/system account: classless rules don't apply
+        // Did this character load WITH a rune block? Player::InitRunes runs
+        // once, at load, and the rune accessors dereference that block with no
+        // null check -- so whether a Hero "is a Death Knight" for rune purposes
+        // has to stay fixed for the session. Reading the live config instead
+        // would let a `.reload config` turn the per-tick rune loop on for
+        // characters InitRunes had already skipped, and read a null block.
+        bool runes = false;
+        // Signature of the last rune state pushed to the addon. Runes are
+        // what changed, NOT how many milliseconds are left: cooldowns tick
+        // every frame, so keying on the raw numbers would send a message per
+        // tick. 0xFFFFFFFF is "nothing pushed yet".
+        uint32 lastRuneSig = 0xFFFFFFFF;
         bool loaded = false;
     };
 

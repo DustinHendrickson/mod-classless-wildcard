@@ -121,6 +121,11 @@ keep it, or spend a reroll and let the dice decide again.</em>
   the main bar and the addon draws mini-bars for the rest (`/cwbars`). Every spell draws its
   own resource, so the same Hero casts Fireball on mana and Bloodthirsts on rage — no spell
   is ever unusable because of what it costs.
+- **Runes, if you want them** — Death Knight abilities are off by default because they cost
+  runes, and the core only builds a rune block for a real Death Knight. Turn
+  `IncludeDeathKnight` on and every Hero gets one: runes, rune cooldowns and runic power.
+  The stock UI would not draw any of it, so the server mirrors the block to the addon, which
+  shows six pips coloured by rune type, dimmed while recharging, plus a runic power bar.
 - **Primary stat allocation** — a per-level point budget spent freely across
   STR / AGI / STA / INT / SPI, applied live, reallocation free.
 - **All proficiencies taught** — armor, weapons and dual wield, each configurable.

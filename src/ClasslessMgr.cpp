@@ -1026,6 +1026,9 @@ void ClasslessMgr::LoadCharacter(Player* player, CharState& st)
         }
     }
 
+    // Fixed for the session on purpose -- see CharState::runes.
+    st.runes = cfg.includeDeathKnight && !st.exempt;
+
     if (QueryResult result = CharacterDatabase.Query(
         "SELECT mode, ability_essence, talent_essence, pity, rerolls, last_level, "
         "stat_str, stat_agi, stat_sta, stat_int, stat_spi, display_power FROM cw_char_state WHERE guid = {}", guid))

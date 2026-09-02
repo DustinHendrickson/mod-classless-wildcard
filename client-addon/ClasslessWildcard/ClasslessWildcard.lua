@@ -40,7 +40,11 @@ local CW = {
               -- until the server has told us this character actually has the
               -- extra pools, rather than flashing up on a non-module realm
               universalResources = 0,
-              comboPoints = 0 },
+              comboPoints = 0,
+              -- runes, mirrored from the server. nil until the first RU
+              -- message, which is how the bar stays invisible on realms that
+              -- do not run Death Knight abilities at all.
+              runes = nil, runic = 0, runicMax = 0 },
     classIndex = 1,
     -- classless talent pricing; the server overrides these via the CFG message
     talentCost = 1, talentFlat = true,
@@ -1163,6 +1167,43 @@ for i = 1, 5 do
 end
 CW.comboDots = comboDots
 
+-- Runes. The stock UI draws the rune bar only for real Death Knight
+-- characters, so a Hero with rune-cost abilities would have no way to see
+-- which runes are up; the server mirrors the block over the addon channel
+-- ("RU|runic|max|type,cooldown x6") and these draw it.
+--
+-- Solid colour rather than the game's rune artwork on purpose: the Death
+-- Knight textures are not guaranteed to be present in every client's archive
+-- stack, and a missing texture would show as nothing at all.
+local RUNE_COLOR = {
+    [0] = { 0.80, 0.10, 0.10 },   -- blood
+    [1] = { 0.30, 0.70, 0.20 },   -- unholy
+    [2] = { 0.20, 0.55, 0.95 },   -- frost
+    [3] = { 0.70, 0.35, 0.90 },   -- death
+}
+
+local runePips = {}
+for i = 1, 6 do
+    local pip = barsFrame:CreateTexture(nil, "ARTWORK")
+    pip:SetWidth(14); pip:SetHeight(14)
+    pip:SetTexture(0.3, 0.3, 0.3)
+    pip:Hide()
+    runePips[i] = pip
+end
+CW.runePips = runePips
+
+local runicBar = CreateFrame("StatusBar", nil, barsFrame)
+runicBar:SetWidth(136); runicBar:SetHeight(8)
+runicBar:SetStatusBarTexture("Interface\\TargetingFrame\\UI-StatusBar")
+runicBar:SetStatusBarColor(0.00, 0.82, 1.00)
+runicBar:SetMinMaxValues(0, 1)
+runicBar:SetValue(0)
+runicBar:Hide()
+local runicBg = runicBar:CreateTexture(nil, "BACKGROUND")
+runicBg:SetAllPoints(runicBar)
+runicBg:SetTexture(0, 0, 0, 0.5)
+CW.runicBar = runicBar
+
 function CW.RefreshBars()
     local displayed = UnitPowerType("player")
     local shown = 0
@@ -1197,7 +1238,44 @@ function CW.RefreshBars()
         comboDots[i].shine:SetAlpha(i <= cp and 1 or 0)
     end
 
-    barsFrame:SetHeight(shown * 17 + 30)
+    -- runes, drawn under the combo pips when the server is mirroring them
+    local extra = 0
+    local runes = CW.state.runes
+    if runes then
+        local top = -8 - shown * 17 - 20
+        for i = 1, 6 do
+            local r = runes[i]
+            local pip = runePips[i]
+            if r then
+                local color = RUNE_COLOR[r.kind] or RUNE_COLOR[0]
+                -- a rune on cooldown is dimmed rather than hidden, so the row
+                -- never changes width and the eye can count what is missing
+                local ready = r.ready
+                local scale = ready and 1 or 0.28
+                pip:SetTexture(color[1] * scale, color[2] * scale, color[3] * scale)
+                pip:SetPoint("TOPLEFT", 12 + (i - 1) * 18, top)
+                pip:Show()
+            else
+                pip:Hide()
+            end
+        end
+        extra = extra + 20
+
+        if (CW.state.runicMax or 0) > 0 then
+            runicBar:SetPoint("TOPLEFT", 12, top - 18)
+            runicBar:SetMinMaxValues(0, CW.state.runicMax)
+            runicBar:SetValue(CW.state.runic or 0)
+            runicBar:Show()
+            extra = extra + 12
+        else
+            runicBar:Hide()
+        end
+    else
+        for i = 1, 6 do runePips[i]:Hide() end
+        runicBar:Hide()
+    end
+
+    barsFrame:SetHeight(shown * 17 + 30 + extra)
     return shown
 end
 
@@ -2003,6 +2081,24 @@ local function HandleMessage(msg)
         if s.mode == 255 and s.level < s.deadline and not frame:IsShown() and not wizard:IsShown() then
             wizard:Show()
         end
+
+    elseif kind == "RU" then
+        -- RU|<runic>|<maxRunic>|<type>,<ready> x6
+        local s = CW.state
+        s.runic = tonumber(p[2]) or 0
+        s.runicMax = tonumber(p[3]) or 0
+        local list = {}
+        for i = 1, 6 do
+            local field = p[3 + i]
+            if field then
+                local kindStr, readyStr = string.match(field, "^(%d+),(%d+)$")
+                if kindStr then
+                    list[i] = { kind = tonumber(kindStr), ready = readyStr == "1" }
+                end
+            end
+        end
+        s.runes = (next(list) ~= nil) and list or nil
+        CW.UpdateBarsVisibility()
 
     elseif kind == "AB" then
         CW.abilPage = tonumber(p[3]) or 0
