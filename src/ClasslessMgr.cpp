@@ -877,7 +877,7 @@ static std::string CopperToText(uint32 copper)
     return out;
 }
 
-bool ClasslessMgr::BuyScroll(Player* player, uint32 which, std::string* err)
+bool ClasslessMgr::BuyScroll(Player* player, std::string* err)
 {
     if (!cfg.wcScrollBuyEnable)
     {
@@ -892,8 +892,7 @@ bool ClasslessMgr::BuyScroll(Player* player, uint32 which, std::string* err)
         return false;
     }
 
-    // one scroll, good for abilities AND talents (`which` is ignored: it dates
-    // from when there was a separate, talent-only scroll)
+    // one scroll, good for abilities AND talents alike
     uint32 costCopper = ScrollBuyCost(player->GetLevel());
     if (!player->HasEnoughMoney(int32(costCopper)))
     {

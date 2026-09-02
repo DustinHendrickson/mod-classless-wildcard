@@ -329,7 +329,9 @@ namespace
         else if (cmd == "REBIRTH")
             sClasslessMgr->Rebirth(player, Mode(uint8(argNum(1))), &err) ? SendOk(player, "REBIRTH") : SendErr(player, err);
         else if (cmd == "BUYSCROLL")
-            sClasslessMgr->BuyScroll(player, argNum(1), &err) ? SendOk(player, "BUYSCROLL") : SendErr(player, err);
+            // Any argument an older addon still sends is ignored: there is one
+            // scroll now, good for abilities and talents alike.
+            sClasslessMgr->BuyScroll(player, &err) ? SendOk(player, "BUYSCROLL") : SendErr(player, err);
     }
 }
 
