@@ -41,6 +41,8 @@ CHRCLASSES = "DBFilesClient\\ChrClasses.dbc"
 CHARBASEINFO = "DBFilesClient\\CharBaseInfo.dbc"
 CHARSTARTOUTFIT = "DBFilesClient\\CharStartOutfit.dbc"
 SKILLRACECLASSINFO = "DBFilesClient\\SkillRaceClassInfo.dbc"
+SKILLLINEABILITY = "DBFilesClient\\SkillLineAbility.dbc"
+SKILLLINE = "DBFilesClient\\SkillLine.dbc"
 GLUESTRINGS = "Interface\\GlueXML\\GlueStrings.lua"
 CHARCREATE_LUA = "Interface\\GlueXML\\CharacterCreate.lua"
 CLASSICONS_INGAME = "Interface\\TargetingFrame\\UI-Classes-Circles.blp"
@@ -199,8 +201,20 @@ def build_data_patch(files, name, report, theme=False):
     patched, opened, already = dbc.open_class_skill_lines(raw)
     payload[SKILLRACECLASSINFO] = patched
     report.append("  SkillRaceClassInfo.dbc  %d class skill lines opened to every class "
+                  "(from %s)" % (len(opened), os.path.basename(source)))
+
+    # This is the one that actually decides spellbook tabs. The client fixes a
+    # class's tab set from SkillLineAbility's ClassMask and files a known spell
+    # under a tab only if the spell's own row says it belongs to this class --
+    # so a rolled Eviscerate sat in General while its row said "Rogue". Make
+    # every class spell belong to every class; empty tabs stay hidden.
+    categories = dbc.skill_line_categories(files.find(SKILLLINE)[0])
+    raw, source = files.find(SKILLLINEABILITY)
+    patched, changed, already = dbc.open_class_abilities(raw, categories)
+    payload[SKILLLINEABILITY] = patched
+    report.append("  SkillLineAbility.dbc  %d class spells now belong to every class "
                   "(spellbook tabs for cross-class spells; from %s)"
-                  % (len(opened), os.path.basename(source)))
+                  % (changed, os.path.basename(source)))
 
     if theme:
         try:
@@ -512,7 +526,7 @@ def do_install(args, wow_dir):
 # only if EVERY file in it is one of these -- a client pack's own archive always
 # has something else in it, so it can never be matched by luck of the letter.
 _OUR_FILES = frozenset(x.lower() for x in (
-    CHRCLASSES, CHARBASEINFO, CHARSTARTOUTFIT, SKILLRACECLASSINFO,
+    CHRCLASSES, CHARBASEINFO, CHARSTARTOUTFIT, SKILLRACECLASSINFO, SKILLLINEABILITY,
     GLUESTRINGS, CHARCREATE_LUA,
     CLASSICONS_INGAME, CLASSICONS_CREATE,
 ))

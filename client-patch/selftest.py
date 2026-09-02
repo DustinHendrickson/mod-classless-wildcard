@@ -24,6 +24,8 @@ from lib import (blp, charcreate, clientfs, dbc, exepatch, gluestrings,  # noqa:
 CHRCLASSES = "DBFilesClient\\ChrClasses.dbc"
 CHARBASEINFO = "DBFilesClient\\CharBaseInfo.dbc"
 SKILLRACECLASSINFO = "DBFilesClient\\SkillRaceClassInfo.dbc"
+SKILLLINEABILITY = "DBFilesClient\\SkillLineAbility.dbc"
+SKILLLINE = "DBFilesClient\\SkillLine.dbc"
 CHARSTARTOUTFIT = "DBFilesClient\\CharStartOutfit.dbc"
 GLUESTRINGS = "Interface\\GlueXML\\GlueStrings.lua"
 CHARCREATE_LUA = "Interface\\GlueXML\\CharacterCreate.lua"
@@ -59,9 +61,28 @@ def main(argv):
     print("client : %s" % wow)
     print("locales: %s" % ", ".join(locales))
 
+    # Test the PRISTINE client, the way the installer reads it. Once the patch
+    # has been installed our own archives sit at the top of the chain, and
+    # without this every check would be reading its own output back as input --
+    # "clear the relic bit" finds nothing to clear and reports 0 instead of 4.
+    # Ownership is decided the way uninstall decides it: an archive is ours
+    # only if every file in it is one the installer writes.
+    import glob
+    from install import _is_our_archive
+    own = set()
+    candidates = glob.glob(os.path.join(data_dir, "patch-*.MPQ"))
+    for locale in locales:
+        candidates += glob.glob(os.path.join(data_dir, locale, "patch-*.MPQ"))
+    for path in candidates:
+        if _is_our_archive(path):
+            own.add(os.path.basename(path).lower())
+    if own:
+        print("excluding our own archives from the source chain: %s"
+              % ", ".join(sorted(own)))
+
     for locale in locales:
         print("\n== %s" % locale)
-        with clientfs.ClientFiles(data_dir, locale) as files:
+        with clientfs.ClientFiles(data_dir, locale, exclude=own) as files:
             print("  archive chain: %d archives, top is %s"
                   % (len(files.chain), os.path.basename(files.chain[0])))
 
@@ -157,6 +178,55 @@ def main(argv):
             check("SkillRaceClassInfo patch idempotent", not opened_again,
                   "%d added on second pass" % len(opened_again))
 
+            # --- SkillLineAbility -------------------------------------------
+            # The table that really decides spellbook tabs. Prove the model on
+            # THIS client: before, a Paladin's tab set is its three spec lines
+            # and Eviscerate's line is not among them; after, every class's tab
+            # set is every spec line, and nothing outside class lines moved.
+            categories = dbc.skill_line_categories(files.find(SKILLLINE)[0])
+            raw, source = files.find(SKILLLINEABILITY)
+            check("SkillLineAbility resolved", bool(raw), os.path.basename(source))
+
+            def tab_set(blob, class_id):
+                rc_, fc_, rs_, _ss = dbc.parse_header(blob)
+                bit = 1 << (class_id - 1)
+                lines = set()
+                for index in range(rc_):
+                    row = struct.unpack_from("<%dI" % fc_, blob, 20 + index * rs_)
+                    if categories.get(row[1]) == dbc.SKILL_CATEGORY_CLASS and (row[4] & bit):
+                        lines.add(row[1])
+                return lines
+
+            before_pal = tab_set(raw, 2)
+            check("stock Paladin tab set is its own spec lines",
+                  {184, 267, 594} <= before_pal and 253 not in before_pal,
+                  "%s" % sorted(before_pal))
+
+            sla_dbc, sla_changed, sla_already = dbc.open_class_abilities(raw, categories)
+            after_pal = tab_set(sla_dbc, 2)
+            check("patched Paladin tab set covers every class line (Assassination, Balance...)",
+                  {253, 574, 354, 51, 8} <= after_pal,
+                  "%d lines, changed %d rows" % (len(after_pal), sla_changed))
+
+            # nothing outside class lines, and no zero-mask or race-locked row, changed
+            rc_, fc_, rs_, _ss = dbc.parse_header(raw)
+            untouched_ok = True
+            for index in range(rc_):
+                o = struct.unpack_from("<%dI" % fc_, raw, 20 + index * rs_)
+                n = struct.unpack_from("<%dI" % fc_, sla_dbc, 20 + index * rs_)
+                is_target = (categories.get(o[1]) == dbc.SKILL_CATEGORY_CLASS
+                             and o[4] and not o[3])
+                if is_target:
+                    if n[:4] != o[:4] or n[5:] != o[5:]:
+                        untouched_ok = False
+                elif n != o:
+                    untouched_ok = False
+            check("only ClassMask on class-line rows changed", untouched_ok)
+
+            _again, changed_again, _al = dbc.open_class_abilities(sla_dbc, categories)
+            check("SkillLineAbility patch idempotent", not changed_again,
+                  "%d changed on second pass" % changed_again)
+
             check("every race still creatable",
                   {race for race, _klass in pairs} == set(dbc.PLAYABLE_RACES))
 
@@ -214,7 +284,7 @@ def main(argv):
 
             # --- archives ---------------------------------------------------
             payload = {CHRCLASSES: patched, CHARBASEINFO: combos,
-                       SKILLRACECLASSINFO: opened_dbc}
+                       SKILLRACECLASSINFO: opened_dbc, SKILLLINEABILITY: sla_dbc}
             # the locale archive carries the DBCs as well: it is the one Wow.exe
             # loads above the client's own patch-<loc>-N archives, so a DBC that
             # only sits in patch-Z.MPQ is shadowed and never seen
@@ -224,7 +294,7 @@ def main(argv):
             # DBC we patch, the stock copy must resolve from a locale archive,
             # which is exactly why the base patch alone could never win
             shadowed_by_locale = []
-            for dbc_name in (CHRCLASSES, CHARBASEINFO, SKILLRACECLASSINFO):
+            for dbc_name in (CHRCLASSES, CHARBASEINFO, SKILLRACECLASSINFO, SKILLLINEABILITY):
                 _r, src_arch = files.find(dbc_name)
                 in_locale = os.sep + locale + os.sep in src_arch or ("-%s" % locale) in os.path.basename(src_arch)
                 shadowed_by_locale.append(in_locale)

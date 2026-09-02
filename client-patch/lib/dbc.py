@@ -4,7 +4,9 @@ ChrClasses.dbc         - what every class is called on screen, and that it has
                          a ranged slot rather than a relic slot.
 CharBaseInfo.dbc       - which race/class pairs the creation screen offers.
 SkillRaceClassInfo.dbc - which class skill lines the client accepts for the
-                         character, which is what decides spellbook tabs.
+                         character.
+SkillLineAbility.dbc   - which class each class spell belongs to, which is
+                         what actually decides the spellbook's tab set.
 
 Both are rewritten from the copy already winning in the client's archive stack,
 so a community patch's version is preserved rather than reverted.
@@ -67,6 +69,14 @@ CLASS_SKILL_LINES = (
 # Appended rows start here, matching the ids the server SQL uses, well clear
 # of the client's own (max 970).
 CLASS_SKILL_LINES_FIRST_ID = 990000
+
+# SkillLineAbility.dbc, 3.3.5a: 14 uint32 fields per record.
+#   0 ID  1 SkillLine  2 Spell  3 RaceMask  4 ClassMask  5 ExcludeRace
+#   6 ExcludeClass  7 MinSkillLineRank  8 SupercededBySpell  9 AcquireMethod
+#   10 TrivialSkillLineRankHigh  11 TrivialSkillLineRankLow  12 CharacterPoints1
+#   13 CharacterPoints2
+SKILLLINEABILITY_FIELDS = 14
+SKILL_CATEGORY_CLASS = 7
 
 # How the CLIENT spells "everyone". The server's GetSkillRaceClassInfo treats a
 # mask of 0 as a wildcard, and the server SQL uses 0/0 -- but that is the
@@ -261,6 +271,71 @@ def open_class_skill_lines(data: bytes):
     header = WDBC_MAGIC + struct.pack("<4I", record_count + len(added),
                                       field_count, record_size, string_size)
     return header + bytes(records) + bytes(strings), added, already
+
+
+def open_class_abilities(data: bytes, skill_categories: dict):
+    """Make every class spell belong to every class, for the spellbook's sake.
+
+    The client does NOT build spellbook tabs from the character's skill list,
+    nor from SkillRaceClassInfo. It fixes a class's TAB SET from this table:
+    the category-7 skill lines that have a row carrying the class's bit. A
+    known spell is filed under a tab only if its own row's line is in that set;
+    anything else lands in General. That is why a Paladin-chassis Hero saw
+    Holy and Protection and nothing else however many lines the server granted:
+    Eviscerate's only row says Rogue.
+
+    Setting ClassMask to every class on each class-line row makes every spec
+    line part of every class's tab set, so a known spell files under its real
+    school. The client hides tabs with nothing in them, so a Hero sees only the
+    schools they actually know. The 3130 rows with ClassMask 0 and the handful
+    that are race-locked are left exactly as they are.
+
+    `skill_categories` maps skill line id -> SkillLine.categoryId, read from
+    the same client.
+
+    Returns (new_dbc_bytes, rows_changed, rows_already_open).
+    """
+    record_count, field_count, record_size, string_size = parse_header(data)
+    if field_count != SKILLLINEABILITY_FIELDS or record_size != SKILLLINEABILITY_FIELDS * 4:
+        raise DbcError(
+            "SkillLineAbility.dbc has %d fields of %d bytes, expected %d of %d. "
+            "This client build is not the 3.3.5a layout this patch understands."
+            % (field_count, record_size, SKILLLINEABILITY_FIELDS,
+               SKILLLINEABILITY_FIELDS * 4))
+
+    records_off = 20
+    strings_off = records_off + record_count * record_size
+    records = bytearray(data[records_off:strings_off])
+
+    changed = already = 0
+    for index in range(record_count):
+        base = index * record_size
+        line = struct.unpack_from("<I", records, base + 1 * 4)[0]
+        race_mask = struct.unpack_from("<I", records, base + 3 * 4)[0]
+        class_mask = struct.unpack_from("<I", records, base + 4 * 4)[0]
+        if skill_categories.get(line) != SKILL_CATEGORY_CLASS:
+            continue
+        if not class_mask or race_mask:
+            continue
+        if (class_mask & ALL_CLASSES_MASK) == ALL_CLASSES_MASK:
+            already += 1
+            continue
+        struct.pack_into("<I", records, base + 4 * 4, ALL_CLASSES_MASK)
+        changed += 1
+
+    header = WDBC_MAGIC + struct.pack("<4I", record_count, field_count,
+                                      record_size, string_size)
+    return header + bytes(records) + data[strings_off:], changed, already
+
+
+def skill_line_categories(data: bytes) -> dict:
+    """SkillLine.dbc -> {skill line id: categoryId}. Field 1 is the category."""
+    record_count, field_count, record_size, _string_size = parse_header(data)
+    out = {}
+    for index in range(record_count):
+        row_id, category = struct.unpack_from("<2I", data, 20 + index * record_size)
+        out[row_id] = category
+    return out
 
 
 def single_class_combos(data: bytes, shell_class: int):

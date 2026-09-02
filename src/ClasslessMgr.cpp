@@ -1786,14 +1786,15 @@ uint32 ClasslessMgr::StripUnearnedSpells(Player* player)
     return removed;
 }
 
-// One spellbook tab per school of magic the Hero actually knows.
+// Keep the Hero's class skill lines in step with what they know.
 //
-// The client files a spell under a tab by its skill line -- "Fire", "Holy",
-// "Feral Combat" -- but only for skill lines the character HAS. A Hero has just
-// the chassis class's, so a rolled Fireball had nowhere to go and fell into
-// General along with everything else, while the one or two chassis spells sat
-// in a lonely class tab. Giving the Hero the skill lines their spells belong to
-// puts every spell under its own heading.
+// This is NOT what draws spellbook tabs -- that turned out to be decided
+// entirely on the client, from SkillLineAbility's ClassMask, and is handled by
+// the client patch. What this does is stop the chassis class re-teaching its
+// starter spells: Player::LoadFromDB re-adds the chassis lines every login and
+// fires learnSkillRewardedSpells for each, so a line the Hero has nothing in
+// has to come back off, and a line they do have something in is kept so the
+// core's own skill bookkeeping (UpdateSkillsForLevel etc.) stays consistent.
 //
 // Removing is the dangerous direction -- Player::SetSkill unlearns every spell
 // attached to a skill line it removes -- so it is only ever done for a line the
