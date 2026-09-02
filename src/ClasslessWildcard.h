@@ -271,7 +271,7 @@ namespace ClasslessWildcard
         // wildcard
         uint32 wcStartingAbilities = 4;
         uint8  wcRollStartLevel = 10;
-        uint32 wcTalentEveryLevels = 1;
+        uint32 wcTalentEveryLevels = 2;
         uint32 wcAbilityEveryLevels = 2;
         uint8  wcFreeRerollLevel = 10;   // below this, rerolls are free
         std::array<uint32, 5> wcRarityWeights = { 100, 60, 30, 10, 3 };
@@ -279,8 +279,8 @@ namespace ClasslessWildcard
         uint32 wcSynergyIncrement = 10;    // percent per pity point
         uint32 wcSynergyBanRolls = 25;
         uint32 wcScrollItemId = 990101;        // Reroll Scroll (top-up item)
-        uint32 wcRerollsPerAbilityRoll = 1;    // earned reroll charges per scheduled ability roll
-        uint32 wcRerollsPerTalentRoll = 1;     // earned reroll charges per scheduled talent roll
+        uint32 wcTalentRollOffset = 1;         // phase, so talents land between ability rolls
+        uint32 wcRerollsPerLevel = 3;          // earned reroll charges per level, from RollStartLevel
         uint32 wcFreeScrollEveryLevels = 0;    // optional extra: scrolls every N levels (0 = off)
         uint32 wcFreeScrollCount = 1;          // scrolls granted per milestone
         uint32 wcScrollBuyEnable = 1;          // allow buying scrolls from the addon panel

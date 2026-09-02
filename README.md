@@ -70,7 +70,7 @@ Every player also runs a one-click client setup that ships with the module. It p
 | --------------------- | ------------------------------------------------------------------- | ------------------------------------------------------------------ |
 | How you gain power    | Spend Ability Essence (AE) and Talent Essence (TE)                   | The server rolls abilities and talents for you                      |
 | Starting kit          | 9 AE to spend as you like                                            | 4 random abilities at level 1                                       |
-| Progression           | +1 AE and +1 TE per level from level 10                              | 1 talent per level and 1 ability every 2 levels, from level 10      |
+| Progression           | +1 AE and +1 TE per level from level 10                              | One roll per level from level 10, alternating ability and talent    |
 | Cost model            | Abilities cost 1 / 2 / 3 / 5 / 8 AE by rarity, talents 1 TE per rank | Free but weighted. Legendary is rarest, and talent rank is rarity   |
 | Control over outcomes | Total. Unlearning refunds, and a full respec costs gold              | Rerolls, ability locks, synergy rolls, reroll cooldowns             |
 | Changing your mind    | `.classless respec`                                                  | `.wildcard reroll`, Reroll Scrolls, Rebirth                         |
@@ -117,9 +117,10 @@ Keep it, or spend a reroll.</em>
   it. Rank odds follow `RarityWeights`. The shipped Season 9 default weights every rank equally;
   use descending weights such as `100,60,30,10,3` to make rank 5 a rare prize. The exact rules
   are under [How Wildcard rolls work](#how-wildcard-rolls-work).
-- **Rerolls scale with leveling.** Every scheduled roll grants a reroll charge. Charges are one
-  pool spent on abilities and talents alike, and anything you already own can be rerolled later
-  from **My Build**. Reroll Scrolls top the pool up when charges run out and work for either
+- **Rerolls scale with leveling.** Every level from 10 grants 3 reroll charges, whichever kind of
+  roll that level carried. The starting hand at level 1 grants none. Charges are one pool spent on
+  abilities and talents alike, and anything you already own can be rerolled later from
+  **My Build**. Reroll Scrolls top the pool up when charges run out and work for either
   kind. They are sold by the Hero Advancement NPC and by the addon's **Buy Scroll** button. The
   price scales with level, from silver in the early game to gold near the cap. Both the price
   and the button are configurable.
@@ -408,9 +409,13 @@ actions appear under **Key Bindings > ClasslessWildcard** and can be rebound.
 
 ## How Wildcard rolls work
 
-Detail behind the Wildcard path, for players who want to know what the dice are doing and admins
-tuning the numbers below. `.wildcard status` reports your live pity count, synergy chance and
-cooldowns.
+From level 10 you get one roll a level, alternating: an ability on the even levels, a talent on
+the odd ones. Talents come no more often than abilities because a talent roll also rolls its rank
+and can land on rank 5 outright, which is worth five ranks a Classless Hero would buy one at a
+time.
+
+The rest is detail, for players who want to know what the dice are doing and admins tuning the
+numbers below. `.wildcard status` reports your live pity count, synergy chance and cooldowns.
 
 ### The roll
 
@@ -464,10 +469,11 @@ Rerolling something puts it on a cooldown so the reroll cannot immediately hand 
 applies to the free rerolls below level 10 exactly as it does to a charged one.
 
 The cooldown is counted in rolls, not time, and it is long. The default `SynergyBanRolls` of 25
-excludes a pick from the next 24 rolls, the replacement roll included. At roughly 1.5 rolls per
-level that is about 16 levels: reroll Fireball at level 12 and it returns around level 28. That
-makes rerolling a lasting decision rather than a do-over. Set it to about 3 if you only want to
-stop an immediate repeat.
+excludes a pick from the next 24 rolls, the replacement roll included. The schedule gives one roll
+per level, so a Hero who never rerolls waits 24 levels. Spending rerolls burns cooldowns down
+faster, because every replacement roll ticks them too. Either way, rerolling is closer to a lasting
+decision than a do-over. Set `SynergyBanRolls` to about 3 if you only want to stop an immediate
+repeat.
 
 If every ability you could actually use is owned or on cooldown, the cooldowns are released and
 the roll is taken from the full pool again. Level-appropriateness outranks the cooldown, so you

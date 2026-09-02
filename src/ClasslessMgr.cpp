@@ -205,7 +205,6 @@ void ClasslessMgr::LoadConfig(bool /*reload*/)
 
     cfg.wcStartingAbilities = sConfigMgr->GetOption<uint32>("ClasslessWildcard.Wildcard.StartingAbilities", 4);
     cfg.wcRollStartLevel = sConfigMgr->GetOption<uint8>("ClasslessWildcard.Wildcard.RollStartLevel", 10);
-    cfg.wcTalentEveryLevels = std::max<uint32>(1, sConfigMgr->GetOption<uint32>("ClasslessWildcard.Wildcard.TalentEveryLevels", 1));
     cfg.wcAbilityEveryLevels = std::max<uint32>(1, sConfigMgr->GetOption<uint32>("ClasslessWildcard.Wildcard.AbilityEveryLevels", 2));
     cfg.wcFreeRerollLevel = sConfigMgr->GetOption<uint8>("ClasslessWildcard.Wildcard.FreeRerollBelowLevel", 10);
 
@@ -223,8 +222,12 @@ void ClasslessMgr::LoadConfig(bool /*reload*/)
     cfg.wcSynergyIncrement = sConfigMgr->GetOption<uint32>("ClasslessWildcard.Wildcard.SynergyIncrement", 10);
     cfg.wcSynergyBanRolls = sConfigMgr->GetOption<uint32>("ClasslessWildcard.Wildcard.SynergyBanRolls", 25);
     cfg.wcScrollItemId = sConfigMgr->GetOption<uint32>("ClasslessWildcard.Wildcard.ScrollItemId", 990101);
-    cfg.wcRerollsPerAbilityRoll = sConfigMgr->GetOption<uint32>("ClasslessWildcard.Wildcard.RerollsPerAbilityRoll", 1);
-    cfg.wcRerollsPerTalentRoll = sConfigMgr->GetOption<uint32>("ClasslessWildcard.Wildcard.RerollsPerTalentRoll", 1);
+    cfg.wcTalentEveryLevels = std::max<uint32>(1, sConfigMgr->GetOption<uint32>("ClasslessWildcard.Wildcard.TalentEveryLevels", 2));
+    // Phase for the talent roll, so it can land on the levels the ability roll
+    // does not. Without it a cadence of 2 for both would stack them on the same
+    // levels and leave the levels between empty.
+    cfg.wcTalentRollOffset = sConfigMgr->GetOption<uint32>("ClasslessWildcard.Wildcard.TalentRollOffset", 1);
+    cfg.wcRerollsPerLevel = sConfigMgr->GetOption<uint32>("ClasslessWildcard.Wildcard.RerollsPerLevel", 3);
     cfg.wcFreeScrollEveryLevels = sConfigMgr->GetOption<uint32>("ClasslessWildcard.Wildcard.FreeScrollEveryLevels", 0);
     cfg.wcFreeScrollCount = sConfigMgr->GetOption<uint32>("ClasslessWildcard.Wildcard.FreeScrollCount", 1);
     cfg.wcScrollBuyEnable = sConfigMgr->GetOption<uint32>("ClasslessWildcard.Wildcard.ScrollBuyEnable", 1);
@@ -931,16 +934,13 @@ bool ClasslessMgr::Rebirth(Player* player, Mode target, std::string* err)
         for (uint8 lvl = cfg.wcRollStartLevel; lvl <= level; ++lvl)
         {
             uint32 offset = lvl - cfg.wcRollStartLevel;
-            if (offset % cfg.wcTalentEveryLevels == 0)
-            {
+            if ((offset + cfg.wcTalentRollOffset) % cfg.wcTalentEveryLevels == 0)
                 RollTalent(player);
-                st.rerolls += cfg.wcRerollsPerTalentRoll;
-            }
             if (offset % cfg.wcAbilityEveryLevels == 0)
-            {
                 RollAbility(player);
-                st.rerolls += cfg.wcRerollsPerAbilityRoll;
-            }
+            // Rerolls are earned by LEVELLING, not by the individual roll, so
+            // the charge is the same whichever kind of roll the level carried.
+            st.rerolls += cfg.wcRerollsPerLevel;
         }
         SaveState(player);
     }
@@ -1530,16 +1530,12 @@ void ClasslessMgr::HandleLevelUp(Player* player, uint8 oldLevel)
         else if (st.mode == Mode::Wildcard && lvl >= cfg.wcRollStartLevel)
         {
             uint32 offset = lvl - cfg.wcRollStartLevel;
-            if (offset % cfg.wcTalentEveryLevels == 0)
-            {
+            if ((offset + cfg.wcTalentRollOffset) % cfg.wcTalentEveryLevels == 0)
                 RollTalent(player);
-                st.rerolls += cfg.wcRerollsPerTalentRoll; // every roll comes with its reroll
-            }
             if (offset % cfg.wcAbilityEveryLevels == 0)
-            {
                 RollAbility(player);
-                st.rerolls += cfg.wcRerollsPerAbilityRoll;
-            }
+            // one grant per level gained, from the first scheduled roll onward
+            st.rerolls += cfg.wcRerollsPerLevel;
         }
 
         // optional extra scroll faucet at level milestones (off by default)

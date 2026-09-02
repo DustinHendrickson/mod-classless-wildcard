@@ -410,18 +410,32 @@ ClasslessWildcard.Classless.RespecCostGold = 50
 
 ClasslessWildcard.Wildcard.StartingAbilities = 4
 ClasslessWildcard.Wildcard.RollStartLevel = 10
-ClasslessWildcard.Wildcard.TalentEveryLevels = 1
+# The roll schedule. TalentRollOffset is a phase: with both cadences at 2 and
+# the offset at 1, ability rolls land on the even levels from RollStartLevel and
+# talent rolls on the odd ones, so a Hero gets exactly one roll every level and
+# no level is empty. Set the offset to 0 and they stack on the same levels.
+#
+# Talents are deliberately no more frequent than abilities: a talent roll rolls
+# its RANK too, and can hand over rank 5 outright, which is worth five ranks a
+# Classless Hero would buy one at a time. One a level made talent power arrive
+# far faster than ability power.
+ClasslessWildcard.Wildcard.TalentEveryLevels = 2
+ClasslessWildcard.Wildcard.TalentRollOffset = 1
 ClasslessWildcard.Wildcard.AbilityEveryLevels = 2
 ClasslessWildcard.Wildcard.FreeRerollBelowLevel = 10
 ClasslessWildcard.Wildcard.RarityWeights = "100,100,100,100,100"
 ClasslessWildcard.Wildcard.SynergyBaseChance = 10
 ClasslessWildcard.Wildcard.SynergyIncrement = 10
 ClasslessWildcard.Wildcard.SynergyBanRolls = 25
-# Earned rerolls (the Ascension way): every scheduled roll grants matching
-# reroll charges, so rerolls flow with leveling itself. Charges are spent
-# before any scroll is touched.
-ClasslessWildcard.Wildcard.RerollsPerAbilityRoll = 1
-ClasslessWildcard.Wildcard.RerollsPerTalentRoll = 1
+# Earned rerolls (the Ascension way): every level from RollStartLevel grants
+# this many reroll charges, so rerolls flow with leveling itself. Charges are
+# one pool spent on abilities and talents alike, and are spent before any scroll
+# is touched.
+#
+# The grant is per LEVEL, not per roll, so it does not change when a level
+# happens to carry an ability roll rather than a talent roll. The starting hand
+# at level 1 grants none: charges begin with the first scheduled roll.
+ClasslessWildcard.Wildcard.RerollsPerLevel = 3
 # Reroll top-up items (cheap, sold by the Hero Advancement NPC; shipped in the
 # module's world SQL). Consumed only when earned charges run out.
 ClasslessWildcard.Wildcard.ScrollItemId = 990101
