@@ -174,21 +174,29 @@ ClasslessWildcard.RespectLevelRequirements = 1
 
 #
 #    ClasslessWildcard.SpellbookTabs
-#        The client files a spell under a spellbook tab by its skill line --
-#        "Fire", "Holy", "Feral Combat" -- but only for skill lines the
-#        character HAS. A Hero has just the chassis class's, so a rolled
-#        Fireball had nowhere to go and landed in General with everything else,
-#        while the one or two chassis spells sat in a lonely class tab.
+#        Which spellbook tab a spell lands under is decided by the CLIENT, from
+#        SkillLineAbility.dbc: each class has a fixed set of spec tabs (Holy,
+#        Protection, Retribution for the Paladin chassis) and a known spell is
+#        filed under one only if its own row says it belongs to that class --
+#        so a rolled Fireball sat in General while its row said "Mage". The
+#        client patch fixes that by making every class spell belong to every
+#        class, and the addon builds the extra tab buttons, because Blizzard
+#        only ever made 8 and a Hero can span all 33 spec lines. Empty tabs
+#        stay hidden, so a Hero sees only the schools they actually know.
 #
-#        Giving the Hero the skill lines their spells belong to puts each spell
-#        under its own heading. The addon builds the extra tab buttons, because
-#        Blizzard only ever made 8 and a Hero can span all 33 class skill lines.
+#        This setting is the SERVER half, and it is not about the tabs: it
+#        keeps the Hero's class skill lines in step with what they know. The
+#        core re-adds the chassis class's lines every login and auto-teaches
+#        their starter spells with them (that is how Holy Light kept coming
+#        back), so a line the Hero has nothing in is taken away, and lines they
+#        do have something in are added so the core's own skill bookkeeping
+#        stays consistent.
 #
-#          0 = off, stock behaviour (one class tab, everything else General)
-#          1 = a tab for every skill line the Hero owns spells in (no empty tabs)
-#          2 = every class tab present from the start
+#          0 = off (stock behaviour: the chassis lines stay, starter spells
+#              come back each login)
+#          1 = keep lines in step with what the Hero owns (no empty lines)
+#          2 = every class line present from the start
 #
-#        Requires the client addon; without it the extra tabs have no buttons.
 #        Default: 1
 
 #
