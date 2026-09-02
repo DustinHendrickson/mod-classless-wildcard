@@ -35,7 +35,7 @@
 #    ClasslessWildcard.ExemptAccountPrefixes
 #        Comma-separated account-name prefixes that play with VANILLA class
 #        rules: no essences or rolls, native talent points, class trainers
-#        work. Required for mod-playerbots — its random-bot accounts
+#        work. Required for mod-playerbots: its random-bot accounts
 #        (default prefix "rndbot") initialize their spells and talents
 #        directly and must not be stripped by the classless system.
 #        Default: "rndbot"
@@ -265,14 +265,19 @@ ClasslessWildcard.RespectLevelRequirements = 1
 #        put weapons here -- weapons belong in Items so they go to the bag.
 #
 #        StarterKit.Bag: an 8-slot bag equipped at creation so the kit fits
-#        (default 5573 = Blue Leather Bag; 0 = no bag).
+#        (default 5573 = Green Leather Bag; 0 = no bag).
 #
 #        StarterKit.Items go into the BAGS, unequipped -- the neutral weapons
 #        so the Hero can use any ability it rolls. The Hero equips a weapon from
 #        the bag when they want one. Default: Worn Shortsword, Worn Wooden
 #        Shield, one of each basic weapon type, a bow + 200 Rough Arrows, a gun
-#        + 200 Light Shot, and one Crude Throwing Axe (thrown weapons do not
-#        stack or deplete on 3.3.5a, so one is all you need).
+#        + 200 Light Shot, one Crude Throwing Axe (thrown weapons do not stack
+#        or deplete on 3.3.5a, so one is all you need), and a stack of 20 Tough
+#        Hunk of Bread + 20 Refreshing Spring Water so the Hero can eat and
+#        drink back to full between fights.
+#
+#        No wand: 3.3.5a has nothing below a green that a level 1 character can
+#        equip, and a green does not belong in a kit of worn starter weapons.
 #
 #        Each list is comma-separated item:count.
 
@@ -281,7 +286,7 @@ ClasslessWildcard.StarterKit.Enable = 1
 ClasslessWildcard.StarterKit.StripEquipped = 1
 ClasslessWildcard.StarterKit.Bag = 5573
 ClasslessWildcard.StarterKit.Equip = "38:1,39:1,40:1"
-ClasslessWildcard.StarterKit.Items = "25:1,2362:1,2092:2,36:1,1194:1,2361:1,12282:1,35:1,2504:1,2512:200,2508:1,2516:200,25861:1"
+ClasslessWildcard.StarterKit.Items = "25:1,2362:1,2092:2,36:1,1194:1,2361:1,12282:1,35:1,2504:1,2512:200,2508:1,2516:200,25861:1,4540:20,159:20"
 
 ClasslessWildcard.TeachProficiencies = 1
 ClasslessWildcard.BlockOutsideSpellSources = 1
@@ -296,7 +301,7 @@ ClasslessWildcard.ProficiencySpells = "9078,9077,8737,750,9116,201,202,196,197,1
 ClasslessWildcard.SuppressTalentPoints = 1
 
 ########################################
-# Classless (free-pick) economy — Ascension defaults
+# Classless (free-pick) economy: Ascension defaults
 ########################################
 
 ClasslessWildcard.Classless.StartingAbilityEssence = 9
@@ -316,7 +321,7 @@ ClasslessWildcard.Classless.RefundOnUnlearn = 1
 ClasslessWildcard.Classless.RespecCostGold = 50
 
 ########################################
-# Wildcard mode — Season 10 defaults
+# Wildcard mode: Season 10 defaults
 ########################################
 #
 #    Schedule: StartingAbilities random abilities at creation; from
@@ -324,21 +329,84 @@ ClasslessWildcard.Classless.RespecCostGold = 50
 #    random ability every AbilityEveryLevels.
 #
 #    RarityWeights: roll weight per rarity (common,uncommon,rare,epic,legendary).
-#    Season 9 rules (the default): equal weights — every entry in the pool is
+#    Season 9 rules (the default): equal weights, so every entry in the pool is
 #    equally likely, "completely, 100% random", and finding legendaries never
 #    lowers your chance to roll more. For Season-10-style rarity-weighted rolls
 #    use descending weights such as "100,60,30,10,3".
 #
 #    NOTE: this also decides the RANK a rolled talent lands on, because a
 #    talent's rank is its rarity (rank 1 common ... rank 5 legendary). With the
-#    equal weights below, every rank is equally likely — a rank 5 talent is as
+#    equal weights below, every rank is equally likely. A rank 5 talent is as
 #    common as a rank 1. Use descending weights if you want high ranks to be
 #    the rare, exciting find: "100,60,30,10,3" makes rank 5 about a 1.5% roll.
 #
-#    Synergy: each reroll raises the synergy-roll chance by SynergyIncrement%
-#    (starting from SynergyBaseChance%); a synergy roll complements what the
-#    Hero already owns and resets the counter. A rerolled entry is banned from
-#    the pool for SynergyBanRolls rolls (bad-luck protection).
+#    Synergy rolls, pity and bans, in full:
+#
+#      Every ability and talent in the pool carries the class mask it came from
+#      (which classes could learn it). A Hero's own mask is the union of the
+#      masks of everything it already owns. On a SYNERGY ROLL the candidate
+#      pool is narrowed to entries sharing at least one class with that mask
+#      before the weighted pick happens, so the result complements the build
+#      instead of being drawn from the whole library. If nothing in the pool
+#      matches, the roll proceeds normally and does not count as a synergy.
+#
+#      The chance that any given roll is a synergy roll is
+#          SynergyBaseChance + (pity * SynergyIncrement), capped at 100
+#      With the defaults: 10%, rising 10 points per pity point.
+#
+#      PITY COUNTS REROLLS, not rolls. Only a reroll increments it; a scheduled
+#      level-up roll never does. So a Hero who never rerolls sits at a flat
+#      SynergyBaseChance for the whole game, and a Hero who has rerolled nine
+#      times without a synergy hit rolls the tenth at 100%. A synergy roll
+#      resets pity to 0, and so does Rebirth.
+#
+#      Worth knowing before you tune this: the owned mask only ever grows.
+#      Wildcard deals StartingAbilities random abilities at level 1, usually
+#      from that many different classes, so within a few levels the mask covers
+#      most of the game and the synergy filter excludes very little. Synergy
+#      shapes the early build strongly and progressively less after that, while
+#      still announcing itself in chat. Treat SynergyBaseChance and
+#      SynergyIncrement as early-game controls. Set SynergyBaseChance to 0 to
+#      turn synergy rolls off entirely.
+#
+#    SynergyBanRolls is a separate mechanic despite the shared prefix, and the
+#    name is misleading: it is a REROLL COOLDOWN, not a ban list and nothing to
+#    do with moderation. When a player rerolls something, that entry is held out
+#    of their pool for a while so the reroll cannot immediately hand back the
+#    exact thing they just rerolled. It applies whether or not the reroll cost
+#    anything, so free rerolls below FreeRerollBelowLevel stamp a cooldown too.
+#    It is automatic, per character,
+#    stored in cw_char_bans, and survives logout. The cooldown is counted in
+#    rolls, not time, and the replacement roll counts as the first one: the
+#    default 25 keeps a rerolled entry out of 24 rolls, after which it can be
+#    dealt again.
+#
+#    Be aware how long 24 rolls actually is. Every roll of either kind ticks
+#    every cooldown the character has running, and on the default cadence
+#    (TalentEveryLevels = 1, AbilityEveryLevels = 2, from RollStartLevel) a Hero
+#    receives about 1.5 rolls per level. 24 rolls is therefore roughly SIXTEEN
+#    LEVELS: reroll something at level 12 and it cannot return until about level
+#    28. At the default this makes a reroll close to a permanent decision rather
+#    than a do-over. Rerolling often shortens the wait, since each replacement
+#    roll also ticks every cooldown.
+#
+#    Pick the value for the behaviour you want:
+#      0   an entry can be dealt straight back by its own replacement roll
+#      3   stops an immediate repeat, back in the pool within a couple of levels
+#      25  (default) a rerolled entry is gone for most of a leveling stretch
+#
+#    Whatever the value, a cooldown never costs a Hero a level-appropriate roll.
+#    If every entry the Hero could actually use is owned or on cooldown, the
+#    cooldowns of that kind are released and the pool is rebuilt before the roll
+#    falls back to entries above the Hero's level. Level-appropriateness outranks
+#    the cooldown, which matters most below FreeRerollBelowLevel: rerolls there
+#    cost nothing, so a player can churn them freely, while the pool of entries
+#    legal at level 1 is the smallest it will ever be. Without the release, a
+#    few minutes of free rerolling would starve the early pool outright.
+#
+#    This is NOT how you ban a problem ability realm-wide. For that, set
+#    `enabled` = 0 on its row in cw_ability_override or cw_talent_override,
+#    which removes it from the pool for every Hero permanently.
 
 ClasslessWildcard.Wildcard.StartingAbilities = 4
 ClasslessWildcard.Wildcard.RollStartLevel = 10
@@ -402,15 +470,22 @@ ClasslessWildcard.Wildcard.ScrollBuyPerLevelCopper = 500
 #        Default: 1
 #
 #    ClasslessWildcard.Chassis.Class
-#        The class id every Hero runs on.
-#          1 Warrior   2 Paladin   3 Hunter   4 Rogue    5 Priest
-#          6 DK        7 Shaman    8 Mage     9 Warlock  11 Druid
-#        Paladin is the default: a real mana pool with proper base mana (so
-#        percentage-of-base-mana spell costs work) and spirit regen, plate
-#        base armour, and no forms, stances or runes to suppress. Rage and
-#        energy are layered on top by the universal-resource system below.
-#        Pick a non-mana class and mana becomes synthetic instead -- it works,
-#        but it is the harder direction.
+#        The class id every Hero runs on. It MUST be a class with a real mana
+#        pool. The supported set is therefore:
+#          2 Paladin   5 Priest   7 Shaman   8 Mage   9 Warlock   11 Druid
+#        Anything else -- Warrior, Rogue, Hunter, Death Knight -- is refused at
+#        startup with an error in the log and replaced with Paladin. A Hero
+#        casts whatever it learns, and a great many of those spells cost mana
+#        or a percentage of base mana; on a rage or energy chassis the
+#        character has neither pool, so those abilities would simply never
+#        fire. There is no synthetic mana pool to fall back on.
+#
+#        Paladin is the default and the one this module is built around: a real
+#        base mana (so percentage-of-base-mana spell costs come out right),
+#        spirit regen, plate base armour, and no forms, stances or runes to
+#        suppress. Rage and energy are layered on top by the universal-resource
+#        system below, so a Paladin-chassis Hero still pays rage for Bloodthirst
+#        and energy for Sinister Strike.
 #        Default: 2
 #
 #        Changing this on a live realm re-converts every character on their
@@ -435,35 +510,40 @@ ClasslessWildcard.Chassis.Class = 2
 #    (scalable below). A spell whose power type is not the chassis's own is
 #    always castable -- it pays out of the pool it actually uses.
 #
-#    If the configured chassis has no native mana (it does by default), a
-#    synthetic mana pool is built instead. It follows the real
-#    WoW conversion so values look normal at every level:
-#      max mana = BaseMana + ManaPerLevel*(level-1)
-#                 + Intellect (first 20 points, 1 mana each)
-#                 + ManaPerIntellect per Intellect point above 20
-#    A fresh level-1 Hero with 20 Int starts around 120 mana, like a real
-#    caster. MaxRage is in internal units (1000 = 100 displayed rage).
+#    Mana is NOT synthesised here. The chassis is required to be a real mana
+#    class (see Chassis.Class above), so the pool, its base mana and its
+#    intellect scaling all come from the core exactly as they would for that
+#    class. Only rage and energy are layered on, since the chassis has at most
+#    one of them natively. MaxRage is in internal units (1000 = 100 displayed
+#    rage).
 
 ClasslessWildcard.UniversalResources.Enable = 1
-ClasslessWildcard.UniversalResources.BaseMana = 100
-ClasslessWildcard.UniversalResources.ManaPerLevel = 35
-ClasslessWildcard.UniversalResources.ManaPerIntellect = 15
 ClasslessWildcard.UniversalResources.MaxRage = 1000
 ClasslessWildcard.UniversalResources.MaxEnergy = 100
 ClasslessWildcard.UniversalResources.RageFromDealtPct = 100
 ClasslessWildcard.UniversalResources.RageFromTakenPct = 100
-# Synthetic mana regeneration (chassis without native mana get ~none from the
-# core): mana per 5s = ManaRegenBase + Spirit * ManaRegenPerSpirit
-#                      + ManaRegenPct% of max mana.
-# Spirit-driven by default, so allocating Spirit genuinely matters. The module
-# also sets these players' BASE mana to the synthetic pool size so spells
-# costing "% of base mana" have a real, nonzero cost.
+# Mana regeneration: mana per 5s = ManaRegenBase
+#                      + Spirit * ManaRegenPerSpirit + ManaRegenPct% of max.
+# Spirit-driven by default, so allocating Spirit genuinely matters.
+#
+# This ticks on top of the core's own Spirit regen, and it is deliberately NOT
+# subject to the five-second rule. The core's regen stops paying the instant a
+# Hero starts casting, and the talents that lift that (Meditation, Arcane
+# Meditation, Intensity) sit in class trees a Hero may never buy into -- a
+# classless Hero who allocated Spirit would otherwise watch it do nothing for
+# the whole fight. This is the floor that keeps the stat honest.
+#
+# Note the default 0.3 was sized against a small pool. On a Paladin chassis at
+# level 80 a Hero carries some 19,000 mana, so 150 Spirit is about 49 mana per
+# 5s -- a real floor while levelling, close to noise at the cap. Raise
+# ManaRegenPerSpirit, or use ManaRegenPct, if you want it to scale with the
+# pool rather than sit under it.
 ClasslessWildcard.UniversalResources.ManaRegenBase = 4
 ClasslessWildcard.UniversalResources.ManaRegenPerSpirit = 0.3
 ClasslessWildcard.UniversalResources.ManaRegenPct = 0
 
 ########################################
-# Universal stats — every stat matters for every Hero
+# Universal stats: every stat matters for every Hero
 ########################################
 #
 #    The shared chassis already applies its math uniformly (STR -> attack
@@ -475,11 +555,22 @@ ClasslessWildcard.UniversalResources.ManaRegenPct = 0
 #      INT  -> +SpellPowerPerIntellect spell power per point above 10
 #      SPI  -> mana regen (see ManaRegenPerSpirit above) + health regen (core)
 #    Applies to all non-exempt players; bots keep vanilla stat rules.
+#
+#    Why SpellPowerPerIntellect is 0.5 and not 1.0: a point of spell power is
+#    worth roughly four times a point of attack power (1 SP ~ 0.29 DPS on a 3s
+#    full-coefficient nuke; 1 AP ~ 0.07 DPS), and the chassis already hands
+#    melee 2 AP per point of Strength for free. At 1.0 a Hero's Intellect was
+#    the best offensive stat in the game by a wide margin -- at endgame it
+#    roughly DOUBLED a caster's spell power, where Agility adds well under half
+#    that to a melee's attack power. At 0.5 one point of Intellect is worth
+#    about one point of Strength for damage, and Intellect still carries mana
+#    and spell crit on top, which is the caster's edge for paying a resource
+#    cost per cast. Raise it if you want casters ahead on purpose.
 
 ClasslessWildcard.UniversalStats.Enable = 1
 ClasslessWildcard.UniversalStats.MeleeAPPerAgility = 1
 ClasslessWildcard.UniversalStats.RangedAPPerAgility = 1
-ClasslessWildcard.UniversalStats.SpellPowerPerIntellect = 1
+ClasslessWildcard.UniversalStats.SpellPowerPerIntellect = 0.5
 
 ########################################
 # Primary stat allocation

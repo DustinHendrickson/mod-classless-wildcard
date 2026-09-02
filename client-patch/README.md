@@ -1,7 +1,8 @@
 # Client setup
 
-The classless system works on a stock 3.3.5a client with nothing installed.
-This folder is the optional polish. **One installer sets up the full Hero client:**
+Required for every player on a Classless Wildcard realm. The
+[module README](../README.md) explains why.
+**One installer sets up the full Hero client:**
 
 - every class shows as **Hero**, everywhere it appears
 - the creation screen offers a **single class per race** (no class to choose)

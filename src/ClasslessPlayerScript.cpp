@@ -27,36 +27,6 @@
 
 using namespace ClasslessWildcard;
 
-// Does the chassis need a SYNTHETIC mana pool?
-//
-// Every Hero runs the same chassis, so this is one answer for the whole realm,
-// not a per-character quirk. With the default Paladin chassis mana is native
-// and this is always false; it only fires on a realm configured onto a
-// rage/energy chassis. Read from the configured class rather than the
-// player's, so it is already correct during the login before conversion.
-//
-// Detected via ChrClasses — NOT GetCreatePowers(), since we deliberately set a
-// create-mana on these players (see below).
-static bool SyntheticManaChassis(Player* player)
-{
-    Config const& cfg = sClasslessMgr->cfg;
-    uint8 const cls = cfg.chassisEnable && cfg.chassisClass ? cfg.chassisClass
-                                                            : player->getClass();
-    ChrClassesEntry const* ce = sChrClassesStore.LookupEntry(cls);
-    return ce && Powers(ce->powerType) != POWER_MANA;
-}
-
-static uint32 SyntheticManaTarget(Player* player)
-{
-    Config const& cfg = sClasslessMgr->cfg;
-    // real WoW intellect->mana conversion: first 20 points give 1 mana each,
-    // the rest give ManaPerIntellect each; plus base + per-level growth
-    uint32 intellect = uint32(player->GetStat(STAT_INTELLECT));
-    uint32 intMana = intellect <= 20 ? intellect
-                                     : 20 + (intellect - 20) * cfg.urManaPerIntellect;
-    return cfg.urBaseMana + cfg.urManaPerLevel * (player->GetLevel() - 1) + intMana;
-}
-
 class ClasslessWorldScript : public WorldScript
 {
 public:
@@ -260,14 +230,6 @@ public:
             case POWER_ENERGY:
                 value = std::max(value, float(cfg.urMaxEnergy));
                 break;
-            case POWER_MANA:
-                // only chassis without a native mana pool get the synthetic one.
-                // HARD-ASSIGN (not max): if the core scaled our create-mana up,
-                // max() would keep the inflated value — assignment forces the
-                // exact synthetic pool size.
-                if (SyntheticManaChassis(player))
-                    value = float(SyntheticManaTarget(player));
-                break;
             default:
                 break;
         }
@@ -321,18 +283,13 @@ public:
         if (cfg.classlessClassChecks && !sClasslessMgr->IsExempt(player))
             player->SetShowDKPet(true);
 
-        // synthetic mana pools (non-mana chassis) load in at 0 — fill them once
-        // the login stat pass has settled, and give the player a real BASE mana
-        // so spells with %-of-base-mana costs stop computing to zero
+        // Restore the saved main-bar choice once the login stat pass has
+        // settled. The chassis owns the mana pool itself -- it is a real class
+        // with a real base mana, so there is nothing here to build.
         if (cfg.universalResources && !sClasslessMgr->IsExempt(player))
             player->m_Events.AddEventAtOffset([player]()
             {
                 sClasslessMgr->ApplyDisplayPower(player); // saved bar choice
-                if (!SyntheticManaChassis(player))
-                    return;
-                player->SetCreateMana(SyntheticManaTarget(player));
-                player->UpdateMaxPower(POWER_MANA);       // re-run our hard-assign hook
-                player->SetPower(POWER_MANA, player->GetMaxPower(POWER_MANA));
             }, 2s);
     }
 
@@ -348,8 +305,8 @@ public:
     //    AGI -> melee/ranged AP, INT -> spell power, SPI -> mana regen.
     //    (STR->AP/block, STA->health, AGI->crit/dodge, INT->mana/spell crit
     //    already work uniformly through the shared chassis.)
-    //  * synthetic mana upkeep — base mana for %-cost spells, spirit-driven
-    //    regeneration (the core's own table gives non-mana classes ~none).
+    //  * mana regen floor — spirit-driven, and not subject to the core's
+    //    five-second rule, so allocated Spirit still pays during a cast.
     void OnPlayerUpdate(Player* player, uint32 p_time) override
     {
         Config const& cfg = sClasslessMgr->cfg;
@@ -468,14 +425,15 @@ public:
             }
         }
 
-        if (cfg.universalResources && SyntheticManaChassis(player))
+        // The core already regenerates mana from Spirit -- but the five-second
+        // rule zeroes that the instant a Hero starts casting, and the talents
+        // that lift it (Meditation, Arcane Meditation, Intensity) sit in class
+        // trees a Hero may never buy into. A classless Hero who allocated
+        // Spirit would otherwise watch it do nothing all fight. This tick is
+        // not subject to the rule, so it is the floor that makes the stat
+        // honest whatever the Hero picked.
+        if (cfg.universalResources)
         {
-            // keep base mana current (intellect changes with gear/buffs) so
-            // %-of-base-mana spell costs stay correct
-            uint32 target = SyntheticManaTarget(player);
-            if (player->GetCreateMana() != target)
-                player->SetCreateMana(target);
-
             uint32 maxMana = player->GetMaxPower(POWER_MANA);
             uint32 curMana = player->GetPower(POWER_MANA);
             if (maxMana && curMana < maxMana)

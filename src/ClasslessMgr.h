@@ -157,6 +157,9 @@ private:
     void TickBans(ClasslessWildcard::CharState& st, ObjectGuid guid);
     void SaveBans(ObjectGuid guid, ClasslessWildcard::CharState const& st);
     bool IsBanned(ClasslessWildcard::CharState const& st, bool isTalent, uint32 entry) const;
+    // Release every reroll cooldown of one kind. Used when the level-legal pool
+    // has been starved by them; returns true if anything was actually freed.
+    bool ReleaseCooldowns(ClasslessWildcard::CharState& st, ObjectGuid guid, bool isTalent);
     uint32 OwnedClassMask(ClasslessWildcard::CharState const& st) const;
 
     void LoadArchetypes();

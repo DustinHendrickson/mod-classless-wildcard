@@ -9,10 +9,15 @@
 -- Prices come from the medians of real 3.3.5 items (see analyze_prices.py):
 -- a few silver at band 1, over a hundred gold at 80.
 --
+-- Two entry blocks. 990300..990497 is the original catalogue; 990500.. adds the
+-- accuracy and speed the first block had nowhere at all -- hit rating and
+-- haste rating, on four slots the first block never used. They are kept
+-- apart so wave one's entry ids never move.
+--
 -- This file only defines the items. Which of them the Hero Advancement NPC
 -- puts on which shelf is cw_world_vendor_lists.sql's job.
 
-DELETE FROM `item_template` WHERE `entry` BETWEEN 990300 AND 990497;
+DELETE FROM `item_template` WHERE `entry` BETWEEN 990300 AND 990535;
 INSERT INTO `item_template`
   (`entry`, `class`, `subclass`, `name`, `displayid`, `Quality`, `BuyCount`, `BuyPrice`, `SellPrice`,
    `InventoryType`, `AllowableClass`, `AllowableRace`, `ItemLevel`, `RequiredLevel`, `stackable`,
@@ -217,4 +222,40 @@ VALUES
 (990494, 4, 0, 'Ascendant Chain of the Untethered', 64201, 4, 1, 302495, 60499, 2, -1, -1, 80, 80, 1, 4, 34, 5, 34, 7, 24, 0, 0, 0, 0, 0, 2, 0, 1, 0, 'Strength and intellect on one chain.', 12340),
 (990495, 4, 0, 'Ascendant Loop of Contradiction', 54513, 4, 1, 302495, 60499, 11, -1, -1, 80, 80, 1, 3, 34, 45, 53, 7, 19, 0, 0, 0, 0, 0, 2, 0, 1, 0, 'Agility and spellpower have no quarrel here.', 12340),
 (990496, 4, 0, 'Ascendant Focus of the Untethered', 59313, 4, 1, 302495, 60499, 12, -1, -1, 80, 80, 1, 45, 72, 7, 24, 0, 0, 0, 0, 0, 0, 0, 2, 0, 1, 0, 'A focus that hums with borrowed power.', 12340),
-(990497, 4, 0, 'Ascendant Grimoire of the Berserker', 54753, 4, 1, 302495, 60499, 23, -1, -1, 80, 80, 1, 3, 38, 38, 77, 7, 24, 0, 0, 0, 0, 0, 2, 0, 1, 0, 'An off-hand book carrying attack power.', 12340);
+(990497, 4, 0, 'Ascendant Grimoire of the Berserker', 54753, 4, 1, 302495, 60499, 23, -1, -1, 80, 80, 1, 3, 38, 38, 77, 7, 24, 0, 0, 0, 0, 0, 2, 0, 1, 0, 'An off-hand book carrying attack power.', 12340),
+(990500, 4, 4, 'Apprentice''s Truesight Greathelm', 52272, 2, 1, 898, 179, 1, -1, -1, 1, 1, 1, 31, 2, 45, 3, 5, 1, 0, 0, 0, 0, 6, 2, 41, 6, 0, 'A plate helm that makes spells land.', 12340),
+(990501, 4, 1, 'Apprentice''s Gloves of the Sure Strike', 33333, 2, 1, 654, 130, 10, -1, -1, 1, 1, 1, 31, 2, 38, 3, 3, 1, 0, 0, 0, 0, 1, 2, 41, 7, 0, 'Silk gloves for someone who swings first and reads later.', 12340),
+(990502, 4, 2, 'Apprentice''s Girdle of Quickened Thought', 7545, 2, 1, 654, 130, 6, -1, -1, 1, 1, 1, 36, 2, 5, 2, 7, 1, 0, 0, 0, 0, 2, 2, 41, 8, 0, 'Leather cut for a caster in a hurry.', 12340),
+(990503, 4, 3, 'Apprentice''s Boots of the Hasty Brute', 6827, 2, 1, 654, 130, 8, -1, -1, 1, 1, 1, 36, 2, 4, 2, 7, 1, 0, 0, 0, 0, 4, 2, 41, 5, 0, 'Mail boots that hurry a heavy swing.', 12340),
+(990504, 4, 4, 'Journeyman''s Truesight Greathelm', 24510, 2, 1, 2606, 521, 1, -1, -1, 10, 10, 1, 31, 7, 45, 8, 5, 4, 0, 0, 0, 0, 56, 2, 50, 6, 0, 'A plate helm that makes spells land.', 12340),
+(990505, 4, 1, 'Journeyman''s Gloves of the Sure Strike', 16789, 2, 1, 1819, 363, 10, -1, -1, 10, 10, 1, 31, 7, 38, 10, 3, 4, 0, 0, 0, 0, 11, 2, 50, 7, 0, 'Silk gloves for someone who swings first and reads later.', 12340),
+(990506, 4, 2, 'Journeyman''s Girdle of Quickened Thought', 11253, 2, 1, 1819, 363, 6, -1, -1, 10, 10, 1, 36, 7, 5, 5, 7, 4, 0, 0, 0, 0, 19, 2, 50, 8, 0, 'Leather cut for a caster in a hurry.', 12340),
+(990507, 4, 3, 'Journeyman''s Boots of the Hasty Brute', 11447, 2, 1, 1819, 363, 8, -1, -1, 10, 10, 1, 36, 7, 4, 5, 7, 4, 0, 0, 0, 0, 35, 2, 50, 5, 0, 'Mail boots that hurry a heavy swing.', 12340),
+(990508, 4, 4, 'Adept''s Truesight Greathelm', 26257, 2, 1, 9556, 1911, 1, -1, -1, 20, 20, 1, 31, 14, 45, 16, 5, 8, 0, 0, 0, 0, 112, 2, 60, 6, 0, 'A plate helm that makes spells land.', 12340),
+(990509, 4, 1, 'Adept''s Gloves of the Sure Strike', 16956, 2, 1, 6171, 1234, 10, -1, -1, 20, 20, 1, 31, 14, 38, 19, 3, 7, 0, 0, 0, 0, 22, 2, 60, 7, 0, 'Silk gloves for someone who swings first and reads later.', 12340),
+(990510, 4, 2, 'Adept''s Girdle of Quickened Thought', 17129, 2, 1, 6171, 1234, 6, -1, -1, 20, 20, 1, 36, 14, 5, 11, 7, 7, 0, 0, 0, 0, 38, 2, 60, 8, 0, 'Leather cut for a caster in a hurry.', 12340),
+(990511, 4, 3, 'Adept''s Boots of the Hasty Brute', 27771, 2, 1, 6171, 1234, 8, -1, -1, 20, 20, 1, 36, 14, 4, 11, 7, 7, 0, 0, 0, 0, 70, 2, 60, 5, 0, 'Mail boots that hurry a heavy swing.', 12340),
+(990512, 4, 4, 'Veteran''s Truesight Greathelm', 40771, 3, 1, 24841, 4968, 1, -1, -1, 30, 30, 1, 31, 22, 45, 23, 5, 13, 0, 0, 0, 0, 168, 2, 70, 6, 0, 'A plate helm that makes spells land.', 12340),
+(990513, 4, 1, 'Veteran''s Gloves of the Sure Strike', 16720, 3, 1, 14976, 2995, 10, -1, -1, 30, 30, 1, 31, 22, 38, 29, 3, 11, 0, 0, 0, 0, 33, 2, 70, 7, 0, 'Silk gloves for someone who swings first and reads later.', 12340),
+(990514, 4, 2, 'Veteran''s Girdle of Quickened Thought', 27560, 3, 1, 14976, 2995, 6, -1, -1, 30, 30, 1, 36, 22, 5, 16, 7, 11, 0, 0, 0, 0, 58, 2, 70, 8, 0, 'Leather cut for a caster in a hurry.', 12340),
+(990515, 4, 3, 'Veteran''s Boots of the Hasty Brute', 25930, 3, 1, 14976, 2995, 8, -1, -1, 30, 30, 1, 36, 22, 4, 16, 7, 11, 0, 0, 0, 0, 105, 2, 70, 5, 0, 'Mail boots that hurry a heavy swing.', 12340),
+(990516, 4, 4, 'Champion''s Truesight Greathelm', 42829, 3, 1, 56982, 11396, 1, -1, -1, 40, 40, 1, 31, 29, 45, 31, 5, 17, 0, 0, 0, 0, 224, 2, 80, 6, 0, 'A plate helm that makes spells land.', 12340),
+(990517, 4, 1, 'Champion''s Gloves of the Sure Strike', 24986, 3, 1, 34941, 6988, 10, -1, -1, 40, 40, 1, 31, 29, 38, 38, 3, 14, 0, 0, 0, 0, 44, 2, 80, 7, 0, 'Silk gloves for someone who swings first and reads later.', 12340),
+(990518, 4, 2, 'Champion''s Girdle of Quickened Thought', 23844, 3, 1, 34941, 6988, 6, -1, -1, 40, 40, 1, 36, 29, 5, 22, 7, 14, 0, 0, 0, 0, 77, 2, 80, 8, 0, 'Leather cut for a caster in a hurry.', 12340),
+(990519, 4, 3, 'Champion''s Boots of the Hasty Brute', 31412, 3, 1, 34941, 6988, 8, -1, -1, 40, 40, 1, 36, 29, 4, 22, 7, 14, 0, 0, 0, 0, 140, 2, 80, 5, 0, 'Mail boots that hurry a heavy swing.', 12340),
+(990520, 4, 4, 'Master''s Truesight Greathelm', 41135, 3, 1, 107964, 21592, 1, -1, -1, 50, 50, 1, 31, 36, 45, 39, 5, 21, 0, 0, 0, 0, 280, 2, 90, 6, 0, 'A plate helm that makes spells land.', 12340),
+(990521, 4, 1, 'Master''s Gloves of the Sure Strike', 18858, 3, 1, 69145, 13829, 10, -1, -1, 50, 50, 1, 31, 36, 38, 48, 3, 18, 0, 0, 0, 0, 55, 2, 90, 7, 0, 'Silk gloves for someone who swings first and reads later.', 12340),
+(990522, 4, 2, 'Master''s Girdle of Quickened Thought', 30839, 3, 1, 69145, 13829, 6, -1, -1, 50, 50, 1, 36, 36, 5, 27, 7, 18, 0, 0, 0, 0, 96, 2, 90, 8, 0, 'Leather cut for a caster in a hurry.', 12340),
+(990523, 4, 3, 'Master''s Boots of the Hasty Brute', 33036, 3, 1, 69145, 13829, 8, -1, -1, 50, 50, 1, 36, 36, 4, 27, 7, 18, 0, 0, 0, 0, 175, 2, 90, 5, 0, 'Mail boots that hurry a heavy swing.', 12340),
+(990524, 4, 4, 'Grand Master''s Truesight Greathelm', 48057, 3, 1, 192824, 38564, 1, -1, -1, 60, 60, 1, 31, 43, 45, 47, 5, 25, 0, 0, 0, 0, 336, 2, 100, 6, 0, 'A plate helm that makes spells land.', 12340),
+(990525, 4, 1, 'Grand Master''s Gloves of the Sure Strike', 37308, 3, 1, 121190, 24238, 10, -1, -1, 60, 60, 1, 31, 43, 38, 58, 3, 22, 0, 0, 0, 0, 66, 2, 100, 7, 0, 'Silk gloves for someone who swings first and reads later.', 12340),
+(990526, 4, 2, 'Grand Master''s Girdle of Quickened Thought', 35164, 3, 1, 121190, 24238, 6, -1, -1, 60, 60, 1, 36, 43, 5, 32, 7, 22, 0, 0, 0, 0, 115, 2, 100, 8, 0, 'Leather cut for a caster in a hurry.', 12340),
+(990527, 4, 3, 'Grand Master''s Boots of the Hasty Brute', 44200, 3, 1, 121190, 24238, 8, -1, -1, 60, 60, 1, 36, 43, 4, 32, 7, 22, 0, 0, 0, 0, 210, 2, 100, 5, 0, 'Mail boots that hurry a heavy swing.', 12340),
+(990528, 4, 4, 'Heroic Truesight Greathelm', 57522, 4, 1, 298309, 59661, 1, -1, -1, 70, 70, 1, 31, 50, 45, 55, 5, 29, 0, 0, 0, 0, 392, 2, 110, 6, 0, 'A plate helm that makes spells land.', 12340),
+(990529, 4, 1, 'Heroic Gloves of the Sure Strike', 53094, 4, 1, 184955, 36991, 10, -1, -1, 70, 70, 1, 31, 50, 38, 67, 3, 25, 0, 0, 0, 0, 77, 2, 110, 7, 0, 'Silk gloves for someone who swings first and reads later.', 12340),
+(990530, 4, 2, 'Heroic Girdle of Quickened Thought', 16704, 4, 1, 184955, 36991, 6, -1, -1, 70, 70, 1, 36, 50, 5, 38, 7, 25, 0, 0, 0, 0, 134, 2, 110, 8, 0, 'Leather cut for a caster in a hurry.', 12340),
+(990531, 4, 3, 'Heroic Boots of the Hasty Brute', 46637, 4, 1, 184955, 36991, 8, -1, -1, 70, 70, 1, 36, 50, 4, 38, 7, 25, 0, 0, 0, 0, 245, 2, 110, 5, 0, 'Mail boots that hurry a heavy swing.', 12340),
+(990532, 4, 4, 'Ascendant Truesight Greathelm', 59603, 4, 1, 616093, 123218, 1, -1, -1, 80, 80, 1, 31, 58, 45, 62, 5, 34, 0, 0, 0, 0, 448, 2, 120, 6, 0, 'A plate helm that makes spells land.', 12340),
+(990533, 4, 1, 'Ascendant Gloves of the Sure Strike', 54779, 4, 1, 371406, 74281, 10, -1, -1, 80, 80, 1, 31, 58, 38, 77, 3, 29, 0, 0, 0, 0, 88, 2, 120, 7, 0, 'Silk gloves for someone who swings first and reads later.', 12340),
+(990534, 4, 2, 'Ascendant Girdle of Quickened Thought', 56497, 4, 1, 371406, 74281, 6, -1, -1, 80, 80, 1, 36, 58, 5, 43, 7, 29, 0, 0, 0, 0, 154, 2, 120, 8, 0, 'Leather cut for a caster in a hurry.', 12340),
+(990535, 4, 3, 'Ascendant Boots of the Hasty Brute', 52342, 4, 1, 371406, 74281, 8, -1, -1, 80, 80, 1, 36, 58, 4, 43, 7, 29, 0, 0, 0, 0, 280, 2, 120, 5, 0, 'Mail boots that hurry a heavy swing.', 12340);

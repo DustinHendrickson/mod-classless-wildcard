@@ -145,10 +145,10 @@ void ClasslessMgr::LoadConfig(bool /*reload*/)
         }
     };
     // bag items: 2x dagger, 1H mace, 2H sword/mace/axe, staff, bow+arrows,
-    // gun+shot, thrown
+    // gun+shot, thrown, and a stack each of food and water
     std::string kitList = sConfigMgr->GetOption<std::string>(
         "ClasslessWildcard.StarterKit.Items",
-        "2092:2,36:1,1194:1,2361:1,12282:1,35:1,2504:1,2512:200,2508:1,2516:200,25861:200");
+        "2092:2,36:1,1194:1,2361:1,12282:1,35:1,2504:1,2512:200,2508:1,2516:200,25861:200,4540:20,159:20");
     parseKit(kitList, cfg.starterKitItems);
     // auto-equipped: standard armor (shirt/pants/boots) + 1H sword + shield
     std::string equipList = sConfigMgr->GetOption<std::string>(
@@ -232,9 +232,6 @@ void ClasslessMgr::LoadConfig(bool /*reload*/)
     cfg.wcScrollBuyPerLevelCopper = sConfigMgr->GetOption<uint32>("ClasslessWildcard.Wildcard.ScrollBuyPerLevelCopper", 500);
 
     cfg.universalResources = sConfigMgr->GetOption<bool>("ClasslessWildcard.UniversalResources.Enable", true);
-    cfg.urBaseMana = sConfigMgr->GetOption<uint32>("ClasslessWildcard.UniversalResources.BaseMana", 100);
-    cfg.urManaPerLevel = sConfigMgr->GetOption<uint32>("ClasslessWildcard.UniversalResources.ManaPerLevel", 35);
-    cfg.urManaPerIntellect = sConfigMgr->GetOption<uint32>("ClasslessWildcard.UniversalResources.ManaPerIntellect", 15);
     cfg.urMaxRage = sConfigMgr->GetOption<uint32>("ClasslessWildcard.UniversalResources.MaxRage", 1000);
     cfg.urMaxEnergy = sConfigMgr->GetOption<uint32>("ClasslessWildcard.UniversalResources.MaxEnergy", 100);
     cfg.urRageDealtPct = sConfigMgr->GetOption<uint32>("ClasslessWildcard.UniversalResources.RageFromDealtPct", 100);
@@ -245,11 +242,28 @@ void ClasslessMgr::LoadConfig(bool /*reload*/)
 
     cfg.chassisEnable = sConfigMgr->GetOption<bool>("ClasslessWildcard.Chassis.Enable", true);
     cfg.chassisClass = uint8(sConfigMgr->GetOption<uint32>("ClasslessWildcard.Chassis.Class", CLASS_PALADIN));
+    // The chassis must own a real mana pool. Heroes cast whatever they learn,
+    // and a great many of those spells cost mana or a percentage of base mana;
+    // on a rage or energy chassis the character has neither, so the abilities
+    // simply would not fire. Refuse the setting rather than hand someone a
+    // realm of Heroes who cannot cast.
+    if (cfg.chassisEnable)
+    {
+        ChrClassesEntry const* chassis = sChrClassesStore.LookupEntry(cfg.chassisClass);
+        if (!chassis || Powers(chassis->powerType) != POWER_MANA)
+        {
+            LOG_ERROR("module.classless",
+                      "mod-classless-wildcard: ClasslessWildcard.Chassis.Class = {} is not a "
+                      "mana class — Heroes there could not pay for a mana spell. Falling back "
+                      "to Paladin ({}).", cfg.chassisClass, uint32(CLASS_PALADIN));
+            cfg.chassisClass = CLASS_PALADIN;
+        }
+    }
 
     cfg.universalStats = sConfigMgr->GetOption<bool>("ClasslessWildcard.UniversalStats.Enable", true);
     cfg.usMeleeAPPerAgi = sConfigMgr->GetOption<float>("ClasslessWildcard.UniversalStats.MeleeAPPerAgility", 1.0f);
     cfg.usRangedAPPerAgi = sConfigMgr->GetOption<float>("ClasslessWildcard.UniversalStats.RangedAPPerAgility", 1.0f);
-    cfg.usSpellPowerPerInt = sConfigMgr->GetOption<float>("ClasslessWildcard.UniversalStats.SpellPowerPerIntellect", 1.0f);
+    cfg.usSpellPowerPerInt = sConfigMgr->GetOption<float>("ClasslessWildcard.UniversalStats.SpellPowerPerIntellect", 0.5f);
 
     cfg.statsEnable = sConfigMgr->GetOption<bool>("ClasslessWildcard.Stats.Enable", true);
     cfg.statStartingPoints = sConfigMgr->GetOption<uint32>("ClasslessWildcard.Stats.StartingPoints", 4);
@@ -2157,6 +2171,33 @@ bool ClasslessMgr::IsBanned(CharState const& st, bool isTalent, uint32 entry) co
     return false;
 }
 
+// A reroll cooldown exists to stop the replacement roll handing back the exact
+// thing the Hero just rerolled. It was never meant to outrank keeping a roll at
+// the Hero's own level -- but because IsBanned filters the fallback pool too, a
+// starved level-legal pool used to mean the Hero got an ability well above
+// their level instead. That bites hardest at level 1, where the legal pool is
+// smallest and rerolls are free, so players churn them.
+//
+// So when the legal pool runs dry, the cooldowns are what give way: put them
+// all back in play and roll from a healthy pool again. Handing back something
+// rerolled a few rolls ago beats handing a level 1 Hero a spell they cannot
+// cast for twenty levels.
+bool ClasslessMgr::ReleaseCooldowns(CharState& st, ObjectGuid guid, bool isTalent)
+{
+    std::size_t const before = st.bans.size();
+    st.bans.erase(std::remove_if(st.bans.begin(), st.bans.end(),
+                                 [isTalent](RollBan const& b) { return b.isTalent == isTalent; }),
+                  st.bans.end());
+    if (st.bans.size() == before)
+        return false;
+
+    SaveBans(guid, st);
+    LOG_DEBUG("module.classless",
+              "mod-classless-wildcard: {} roll pool starved for guid {}; released {} reroll cooldown(s)",
+              isTalent ? "talent" : "ability", guid.GetCounter(), before - st.bans.size());
+    return true;
+}
+
 void ClasslessMgr::TickBans(CharState& st, ObjectGuid guid)
 {
     bool changed = false;
@@ -2205,22 +2246,34 @@ uint32 ClasslessMgr::RollAbility(Player* player, GrantSource source)
     std::vector<AbilityEntry const*> candidates;
     std::vector<AbilityEntry const*> anyLevel;
     candidates.reserve(_abilities.size());
-    for (auto const& [firstSpell, e] : _abilities)
+    auto buildPool = [&]()
     {
-        if (!e.enabled || st.abilities.count(firstSpell) || IsBanned(st, false, firstSpell))
-            continue;
-        if (!e.name.empty() && ownedNames.count(e.name))
-            continue;
-        anyLevel.push_back(&e);
-        if (!cfg.respectLevelReqs || e.rankLevels.empty() || e.rankLevels[0] <= player->GetLevel())
-            candidates.push_back(&e);
-    }
-    // Nothing left at or below the Hero's level -- which happens constantly at
-    // level 1, where the only level-legal spells are the ones already owned.
-    // Fall back to the LOWEST-level entries rather than to the whole library:
-    // the old "anyLevel" fallback is how a level 1 Hero got dealt Unstable
-    // Affliction. A roll is still never lost, it just stays as close to the
-    // Hero's level as the remaining pool allows.
+        candidates.clear();
+        anyLevel.clear();
+        for (auto const& [firstSpell, e] : _abilities)
+        {
+            if (!e.enabled || st.abilities.count(firstSpell) || IsBanned(st, false, firstSpell))
+                continue;
+            if (!e.name.empty() && ownedNames.count(e.name))
+                continue;
+            anyLevel.push_back(&e);
+            if (!cfg.respectLevelReqs || e.rankLevels.empty() || e.rankLevels[0] <= player->GetLevel())
+                candidates.push_back(&e);
+        }
+    };
+    buildPool();
+
+    // Every ability the Hero could actually USE is owned or on a reroll
+    // cooldown. Release the cooldowns and rebuild rather than reaching above
+    // the Hero's level for something they cannot cast -- see ReleaseCooldowns.
+    if (candidates.empty() && ReleaseCooldowns(st, guid, false))
+        buildPool();
+
+    // Still nothing legal, so the Hero genuinely owns everything at their
+    // level. Fall back to the LOWEST-level entries rather than to the whole
+    // library: the old "anyLevel" fallback is how a level 1 Hero got dealt
+    // Unstable Affliction. A roll is still never lost, it just stays as close
+    // to the Hero's level as the remaining pool allows.
     if (candidates.empty() && !anyLevel.empty())
     {
         uint32 best = 0xFFFFFFFF;
@@ -2304,19 +2357,30 @@ uint32 ClasslessMgr::RollTalent(Player* player)
         std::vector<TalentPoolEntry const*> candidates;
         std::vector<TalentPoolEntry const*> anyLevel;
         candidates.reserve(_talents.size());
-        for (auto const& [talentId, t] : _talents)
+        auto buildPool = [&]()
         {
-            if (!t.enabled || IsBanned(st, true, talentId))
-                continue;
-            auto itr = st.talents.find(talentId);
-            if (itr != st.talents.end() && itr->second >= t.maxRank)
-                continue; // maxed out
-            anyLevel.push_back(&t);
-            if (!cfg.respectLevelReqs || player->GetLevel() >= 10 + t.row * 5)
-                candidates.push_back(&t);
-        }
-        // same rule as abilities: when nothing is level-legal, drop to the
-        // LOWEST tier still available rather than opening up the whole tree
+            candidates.clear();
+            anyLevel.clear();
+            for (auto const& [talentId, t] : _talents)
+            {
+                if (!t.enabled || IsBanned(st, true, talentId))
+                    continue;
+                auto itr = st.talents.find(talentId);
+                if (itr != st.talents.end() && itr->second >= t.maxRank)
+                    continue; // maxed out
+                anyLevel.push_back(&t);
+                if (!cfg.respectLevelReqs || player->GetLevel() >= 10 + t.row * 5)
+                    candidates.push_back(&t);
+            }
+        };
+        buildPool();
+
+        // same rule as abilities: cooldowns give way before the tier does
+        if (candidates.empty() && ReleaseCooldowns(st, guid, true))
+            buildPool();
+
+        // when nothing is level-legal even then, drop to the LOWEST tier still
+        // available rather than opening up the whole tree
         if (candidates.empty() && !anyLevel.empty())
         {
             uint32 best = 0xFFFFFFFF;

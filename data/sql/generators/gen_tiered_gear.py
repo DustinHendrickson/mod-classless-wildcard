@@ -22,10 +22,21 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 OUT = os.path.join(HERE, os.pardir, "db-world", "cw_items_tiered.sql")
 
 FIRST_ENTRY = 990300
+# Wave two starts in its own block, deliberately clear of wave one's
+# 990300..990497. Appending to TEMPLATES instead would have shifted every entry
+# after band 1 by the number of new templates, silently turning gear players
+# already own into something else.
+SECOND_ENTRY = 990500
 VERIFIED = 12340
 
 # stat ids (item_template.stat_type*)
 AGI, STR, INT, SPI, STA, CRIT, AP, SP = 3, 4, 5, 6, 7, 32, 38, 45
+# Accuracy and speed. One rating each covers every build: the core's
+# _ApplyItemMods sends ITEM_MOD_HIT_RATING to CR_HIT_MELEE, CR_HIT_RANGED *and*
+# CR_HIT_SPELL, and ITEM_MOD_HASTE_RATING likewise to all three hastes -- so a
+# single classless hit piece serves the caster and the swordsman equally, which
+# is exactly the shape this catalogue wants.
+HIT, HASTE = 31, 36
 
 BANDS = [1, 10, 20, 30, 40, 50, 60, 70, 80]
 TIER_NAME = {1: "Apprentice's", 10: "Journeyman's", 20: "Adept's",
@@ -126,12 +137,40 @@ TEMPLATES = [
       desc="An off-hand book carrying attack power."),
 ]
 
+# Wave two: accuracy and speed, which wave one has none of anywhere.
+#
+# A Hero geared purely from this vendor used to walk into a raid at 0 hit
+# rating and miss 17% of their spells (8% of their swings) against a boss, with
+# no piece in the catalogue able to help. Haste was missing on the same terms.
+# These four fill both gaps and keep the joke: plate that casts, cloth that
+# swings, leather for a caster, mail for a brute. They also take four slots
+# wave one never used -- head, hands, waist, feet -- so nothing here competes
+# with a piece a Hero already bought.
+TEMPLATES_W2 = [
+    T("plate_head_hit_sp", "Truesight Greathelm", 4, 4, 1, "plate_head",
+      [(HIT, 1.2), (SP, 1.3), (INT, 0.7)], kind="armor", price="big_armor",
+      armor_class="plate", slot=0.8, mat=6,
+      desc="A plate helm that makes spells land."),
+    T("cloth_hands_hit_ap", "Gloves of the Sure Strike", 4, 1, 10, "cloth_hands",
+      [(HIT, 1.2), (AP, 1.6), (AGI, 0.6)], kind="armor", price="small_armor",
+      armor_class="cloth", slot=0.55, mat=7,
+      desc="Silk gloves for someone who swings first and reads later."),
+    T("leather_waist_haste_int", "Girdle of Quickened Thought", 4, 2, 6, "leather_waist",
+      [(HASTE, 1.2), (INT, 0.9), (STA, 0.6)], kind="armor", price="small_armor",
+      armor_class="leather", slot=0.6, mat=8,
+      desc="Leather cut for a caster in a hurry."),
+    T("mail_feet_haste_str", "Boots of the Hasty Brute", 4, 3, 8, "mail_feet",
+      [(HASTE, 1.2), (STR, 0.9), (STA, 0.6)], kind="armor", price="small_armor",
+      armor_class="mail", slot=0.7, mat=5,
+      desc="Mail boots that hurry a heavy swing."),
+]
+
 # Artwork, one look per band. displaypick only offers display ids that real
 # items of the same class/subclass/slot wear, so the icon, model and texture
 # always agree with the tooltip -- and it walks the art up with the level, so a
 # band-1 piece looks like starter gear rather than a raid drop.
 ART = {}
-for t in TEMPLATES:
+for t in TEMPLATES + TEMPLATES_W2:
     ART[t["key"]] = displaypick.spread(t["cls"], t["sub"], t["inv"],
                                        t["name"], BANDS)
     if len(ART[t["key"]]) < len(BANDS):
@@ -147,10 +186,10 @@ def stat_budget(level):
     return max(2, round(level * 0.6))
 
 
-def build_rows():
-    rows, entry = [], FIRST_ENTRY
+def build_rows(templates, first_entry):
+    rows, entry = [], first_entry
     for band in BANDS:
-        for t in TEMPLATES:
+        for t in templates:
             P = stat_budget(band)
             stats = []
             for sid, weight in t["stats"][:3]:
@@ -191,7 +230,7 @@ def build_rows():
     return rows
 
 
-rows = build_rows()
+rows = build_rows(TEMPLATES, FIRST_ENTRY) + build_rows(TEMPLATES_W2, SECOND_ENTRY)
 last = rows[-1]["entry"]
 
 L = []
@@ -207,9 +246,15 @@ L.append(textwrap.dedent("""\
     -- Prices come from the medians of real 3.3.5 items (see analyze_prices.py):
     -- a few silver at band 1, over a hundred gold at 80.
     --
+    -- Two entry blocks. %d..%d is the original catalogue; %d.. adds the
+    -- accuracy and speed the first block had nowhere at all -- hit rating and
+    -- haste rating, on four slots the first block never used. They are kept
+    -- apart so wave one's entry ids never move.
+    --
     -- This file only defines the items. Which of them the Hero Advancement NPC
     -- puts on which shelf is cw_world_vendor_lists.sql's job.
-    """))
+    """ % (FIRST_ENTRY, FIRST_ENTRY + len(TEMPLATES) * len(BANDS) - 1,
+            SECOND_ENTRY)))
 L.append("DELETE FROM `item_template` WHERE `entry` BETWEEN %d AND %d;" % (FIRST_ENTRY, last))
 L.append("INSERT INTO `item_template`")
 L.append("  (`entry`, `class`, `subclass`, `name`, `displayid`, `Quality`, `BuyCount`, `BuyPrice`, `SellPrice`,")
@@ -234,8 +279,9 @@ L.append("")
 open(OUT, "w", encoding="utf-8", newline="\n").write("\n".join(L))
 
 print("wrote %s" % os.path.normpath(OUT))
-print("  %d items, entries %d..%d  (%d templates x %d bands)"
-      % (len(rows), FIRST_ENTRY, last, len(TEMPLATES), len(BANDS)))
+print("  %d items, entries %d..%d  (%d + %d templates x %d bands)"
+      % (len(rows), FIRST_ENTRY, last, len(TEMPLATES), len(TEMPLATES_W2),
+         len(BANDS)))
 print("  shelving is gen_vendor_lists.py's job -- rerun it after this")
 print()
 print("  price / stat sample:")

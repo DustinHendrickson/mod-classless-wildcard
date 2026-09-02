@@ -25,6 +25,8 @@
 #include "SpellMgr.h"
 #include "StringFormat.h"
 
+#include <algorithm>
+
 using namespace Acore::ChatCommands;
 using namespace ClasslessWildcard;
 
@@ -93,7 +95,20 @@ public:
                 st.rerolls);
             handler->PSendSysMessage("Reroll pity: {} (synergy chance {}%)", st.pity,
                 std::min<uint32>(sClasslessMgr->cfg.wcSynergyBaseChance + st.pity * sClasslessMgr->cfg.wcSynergyIncrement, 100));
-            handler->PSendSysMessage("Roll bans active: {}", uint32(st.bans.size()));
+            if (st.bans.empty())
+                handler->PSendSysMessage("On reroll cooldown: none");
+            else
+            {
+                // Show the shortest remaining wait, so the number means
+                // something: cooldowns run in ROLLS, and on the shipped cadence
+                // a Hero earns about 1.5 of those per level.
+                int32 soonest = st.bans.front().rollsLeft;
+                for (auto const& ban : st.bans)
+                    soonest = std::min(soonest, ban.rollsLeft);
+                handler->PSendSysMessage(
+                    "On reroll cooldown: {} (things you rerolled; the next one returns in {} rolls)",
+                    uint32(st.bans.size()), uint32(std::max<int32>(0, soonest)));
+            }
         }
         return true;
     }

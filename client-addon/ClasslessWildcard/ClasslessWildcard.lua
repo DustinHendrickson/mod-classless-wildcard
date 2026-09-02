@@ -666,7 +666,7 @@ local HELP_TEXT = table.concat({
 "You steer your luck:",
 "   |cffffd100Rerolls|r -- every roll also grants a reroll charge (rerolls are free below level 10). One pool, spent on abilities or talents alike. Reroll straight from the popup, or later from |cffffd100My Build|r using the circular arrow next to anything you own.",
 "   |cffffd100Lock|r -- protect an ability so a later roll can't overwrite it.",
-"   |cffffd100Synergy & pity|r -- rolls lean toward what fits your build, with a rising pity chance and bad-luck bans so a cold streak can't ruin you.",
+"   |cffffd100Synergy & pity|r -- some rolls are narrowed to abilities that fit the classes you already own. The chance of that starts at 10% and climbs by 10 points every time you reroll, so a cold streak keeps improving your odds until it pays off, then resets. Anything you reroll also goes on a cooldown, so the reroll can never hand you straight back what you just got rid of. That cooldown lasts 24 rolls, which is around 16 levels, so rerolling something is closer to a lasting decision than a do-over. If you reroll through everything available at your level, the cooldowns lift so you always get something you can actually use.",
 "   |cffffd100Reroll Scrolls|r -- one scroll, good for an ability OR a talent, for when your charges run dry. Earn them, buy them from the Hero Advancement NPC, or use the |cffffd100Buy Scroll|r button on this panel (the price scales with level -- silver early, gold near the cap).",
 "Open the roll screen any time with the |cffffd100dice crest|r at the top-left of this window.",
 "",

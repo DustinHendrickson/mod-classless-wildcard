@@ -297,10 +297,12 @@ namespace ClasslessWildcard
         // chassis makes that math identical by construction rather than by
         // correction, so the class you picked is purely cosmetic.
         //
-        // Paladin is the default: it has a real mana pool with proper base
-        // mana (so %-of-base-mana spell costs work) and spirit regen, and no
-        // forms, stances or runes to suppress. Rage and energy are layered on
-        // top by the universal-resource code below.
+        // The chassis is Paladin, and it must be a mana class. Paladin has a
+        // real mana pool with proper base mana (so %-of-base-mana spell costs
+        // work) and spirit regen, and no forms, stances or runes to suppress.
+        // Rage and energy are layered on top by the universal-resource code
+        // below. A rage or energy chassis is refused at load: mana is never
+        // synthesised, so such a Hero could not pay for a single mana spell.
         bool   chassisEnable = true;
         uint8  chassisClass = 2;          // CLASS_PALADIN
 
@@ -308,19 +310,12 @@ namespace ClasslessWildcard
         // pools simultaneously (druid-style — the client tracks all pools,
         // only the chassis bar is displayed; the addon shows the others)
         bool   universalResources = true;
-        // synthetic mana, used only when the configured chassis has no native
-        // mana pool. With the default Paladin chassis this never runs. Uses
-        // the real WoW conversion:
-        // the first 20 Intellect give 1 mana each, points beyond 20 give
-        // ManaPerIntellect each; plus a flat base and per-level growth
-        uint32 urBaseMana = 100;
-        uint32 urManaPerLevel = 35;
-        uint32 urManaPerIntellect = 15;    // per point of Intellect ABOVE 20
         uint32 urMaxRage = 1000;           // internal units (1000 = 100 rage)
         uint32 urMaxEnergy = 100;
         uint32 urRageDealtPct = 100;       // % of warrior-formula rage gained when dealing melee damage
         uint32 urRageTakenPct = 100;       // % of warrior-formula rage gained when taking damage
-        // synthetic mana regen (per 5s): Base + Spirit*PerSpirit + Pct% of max
+        // module mana regen (per 5s): Base + Spirit*PerSpirit + Pct% of max.
+        // Not subject to the five-second rule, so Spirit pays during a cast
         float  urManaRegenBase = 4.0f;
         float  urManaRegenPerSpirit = 0.3f;
         uint32 urManaRegenPct = 0;
@@ -335,7 +330,7 @@ namespace ClasslessWildcard
         bool   universalStats = true;
         float  usMeleeAPPerAgi = 1.0f;
         float  usRangedAPPerAgi = 1.0f;
-        float  usSpellPowerPerInt = 1.0f;  // per Intellect point above 10
+        float  usSpellPowerPerInt = 0.5f;  // per Intellect point above 10
 
         // primary stat allocation
         bool   statsEnable = true;
