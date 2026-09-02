@@ -80,72 +80,6 @@ realm forces one through config. **Rebirth** lets a player switch paths later fo
 
 ---
 
-## How Wildcard rolls work
-
-Wildcard hands out abilities and talents on a schedule instead of letting you buy them. Three
-mechanics shape what you get.
-
-**The roll itself.** Candidates are every ability you do not already own whose rank-1 learn level
-you have reached, minus anything currently banned. One is picked at random, weighted by
-`RarityWeights`. If nothing is legal at your level, the roll falls back to the lowest-level
-entries still available rather than the whole library, so a level 1 Hero is not dealt a level 70
-ability. A roll is never wasted.
-
-**Synergy rolls.** Every ability and talent carries the class mask it came from. Your Hero's mask
-is the union of the masks of everything you already own. On a synergy roll, the candidate pool is
-first narrowed to entries sharing a class with your mask, so the result complements your build.
-You get a chat message when it happens.
-
-The chance of a synergy roll is `SynergyBaseChance + (pity x SynergyIncrement)`, capped at 100,
-which is 10% rising by 10 points per pity point on the shipped defaults.
-
-**Pity counts rerolls, not rolls.** Only rerolling raises it. A scheduled level-up roll does not.
-So if you never reroll, your synergy chance stays at 10% for the whole game. If you reroll nine
-times without getting a synergy roll, the tenth is guaranteed. Any synergy roll resets pity to
-zero, and so does Rebirth.
-
-Because your class mask only ever grows, synergy has the strongest effect early. Wildcard deals
-four random abilities at level 1, usually from four different classes, so within a few levels
-your mask covers most of the game and the synergy filter has little left to exclude. It is an
-early-game shaping mechanic, not an end-game one.
-
-**Reroll cooldowns, and how long they really are.** When you reroll something, it goes on a
-cooldown so the reroll cannot immediately hand it straight back. Reroll Fireball and it is taken
-away, your replacement roll cannot be Fireball, and it stays out of your pool until the cooldown
-expires. This happens whether or not the reroll cost you anything, so it applies to the free
-rerolls below level 10 exactly as it does to a charged one.
-
-The cooldown is counted in rolls, not time, and it is long. The default `SynergyBanRolls` of 25
-excludes a pick from the next 24 rolls, the replacement roll included. On the default cadence you
-receive about 1.5 rolls per level (a talent every level and an ability every other level from
-level 10), so **24 rolls is roughly 16 levels**. Reroll Fireball at level 12 and it cannot come
-back to you until somewhere around level 28.
-
-Rerolling is therefore closer to a lasting decision than a do-over. Rerolling more often does
-shorten the wait, because each reroll's replacement roll also counts against every cooldown you
-have running. If you would rather the cooldown only stop an immediate repeat, set
-`SynergyBanRolls` to about 3. Cooldowns are per character and survive logging out.
-
-**Cooldowns never cost you a level-appropriate roll.** If every ability you could actually use is
-either already owned or sitting on a cooldown, the cooldowns are released and the roll is taken
-from the full pool again. Staying at your level outranks the cooldown, so you get another ability
-you can actually cast rather than one you cannot use for twenty levels. Talents work the same way
-against their tier.
-
-This matters most in the first ten levels, and the two rules combine to make it likely there.
-Rerolls are free below level 10 (`FreeRerollBelowLevel`), so there is nothing stopping a new Hero
-from rerolling as much as they like, and the pool of abilities legal at level 1 is the smallest it
-will ever be. Churning free rerolls through a small pool would otherwise starve it within a few
-minutes. Releasing the cooldowns is what keeps early rolls usable.
-
-This is automatic and applies only to your own rerolls. It is unrelated to `cw_ability_override`,
-which is how a server admin permanently removes a specific ability from the pool for everyone.
-
-`.wildcard status` shows your pity count, your current synergy chance, and how many picks are on
-reroll cooldown.
-
----
-
 ## Screenshots
 
 <div align="center">
@@ -209,8 +143,17 @@ Keep it, or spend a reroll.</em>
   runes, rune cooldowns and runic power. The stock UI cannot draw any of it, so the server sends
   the rune state to the addon, which shows six pips coloured by rune type, dimmed while
   recharging, plus a runic power bar.
-- **Primary stat allocation.** A per-level point budget spent freely across STR, AGI, STA, INT
-  and SPI. Changes apply immediately and reallocation is free.
+- **Primary stat allocation.** A point budget spent freely across STR, AGI, STA, INT and SPI,
+  applied immediately, with free reallocation at any time from the addon's Stats tab or
+  `.classless stat`. The budget is `StartingPoints + PointsPerLevel x (level - 1)`, which on the
+  defaults is 4 points at level 1 and 162 at level 80.
+- **Every stat pays out, whatever you built.** The base class already turns STR into attack power
+  and block, STA into health, AGI into crit and dodge, and INT into mana and spell crit. That
+  leaves gaps on a classless realm, because a Hero can build in directions the base class never
+  could, so the module fills them: Agility also gives melee and ranged attack power, Intellect
+  also gives spell power (0.5 per point above 10), and Spirit drives the mana regeneration tick
+  described above. No allocated point is dead weight for any build. All three rates are
+  configurable under `UniversalStats`.
 - **All proficiencies taught.** Armor, weapons and dual wield, each configurable.
 - **The base class never restricts a build.** The core checks whether a player is a Paladin,
   Druid or Shaman wherever behaviour is class-specific, which on a classless realm would answer
@@ -243,6 +186,14 @@ Keep it, or spend a reroll.</em>
   essence on a coherent role. Add your own rows to `cw_archetypes`.
 - **First-login onboarding.** A welcome flow, plus an addon wizard that walks a fresh character
   through picking a path.
+- **A starter kit that fits any build.** A new Hero cannot be given class starter gear, because
+  which class they will play does not exist yet. The shell class's gear is replaced with a neutral
+  kit: Recruit's shirt, pants and boots worn, an eight-slot bag, and in the bags one of every
+  basic weapon type, so whatever the Hero learns or rolls first, they have something to use it
+  with. That is a one-handed sword and shield, two daggers, a one-handed mace, a two-handed sword,
+  hammer and axe, a staff, a bow with 200 arrows, a gun with 200 shot, and a throwing axe, plus 20
+  bread and 20 water to eat and drink between fights. The creation Hearthstone is preserved. The
+  whole kit is config, in `StarterKit.Items` and `StarterKit.Equip`.
 - **Classless item packs.** 262 items sold by the NPC and dropped by mobs, built around stat
   combinations the class system does not allow: intellect guns and wands with attack power,
   strength staves and bows, mail tanking and caster gear, plate caster sets, spellpower fist
@@ -438,6 +389,57 @@ actions appear under **Key Bindings > ClasslessWildcard** and can be rebound.
 | Toggle Hero Advancement  | `N`         |
 | Toggle the Help guide    | *(unbound)* |
 | Toggle the resource bars | *(unbound)* |
+
+---
+
+## How Wildcard rolls work
+
+Detail behind the Wildcard path, for players who want to know what the dice are doing and admins
+tuning the numbers below. `.wildcard status` reports your live pity count, synergy chance and
+cooldowns.
+
+### The roll
+
+Candidates are every ability you do not already own whose rank-1 learn level you have reached,
+minus anything on a reroll cooldown. One is picked at random, weighted by `RarityWeights`. If
+nothing is legal at your level, the roll drops to the lowest-level entries still available rather
+than the whole library, so a level 1 Hero is never dealt a level 70 ability. A roll is never lost.
+
+### Synergy and pity
+
+Every ability and talent carries the class mask it came from, and your Hero's mask is the union
+of everything you own. A synergy roll narrows the pool to entries sharing a class with that mask,
+so the result fits your build. You get a chat message when one fires.
+
+The chance is `SynergyBaseChance + (pity x SynergyIncrement)`, capped at 100. On the defaults
+that is 10%, rising 10 points per pity point.
+
+**Pity counts rerolls, not rolls.** Only rerolling raises it, never a scheduled level-up roll, so
+a Hero who never rerolls sits at 10% for the whole game, and nine rerolls without a synergy hit
+makes the tenth certain. A synergy roll resets pity, and so does Rebirth.
+
+Synergy matters most early. Your mask only ever grows, and Wildcard opens with four random
+abilities from up to four different classes, so within a few levels it covers most of the game
+and the filter has little left to exclude.
+
+### Reroll cooldowns
+
+Rerolling something puts it on a cooldown so the reroll cannot immediately hand it back. This
+applies to the free rerolls below level 10 exactly as it does to a charged one.
+
+The cooldown is counted in rolls, not time, and it is long. The default `SynergyBanRolls` of 25
+excludes a pick from the next 24 rolls, the replacement roll included. At roughly 1.5 rolls per
+level that is about 16 levels: reroll Fireball at level 12 and it returns around level 28. That
+makes rerolling a lasting decision rather than a do-over. Set it to about 3 if you only want to
+stop an immediate repeat.
+
+If every ability you could actually use is owned or on cooldown, the cooldowns are released and
+the roll is taken from the full pool again. Level-appropriateness outranks the cooldown, so you
+always get something you can cast. That is what keeps the first ten levels usable, where rerolls
+are free and the legal pool is at its smallest. Talents work the same way against their tier.
+
+Cooldowns are per character, survive logging out, and apply only to your own rerolls. They are
+unrelated to `cw_ability_override`, which is how an admin removes an ability for everyone.
 
 ---
 

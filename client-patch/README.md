@@ -9,7 +9,7 @@ Required for every player on a Classless Wildcard realm. The
 - the creation-screen **class description** is the Hero pitch, and the leftover
   class selector is hidden
 - new characters wear an **armored Hero outfit** on the creation screen
-- the **Hero emblem** replaces the class icon *for the Hero only* — every other
+- the **Hero emblem** replaces the class icon *for the Hero only*. Every other
   class icon is kept, so your addon can still group abilities by class
 - the **ClasslessWildcard** addon is installed
 
@@ -27,7 +27,7 @@ addon, and never touches `Wow.exe`. `--uninstall` always restores everything.
 
 ## What you need
 
-- Your **World of Warcraft 3.3.5a** folder — the one with `Wow.exe` and `Data` in it.
+- Your **World of Warcraft 3.3.5a** folder, the one with `Wow.exe` and `Data` in it.
 - **Python 3** (any version from 3.7 up).
   Windows: get it from [python.org/downloads](https://www.python.org/downloads/) and
   tick **"Add python.exe to PATH"** on the first screen of the installer.
@@ -49,7 +49,7 @@ Nothing else. No compiler, no StormLib, no MPQ editor, no extra downloads.
 
 It finds your WoW folder, shows what it is about to do, and confirms once before
 touching anything. If it cannot find your client, drag your WoW folder onto
-`install.bat` and drop it. **Close World of Warcraft first** — the install patches
+`install.bat` and drop it. **Close World of Warcraft first**, because the install patches
 `Wow.exe`, which the running game locks.
 
 ### macOS / Linux
@@ -70,7 +70,7 @@ Want to see exactly what would happen before committing to it?
 python3 install.py --dry-run "C:\Games\World of Warcraft"
 ```
 
-That writes nothing at all — it just prints the plan.
+That writes nothing at all. It just prints the plan.
 
 ### What you should see
 
@@ -119,8 +119,8 @@ python3 install.py --uninstall "C:\Games\World of Warcraft"
 
 Windows users can run `install.bat --uninstall` instead.
 
-This removes the patch archives, removes the addon, clears the cache, and — if an
-older version had patched `Wow.exe` — restores it from the backup. Your client is
+This removes the patch archives, removes the addon, clears the cache, and, if an
+older version had patched `Wow.exe`, restores it from the backup. Your client is
 back to stock.
 
 ---
@@ -159,11 +159,11 @@ Give it the folder that directly contains `Wow.exe` and `Data`, not a parent
 folder and not the `Data` folder itself.
 
 **"Your login interface files are corrupt" at the login screen.**
-The `Wow.exe` patch that `--creation-text` applies did not take — most often because
+The `Wow.exe` patch that `--creation-text` applies did not take. Most often that is because
 the game was open when you ran the installer, so the exe could not be written (the
 output would have said *"close the game and re-run"*). Close World of Warcraft
 completely and run `--creation-text` again. If it still happens after a clean patch,
-your client is one the known patch does not fit — run `--uninstall`; the Hero name and
+your client is one the known patch does not fit. Run `--uninstall`; the Hero name and
 single-class list work without it.
 
 **Permission denied writing Wow.exe.**
@@ -181,7 +181,7 @@ it persists, reinstall with `--no-hero-icon` to keep the stock icon; everything 
 is unaffected.
 
 **The creation screen still shows the old class descriptions.**
-The `Wow.exe` patch that lets the client load the custom text did not take — usually
+The `Wow.exe` patch that lets the client load the custom text did not take, usually
 because the game was open during install (it locks `Wow.exe`). Close the game fully and
 run the installer again, or check with `--dry-run` whether it reports the exe as patched.
 
@@ -192,9 +192,9 @@ run the installer again, or check with `--dry-run` whether it reports the exe as
 This folder contains no Blizzard data. The installer reads the DBC and interface
 files out of **your own client**, edits them on your machine, and writes the result
 into a new patch archive next to the originals. Your original files are never
-modified — patch archives sit on top of them, and deleting them reverts everything.
+modified. Patch archives sit on top of them, and deleting them reverts everything.
 
-`Wow.exe` is **never** modified by a default install — only new patch archives (which
+`Wow.exe` is **never** modified by a default install, only new patch archives (which
 sit on top of your originals) and the addon folder are written, so nothing you already
 had is changed and deleting them reverts everything. The optional `--creation-text`
 adds the rewritten `GlueStrings.lua` and applies the "allow custom interface" patch to

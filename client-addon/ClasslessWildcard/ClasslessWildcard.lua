@@ -60,7 +60,9 @@ local CW = {
     archetypes = {},
     tab = "ABIL",
     heroPage = 0, wcPage = 0,
-    stats = { budget = 0, unspent = 0, perPoint = 1, alloc = { 0, 0, 0, 0, 0 }, enabled = 1 },
+    stats = { budget = 0, unspent = 0, perPoint = 1, alloc = { 0, 0, 0, 0, 0 }, enabled = 1,
+              uniStats = false, apPerAgi = 1, rapPerAgi = 1, spPerInt = 0.5,
+              mp5Base = 0, mp5PerSpi = 0, mp5Pct = 0 },
     statsPending = nil, -- local unsaved edits
 }
 local STAT_NAMES = { "Strength", "Agility", "Stamina", "Intellect", "Spirit" }
@@ -672,7 +674,13 @@ local HELP_TEXT = table.concat({
 "",
 "|cff40ff40==  Shared by both paths  ==|r",
 "   |cffffd100Universal resources|r -- you carry mana, rage AND energy at once, and each spell draws its own, so nothing is ever unusable. Toggle the extra bars with |cffffd100/cwbars|r.",
-"   |cffffd100Primary stats|r -- spend a per-level point budget across STR / AGI / STA / INT / SPI. Reallocating is free; use the |cffffd100Stats|r button.",
+"   |cffffd100Primary stats|r -- you get points every level to spend across STR / AGI / STA / INT / SPI, and reallocating them is free at any time. Open the |cffffd100Stats|r button and hover any stat to see exactly what it is doing for your Hero right now.",
+"      |cffffd100Strength|r -- melee attack power, and block value with a shield.",
+"      |cffffd100Agility|r -- melee and ranged attack power, critical strike chance, and dodge. On a normal realm only some classes turn Agility into attack power; here every Hero does.",
+"      |cffffd100Stamina|r -- health, and nothing else. Always useful, never exciting.",
+"      |cffffd100Intellect|r -- your mana pool, your spell power, and spell critical strike chance. This is the caster stat: normal WotLK gives no spell power from Intellect at all, and this realm does.",
+"      |cffffd100Spirit|r -- mana and health regeneration. It keeps paying out while you are casting, so you do not need a Meditation-style talent to make it work.",
+"   No point is ever wasted on a build: every stat does something for every Hero, whatever you learned or rolled.",
 "   |cffffd100Proficiencies|r -- every armor and weapon type, dual wield included, is trained for you automatically.",
 "   |cffffd100Rebirth|r -- after your path locks in, Rebirth wipes everything and lets you start fresh on either path for gold.",
 "",
@@ -924,6 +932,82 @@ local function RenderBuild()
     end
 end
 
+-- What each stat does for a Hero, and what it is doing for THIS character
+-- right now. The stock tooltips describe stats by class, which says nothing
+-- useful when every character is the same class -- and the numbers below come
+-- from the server's own rates (sent on ST), not from hard-coded defaults, so
+-- they stay honest on a realm that tuned them.
+local STAT_DESC = {
+    [1] = "Melee attack power and block value.",
+    [2] = "Melee and ranged attack power, critical strike chance, dodge.",
+    [3] = "Health.",
+    [4] = "Mana, spell power, spell critical strike chance.",
+    [5] = "Mana regeneration and health regeneration.",
+}
+
+local function Round(v)
+    return math.floor(v + 0.5)
+end
+
+-- The module's own contribution from a stat, worked out with the same maths
+-- the server uses so the two agree.
+local function StatContribution(i, value)
+    local s = CW.stats
+    if not s.uniStats then return nil end
+    if i == 2 then
+        local ap, rap = math.floor(value * (s.apPerAgi or 0)), math.floor(value * (s.rapPerAgi or 0))
+        if ap <= 0 and rap <= 0 then return nil end
+        return "+" .. ap .. " melee and +" .. rap .. " ranged attack power"
+    elseif i == 4 then
+        local sp = math.floor(math.max(0, value - 10) * (s.spPerInt or 0))
+        if sp <= 0 then return nil end
+        return "+" .. sp .. " spell power"
+    elseif i == 5 then
+        local maxMana = UnitPowerMax and UnitPowerMax("player", 0) or 0
+        local mp5 = (s.mp5Base or 0) + value * (s.mp5PerSpi or 0) + maxMana * (s.mp5Pct or 0) / 100
+        if mp5 <= 0 then return nil end
+        return Round(mp5) .. " mana per 5 sec, even while casting"
+    end
+    return nil
+end
+CW.StatContribution = StatContribution
+
+local function ShowStatTooltip(row, i)
+    local total = 0
+    if UnitStat then
+        local _, stat = UnitStat("player", i)
+        total = stat or 0
+    end
+    GameTooltip:SetOwner(row, "ANCHOR_RIGHT")
+    GameTooltip:AddLine(STAT_NAMES[i], 1, 0.82, 0)
+    GameTooltip:AddLine(STAT_DESC[i], 1, 1, 1, true)
+    GameTooltip:AddLine(" ")
+    GameTooltip:AddDoubleLine("Current total", tostring(total), 0.8, 0.8, 0.8, 1, 1, 1)
+
+    local contrib = StatContribution(i, total)
+    if contrib then
+        GameTooltip:AddLine("From your " .. total .. " " .. STAT_NAMES[i] .. ": " .. contrib, 0.4, 1, 0.4, true)
+    end
+
+    -- what the points you have allocated (applied or not) are worth
+    local s = CW.stats
+    local pending = PendingAlloc()
+    local applied = (s.alloc[i] or 0) * (s.perPoint or 1)
+    if applied > 0 then
+        GameTooltip:AddDoubleLine("Allocated by you", "+" .. applied, 0.8, 0.8, 0.8, 0.4, 1, 0.4)
+    end
+    local unapplied = ((pending[i] or 0) - (s.alloc[i] or 0)) * (s.perPoint or 1)
+    if unapplied ~= 0 then
+        local sign = unapplied > 0 and "+" or ""
+        GameTooltip:AddDoubleLine("Pending (press Apply)", sign .. unapplied, 0.8, 0.8, 0.8, 1, 0.82, 0)
+        local after = StatContribution(i, total + unapplied)
+        if after then
+            GameTooltip:AddLine("After applying: " .. after, 1, 0.82, 0, true)
+        end
+    end
+    GameTooltip:Show()
+end
+
 local function RenderStats()
     local pending = PendingAlloc()
     local spent = PendingSpent()
@@ -944,6 +1028,15 @@ local function RenderStats()
                 RenderStats()
             end
         end)
+        r:EnableMouse(true)
+        r:SetScript("OnEnter", function(self) ShowStatTooltip(self, i) end)
+        r:SetScript("OnLeave", function() GameTooltip:Hide() end)
+        -- the +/- buttons sit on top of the row and would otherwise swallow the
+        -- hover, leaving most of the row tooltip-less
+        r.plus:SetScript("OnEnter", function() ShowStatTooltip(r, i) end)
+        r.plus:SetScript("OnLeave", function() GameTooltip:Hide() end)
+        r.minus:SetScript("OnEnter", function() ShowStatTooltip(r, i) end)
+        r.minus:SetScript("OnLeave", function() GameTooltip:Hide() end)
     end
 end
 
@@ -1591,9 +1684,16 @@ if PaperDollFrame_SetStat and hooksecurefunc then
         [5] = "Increases your mana and health regeneration.",
     }
     hooksecurefunc("PaperDollFrame_SetStat", function(statFrame, unit, statIndex)
-        if unit == "player" and STAT_TIPS[statIndex] then
-            statFrame.tooltip2 = STAT_TIPS[statIndex]
+        if unit ~= "player" or not STAT_TIPS[statIndex] then return end
+        local tip = STAT_TIPS[statIndex]
+        -- append what the classless layer is adding on top, so the sheet agrees
+        -- with the Stats panel instead of describing a class this Hero is not
+        local _, total = UnitStat("player", statIndex)
+        local extra = CW.StatContribution and CW.StatContribution(statIndex, total or 0)
+        if extra then
+            tip = tip .. "\n\n|cff40ff40Classless: " .. extra .. "|r"
         end
+        statFrame.tooltip2 = tip
     end)
 end
 
@@ -2319,6 +2419,16 @@ local function HandleMessage(msg)
             s.alloc[i] = tonumber(p[4 + i]) or 0
         end
         s.enabled = tonumber(p[10]) or 1
+        -- Rates for the "what is this stat doing for me" tooltips. Older
+        -- servers do not send them; fall back to the shipped defaults so the
+        -- tooltip still reads sensibly instead of showing zeroes.
+        s.uniStats = (tonumber(p[11]) or 1) == 1
+        s.apPerAgi = tonumber(p[12]) or 1
+        s.rapPerAgi = tonumber(p[13]) or 1
+        s.spPerInt = tonumber(p[14]) or 0.5
+        s.mp5Base = tonumber(p[15]) or 0
+        s.mp5PerSpi = tonumber(p[16]) or 0
+        s.mp5Pct = tonumber(p[17]) or 0
         CW.statsPending = nil
         RenderList() -- refreshes the stats flyout when it is open
 

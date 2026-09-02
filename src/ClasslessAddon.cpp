@@ -244,10 +244,20 @@ namespace
         Config const& cfg = sClasslessMgr->cfg;
         uint32 budget = sClasslessMgr->StatBudget(player);
         uint32 spent = sClasslessMgr->SpentStatPoints(st);
-        SendAddon(player, Acore::StringFormat("ST|{}|{}|{}|{}|{}|{}|{}|{}|{}",
+        // Fields 11+ are the universal-stat and mana-regen RATES. The addon
+        // needs them to tell a player what a point of a stat is actually doing
+        // for them; hard-coding the shipped defaults client-side would lie on
+        // any realm that tuned them. Appended rather than inserted, so an addon
+        // that predates them keeps working on the fields it knows.
+        SendAddon(player, Acore::StringFormat("ST|{}|{}|{}|{}|{}|{}|{}|{}|{}|{}|{}|{}|{}|{}|{}|{}",
             budget, budget > spent ? budget - spent : 0, cfg.statValuePerPoint,
             st.statAlloc[0], st.statAlloc[1], st.statAlloc[2], st.statAlloc[3], st.statAlloc[4],
-            cfg.statsEnable ? 1 : 0));
+            cfg.statsEnable ? 1 : 0,
+            (cfg.universalStats && !sClasslessMgr->IsExempt(player)) ? 1 : 0,
+            cfg.usMeleeAPPerAgi, cfg.usRangedAPPerAgi, cfg.usSpellPowerPerInt,
+            (cfg.universalResources && !sClasslessMgr->IsExempt(player)) ? cfg.urManaRegenBase : 0.0f,
+            (cfg.universalResources && !sClasslessMgr->IsExempt(player)) ? cfg.urManaRegenPerSpirit : 0.0f,
+            (cfg.universalResources && !sClasslessMgr->IsExempt(player)) ? cfg.urManaRegenPct : 0u));
     }
 
     void SendArchetypes(Player* player)
