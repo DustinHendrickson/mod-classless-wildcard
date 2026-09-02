@@ -40,6 +40,7 @@ ADDON_NAME = "ClasslessWildcard"
 CHRCLASSES = "DBFilesClient\\ChrClasses.dbc"
 CHARBASEINFO = "DBFilesClient\\CharBaseInfo.dbc"
 CHARSTARTOUTFIT = "DBFilesClient\\CharStartOutfit.dbc"
+SKILLRACECLASSINFO = "DBFilesClient\\SkillRaceClassInfo.dbc"
 GLUESTRINGS = "Interface\\GlueXML\\GlueStrings.lua"
 CHARCREATE_LUA = "Interface\\GlueXML\\CharacterCreate.lua"
 CLASSICONS_INGAME = "Interface\\TargetingFrame\\UI-Classes-Circles.blp"
@@ -188,6 +189,18 @@ def build_data_patch(files, name, report, theme=False):
     payload[CHARBASEINFO] = patched
     report.append("  CharBaseInfo.dbc all %d races, one cosmetic class "
                   "(shown as %s)" % (races, name))
+
+    # The client decides spellbook tabs from its OWN copy of this table, so
+    # the server opening every class skill line to every class was invisible
+    # to it: a Hero given Balance for a rolled Moonfire still had no Balance
+    # tab, because the client's table said Balance is for Druids. Open the
+    # client the same way the server was opened.
+    raw, source = files.find(SKILLRACECLASSINFO)
+    patched, opened, already = dbc.open_class_skill_lines(raw)
+    payload[SKILLRACECLASSINFO] = patched
+    report.append("  SkillRaceClassInfo.dbc  %d class skill lines opened to every class "
+                  "(spellbook tabs for cross-class spells; from %s)"
+                  % (len(opened), os.path.basename(source)))
 
     if theme:
         try:
@@ -488,7 +501,7 @@ def do_install(args, wow_dir):
 # only if EVERY file in it is one of these -- a client pack's own archive always
 # has something else in it, so it can never be matched by luck of the letter.
 _OUR_FILES = frozenset(x.lower() for x in (
-    CHRCLASSES, CHARBASEINFO, CHARSTARTOUTFIT,
+    CHRCLASSES, CHARBASEINFO, CHARSTARTOUTFIT, SKILLRACECLASSINFO,
     GLUESTRINGS, CHARCREATE_LUA,
     CLASSICONS_INGAME, CLASSICONS_CREATE,
 ))

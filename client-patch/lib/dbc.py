@@ -1,7 +1,10 @@
-"""The two DBC edits the classless client patch needs.
+"""The DBC edits the classless client patch needs.
 
-ChrClasses.dbc  - what every class is called on screen.
-CharBaseInfo.dbc - which race/class pairs the creation screen offers.
+ChrClasses.dbc         - what every class is called on screen, and that it has
+                         a ranged slot rather than a relic slot.
+CharBaseInfo.dbc       - which race/class pairs the creation screen offers.
+SkillRaceClassInfo.dbc - which class skill lines the client accepts for the
+                         character, which is what decides spellbook tabs.
 
 Both are rewritten from the copy already winning in the client's archive stack,
 so a community patch's version is preserved rather than reverted.
@@ -41,6 +44,29 @@ CHRCLASSES_FLAG_RELIC_SLOT = 0x08
 # from the client's own tables and stay absent here.
 PLAYABLE_RACES = (1, 2, 3, 4, 5, 6, 7, 8, 10, 11)
 PLAYABLE_CLASSES = (1, 2, 3, 4, 5, 6, 7, 8, 9, 11)
+
+# SkillRaceClassInfo.dbc, 3.3.5a: 8 uint32 fields per record.
+#   0 ID  1 SkillID  2 RaceMask  3 ClassMask  4 Flags  5 MinLevel
+#   6 SkillTierID  7 SkillCostIndex
+SKILLRACECLASSINFO_FIELDS = 8
+
+# The class skill lines the SERVER already opened to every race and class, in
+# data/sql/db-world/cw_world_skillraceclass.sql. The client must be opened the
+# same way, because it decides spellbook tabs from its OWN copy of this table:
+# a Hero given the Balance skill line by the server still gets no Balance tab
+# while the client's table says Balance is for Druids. Keep this in step with
+# that SQL -- selftest.py asserts the two sets are identical.
+CLASS_SKILL_LINES = (
+    6, 8, 26, 38, 39, 43, 44, 45, 46, 50, 51, 54, 55, 56, 78, 96, 118, 120,
+    130, 134, 136, 160, 163, 172, 173, 176, 184, 198, 199, 205, 226, 227,
+    228, 229, 237, 238, 239, 241, 242, 243, 244, 245, 246, 247, 252, 253,
+    254, 255, 256, 257, 258, 260, 262, 263, 264, 267, 268, 269, 272, 273,
+    293, 353, 354, 355, 373, 374, 375, 413, 414, 416, 418, 419, 420, 433,
+    453, 473, 515, 573, 574, 593, 594, 613, 633, 770, 772, 776,
+)
+# Appended rows start here, matching the ids the server SQL uses, well clear
+# of the client's own (max 970).
+CLASS_SKILL_LINES_FIRST_ID = 990000
 
 
 class DbcError(ValueError):
@@ -152,6 +178,67 @@ def clear_relic_slot(data: bytes):
     header = WDBC_MAGIC + struct.pack("<4I", record_count, field_count,
                                       record_size, string_size)
     return header + bytes(records) + data[strings_off:], changed
+
+
+def open_class_skill_lines(data: bytes):
+    """Let every class hold every class skill line.
+
+    The client files a spell under a spellbook tab by its skill line, but only
+    draws a tab for a line its OWN SkillRaceClassInfo.dbc allows the character's
+    class. The server was opened up long ago (cw_world_skillraceclass.sql) so
+    a Hero can be given Balance for a rolled Moonfire -- and the client then
+    ignored it, because its table still said Balance belongs to Druids. Holy
+    drew a tab only because the chassis is a Paladin.
+
+    Mirror the server: for each line in CLASS_SKILL_LINES append one row with
+    RaceMask 0 and ClassMask 0 -- "anyone" -- copying Flags, MinLevel, tier and
+    cost from the line's most permissive existing row so nothing else about it
+    changes. Existing rows are left untouched and lines that already have an
+    all-comers row are skipped, so this is idempotent over an already-patched
+    file.
+
+    Returns (new_dbc_bytes, [skill ids added], [skill ids already open]).
+    """
+    record_count, field_count, record_size, string_size = parse_header(data)
+    if field_count != SKILLRACECLASSINFO_FIELDS or record_size != SKILLRACECLASSINFO_FIELDS * 4:
+        raise DbcError(
+            "SkillRaceClassInfo.dbc has %d fields of %d bytes, expected %d of %d. "
+            "This client build is not the 3.3.5a layout this patch understands."
+            % (field_count, record_size, SKILLRACECLASSINFO_FIELDS,
+               SKILLRACECLASSINFO_FIELDS * 4))
+
+    records_off = 20
+    strings_off = records_off + record_count * record_size
+    records = bytearray(data[records_off:strings_off])
+    strings = data[strings_off:strings_off + string_size]
+
+    by_skill = {}
+    max_id = 0
+    for index in range(record_count):
+        row = struct.unpack_from("<8I", records, index * record_size)
+        by_skill.setdefault(row[1], []).append(row)
+        max_id = max(max_id, row[0])
+
+    next_id = max(CLASS_SKILL_LINES_FIRST_ID, max_id + 1)
+    added, already = [], []
+    for skill in CLASS_SKILL_LINES:
+        rows = by_skill.get(skill)
+        if not rows:
+            continue                      # not in this client's table at all
+        if any(r[2] == 0 and r[3] == 0 for r in rows):
+            already.append(skill)
+            continue
+        # most permissive existing row: fewest restrictions, lowest MinLevel
+        base = sorted(rows, key=lambda r: (bin(r[3]).count("1") if r[3] else 0,
+                                           r[5]))[0]
+        records += struct.pack("<8I", next_id, skill, 0, 0,
+                               base[4], base[5], base[6], base[7])
+        added.append(skill)
+        next_id += 1
+
+    header = WDBC_MAGIC + struct.pack("<4I", record_count + len(added),
+                                      field_count, record_size, string_size)
+    return header + bytes(records) + bytes(strings), added, already
 
 
 def single_class_combos(data: bytes, shell_class: int):

@@ -23,6 +23,7 @@ from lib import (blp, charcreate, clientfs, dbc, exepatch, gluestrings,  # noqa:
 
 CHRCLASSES = "DBFilesClient\\ChrClasses.dbc"
 CHARBASEINFO = "DBFilesClient\\CharBaseInfo.dbc"
+SKILLRACECLASSINFO = "DBFilesClient\\SkillRaceClassInfo.dbc"
 CHARSTARTOUTFIT = "DBFilesClient\\CharStartOutfit.dbc"
 GLUESTRINGS = "Interface\\GlueXML\\GlueStrings.lua"
 CHARCREATE_LUA = "Interface\\GlueXML\\CharacterCreate.lua"
@@ -108,6 +109,47 @@ def main(argv):
                   "%d rows" % races)
             check("only the Paladin shell is offered",
                   {klass for _race, klass in pairs} == {2})
+            # --- SkillRaceClassInfo ------------------------------------------
+            # The client draws a spellbook tab only for a class skill line its
+            # own table allows the character's class. Open them all, as the
+            # server SQL already does, and prove none of the targeted lines
+            # is still class-locked afterwards.
+            raw, source = files.find(SKILLRACECLASSINFO)
+            opened_dbc, opened, already = dbc.open_class_skill_lines(raw)
+            check("SkillRaceClassInfo resolved", bool(raw), os.path.basename(source))
+            rc_, fc_, rs_, _ss = dbc.parse_header(opened_dbc)
+            by_skill = {}
+            for index in range(rc_):
+                row = struct.unpack_from("<8I", opened_dbc, 20 + index * rs_)
+                by_skill.setdefault(row[1], []).append(row)
+            still_locked = [sk for sk in dbc.CLASS_SKILL_LINES
+                            if sk in by_skill
+                            and not any(r[2] == 0 and r[3] == 0 for r in by_skill[sk])]
+            check("class skill lines opened to every class",
+                  not still_locked and len(opened) + len(already) > 0,
+                  "%d opened, %d already open, %d still locked"
+                  % (len(opened), len(already), len(still_locked)))
+            # the client list must mirror the server SQL exactly, or the two
+            # halves of the fix drift apart silently
+            sql_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), os.pardir,
+                                    "data", "sql", "db-world", "cw_world_skillraceclass.sql")
+            sql_ids = set()
+            try:
+                import re as _re
+                with open(sql_path, encoding="utf-8") as fh:
+                    for m in _re.finditer(r"^\(99\d+,(\d+),", fh.read(), _re.M):
+                        sql_ids.add(int(m.group(1)))
+            except OSError:
+                sql_ids = None
+            check("client skill-line list matches the server SQL",
+                  sql_ids is None or sql_ids == set(dbc.CLASS_SKILL_LINES),
+                  "n/a (SQL not found)" if sql_ids is None else
+                  "%d in SQL, %d in client list" % (len(sql_ids), len(dbc.CLASS_SKILL_LINES)))
+            # idempotent: patching the patched file adds nothing
+            _again, opened_again, _al = dbc.open_class_skill_lines(opened_dbc)
+            check("SkillRaceClassInfo patch idempotent", not opened_again,
+                  "%d added on second pass" % len(opened_again))
+
             check("every race still creatable",
                   {race for race, _klass in pairs} == set(dbc.PLAYABLE_RACES))
 
@@ -164,7 +206,8 @@ def main(argv):
                       len(mo) == 9 and len(atlas) == mo[-1] + ml[-1])
 
             # --- archives ---------------------------------------------------
-            payload = {CHRCLASSES: patched, CHARBASEINFO: combos}
+            payload = {CHRCLASSES: patched, CHARBASEINFO: combos,
+                       SKILLRACECLASSINFO: opened_dbc}
             glue = {GLUESTRINGS: new_text.encode("utf-8", "surrogateescape")}
             with tempfile.TemporaryDirectory() as tmp:
                 base = os.path.join(tmp, "patch-Z.MPQ")
