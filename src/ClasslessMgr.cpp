@@ -935,6 +935,9 @@ bool ClasslessMgr::Rebirth(Player* player, Mode target, std::string* err)
     }
 
     UpdateAbilityRanks(player);
+    // Everything is gone, so every class line is provably empty: clear
+    // them now rather than leave stale empty tabs until the next login.
+    SyncSpellbookTabs(player, true);
     return true;
 }
 
@@ -1720,6 +1723,8 @@ void ClasslessMgr::GrantTalentRankInternal(Player* player, TalentPoolEntry const
         player->removeSpell(t.rankSpells[newRank - 2], SPEC_MASK_ALL, false);
 
     player->learnSpell(t.rankSpells[newRank - 1]);
+    // a talent that teaches a spell needs its tab now, not at next login
+    SyncSpellbookTabs(player);
     st.talents[t.talentId] = newRank;
 
     if (persist)
@@ -1855,7 +1860,10 @@ void ClasslessMgr::SyncSpellbookTabs(Player* player, bool clearChassisLines)
     for (uint16 line : give)
         if (!player->HasSkill(line))
         {
-            player->SetSkill(line, 0, 1, 1);
+            // value 1 with a level-scaled max, exactly what LearnDefaultSkill
+            // gives a class line (SKILL_RANGE_LEVEL) and what UpdateSkillsForLevel
+            // re-writes it to on every level-up
+            player->SetSkill(line, 0, 1, player->GetMaxSkillValueForLevel());
             added = true;
         }
 
@@ -2063,6 +2071,9 @@ bool ClasslessMgr::Respec(Player* player, std::string* err)
     SaveState(player);
     Msg(player, Acore::StringFormat("Respec complete. AE: |cff00ff00{}|r, TE: |cff00ff00{}|r.",
         st.abilityEssence, st.talentEssence));
+    // Everything is gone, so every class line is provably empty: clear
+    // them now rather than leave stale empty tabs until the next login.
+    SyncSpellbookTabs(player, true);
     return true;
 }
 

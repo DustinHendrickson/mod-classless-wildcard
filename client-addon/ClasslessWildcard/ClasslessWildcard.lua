@@ -1419,6 +1419,18 @@ local function CW_BuildSpellbookTabs()
             flash:Hide()
         end
     end
+    -- The per-tab page counter is a plain table Blizzard seeds for tabs 1-8
+    -- only (SPELLBOOK_PAGENUMBERS[1..8] = 1 in SpellBookFrame_OnLoad). It is
+    -- read arithmetically -- SPELLS_PER_PAGE * (SPELLBOOK_PAGENUMBERS[tab] - 1)
+    -- -- so clicking a tab past 8 with no entry is "nil - 1". Seed the rest.
+    if SPELLBOOK_PAGENUMBERS then
+        for i = MAX_SKILLLINE_TABS + 1, CW_TAB_LIMIT do
+            if SPELLBOOK_PAGENUMBERS[i] == nil then
+                SPELLBOOK_PAGENUMBERS[i] = 1
+            end
+        end
+    end
+
     -- raise the ceiling only after the buttons exist, so Blizzard's update loop
     -- can never index a tab that was not created
     MAX_SKILLLINE_TABS = CW_TAB_LIMIT
