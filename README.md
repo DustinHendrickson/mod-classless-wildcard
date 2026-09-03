@@ -13,7 +13,7 @@
 **Every character can learn every spell and every talent from every class.** Buy them with
 Essence, or let the server roll for you in Wildcard mode.
 
-[Install](#installation) · [How it plays](#two-ways-to-play) · [Playerbots](#playerbots) · [Commands](#commands) · [Configuration](#configuration) · [Uninstall](#uninstall)
+[Install](#installation) · [How it plays](#two-ways-to-play) · [Elemental variants](#elemental-variants) · [Playerbots](#playerbots) · [Commands](#commands) · [Configuration](#configuration) · [Uninstall](#uninstall)
 
 </div>
 
@@ -183,25 +183,10 @@ Keep it, or spend a reroll.</em>
   brings Taunt, Berserker Stance brings Pummel. Without this a Hero could roll Bear Form and find
   they had turned into a creature with no way to attack. The pairs are rows in `cw_form_kits`, so
   you can add your own, and one config flag turns the whole feature off.
-- **Elemental variants of physical strikes.** Twenty-seven weapon attacks come in seven
-  elemental forms each, every rank included: Fiery, Frozen, Earthen, Venomous, Arcane, Shadow and
-  Holy versions of Sinister Strike, Backstab, Ambush, Hemorrhage, Heroic Strike, Cleave,
-  Whirlwind, Overpower, Mortal Strike, Devastate, Raptor Strike, Multi-Shot, Aimed Shot, Kill
-  Shot, Claw, Shred, Ravage, Maul, Maim, Swipe, both Mangles, Fan of Knives, and, when Death
-  Knight abilities are enabled, Blood Strike, Plague Strike, Obliterate and Death Strike. A
-  variant is
-  the same attack with the same cost, cooldown and swing, but its damage is dealt as that element
-  instead of Physical, so armour does not reduce it and resistance does. It keeps 85% of the
-  weapon damage (75% for Holy), adds an elemental hit that grows with spell power, and where the
-  ability has room carries one effect the element is known for: Fire burns, Frost slows, Earth
-  slows attacks, Poison poisons, Shadow reduces healing taken, Holy heals you, and Arcane hits
-  harder instead. Attacks that already use all three of their effect slots (a combo point, a
-  stun, a bleed bonus) carry the elemental hit but not the extra effect. Mocking Blow and Deadly
-  Throw have no variants at all, because neither has room for the elemental hit. Variants roll
-  and are bought like any other ability, one rarity tier above the
-  attack they come from. Each variant uses its base attack's icon with an element badge in the
-  top corner, a small colour-coded plate and symbol, added by the client installer when
-  Python's Pillow library is present; without it a variant shows its base attack's plain icon.
+- **Elemental variants of physical strikes.** Twenty-seven weapon attacks each come in Fiery,
+  Frozen, Earthen, Venomous, Arcane, Shadow and Holy forms: the same swing, cost and cooldown,
+  dealt as the element, with an elemental hit that scales with spell power. See
+  [Elemental variants](#elemental-variants).
 - **Class quests are open to everyone.** Every class's quest chains are available to every Hero,
   so the warrior's Whirlwind Axe chain, the warlock's pet summoning quests and every class mount
   chain are reachable instead of dead content. Applied automatically and reversible. See
@@ -500,6 +485,66 @@ are free and the legal pool is at its smallest. Talents work the same way agains
 
 Cooldowns are per character, survive logging out, and apply only to your own rerolls. They are
 unrelated to `cw_ability_override`, which is how an admin removes an ability for everyone.
+
+---
+
+## Elemental variants
+
+<div align="center">
+
+<img src="docs/elemental_variants_icons.webp" alt="Six base attack icons, each followed by its seven elemental variants, badged in the top corner for Fire, Frost, Earth, Poison, Arcane, Shadow and Holy" width="92%">
+
+<em>A variant keeps its base attack's icon and adds a badge for the element.<br>
+Left to right: the base attack, then Fire, Frost, Earth, Poison, Arcane, Shadow, Holy.</em>
+
+</div>
+
+Twenty-seven physical weapon attacks exist in seven elemental forms each, every rank included:
+**Fiery**, **Frozen**, **Earthen**, **Venomous**, **Arcane**, **Shadow** and **Holy**. A Fiery
+Sinister Strike is Sinister Strike in every way that matters to your hands: the same energy cost,
+the same swing, the same combo point, and the same rank chain that grows as you level.
+
+What changes is the damage. It is dealt as the element instead of Physical, so armour does not
+reduce it and resistance does, and anything that increases your Fire damage increases a Fiery
+strike. The attack keeps 85% of its weapon damage (75% for Holy, which almost nothing resists)
+and adds an elemental hit on top that grows with your spell power, so a variant rewards Intellect
+as well as attack power. Where the attack has a free effect slot it also carries one effect the
+element is known for:
+
+| Element | Extra effect on hit |
+| ------- | ------------------- |
+| Fire    | Burns the target for 6 seconds |
+| Frost   | Slows the target's movement by 30% for 6 seconds |
+| Earth   | Slows the target's attacks by 10% for 6 seconds |
+| Poison  | Poisons the target for 12 seconds |
+| Arcane  | None. The elemental hit is larger instead |
+| Shadow  | Reduces healing the target receives by 20% for 6 seconds |
+| Holy    | Heals you for the elemental hit's value |
+
+An attack that already uses all three of its effect slots carries the elemental hit but not the
+extra effect. That is every strike that awards a combo point (Sinister Strike, Backstab, Ambush,
+Hemorrhage, Claw, Shred, Ravage), plus Maim, Mangle (Cat), Mangle (Bear), Overpower, Mortal
+Strike, Aimed Shot, Whirlwind, Death Strike, Obliterate and Plague Strike. Mocking Blow and Deadly
+Throw have no variants at all, because neither has room for the elemental hit.
+
+The attacks with variants: Sinister Strike, Backstab, Ambush, Hemorrhage, Heroic Strike, Cleave,
+Whirlwind, Overpower, Mortal Strike, Devastate, Raptor Strike, Multi-Shot, Aimed Shot, Kill Shot,
+Claw, Shred, Ravage, Maul, Maim, Swipe (Cat), Mangle (Cat), Mangle (Bear), Fan of Knives and,
+when Death Knight abilities are enabled, Blood Strike, Plague Strike, Obliterate and Death
+Strike. Area and chain attacks stay what they were: a Fiery Whirlwind hits everything in range
+and a Fiery Cleave still strikes two targets.
+
+Variants are obtained like any other ability. Wildcard rolls them and Classless buys them, one
+rarity tier above the attack they come from. They roll less often than the base attack, so a
+strike gaining seven siblings does not crowd the pool. They file under the base attack's
+spellbook tab and appear in its class menu, and owning a base attack and one of its variants
+together is allowed. The `Elemental` settings in the configuration table turn them off, keep
+them out of rolls and purchase, or hide them from the menus.
+
+Variants need the client patch every player already runs: it adds their names, tooltips and
+icons to the client, and paints each badge onto the player's own copy of the base icon when
+Python's Pillow library is installed. Without Pillow a variant shows its base attack's plain
+icon.
 
 ---
 
