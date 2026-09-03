@@ -36,10 +36,10 @@ reversible with `--uninstall`). **Close World of Warcraft before installing.**
 
 Nothing else. No compiler, no StormLib, no MPQ editor, no extra downloads.
 
-> The one exception is `--hero-icon` (the custom class emblem), which needs the
-> Python **Pillow** imaging library (`pip install pillow`). Every other feature,
-> including the default install, needs nothing beyond Python 3. Without Pillow the
-> icon step is simply skipped.
+> The Hero emblem and the elemental ability icons are painted with the Python
+> **Pillow** imaging library, so the install needs it. `install.bat`, `install.sh`
+> and `install.py` each install it with pip when it is missing, and stop if that
+> fails. Nothing else is downloaded.
 
 ---
 
@@ -49,9 +49,15 @@ Nothing else. No compiler, no StormLib, no MPQ editor, no extra downloads.
 
 **Double-click `install.bat`.**
 
-It finds your WoW folder, shows what it is about to do, and confirms once before
-touching anything. If it cannot find your client, drag your WoW folder onto
-`install.bat` and drop it. **Close World of Warcraft first**, because the install patches
+The first run asks for your WoW folder and remembers it in `install_path.txt`
+beside the installer, so later runs go straight through without asking. Edit that
+file to point somewhere else, or delete it to be asked again. You can also write
+it yourself before the first run: one line holding the path, and lines starting
+with `#` are ignored. Dragging your WoW folder onto `install.bat` still works and
+takes priority over the file.
+
+The installer shows what it is about to do and confirms once before touching
+anything. **Close World of Warcraft first**, because the install patches
 `Wow.exe`, which the running game locks.
 
 ### macOS / Linux

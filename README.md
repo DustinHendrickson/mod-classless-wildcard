@@ -254,8 +254,10 @@ Keep it, or spend a reroll.</em>
 
 Every player runs the installer in [`client-patch/`](client-patch/README.md). They close WoW and
 double-click `install.bat` on Windows, or run `./install.sh "/path/to/WoW"` on Linux and macOS.
-It needs Python 3.7 or newer and nothing else: no compiler, no MPQ tools, no manual file copying.
-Running it with `--uninstall` returns the client to stock.
+On Windows the first run asks for the WoW folder and remembers it in `install_path.txt`, so
+later runs need no input. It needs Python 3.7 or newer, and installs the Pillow imaging library
+itself if it is missing: no compiler, no MPQ tools, no manual file copying. Running it with
+`--uninstall` returns the client to stock.
 
 It installs:
 
