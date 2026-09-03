@@ -445,10 +445,13 @@ MakePaneHeader(TAL_X, TAL_W, "Talents")
 -- scoped: the main chunk is close to Lua's 200-local limit.
 do
     local B = CW.BROWSE
+    local HDR_BTN_H = 18
     local function MakeHeaderButton(x, width, label)
         local b = CreateFrame("Button", nil, frame, "UIPanelButtonTemplate")
-        b:SetWidth(width); b:SetHeight(18)
-        b:SetPoint("TOPLEFT", x, PANE_TOP - 7)
+        b:SetWidth(width); b:SetHeight(HDR_BTN_H)
+        -- centred on the baked header strip (y 130..154, so its middle is
+        -- 142): any other offset leaves the button riding the strip's border
+        b:SetPoint("TOPLEFT", x, PANE_TOP - (20 - HDR_BTN_H / 2))
         b:SetText(label)
         return b
     end
