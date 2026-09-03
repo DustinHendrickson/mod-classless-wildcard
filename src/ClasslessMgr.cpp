@@ -803,7 +803,14 @@ void ClasslessMgr::LoadVariants()
     {
         Field* f = result->Fetch();
         uint32 const variantFirst = f[0].Get<uint32>();
-        uint32 const baseFirst = f[1].Get<uint32>();
+        uint32 baseFirst = f[1].Get<uint32>();
+
+        // The generator writes the first rank it copied. For a talent-taught
+        // strike (Mortal Strike, Devastate, Mangle, Aimed Shot, Hemorrhage)
+        // that is the first trained rank, not the talent spell that heads the
+        // pool's line, so resolve through the rank map before the lookup.
+        if (auto lineItr = _spellToFirst.find(baseFirst); lineItr != _spellToFirst.end())
+            baseFirst = lineItr->second;
 
         auto baseItr = _abilities.find(baseFirst);
         if (baseItr == _abilities.end() || !baseItr->second.enabled)

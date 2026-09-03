@@ -103,10 +103,13 @@ Keep it, or spend a reroll.</em>
   by the NPC and the addon at a price that scales with level.
 - **Rebirth.** A full reset that also switches paths, available after the mode lock and gated by
   config. A Wildcard rebirth replays the whole roll schedule.
-- **Archetypes.** Six build templates (*Blade Dancer*, *Battle Mage*, *Ranger of the Light*,
-  *Shadow Mender*, *Stealthy Healer*, *Storm Warrior*) a Classless Hero can follow from 1 to 80.
-  Following one replaces the current build and then buys each ability and talent rank with the
-  Hero's own essence as it unlocks. Stop at any time and keep what was bought.
+- **Archetypes.** Thirteen build templates a Classless Hero can follow from 1 to 80. Six mix
+  two classes (*Blade Dancer*, *Battle Mage*, *Ranger of the Light*, *Shadow Mender*, *Stealthy
+  Healer*, *Storm Warrior*) and seven are built around one element's variant strikes and the
+  talent tree that feeds it (*Hellfire Knight*, *Rime Reaver*, *Stoneguard*, *Venomstalker*,
+  *Nightclaw*, *Dawnward*, *Spellblade*). Following one replaces the current build and then buys
+  each ability and talent rank with the Hero's own essence as it unlocks. Stop at any time and
+  keep what was bought.
 - **Elemental variants.** Twenty-seven weapon attacks each come in Fiery, Frozen, Earthen,
   Venomous, Arcane, Shadow and Holy forms: the same swing, cost and cooldown, dealt as the element
   with an extra hit that scales with spell power. See [Elemental variants](#elemental-variants).

@@ -12,12 +12,18 @@ module's BuildLibrary does, simulates a Hero following each build from 1 to
 80 on the shipped essence schedule, refuses to write anything that would
 stall, and emits ../db-world/cw_archetypes.sql.
 
+Elemental variants ("Fiery Heroic Strike") are part of the pool too, read
+from the client manifest the variant generator writes and registered the way
+LoadVariants does: the base line's levels and class, one rarity tier up. A
+build names them like any other ability, under the base attack's class.
+
 Run:  python3 gen_archetypes.py                 validate + write the SQL
       python3 gen_archetypes.py --catalog Rogue  list what the pool offers a
                                                  class (abilities with unlock
                                                  level and cost, talents by
                                                  tier) to pick from
       python3 gen_archetypes.py --dbc DIR --core DIR --conf FILE --out FILE
+                                --manifest client-patch/elemental_manifest.json
 
 Needs the 3.3.5a DBC extract (Spell, SkillLine, SkillLineAbility, Talent,
 TalentTab) and the core checkout for data/sql/base/db_world/trainer_spell.sql
@@ -29,6 +35,7 @@ from __future__ import annotations
 import argparse
 import collections
 import io
+import json
 import os
 import re
 import sys
@@ -41,6 +48,7 @@ MODULE = os.path.abspath(os.path.join(HERE, os.pardir, os.pardir, os.pardir))
 DEFAULT_CORE = os.path.abspath(os.path.join(MODULE, os.pardir, os.pardir))
 DEFAULT_CONF = os.path.join(MODULE, "conf", "classless_wildcard.conf.dist")
 OUT_SQL = os.path.join(HERE, os.pardir, "db-world", "cw_archetypes.sql")
+DEFAULT_MANIFEST = os.path.join(MODULE, "client-patch", "elemental_manifest.json")
 
 CLASS_BITS = {"Warrior": 1, "Paladin": 2, "Hunter": 4, "Rogue": 8, "Priest": 16,
               "Death Knight": 32, "Shaman": 64, "Mage": 128, "Warlock": 256, "Druid": 1024}
@@ -246,6 +254,215 @@ BUILDS = [
              ("Warrior", "Fury", "Unbridled Wrath", 5),
              ("Warrior", "Fury", "Improved Cleave", 3), ("Warrior", "Fury", "Commanding Presence", 4),
          ]),
+
+    # ---- elemental archetypes: one per element, built around the variant
+    # strikes and the talent tree that feeds that element's damage -----------
+    dict(id=7, name="Hellfire Knight",
+         description="Burning warrior: fiery strikes and warlock fire, fed by the Destruction tree.",
+         abilities=[
+             ("Warrior", "Fiery Heroic Strike"), ("Warrior", "Battle Shout"),
+             ("Warlock", "Immolate"), ("Warrior", "Charge"), ("Warlock", "Life Tap"),
+             ("Warrior", "Hamstring"), ("Warrior", "Bloodrage"), ("Warrior", "Fiery Overpower"),
+             ("Warlock", "Searing Pain"), ("Warrior", "Fiery Cleave"),
+             ("Warrior", "Execute"), ("Warrior", "Intercept"), ("Warlock", "Hellfire"),
+             ("Warrior", "Berserker Rage"), ("Warrior", "Fiery Whirlwind"), ("Warrior", "Pummel"),
+             ("Warrior", "Fiery Mortal Strike"), ("Warlock", "Soul Fire"), ("Warrior", "Recklessness"),
+             ("Warlock", "Chaos Bolt"), ("Warlock", "Incinerate"), ("Warrior", "Enraged Regeneration"),
+         ],
+         talents=[
+             ("Warlock", "Destruction", "Bane", 5),
+             ("Warlock", "Destruction", "Cataclysm", 3), ("Warlock", "Destruction", "Aftermath", 2),
+             ("Warlock", "Destruction", "Ruin", 5),
+             ("Warlock", "Destruction", "Intensity", 2), ("Warlock", "Destruction", "Improved Searing Pain", 3),
+             ("Warlock", "Destruction", "Improved Immolate", 3), ("Warlock", "Destruction", "Devastation", 1),
+             ("Warlock", "Destruction", "Backlash", 3),
+             ("Warlock", "Destruction", "Emberstorm", 5),
+             ("Warlock", "Destruction", "Conflagrate", 1), ("Warlock", "Destruction", "Pyroclasm", 3),
+             ("Warlock", "Destruction", "Soul Leech", 3),
+             ("Warlock", "Destruction", "Shadow and Flame", 5),
+             ("Warlock", "Destruction", "Backdraft", 3),
+             ("Warlock", "Destruction", "Fire and Brimstone", 5),
+             ("Warlock", "Destruction", "Chaos Bolt", 1),
+             ("Warrior", "Fury", "Cruelty", 5), ("Warrior", "Fury", "Armored to the Teeth", 3),
+             ("Warrior", "Fury", "Unbridled Wrath", 5),
+             ("Warrior", "Fury", "Improved Cleave", 3),
+             ("Warrior", "Fury", "Improved Execute", 2),
+         ]),
+    dict(id=8, name="Rime Reaver",
+         description="Frozen rogue: chilling strikes and frost magic that slow and shatter.",
+         abilities=[
+             ("Rogue", "Frozen Sinister Strike"), ("Rogue", "Eviscerate"),
+             ("Rogue", "Frozen Backstab"), ("Mage", "Frostbolt"), ("Rogue", "Gouge"), ("Rogue", "Evasion"),
+             ("Mage", "Frost Nova"), ("Rogue", "Slice and Dice"), ("Rogue", "Kick"),
+             ("Rogue", "Frozen Ambush"), ("Rogue", "Rupture"), ("Rogue", "Vanish"),
+             ("Mage", "Cone of Cold"), ("Rogue", "Cheap Shot"), ("Rogue", "Kidney Shot"), ("Mage", "Ice Block"),
+             ("Rogue", "Blind"), ("Rogue", "Mutilate"),
+             ("Mage", "Ice Lance"), ("Rogue", "Cloak of Shadows"), ("Rogue", "Shiv"),
+             ("Rogue", "Frozen Fan of Knives"),
+         ],
+         talents=[
+             ("Mage", "Frost", "Improved Frostbolt", 5),
+             ("Mage", "Frost", "Ice Shards", 3), ("Mage", "Frost", "Precision", 3),
+             ("Mage", "Frost", "Piercing Ice", 3), ("Mage", "Frost", "Icy Veins", 1),
+             ("Mage", "Frost", "Shatter", 3), ("Mage", "Frost", "Arctic Reach", 2), ("Mage", "Frost", "Frost Channeling", 3),
+             ("Mage", "Frost", "Cold Snap", 1), ("Mage", "Frost", "Frozen Core", 3),
+             ("Mage", "Frost", "Winter's Chill", 3), ("Mage", "Frost", "Cold as Ice", 2),
+             ("Mage", "Frost", "Ice Barrier", 1), ("Mage", "Frost", "Arctic Winds", 5),
+             ("Mage", "Frost", "Fingers of Frost", 2), ("Mage", "Frost", "Empowered Frostbolt", 2),
+             ("Mage", "Frost", "Brain Freeze", 3),
+             ("Mage", "Frost", "Chilled to the Bone", 5),
+             ("Mage", "Frost", "Deep Freeze", 1),
+             ("Rogue", "Assassination", "Malice", 5), ("Rogue", "Assassination", "Improved Eviscerate", 3),
+             ("Rogue", "Assassination", "Ruthlessness", 3), ("Rogue", "Assassination", "Puncturing Wounds", 3),
+             ("Rogue", "Assassination", "Lethality", 5), ("Rogue", "Assassination", "Vigor", 1),
+         ]),
+    dict(id=9, name="Stoneguard",
+         description="Earthen bear: slowing mauls and shaman totems, built to hold the line.",
+         abilities=[
+             ("Shaman", "Healing Wave"), ("Druid", "Mark of the Wild"), ("Shaman", "Rockbiter Weapon"),
+             ("Shaman", "Earth Shock"), ("Shaman", "Earthbind Totem"), ("Shaman", "Lightning Shield"),
+             ("Druid", "Bear Form"), ("Druid", "Earthen Maul"), ("Shaman", "Strength of Earth Totem"),
+             ("Druid", "Enrage"), ("Druid", "Bash"), ("Druid", "Swipe (Bear)"), ("Druid", "Faerie Fire (Feral)"),
+             ("Shaman", "Healing Stream Totem"), ("Druid", "Challenging Roar"),
+             ("Shaman", "Grounding Totem"), ("Shaman", "Windfury Weapon"), ("Druid", "Frenzied Regeneration"),
+             ("Druid", "Barkskin"), ("Shaman", "Earth Shield"), ("Druid", "Earthen Mangle (Bear)"),
+             ("Shaman", "Earth Elemental Totem"), ("Druid", "Lacerate"),
+         ],
+         talents=[
+             ("Druid", "Feral Combat", "Ferocity", 5),
+             ("Druid", "Feral Combat", "Feral Instinct", 3), ("Druid", "Feral Combat", "Thick Hide", 3),
+             ("Druid", "Feral Combat", "Survival Instincts", 1), ("Druid", "Feral Combat", "Sharpened Claws", 3),
+             ("Druid", "Feral Combat", "Feral Swiftness", 2),
+             ("Druid", "Feral Combat", "Predatory Strikes", 3), ("Druid", "Feral Combat", "Primal Fury", 2),
+             ("Druid", "Feral Combat", "Feral Charge", 1), ("Druid", "Feral Combat", "Brutal Impact", 2),
+             ("Druid", "Feral Combat", "Natural Reaction", 3), ("Druid", "Feral Combat", "Survival of the Fittest", 3),
+             ("Druid", "Feral Combat", "Heart of the Wild", 5),
+             ("Druid", "Feral Combat", "Leader of the Pack", 1), ("Druid", "Feral Combat", "Improved Leader of the Pack", 2),
+             ("Druid", "Feral Combat", "Protector of the Pack", 3), ("Druid", "Feral Combat", "Infected Wounds", 3),
+             ("Druid", "Feral Combat", "Mangle", 1),
+             ("Druid", "Feral Combat", "Rend and Tear", 5),
+             ("Druid", "Feral Combat", "Berserk", 1),
+             ("Shaman", "Enhancement", "Ancestral Knowledge", 5), ("Shaman", "Enhancement", "Enhancing Totems", 3),
+             ("Shaman", "Enhancement", "Improved Shields", 3), ("Shaman", "Enhancement", "Thundering Strikes", 5),
+             ("Shaman", "Enhancement", "Anticipation", 3),
+         ]),
+    dict(id=10, name="Venomstalker",
+         description="Venomous hunter: poisoned shots and stings, with a rogue's opening moves.",
+         abilities=[
+             ("Hunter", "Venomous Raptor Strike"), ("Rogue", "Stealth"), ("Hunter", "Serpent Sting"),
+             ("Hunter", "Arcane Shot"), ("Hunter", "Hunter's Mark"), ("Hunter", "Concussive Shot"),
+             ("Hunter", "Aspect of the Hawk"), ("Rogue", "Sprint"), ("Hunter", "Wing Clip"),
+             ("Hunter", "Mongoose Bite"), ("Hunter", "Venomous Multi-Shot"), ("Hunter", "Venomous Aimed Shot"),
+             ("Hunter", "Freezing Trap"), ("Hunter", "Rapid Fire"), ("Hunter", "Feign Death"),
+             ("Hunter", "Counterattack"), ("Hunter", "Viper Sting"), ("Hunter", "Explosive Trap"),
+             ("Hunter", "Volley"), ("Hunter", "Steady Shot"), ("Hunter", "Tranquilizing Shot"),
+             ("Hunter", "Snake Trap"), ("Hunter", "Venomous Kill Shot"), ("Rogue", "Tricks of the Trade"),
+         ],
+         talents=[
+             ("Hunter", "Survival", "Savage Strikes", 2), ("Hunter", "Survival", "Hawk Eye", 3),
+             ("Hunter", "Survival", "Surefooted", 3), ("Hunter", "Survival", "Survival Instincts", 2),
+             ("Hunter", "Survival", "Survivalist", 5),
+             ("Hunter", "Survival", "T.N.T.", 3), ("Hunter", "Survival", "Lock and Load", 3),
+             ("Hunter", "Survival", "Killer Instinct", 3), ("Hunter", "Survival", "Hunter vs. Wild", 3),
+             ("Hunter", "Survival", "Lightning Reflexes", 5),
+             ("Hunter", "Survival", "Wyvern Sting", 1), ("Hunter", "Survival", "Thrill of the Hunt", 3),
+             ("Hunter", "Survival", "Expose Weakness", 3),
+             ("Hunter", "Survival", "Noxious Stings", 3), ("Hunter", "Survival", "Master Tactician", 5),
+             ("Hunter", "Survival", "Black Arrow", 1), ("Hunter", "Survival", "Sniper Training", 3),
+             ("Hunter", "Survival", "Hunting Party", 3),
+             ("Hunter", "Survival", "Explosive Shot", 1),
+             ("Rogue", "Assassination", "Malice", 5), ("Rogue", "Assassination", "Remorseless Attacks", 2),
+             ("Rogue", "Assassination", "Ruthlessness", 3), ("Rogue", "Assassination", "Puncturing Wounds", 3),
+             ("Rogue", "Assassination", "Lethality", 3),
+         ]),
+    dict(id=11, name="Nightclaw",
+         description="Shadow cat: darkened claws and shreds, sharpened by the Shadow tree.",
+         abilities=[
+             ("Druid", "Wrath"), ("Druid", "Mark of the Wild"), ("Druid", "Healing Touch"),
+             ("Priest", "Shadow Word: Pain"), ("Druid", "Moonfire"), ("Druid", "Rejuvenation"), ("Priest", "Fade"),
+             ("Priest", "Mind Blast"), ("Druid", "Regrowth"),
+             ("Druid", "Cat Form"), ("Druid", "Shadow Claw"), ("Druid", "Prowl"), ("Druid", "Rip"),
+             ("Druid", "Shadow Shred"), ("Druid", "Tiger's Fury"), ("Druid", "Rake"),
+             ("Druid", "Ferocious Bite"), ("Druid", "Shadow Ravage"), ("Druid", "Pounce"),
+             ("Druid", "Feline Grace"), ("Druid", "Barkskin"), ("Druid", "Shadow Mangle (Cat)"),
+             ("Druid", "Shadow Maim"), ("Druid", "Shadow Swipe (Cat)"), ("Druid", "Savage Roar"),
+         ],
+         talents=[
+             ("Priest", "Shadow", "Spirit Tap", 3), ("Priest", "Shadow", "Darkness", 5),
+             ("Priest", "Shadow", "Improved Spirit Tap", 2),
+             ("Priest", "Shadow", "Improved Shadow Word: Pain", 2), ("Priest", "Shadow", "Shadow Focus", 3),
+             ("Priest", "Shadow", "Improved Mind Blast", 5),
+             ("Priest", "Shadow", "Shadow Weaving", 3), ("Priest", "Shadow", "Veiled Shadows", 2),
+             ("Priest", "Shadow", "Vampiric Embrace", 1), ("Priest", "Shadow", "Focused Mind", 3),
+             ("Priest", "Shadow", "Mind Melt", 2), ("Priest", "Shadow", "Improved Vampiric Embrace", 2),
+             ("Priest", "Shadow", "Shadow Power", 5),
+             ("Priest", "Shadow", "Misery", 3),
+             ("Priest", "Shadow", "Pain and Suffering", 3), ("Priest", "Shadow", "Psychic Horror", 1),
+             ("Priest", "Shadow", "Twisted Faith", 5),
+             ("Druid", "Feral Combat", "Ferocity", 5),
+             ("Druid", "Feral Combat", "Savage Fury", 2), ("Druid", "Feral Combat", "Feral Instinct", 3),
+             ("Druid", "Feral Combat", "Sharpened Claws", 3), ("Druid", "Feral Combat", "Feral Swiftness", 2),
+             ("Druid", "Feral Combat", "Predatory Strikes", 3), ("Druid", "Feral Combat", "Primal Fury", 2),
+             ("Druid", "Feral Combat", "Shredding Attacks", 1),
+         ]),
+    dict(id=12, name="Dawnward",
+         description="Holy bulwark: shield and strikes that heal you, backed by both Protection trees.",
+         abilities=[
+             ("Warrior", "Holy Heroic Strike"), ("Paladin", "Holy Light"),
+             ("Paladin", "Seal of Righteousness"), ("Paladin", "Judgement of Light"), ("Paladin", "Blessing of Might"),
+             ("Paladin", "Divine Protection"), ("Paladin", "Hammer of Justice"), ("Warrior", "Bloodrage"),
+             ("Warrior", "Shield Bash"), ("Paladin", "Righteous Defense"), ("Paladin", "Righteous Fury"),
+             ("Warrior", "Shield Block"), ("Paladin", "Consecration"), ("Warrior", "Holy Cleave"),
+             ("Warrior", "Shield Wall"), ("Paladin", "Divine Shield"), ("Warrior", "Shield Slam"),
+             ("Paladin", "Cleanse"), ("Paladin", "Hammer of Wrath"),
+             ("Warrior", "Holy Devastate"), ("Paladin", "Holy Wrath"),
+             ("Paladin", "Greater Blessing of Kings"), ("Paladin", "Divine Plea"), ("Paladin", "Shield of Righteousness"),
+         ],
+         talents=[
+             ("Paladin", "Protection", "Divine Strength", 5),
+             ("Paladin", "Protection", "Anticipation", 5),
+             ("Paladin", "Protection", "Toughness", 5), ("Paladin", "Protection", "Improved Righteous Fury", 3),
+             ("Paladin", "Protection", "Improved Hammer of Justice", 2),
+             ("Paladin", "Protection", "Blessing of Sanctuary", 1), ("Paladin", "Protection", "Reckoning", 5),
+             ("Paladin", "Protection", "Sacred Duty", 2), ("Paladin", "Protection", "One-Handed Weapon Specialization", 3),
+             ("Paladin", "Protection", "Holy Shield", 1), ("Paladin", "Protection", "Ardent Defender", 3),
+             ("Paladin", "Protection", "Spiritual Attunement", 2),
+             ("Paladin", "Protection", "Redoubt", 3), ("Paladin", "Protection", "Combat Expertise", 3),
+             ("Paladin", "Protection", "Avenger's Shield", 1), ("Paladin", "Protection", "Touched by the Light", 3),
+             ("Paladin", "Protection", "Guarded by the Light", 2),
+             ("Paladin", "Protection", "Shield of the Templar", 3),
+             ("Paladin", "Protection", "Hammer of the Righteous", 1),
+             ("Warrior", "Protection", "Shield Specialization", 5), ("Warrior", "Protection", "Improved Bloodrage", 2),
+             ("Warrior", "Protection", "Incite", 3), ("Warrior", "Protection", "Anticipation", 5),
+             ("Warrior", "Protection", "Shield Mastery", 2), ("Warrior", "Protection", "Last Stand", 1),
+         ]),
+    dict(id=13, name="Spellblade",
+         description="Arcane duelist: arcane-laced strikes, with Intellect turned into damage.",
+         abilities=[
+             ("Rogue", "Arcane Sinister Strike"), ("Mage", "Arcane Intellect"), ("Rogue", "Eviscerate"),
+             ("Rogue", "Arcane Backstab"), ("Rogue", "Gouge"), ("Mage", "Arcane Missiles"), ("Rogue", "Evasion"),
+             ("Rogue", "Slice and Dice"), ("Rogue", "Kick"), ("Mage", "Arcane Explosion"),
+             ("Rogue", "Arcane Ambush"), ("Mage", "Blink"), ("Rogue", "Rupture"), ("Rogue", "Vanish"),
+             ("Mage", "Counterspell"), ("Rogue", "Cheap Shot"), ("Rogue", "Kidney Shot"),
+             ("Rogue", "Mutilate"), ("Mage", "Arcane Barrage"), ("Mage", "Arcane Blast"),
+             ("Rogue", "Cloak of Shadows"), ("Rogue", "Shiv"), ("Rogue", "Arcane Fan of Knives"),
+         ],
+         talents=[
+             ("Mage", "Arcane", "Arcane Focus", 3), ("Mage", "Arcane", "Arcane Subtlety", 2),
+             ("Mage", "Arcane", "Arcane Concentration", 5),
+             ("Mage", "Arcane", "Spell Impact", 3), ("Mage", "Arcane", "Student of the Mind", 2),
+             ("Mage", "Arcane", "Torment the Weak", 3), ("Mage", "Arcane", "Arcane Meditation", 2),
+             ("Mage", "Arcane", "Presence of Mind", 1), ("Mage", "Arcane", "Arcane Mind", 5),
+             ("Mage", "Arcane", "Arcane Instability", 3), ("Mage", "Arcane", "Arcane Potency", 2),
+             ("Mage", "Arcane", "Arcane Power", 1), ("Mage", "Arcane", "Arcane Empowerment", 3),
+             ("Mage", "Arcane", "Mind Mastery", 5),
+             ("Rogue", "Combat", "Improved Sinister Strike", 2), ("Rogue", "Combat", "Dual Wield Specialization", 5),
+             ("Rogue", "Combat", "Precision", 5), ("Rogue", "Combat", "Improved Slice and Dice", 2),
+             ("Rogue", "Combat", "Endurance", 1),
+             ("Rogue", "Combat", "Lightning Reflexes", 3), ("Rogue", "Combat", "Aggression", 5),
+             ("Rogue", "Combat", "Blade Flurry", 1), ("Rogue", "Combat", "Hack and Slash", 5),
+             ("Rogue", "Combat", "Weapon Expertise", 2),
+         ]),
 ]
 
 
@@ -259,8 +476,11 @@ def read_conf(path):
     cfg = dict(starting_ae=3, essence_start=4, te_start=10, ae_per_level=1, te_per_level=1,
                costs=[1, 2, 3, 5, 8], talent_cost=1, talent_flat=0, enforce_rows=1,
                respect_levels=1, trainer_only=1, include_racials=0, include_passives=1,
-               include_dk=1)
+               include_dk=1, elemental=1, elemental_in_pool=1, rarity_bump=1)
     keys = {
+        "ClasslessWildcard.Elemental.Enable": ("elemental", int),
+        "ClasslessWildcard.Elemental.InPool": ("elemental_in_pool", int),
+        "ClasslessWildcard.Elemental.RarityBump": ("rarity_bump", int),
         "ClasslessWildcard.Classless.StartingAbilityEssence": ("starting_ae", int),
         "ClasslessWildcard.Classless.EssenceStartLevel": ("essence_start", int),
         "ClasslessWildcard.Classless.TalentEssenceStartLevel": ("te_start", int),
@@ -293,7 +513,7 @@ def read_conf(path):
 # =============================================================================
 
 class Pool:
-    def __init__(self, dbc_dir, core_dir, cfg):
+    def __init__(self, dbc_dir, core_dir, cfg, manifest=None):
         self.cfg = cfg
         self.spell = Dbc(os.path.join(dbc_dir, "Spell.dbc"))
         self.sla = Dbc(os.path.join(dbc_dir, "SkillLineAbility.dbc"))
@@ -305,6 +525,7 @@ class Pool:
         self.first_of, self.chain_of = self._ranks(os.path.join(base, "spell_ranks.sql"))
         self._talents()
         self._abilities()
+        self._variants(manifest)
 
     # ---- helpers ------------------------------------------------------------
     def name(self, spell_id):
@@ -461,6 +682,42 @@ class Pool:
                 keep["class_mask"] |= e["class_mask"]
                 e["enabled"] = False
 
+    def _variants(self, manifest):
+        """Elemental variants, registered the way LoadVariants does: the
+        base line's levels and class mask, the base rarity bumped by
+        Elemental.RarityBump, and skipped when the base is not in the pool.
+        The manifest lists every variant rank with its base line and the
+        server SQL carries the same rows, so it is the one file to read."""
+        self.variants = 0
+        if not self.cfg["elemental"] or not self.cfg["elemental_in_pool"]:
+            return
+        if not manifest or not os.path.exists(manifest):
+            print("note: no elemental manifest at %s; variants left out of the pool" % manifest)
+            return
+        data = json.load(io.open(manifest, encoding="utf-8"))
+        lines = collections.defaultdict(list)
+        for v in data.get("variants", []):
+            lines[v["first"]].append(v)
+        for first, ranks in sorted(lines.items()):
+            ranks.sort(key=lambda v: v["rank"])
+            # the manifest names the base RANK each variant rank copies; the
+            # line it belongs to is that rank's first spell (a talent-taught
+            # strike's variants start from its first trained rank, not the
+            # talent spell)
+            base = self.abilities.get(self.first_of.get(ranks[0]["base"], ranks[0]["base"]))
+            if base is None or not base["enabled"] or first in self.abilities:
+                continue
+            levels = list(base["levels"][:len(ranks)])
+            while len(levels) < len(ranks):
+                levels.append(levels[-1] if levels else 1)
+            rarity = min(base["rarity"] + self.cfg["rarity_bump"], len(RARITY_NAMES) - 1)
+            self.abilities[first] = dict(
+                first=first, class_mask=base["class_mask"], ranks=[v["id"] for v in ranks],
+                levels=levels, name=ranks[0]["name"], passive=False, enabled=True,
+                rarity=rarity, cost=self.cfg["costs"][rarity], variant=base["name"],
+                element=ranks[0]["element"])
+            self.variants += 1
+
     # ---- lookups ------------------------------------------------------------
     def find_ability(self, cls, name):
         bit = CLASS_BITS[cls]
@@ -487,8 +744,11 @@ class Pool:
         rows = sorted((e for e in self.abilities.values() if e["enabled"] and e["class_mask"] & bit),
                       key=lambda e: (e["levels"][0], e["name"]))
         for e in rows:
+            tag = "  passive" if e["passive"] else ""
+            if e.get("variant"):
+                tag = "  %s variant of %s" % (e["element"], e["variant"])
             print("  L%-2d %d AE  %-32s %2d rank%s%s" % (e["levels"][0], e["cost"], e["name"], len(e["ranks"]),
-                  "" if len(e["ranks"]) == 1 else "s", "  passive" if e["passive"] else ""))
+                  "" if len(e["ranks"]) == 1 else "s", tag))
         print("== %s talents ==" % cls)
         for tab_id, (tab_name, mask) in sorted(self.tabs.items(), key=lambda kv: kv[1][0]):
             if mask != bit:
@@ -654,12 +914,15 @@ def main(argv=None):
     ap.add_argument("--core", default=DEFAULT_CORE, help="AzerothCore checkout (for trainer_spell.sql, spell_ranks.sql)")
     ap.add_argument("--conf", default=DEFAULT_CONF)
     ap.add_argument("--out", default=OUT_SQL)
+    ap.add_argument("--manifest", default=DEFAULT_MANIFEST,
+                    help="elemental variant manifest written by gen_elemental_variants.py")
     ap.add_argument("--catalog", metavar="CLASS", help="print the pool for one class and exit")
     ap.add_argument("--ledger", action="store_true", help="print every purchase of the simulation")
     args = ap.parse_args(argv)
 
-    pool = Pool(args.dbc, args.core, read_conf(args.conf))
-    print("pool: %d ability lines, %d talents" % (sum(1 for e in pool.abilities.values() if e["enabled"]), len(pool.talents)))
+    pool = Pool(args.dbc, args.core, read_conf(args.conf), args.manifest)
+    print("pool: %d ability lines (%d elemental variants), %d talents" % (
+        sum(1 for e in pool.abilities.values() if e["enabled"]), pool.variants, len(pool.talents)))
     if args.catalog:
         if args.catalog not in CLASS_BITS:
             sys.exit("class must be one of: " + ", ".join(CLASS_BITS))
