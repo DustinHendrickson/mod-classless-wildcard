@@ -173,7 +173,7 @@ ELEMENTS = [
          hue=(150, 100, 30), glyph="boulder"),
     dict(key="poison", idx=4, prefix="Venomous", school=8,  word="Nature", kit=3031,
          rider=("dot", 3000, DURATION_12S), coeff=None,
-         hue=(108, 210, 40), glyph="drop"),
+         hue=(110, 255, 60), glyph="drop"),
     dict(key="arcane", idx=5, prefix="Arcane",   school=64, word="Arcane", kit=1005,
          rider=None, coeff=None, add_mult=1.5,
          hue=(255, 72, 232), glyph="star"),

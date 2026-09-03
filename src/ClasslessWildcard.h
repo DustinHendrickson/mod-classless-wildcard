@@ -56,7 +56,8 @@ namespace ClasslessWildcard
     enum class GrantSource : uint8
     {
         Picked = 0,   // bought with essence (classless mode)
-        Rolled = 1    // wildcard random roll
+        Rolled = 1,   // wildcard random roll
+        Talent = 2    // handed over by an ability talent; leaves with it
     };
 
     // What an ability is for, from its rank-1 spell: the browser sorts and
@@ -104,6 +105,9 @@ namespace ClasslessWildcard
         Rarity rarity = Rarity::Common;
         uint32 weight = 100;
         bool   enabled = true;
+        // ability lines (first spell ids) a rank spell heads or teaches; the
+        // talent grants them outright so the spell ranks up with level
+        std::vector<uint32> abilityLines;
     };
 
     struct OwnedAbility
@@ -194,6 +198,11 @@ namespace ClasslessWildcard
 
         // library filters
         bool   includeDeathKnight = true;
+        // A talent that teaches a spell the ability pool already carries
+        // (Pyroblast, Mortal Strike, Mangle) leaves the Talents list; the
+        // ability line stands in for it, and owning the ability meets any
+        // prerequisite on the talent and counts as a point in its tree.
+        bool   replaceAbilityTalents = true;
         bool   includeRacials = false;
         bool   includePassives = true;
         std::unordered_set<uint32> excludedSpells;

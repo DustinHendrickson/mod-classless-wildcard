@@ -53,9 +53,9 @@
    "school": 8,
    "impact_kit": 3031,
    "hue": [
-    108,
-    210,
-    40
+    110,
+    255,
+    60
    ],
    "glyph": "drop"
   },
@@ -4109,9 +4109,9 @@
     "base_path": "Interface\\Icons\\Ability_BackStab",
     "element": "poison",
     "hue": [
-     108,
-     210,
-     40
+     110,
+     255,
+     60
     ],
     "glyph": "drop"
    },
@@ -4218,9 +4218,9 @@
     "base_path": "Interface\\Icons\\Ability_BackStab",
     "element": "poison",
     "hue": [
-     108,
-     210,
-     40
+     110,
+     255,
+     60
     ],
     "glyph": "drop"
    },
@@ -4327,9 +4327,9 @@
     "base_path": "Interface\\Icons\\Ability_BackStab",
     "element": "poison",
     "hue": [
-     108,
-     210,
-     40
+     110,
+     255,
+     60
     ],
     "glyph": "drop"
    },
@@ -4436,9 +4436,9 @@
     "base_path": "Interface\\Icons\\Ability_BackStab",
     "element": "poison",
     "hue": [
-     108,
-     210,
-     40
+     110,
+     255,
+     60
     ],
     "glyph": "drop"
    },
@@ -4545,9 +4545,9 @@
     "base_path": "Interface\\Icons\\Ability_BackStab",
     "element": "poison",
     "hue": [
-     108,
-     210,
-     40
+     110,
+     255,
+     60
     ],
     "glyph": "drop"
    },
@@ -4654,9 +4654,9 @@
     "base_path": "Interface\\Icons\\Ability_BackStab",
     "element": "poison",
     "hue": [
-     108,
-     210,
-     40
+     110,
+     255,
+     60
     ],
     "glyph": "drop"
    },
@@ -4763,9 +4763,9 @@
     "base_path": "Interface\\Icons\\Ability_BackStab",
     "element": "poison",
     "hue": [
-     108,
-     210,
-     40
+     110,
+     255,
+     60
     ],
     "glyph": "drop"
    },
@@ -4872,9 +4872,9 @@
     "base_path": "Interface\\Icons\\Ability_BackStab",
     "element": "poison",
     "hue": [
-     108,
-     210,
-     40
+     110,
+     255,
+     60
     ],
     "glyph": "drop"
    },
@@ -4981,9 +4981,9 @@
     "base_path": "Interface\\Icons\\Ability_BackStab",
     "element": "poison",
     "hue": [
-     108,
-     210,
-     40
+     110,
+     255,
+     60
     ],
     "glyph": "drop"
    },
@@ -5090,9 +5090,9 @@
     "base_path": "Interface\\Icons\\Ability_BackStab",
     "element": "poison",
     "hue": [
-     108,
-     210,
-     40
+     110,
+     255,
+     60
     ],
     "glyph": "drop"
    },
@@ -5199,9 +5199,9 @@
     "base_path": "Interface\\Icons\\Ability_BackStab",
     "element": "poison",
     "hue": [
-     108,
-     210,
-     40
+     110,
+     255,
+     60
     ],
     "glyph": "drop"
    },
@@ -5308,9 +5308,9 @@
     "base_path": "Interface\\Icons\\Ability_BackStab",
     "element": "poison",
     "hue": [
-     108,
-     210,
-     40
+     110,
+     255,
+     60
     ],
     "glyph": "drop"
    },
@@ -13592,9 +13592,9 @@
     "base_path": "Interface\\Icons\\Ability_Rogue_Ambush",
     "element": "poison",
     "hue": [
-     108,
-     210,
-     40
+     110,
+     255,
+     60
     ],
     "glyph": "drop"
    },
@@ -13701,9 +13701,9 @@
     "base_path": "Interface\\Icons\\Ability_Rogue_Ambush",
     "element": "poison",
     "hue": [
-     108,
-     210,
-     40
+     110,
+     255,
+     60
     ],
     "glyph": "drop"
    },
@@ -13810,9 +13810,9 @@
     "base_path": "Interface\\Icons\\Ability_Rogue_Ambush",
     "element": "poison",
     "hue": [
-     108,
-     210,
-     40
+     110,
+     255,
+     60
     ],
     "glyph": "drop"
    },
@@ -13919,9 +13919,9 @@
     "base_path": "Interface\\Icons\\Ability_Rogue_Ambush",
     "element": "poison",
     "hue": [
-     108,
-     210,
-     40
+     110,
+     255,
+     60
     ],
     "glyph": "drop"
    },
@@ -14028,9 +14028,9 @@
     "base_path": "Interface\\Icons\\Ability_Rogue_Ambush",
     "element": "poison",
     "hue": [
-     108,
-     210,
-     40
+     110,
+     255,
+     60
     ],
     "glyph": "drop"
    },
@@ -14137,9 +14137,9 @@
     "base_path": "Interface\\Icons\\Ability_Rogue_Ambush",
     "element": "poison",
     "hue": [
-     108,
-     210,
-     40
+     110,
+     255,
+     60
     ],
     "glyph": "drop"
    },
@@ -14246,9 +14246,9 @@
     "base_path": "Interface\\Icons\\Ability_Rogue_Ambush",
     "element": "poison",
     "hue": [
-     108,
-     210,
-     40
+     110,
+     255,
+     60
     ],
     "glyph": "drop"
    },
@@ -14355,9 +14355,9 @@
     "base_path": "Interface\\Icons\\Ability_Rogue_Ambush",
     "element": "poison",
     "hue": [
-     108,
-     210,
-     40
+     110,
+     255,
+     60
     ],
     "glyph": "drop"
    },
@@ -14464,9 +14464,9 @@
     "base_path": "Interface\\Icons\\Ability_Rogue_Ambush",
     "element": "poison",
     "hue": [
-     108,
-     210,
-     40
+     110,
+     255,
+     60
     ],
     "glyph": "drop"
    },
@@ -14573,9 +14573,9 @@
     "base_path": "Interface\\Icons\\Ability_Rogue_Ambush",
     "element": "poison",
     "hue": [
-     108,
-     210,
-     40
+     110,
+     255,
+     60
     ],
     "glyph": "drop"
    },
@@ -14682,9 +14682,9 @@
     "base_path": "Interface\\Icons\\Ability_Rogue_Ambush",
     "element": "poison",
     "hue": [
-     108,
-     210,
-     40
+     110,
+     255,
+     60
     ],
     "glyph": "drop"
    },
@@ -14791,9 +14791,9 @@
     "base_path": "Interface\\Icons\\Ability_Rogue_Ambush",
     "element": "poison",
     "hue": [
-     108,
-     210,
-     40
+     110,
+     255,
+     60
     ],
     "glyph": "drop"
    },
@@ -14900,9 +14900,9 @@
     "base_path": "Interface\\Icons\\Ability_Rogue_Ambush",
     "element": "poison",
     "hue": [
-     108,
-     210,
-     40
+     110,
+     255,
+     60
     ],
     "glyph": "drop"
    },
@@ -21876,9 +21876,9 @@
     "base_path": "Interface\\Icons\\Ability_Warrior_Cleave",
     "element": "poison",
     "hue": [
-     108,
-     210,
-     40
+     110,
+     255,
+     60
     ],
     "glyph": "drop"
    },
@@ -21985,9 +21985,9 @@
     "base_path": "Interface\\Icons\\Ability_Warrior_Cleave",
     "element": "poison",
     "hue": [
-     108,
-     210,
-     40
+     110,
+     255,
+     60
     ],
     "glyph": "drop"
    },
@@ -22094,9 +22094,9 @@
     "base_path": "Interface\\Icons\\Ability_Warrior_Cleave",
     "element": "poison",
     "hue": [
-     108,
-     210,
-     40
+     110,
+     255,
+     60
     ],
     "glyph": "drop"
    },
@@ -22203,9 +22203,9 @@
     "base_path": "Interface\\Icons\\Ability_Warrior_Cleave",
     "element": "poison",
     "hue": [
-     108,
-     210,
-     40
+     110,
+     255,
+     60
     ],
     "glyph": "drop"
    },
@@ -22312,9 +22312,9 @@
     "base_path": "Interface\\Icons\\Ability_Warrior_Cleave",
     "element": "poison",
     "hue": [
-     108,
-     210,
-     40
+     110,
+     255,
+     60
     ],
     "glyph": "drop"
    },
@@ -22421,9 +22421,9 @@
     "base_path": "Interface\\Icons\\Ability_Warrior_Cleave",
     "element": "poison",
     "hue": [
-     108,
-     210,
-     40
+     110,
+     255,
+     60
     ],
     "glyph": "drop"
    },
@@ -22530,9 +22530,9 @@
     "base_path": "Interface\\Icons\\Ability_Warrior_Cleave",
     "element": "poison",
     "hue": [
-     108,
-     210,
-     40
+     110,
+     255,
+     60
     ],
     "glyph": "drop"
    },
@@ -22639,9 +22639,9 @@
     "base_path": "Interface\\Icons\\Ability_Warrior_Cleave",
     "element": "poison",
     "hue": [
-     108,
-     210,
-     40
+     110,
+     255,
+     60
     ],
     "glyph": "drop"
    },
@@ -27980,9 +27980,9 @@
     "base_path": "Interface\\Icons\\Ability_Druid_Rake",
     "element": "poison",
     "hue": [
-     108,
-     210,
-     40
+     110,
+     255,
+     60
     ],
     "glyph": "drop"
    },
@@ -28089,9 +28089,9 @@
     "base_path": "Interface\\Icons\\Ability_Druid_Rake",
     "element": "poison",
     "hue": [
-     108,
-     210,
-     40
+     110,
+     255,
+     60
     ],
     "glyph": "drop"
    },
@@ -28198,9 +28198,9 @@
     "base_path": "Interface\\Icons\\Ability_Druid_Rake",
     "element": "poison",
     "hue": [
-     108,
-     210,
-     40
+     110,
+     255,
+     60
     ],
     "glyph": "drop"
    },
@@ -28307,9 +28307,9 @@
     "base_path": "Interface\\Icons\\Ability_Druid_Rake",
     "element": "poison",
     "hue": [
-     108,
-     210,
-     40
+     110,
+     255,
+     60
     ],
     "glyph": "drop"
    },
@@ -28416,9 +28416,9 @@
     "base_path": "Interface\\Icons\\Ability_Druid_Rake",
     "element": "poison",
     "hue": [
-     108,
-     210,
-     40
+     110,
+     255,
+     60
     ],
     "glyph": "drop"
    },
@@ -28525,9 +28525,9 @@
     "base_path": "Interface\\Icons\\Ability_Druid_Rake",
     "element": "poison",
     "hue": [
-     108,
-     210,
-     40
+     110,
+     255,
+     60
     ],
     "glyph": "drop"
    },
@@ -28634,9 +28634,9 @@
     "base_path": "Interface\\Icons\\Ability_Druid_Rake",
     "element": "poison",
     "hue": [
-     108,
-     210,
-     40
+     110,
+     255,
+     60
     ],
     "glyph": "drop"
    },
@@ -28743,9 +28743,9 @@
     "base_path": "Interface\\Icons\\Ability_Druid_Rake",
     "element": "poison",
     "hue": [
-     108,
-     210,
-     40
+     110,
+     255,
+     60
     ],
     "glyph": "drop"
    },
@@ -31795,9 +31795,9 @@
     "base_path": "Interface\\Icons\\Ability_Whirlwind",
     "element": "poison",
     "hue": [
-     108,
-     210,
-     40
+     110,
+     255,
+     60
     ],
     "glyph": "drop"
    },
@@ -36155,9 +36155,9 @@
     "base_path": "Interface\\Icons\\Spell_Shadow_RitualOfSacrifice",
     "element": "poison",
     "hue": [
-     108,
-     210,
-     40
+     110,
+     255,
+     60
     ],
     "glyph": "drop"
    },
@@ -36264,9 +36264,9 @@
     "base_path": "Interface\\Icons\\Spell_Shadow_RitualOfSacrifice",
     "element": "poison",
     "hue": [
-     108,
-     210,
-     40
+     110,
+     255,
+     60
     ],
     "glyph": "drop"
    },
@@ -36373,9 +36373,9 @@
     "base_path": "Interface\\Icons\\Spell_Shadow_RitualOfSacrifice",
     "element": "poison",
     "hue": [
-     108,
-     210,
-     40
+     110,
+     255,
+     60
     ],
     "glyph": "drop"
    },
@@ -36482,9 +36482,9 @@
     "base_path": "Interface\\Icons\\Spell_Shadow_RitualOfSacrifice",
     "element": "poison",
     "hue": [
-     108,
-     210,
-     40
+     110,
+     255,
+     60
     ],
     "glyph": "drop"
    },
@@ -36591,9 +36591,9 @@
     "base_path": "Interface\\Icons\\Spell_Shadow_RitualOfSacrifice",
     "element": "poison",
     "hue": [
-     108,
-     210,
-     40
+     110,
+     255,
+     60
     ],
     "glyph": "drop"
    },
@@ -36700,9 +36700,9 @@
     "base_path": "Interface\\Icons\\Spell_Shadow_RitualOfSacrifice",
     "element": "poison",
     "hue": [
-     108,
-     210,
-     40
+     110,
+     255,
+     60
     ],
     "glyph": "drop"
    },
@@ -36809,9 +36809,9 @@
     "base_path": "Interface\\Icons\\Spell_Shadow_RitualOfSacrifice",
     "element": "poison",
     "hue": [
-     108,
-     210,
-     40
+     110,
+     255,
+     60
     ],
     "glyph": "drop"
    },
@@ -36918,9 +36918,9 @@
     "base_path": "Interface\\Icons\\Spell_Shadow_RitualOfSacrifice",
     "element": "poison",
     "hue": [
-     108,
-     210,
-     40
+     110,
+     255,
+     60
     ],
     "glyph": "drop"
    },
@@ -37027,9 +37027,9 @@
     "base_path": "Interface\\Icons\\Spell_Shadow_RitualOfSacrifice",
     "element": "poison",
     "hue": [
-     108,
-     210,
-     40
+     110,
+     255,
+     60
     ],
     "glyph": "drop"
    },
@@ -37136,9 +37136,9 @@
     "base_path": "Interface\\Icons\\Spell_Shadow_RitualOfSacrifice",
     "element": "poison",
     "hue": [
-     108,
-     210,
-     40
+     110,
+     255,
+     60
     ],
     "glyph": "drop"
    },
@@ -37245,9 +37245,9 @@
     "base_path": "Interface\\Icons\\Spell_Shadow_RitualOfSacrifice",
     "element": "poison",
     "hue": [
-     108,
-     210,
-     40
+     110,
+     255,
+     60
     ],
     "glyph": "drop"
    },
@@ -37354,9 +37354,9 @@
     "base_path": "Interface\\Icons\\Spell_Shadow_RitualOfSacrifice",
     "element": "poison",
     "hue": [
-     108,
-     210,
-     40
+     110,
+     255,
+     60
     ],
     "glyph": "drop"
    },
@@ -44003,9 +44003,9 @@
     "base_path": "Interface\\Icons\\Ability_UpgradeMoonGlaive",
     "element": "poison",
     "hue": [
-     108,
-     210,
-     40
+     110,
+     255,
+     60
     ],
     "glyph": "drop"
    },
@@ -44112,9 +44112,9 @@
     "base_path": "Interface\\Icons\\Ability_UpgradeMoonGlaive",
     "element": "poison",
     "hue": [
-     108,
-     210,
-     40
+     110,
+     255,
+     60
     ],
     "glyph": "drop"
    },
@@ -44221,9 +44221,9 @@
     "base_path": "Interface\\Icons\\Ability_UpgradeMoonGlaive",
     "element": "poison",
     "hue": [
-     108,
-     210,
-     40
+     110,
+     255,
+     60
     ],
     "glyph": "drop"
    },
@@ -44330,9 +44330,9 @@
     "base_path": "Interface\\Icons\\Ability_UpgradeMoonGlaive",
     "element": "poison",
     "hue": [
-     108,
-     210,
-     40
+     110,
+     255,
+     60
     ],
     "glyph": "drop"
    },
@@ -44439,9 +44439,9 @@
     "base_path": "Interface\\Icons\\Ability_UpgradeMoonGlaive",
     "element": "poison",
     "hue": [
-     108,
-     210,
-     40
+     110,
+     255,
+     60
     ],
     "glyph": "drop"
    },
@@ -44548,9 +44548,9 @@
     "base_path": "Interface\\Icons\\Ability_UpgradeMoonGlaive",
     "element": "poison",
     "hue": [
-     108,
-     210,
-     40
+     110,
+     255,
+     60
     ],
     "glyph": "drop"
    },
@@ -44657,9 +44657,9 @@
     "base_path": "Interface\\Icons\\Ability_UpgradeMoonGlaive",
     "element": "poison",
     "hue": [
-     108,
-     210,
-     40
+     110,
+     255,
+     60
     ],
     "glyph": "drop"
    },
@@ -44766,9 +44766,9 @@
     "base_path": "Interface\\Icons\\Ability_UpgradeMoonGlaive",
     "element": "poison",
     "hue": [
-     108,
-     210,
-     40
+     110,
+     255,
+     60
     ],
     "glyph": "drop"
    },
@@ -51088,9 +51088,9 @@
     "base_path": "Interface\\Icons\\Ability_MeleeDamage",
     "element": "poison",
     "hue": [
-     108,
-     210,
-     40
+     110,
+     255,
+     60
     ],
     "glyph": "drop"
    },
@@ -51197,9 +51197,9 @@
     "base_path": "Interface\\Icons\\Ability_MeleeDamage",
     "element": "poison",
     "hue": [
-     108,
-     210,
-     40
+     110,
+     255,
+     60
     ],
     "glyph": "drop"
    },
@@ -51306,9 +51306,9 @@
     "base_path": "Interface\\Icons\\Ability_MeleeDamage",
     "element": "poison",
     "hue": [
-     108,
-     210,
-     40
+     110,
+     255,
+     60
     ],
     "glyph": "drop"
    },
@@ -51415,9 +51415,9 @@
     "base_path": "Interface\\Icons\\Ability_MeleeDamage",
     "element": "poison",
     "hue": [
-     108,
-     210,
-     40
+     110,
+     255,
+     60
     ],
     "glyph": "drop"
    },
@@ -51524,9 +51524,9 @@
     "base_path": "Interface\\Icons\\Ability_MeleeDamage",
     "element": "poison",
     "hue": [
-     108,
-     210,
-     40
+     110,
+     255,
+     60
     ],
     "glyph": "drop"
    },
@@ -51633,9 +51633,9 @@
     "base_path": "Interface\\Icons\\Ability_MeleeDamage",
     "element": "poison",
     "hue": [
-     108,
-     210,
-     40
+     110,
+     255,
+     60
     ],
     "glyph": "drop"
    },
@@ -51742,9 +51742,9 @@
     "base_path": "Interface\\Icons\\Ability_MeleeDamage",
     "element": "poison",
     "hue": [
-     108,
-     210,
-     40
+     110,
+     255,
+     60
     ],
     "glyph": "drop"
    },
@@ -51851,9 +51851,9 @@
     "base_path": "Interface\\Icons\\Ability_MeleeDamage",
     "element": "poison",
     "hue": [
-     108,
-     210,
-     40
+     110,
+     255,
+     60
     ],
     "glyph": "drop"
    },
@@ -51960,9 +51960,9 @@
     "base_path": "Interface\\Icons\\Ability_MeleeDamage",
     "element": "poison",
     "hue": [
-     108,
-     210,
-     40
+     110,
+     255,
+     60
     ],
     "glyph": "drop"
    },
@@ -52069,9 +52069,9 @@
     "base_path": "Interface\\Icons\\Ability_MeleeDamage",
     "element": "poison",
     "hue": [
-     108,
-     210,
-     40
+     110,
+     255,
+     60
     ],
     "glyph": "drop"
    },
@@ -52178,9 +52178,9 @@
     "base_path": "Interface\\Icons\\Ability_MeleeDamage",
     "element": "poison",
     "hue": [
-     108,
-     210,
-     40
+     110,
+     255,
+     60
     ],
     "glyph": "drop"
    },
@@ -58827,9 +58827,9 @@
     "base_path": "Interface\\Icons\\Spell_Shadow_VampiricAura",
     "element": "poison",
     "hue": [
-     108,
-     210,
-     40
+     110,
+     255,
+     60
     ],
     "glyph": "drop"
    },
@@ -58936,9 +58936,9 @@
     "base_path": "Interface\\Icons\\Spell_Shadow_VampiricAura",
     "element": "poison",
     "hue": [
-     108,
-     210,
-     40
+     110,
+     255,
+     60
     ],
     "glyph": "drop"
    },
@@ -59045,9 +59045,9 @@
     "base_path": "Interface\\Icons\\Spell_Shadow_VampiricAura",
     "element": "poison",
     "hue": [
-     108,
-     210,
-     40
+     110,
+     255,
+     60
     ],
     "glyph": "drop"
    },
@@ -59154,9 +59154,9 @@
     "base_path": "Interface\\Icons\\Spell_Shadow_VampiricAura",
     "element": "poison",
     "hue": [
-     108,
-     210,
-     40
+     110,
+     255,
+     60
     ],
     "glyph": "drop"
    },
@@ -59263,9 +59263,9 @@
     "base_path": "Interface\\Icons\\Spell_Shadow_VampiricAura",
     "element": "poison",
     "hue": [
-     108,
-     210,
-     40
+     110,
+     255,
+     60
     ],
     "glyph": "drop"
    },
@@ -59372,9 +59372,9 @@
     "base_path": "Interface\\Icons\\Spell_Shadow_VampiricAura",
     "element": "poison",
     "hue": [
-     108,
-     210,
-     40
+     110,
+     255,
+     60
     ],
     "glyph": "drop"
    },
@@ -59481,9 +59481,9 @@
     "base_path": "Interface\\Icons\\Spell_Shadow_VampiricAura",
     "element": "poison",
     "hue": [
-     108,
-     210,
-     40
+     110,
+     255,
+     60
     ],
     "glyph": "drop"
    },
@@ -59590,9 +59590,9 @@
     "base_path": "Interface\\Icons\\Spell_Shadow_VampiricAura",
     "element": "poison",
     "hue": [
-     108,
-     210,
-     40
+     110,
+     255,
+     60
     ],
     "glyph": "drop"
    },
@@ -59699,9 +59699,9 @@
     "base_path": "Interface\\Icons\\Spell_Shadow_VampiricAura",
     "element": "poison",
     "hue": [
-     108,
-     210,
-     40
+     110,
+     255,
+     60
     ],
     "glyph": "drop"
    },
@@ -65040,9 +65040,9 @@
     "base_path": "Interface\\Icons\\Ability_Druid_Ravage",
     "element": "poison",
     "hue": [
-     108,
-     210,
-     40
+     110,
+     255,
+     60
     ],
     "glyph": "drop"
    },
@@ -65149,9 +65149,9 @@
     "base_path": "Interface\\Icons\\Ability_Druid_Ravage",
     "element": "poison",
     "hue": [
-     108,
-     210,
-     40
+     110,
+     255,
+     60
     ],
     "glyph": "drop"
    },
@@ -65258,9 +65258,9 @@
     "base_path": "Interface\\Icons\\Ability_Druid_Ravage",
     "element": "poison",
     "hue": [
-     108,
-     210,
-     40
+     110,
+     255,
+     60
     ],
     "glyph": "drop"
    },
@@ -65367,9 +65367,9 @@
     "base_path": "Interface\\Icons\\Ability_Druid_Ravage",
     "element": "poison",
     "hue": [
-     108,
-     210,
-     40
+     110,
+     255,
+     60
     ],
     "glyph": "drop"
    },
@@ -65476,9 +65476,9 @@
     "base_path": "Interface\\Icons\\Ability_Druid_Ravage",
     "element": "poison",
     "hue": [
-     108,
-     210,
-     40
+     110,
+     255,
+     60
     ],
     "glyph": "drop"
    },
@@ -65585,9 +65585,9 @@
     "base_path": "Interface\\Icons\\Ability_Druid_Ravage",
     "element": "poison",
     "hue": [
-     108,
-     210,
-     40
+     110,
+     255,
+     60
     ],
     "glyph": "drop"
    },
@@ -65694,9 +65694,9 @@
     "base_path": "Interface\\Icons\\Ability_Druid_Ravage",
     "element": "poison",
     "hue": [
-     108,
-     210,
-     40
+     110,
+     255,
+     60
     ],
     "glyph": "drop"
    },
@@ -71362,9 +71362,9 @@
     "base_path": "Interface\\Icons\\Ability_Druid_Maul",
     "element": "poison",
     "hue": [
-     108,
-     210,
-     40
+     110,
+     255,
+     60
     ],
     "glyph": "drop"
    },
@@ -71471,9 +71471,9 @@
     "base_path": "Interface\\Icons\\Ability_Druid_Maul",
     "element": "poison",
     "hue": [
-     108,
-     210,
-     40
+     110,
+     255,
+     60
     ],
     "glyph": "drop"
    },
@@ -71580,9 +71580,9 @@
     "base_path": "Interface\\Icons\\Ability_Druid_Maul",
     "element": "poison",
     "hue": [
-     108,
-     210,
-     40
+     110,
+     255,
+     60
     ],
     "glyph": "drop"
    },
@@ -71689,9 +71689,9 @@
     "base_path": "Interface\\Icons\\Ability_Druid_Maul",
     "element": "poison",
     "hue": [
-     108,
-     210,
-     40
+     110,
+     255,
+     60
     ],
     "glyph": "drop"
    },
@@ -71798,9 +71798,9 @@
     "base_path": "Interface\\Icons\\Ability_Druid_Maul",
     "element": "poison",
     "hue": [
-     108,
-     210,
-     40
+     110,
+     255,
+     60
     ],
     "glyph": "drop"
    },
@@ -71907,9 +71907,9 @@
     "base_path": "Interface\\Icons\\Ability_Druid_Maul",
     "element": "poison",
     "hue": [
-     108,
-     210,
-     40
+     110,
+     255,
+     60
     ],
     "glyph": "drop"
    },
@@ -72016,9 +72016,9 @@
     "base_path": "Interface\\Icons\\Ability_Druid_Maul",
     "element": "poison",
     "hue": [
-     108,
-     210,
-     40
+     110,
+     255,
+     60
     ],
     "glyph": "drop"
    },
@@ -72125,9 +72125,9 @@
     "base_path": "Interface\\Icons\\Ability_Druid_Maul",
     "element": "poison",
     "hue": [
-     108,
-     210,
-     40
+     110,
+     255,
+     60
     ],
     "glyph": "drop"
    },
@@ -72234,9 +72234,9 @@
     "base_path": "Interface\\Icons\\Ability_Druid_Maul",
     "element": "poison",
     "hue": [
-     108,
-     210,
-     40
+     110,
+     255,
+     60
     ],
     "glyph": "drop"
    },
@@ -72343,9 +72343,9 @@
     "base_path": "Interface\\Icons\\Ability_Druid_Maul",
     "element": "poison",
     "hue": [
-     108,
-     210,
-     40
+     110,
+     255,
+     60
     ],
     "glyph": "drop"
    },
@@ -76049,9 +76049,9 @@
     "base_path": "Interface\\Icons\\Ability_MeleeDamage",
     "element": "poison",
     "hue": [
-     108,
-     210,
-     40
+     110,
+     255,
+     60
     ],
     "glyph": "drop"
    },
@@ -79755,9 +79755,9 @@
     "base_path": "Interface\\Icons\\Ability_Rogue_Ambush",
     "element": "poison",
     "hue": [
-     108,
-     210,
-     40
+     110,
+     255,
+     60
     ],
     "glyph": "drop"
    },
@@ -79864,9 +79864,9 @@
     "base_path": "Interface\\Icons\\Ability_Rogue_Ambush",
     "element": "poison",
     "hue": [
-     108,
-     210,
-     40
+     110,
+     255,
+     60
     ],
     "glyph": "drop"
    },
@@ -79973,9 +79973,9 @@
     "base_path": "Interface\\Icons\\Ability_Rogue_Ambush",
     "element": "poison",
     "hue": [
-     108,
-     210,
-     40
+     110,
+     255,
+     60
     ],
     "glyph": "drop"
    },
@@ -80082,9 +80082,9 @@
     "base_path": "Interface\\Icons\\Ability_Rogue_Ambush",
     "element": "poison",
     "hue": [
-     108,
-     210,
-     40
+     110,
+     255,
+     60
     ],
     "glyph": "drop"
    },
@@ -80191,9 +80191,9 @@
     "base_path": "Interface\\Icons\\Ability_Rogue_Ambush",
     "element": "poison",
     "hue": [
-     108,
-     210,
-     40
+     110,
+     255,
+     60
     ],
     "glyph": "drop"
    },
@@ -80300,9 +80300,9 @@
     "base_path": "Interface\\Icons\\Ability_Rogue_Ambush",
     "element": "poison",
     "hue": [
-     108,
-     210,
-     40
+     110,
+     255,
+     60
     ],
     "glyph": "drop"
    },
@@ -80409,9 +80409,9 @@
     "base_path": "Interface\\Icons\\Ability_Rogue_Ambush",
     "element": "poison",
     "hue": [
-     108,
-     210,
-     40
+     110,
+     255,
+     60
     ],
     "glyph": "drop"
    },
@@ -80518,9 +80518,9 @@
     "base_path": "Interface\\Icons\\Ability_Rogue_Ambush",
     "element": "poison",
     "hue": [
-     108,
-     210,
-     40
+     110,
+     255,
+     60
     ],
     "glyph": "drop"
    },
@@ -80627,9 +80627,9 @@
     "base_path": "Interface\\Icons\\Ability_Rogue_Ambush",
     "element": "poison",
     "hue": [
-     108,
-     210,
-     40
+     110,
+     255,
+     60
     ],
     "glyph": "drop"
    },
@@ -80736,9 +80736,9 @@
     "base_path": "Interface\\Icons\\Ability_Rogue_Ambush",
     "element": "poison",
     "hue": [
-     108,
-     210,
-     40
+     110,
+     255,
+     60
     ],
     "glyph": "drop"
    },
@@ -85423,9 +85423,9 @@
     "base_path": "Interface\\Icons\\Spell_Shadow_LifeDrain",
     "element": "poison",
     "hue": [
-     108,
-     210,
-     40
+     110,
+     255,
+     60
     ],
     "glyph": "drop"
    },
@@ -85532,9 +85532,9 @@
     "base_path": "Interface\\Icons\\Spell_Shadow_LifeDrain",
     "element": "poison",
     "hue": [
-     108,
-     210,
-     40
+     110,
+     255,
+     60
     ],
     "glyph": "drop"
    },
@@ -85641,9 +85641,9 @@
     "base_path": "Interface\\Icons\\Spell_Shadow_LifeDrain",
     "element": "poison",
     "hue": [
-     108,
-     210,
-     40
+     110,
+     255,
+     60
     ],
     "glyph": "drop"
    },
@@ -85750,9 +85750,9 @@
     "base_path": "Interface\\Icons\\Spell_Shadow_LifeDrain",
     "element": "poison",
     "hue": [
-     108,
-     210,
-     40
+     110,
+     255,
+     60
     ],
     "glyph": "drop"
    },
@@ -89456,9 +89456,9 @@
     "base_path": "Interface\\Icons\\Ability_Warrior_SavageBlow",
     "element": "poison",
     "hue": [
-     108,
-     210,
-     40
+     110,
+     255,
+     60
     ],
     "glyph": "drop"
    },
@@ -89565,9 +89565,9 @@
     "base_path": "Interface\\Icons\\Ability_Warrior_SavageBlow",
     "element": "poison",
     "hue": [
-     108,
-     210,
-     40
+     110,
+     255,
+     60
     ],
     "glyph": "drop"
    },
@@ -89674,9 +89674,9 @@
     "base_path": "Interface\\Icons\\Ability_Warrior_SavageBlow",
     "element": "poison",
     "hue": [
-     108,
-     210,
-     40
+     110,
+     255,
+     60
     ],
     "glyph": "drop"
    },
@@ -89783,9 +89783,9 @@
     "base_path": "Interface\\Icons\\Ability_Warrior_SavageBlow",
     "element": "poison",
     "hue": [
-     108,
-     210,
-     40
+     110,
+     255,
+     60
     ],
     "glyph": "drop"
    },
@@ -89892,9 +89892,9 @@
     "base_path": "Interface\\Icons\\Ability_Warrior_SavageBlow",
     "element": "poison",
     "hue": [
-     108,
-     210,
-     40
+     110,
+     255,
+     60
     ],
     "glyph": "drop"
    },
@@ -90001,9 +90001,9 @@
     "base_path": "Interface\\Icons\\Ability_Warrior_SavageBlow",
     "element": "poison",
     "hue": [
-     108,
-     210,
-     40
+     110,
+     255,
+     60
     ],
     "glyph": "drop"
    },
@@ -90110,9 +90110,9 @@
     "base_path": "Interface\\Icons\\Ability_Warrior_SavageBlow",
     "element": "poison",
     "hue": [
-     108,
-     210,
-     40
+     110,
+     255,
+     60
     ],
     "glyph": "drop"
    },
@@ -93162,9 +93162,9 @@
     "base_path": "Interface\\Icons\\Ability_Druid_Mangle.tga",
     "element": "poison",
     "hue": [
-     108,
-     210,
-     40
+     110,
+     255,
+     60
     ],
     "glyph": "drop"
    },
@@ -93271,9 +93271,9 @@
     "base_path": "Interface\\Icons\\Ability_Druid_Mangle.tga",
     "element": "poison",
     "hue": [
-     108,
-     210,
-     40
+     110,
+     255,
+     60
     ],
     "glyph": "drop"
    },
@@ -95015,9 +95015,9 @@
     "base_path": "Interface\\Icons\\INV_Spear_07",
     "element": "poison",
     "hue": [
-     108,
-     210,
-     40
+     110,
+     255,
+     60
     ],
     "glyph": "drop"
    },
@@ -95124,9 +95124,9 @@
     "base_path": "Interface\\Icons\\INV_Spear_07",
     "element": "poison",
     "hue": [
-     108,
-     210,
-     40
+     110,
+     255,
+     60
     ],
     "glyph": "drop"
    },
@@ -95233,9 +95233,9 @@
     "base_path": "Interface\\Icons\\INV_Spear_07",
     "element": "poison",
     "hue": [
-     108,
-     210,
-     40
+     110,
+     255,
+     60
     ],
     "glyph": "drop"
    },
@@ -97631,9 +97631,9 @@
     "base_path": "Interface\\Icons\\INV_Sword_11",
     "element": "poison",
     "hue": [
-     108,
-     210,
-     40
+     110,
+     255,
+     60
     ],
     "glyph": "drop"
    },
@@ -97740,9 +97740,9 @@
     "base_path": "Interface\\Icons\\INV_Sword_11",
     "element": "poison",
     "hue": [
-     108,
-     210,
-     40
+     110,
+     255,
+     60
     ],
     "glyph": "drop"
    },
@@ -97849,9 +97849,9 @@
     "base_path": "Interface\\Icons\\INV_Sword_11",
     "element": "poison",
     "hue": [
-     108,
-     210,
-     40
+     110,
+     255,
+     60
     ],
     "glyph": "drop"
    },
@@ -97958,9 +97958,9 @@
     "base_path": "Interface\\Icons\\INV_Sword_11",
     "element": "poison",
     "hue": [
-     108,
-     210,
-     40
+     110,
+     255,
+     60
     ],
     "glyph": "drop"
    },
@@ -100683,9 +100683,9 @@
     "base_path": "Interface\\Icons\\Ability_Druid_Mangle2",
     "element": "poison",
     "hue": [
-     108,
-     210,
-     40
+     110,
+     255,
+     60
     ],
     "glyph": "drop"
    },
@@ -100792,9 +100792,9 @@
     "base_path": "Interface\\Icons\\Ability_Druid_Mangle2",
     "element": "poison",
     "hue": [
-     108,
-     210,
-     40
+     110,
+     255,
+     60
     ],
     "glyph": "drop"
    },
@@ -100901,9 +100901,9 @@
     "base_path": "Interface\\Icons\\Ability_Druid_Mangle2",
     "element": "poison",
     "hue": [
-     108,
-     210,
-     40
+     110,
+     255,
+     60
     ],
     "glyph": "drop"
    },
@@ -101010,9 +101010,9 @@
     "base_path": "Interface\\Icons\\Ability_Druid_Mangle2",
     "element": "poison",
     "hue": [
-     108,
-     210,
-     40
+     110,
+     255,
+     60
     ],
     "glyph": "drop"
    },
@@ -103735,9 +103735,9 @@
     "base_path": "Interface\\Icons\\Ability_Druid_Mangle2",
     "element": "poison",
     "hue": [
-     108,
-     210,
-     40
+     110,
+     255,
+     60
     ],
     "glyph": "drop"
    },
@@ -103844,9 +103844,9 @@
     "base_path": "Interface\\Icons\\Ability_Druid_Mangle2",
     "element": "poison",
     "hue": [
-     108,
-     210,
-     40
+     110,
+     255,
+     60
     ],
     "glyph": "drop"
    },
@@ -103953,9 +103953,9 @@
     "base_path": "Interface\\Icons\\Ability_Druid_Mangle2",
     "element": "poison",
     "hue": [
-     108,
-     210,
-     40
+     110,
+     255,
+     60
     ],
     "glyph": "drop"
    },
@@ -104062,9 +104062,9 @@
     "base_path": "Interface\\Icons\\Ability_Druid_Mangle2",
     "element": "poison",
     "hue": [
-     108,
-     210,
-     40
+     110,
+     255,
+     60
     ],
     "glyph": "drop"
    },
@@ -107441,9 +107441,9 @@
     "base_path": "Interface\\Icons\\Spell_DeathKnight_EmpowerRuneBlade",
     "element": "poison",
     "hue": [
-     108,
-     210,
-     40
+     110,
+     255,
+     60
     ],
     "glyph": "drop"
    },
@@ -107550,9 +107550,9 @@
     "base_path": "Interface\\Icons\\Spell_DeathKnight_EmpowerRuneBlade",
     "element": "poison",
     "hue": [
-     108,
-     210,
-     40
+     110,
+     255,
+     60
     ],
     "glyph": "drop"
    },
@@ -107659,9 +107659,9 @@
     "base_path": "Interface\\Icons\\Spell_DeathKnight_EmpowerRuneBlade",
     "element": "poison",
     "hue": [
-     108,
-     210,
-     40
+     110,
+     255,
+     60
     ],
     "glyph": "drop"
    },
@@ -107768,9 +107768,9 @@
     "base_path": "Interface\\Icons\\Spell_DeathKnight_EmpowerRuneBlade",
     "element": "poison",
     "hue": [
-     108,
-     210,
-     40
+     110,
+     255,
+     60
     ],
     "glyph": "drop"
    },
@@ -107877,9 +107877,9 @@
     "base_path": "Interface\\Icons\\Spell_DeathKnight_EmpowerRuneBlade",
     "element": "poison",
     "hue": [
-     108,
-     210,
-     40
+     110,
+     255,
+     60
     ],
     "glyph": "drop"
    },
@@ -107986,9 +107986,9 @@
     "base_path": "Interface\\Icons\\Spell_DeathKnight_EmpowerRuneBlade",
     "element": "poison",
     "hue": [
-     108,
-     210,
-     40
+     110,
+     255,
+     60
     ],
     "glyph": "drop"
    },
@@ -110384,9 +110384,9 @@
     "base_path": "Interface\\Icons\\Spell_Deathknight_DeathStrike",
     "element": "poison",
     "hue": [
-     108,
-     210,
-     40
+     110,
+     255,
+     60
     ],
     "glyph": "drop"
    },
@@ -111147,9 +111147,9 @@
     "base_path": "Interface\\Icons\\Spell_Deathknight_ClassIcon",
     "element": "poison",
     "hue": [
-     108,
-     210,
-     40
+     110,
+     255,
+     60
     ],
     "glyph": "drop"
    },
@@ -113218,9 +113218,9 @@
     "base_path": "Interface\\Icons\\Spell_DeathKnight_Butcher2",
     "element": "poison",
     "hue": [
-     108,
-     210,
-     40
+     110,
+     255,
+     60
     ],
     "glyph": "drop"
    },
@@ -113327,9 +113327,9 @@
     "base_path": "Interface\\Icons\\Spell_DeathKnight_Butcher2",
     "element": "poison",
     "hue": [
-     108,
-     210,
-     40
+     110,
+     255,
+     60
     ],
     "glyph": "drop"
    },
@@ -113436,9 +113436,9 @@
     "base_path": "Interface\\Icons\\Spell_DeathKnight_Butcher2",
     "element": "poison",
     "hue": [
-     108,
-     210,
-     40
+     110,
+     255,
+     60
     ],
     "glyph": "drop"
    },
@@ -113545,9 +113545,9 @@
     "base_path": "Interface\\Icons\\Spell_DeathKnight_Butcher2",
     "element": "poison",
     "hue": [
-     108,
-     210,
-     40
+     110,
+     255,
+     60
     ],
     "glyph": "drop"
    },
@@ -113654,9 +113654,9 @@
     "base_path": "Interface\\Icons\\Spell_DeathKnight_Butcher2",
     "element": "poison",
     "hue": [
-     108,
-     210,
-     40
+     110,
+     255,
+     60
     ],
     "glyph": "drop"
    },
@@ -115725,9 +115725,9 @@
     "base_path": "Interface\\Icons\\Ability_Rogue_FanofKnives",
     "element": "poison",
     "hue": [
-     108,
-     210,
-     40
+     110,
+     255,
+     60
     ],
     "glyph": "drop"
    },
@@ -116815,9 +116815,9 @@
     "base_path": "Interface\\Icons\\Ability_Hunter_Assassinate2",
     "element": "poison",
     "hue": [
-     108,
-     210,
-     40
+     110,
+     255,
+     60
     ],
     "glyph": "drop"
    },
@@ -116924,9 +116924,9 @@
     "base_path": "Interface\\Icons\\Ability_Hunter_Assassinate2",
     "element": "poison",
     "hue": [
-     108,
-     210,
-     40
+     110,
+     255,
+     60
     ],
     "glyph": "drop"
    },
@@ -118014,9 +118014,9 @@
     "base_path": "Interface\\Icons\\INV_Misc_MonsterClaw_03",
     "element": "poison",
     "hue": [
-     108,
-     210,
-     40
+     110,
+     255,
+     60
     ],
     "glyph": "drop"
    },

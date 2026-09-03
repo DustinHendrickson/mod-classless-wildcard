@@ -220,7 +220,12 @@ def _shade(colour, factor):
     return tuple(min(255, int(c + (255 - c) * t)) for c in colour)
 
 
-BADGE_FRACTION = 0.25   # of the icon's width, in the top-right corner
+# The badge sits in the bottom-left corner, pulled in from both edges: the
+# action bar and the addon's lists round or overdraw the outer few pixels of
+# an icon, so a badge flush with the corner loses its border there. A third
+# of the icon wide, so the symbol still reads at 36 pixels.
+BADGE_FRACTION = 0.32   # of the icon's width
+BADGE_INSET = 0.06      # of the icon's width, from the left and bottom edges
 
 
 def _symbol(draw, kind, box, colour, background):
@@ -271,10 +276,11 @@ def render_icon(base_blp: bytes, icon) -> bytes | None:
     """Stamp an element badge on the base icon. Returns BLP2 bytes, or None without Pillow.
 
     The base icon is left exactly as drawn. A square plate of black tinted
-    toward the element's colour sits in the top-right corner, a quarter of the
-    icon wide, bordered in the element's colour, with a bold filled symbol of
-    the element inside it. Drawn at four times the size and scaled down, so the
-    edges are clean at the 36 pixels the game shows icons at.
+    toward the element's colour sits in the bottom-left corner, a third of the
+    icon wide and inset from the edges, bordered in the element's colour, with
+    a bold filled symbol of the element inside it. Drawn at four times the
+    size and scaled down, so the edges are clean at the 36 pixels the game
+    shows icons at.
     """
     try:
         from PIL import Image, ImageDraw
@@ -300,8 +306,18 @@ def render_icon(base_blp: bytes, icon) -> bytes | None:
     badge = badge.resize((size, size), Image.LANCZOS)
 
     out = img.copy()
-    out.alpha_composite(badge, (width - size, 0))
-    return blp.encode_palettized(out)
+    inset_px = int(round(width * BADGE_INSET))
+    out.alpha_composite(badge, (inset_px, height - size - inset_px))
+    # The base icon already uses a full 256-colour palette, so the badge's
+    # colours must be reserved in the output palette or they are mapped to the
+    # nearest base colour and the badge comes out grey. Its own colours, most
+    # common first, go in ahead of the base's.
+    counts = {}
+    for px in badge.getdata():
+        if px[3] >= 128:
+            counts[px[:3]] = counts.get(px[:3], 0) + 1
+    reserve = [rgb for rgb, _ in sorted(counts.items(), key=lambda kv: -kv[1])[:24]]
+    return blp.encode_palettized(out, reserve=reserve)
 
 
 # ----------------------------------------------------------------- the step

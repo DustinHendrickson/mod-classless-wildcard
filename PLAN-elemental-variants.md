@@ -230,7 +230,8 @@ each (base icon, element):
 
 1. `ClientFiles.find("Interface\Icons\<base>.blp")`, `blp.decode_blp` to RGBA.
 2. Element treatment in Pillow: the base icon is left exactly as drawn, and a square badge a
-   quarter of the icon wide sits in the top-right corner: a plate of black tinted toward the
+   third of the icon wide sits in the bottom-left corner, inset from the edges so the action
+   bar's rounded frame does not clip it: a plate of black tinted toward the
    element's colour, bordered in that colour, with a bold filled symbol of the element inside
    (flame, snowflake, boulder, drop, star, crescent, sun). Drawn at four times the size and
    scaled down, so it is clean at the 36 pixels the game shows icons at. The shape says which

@@ -133,6 +133,7 @@ BUILDS = [
              ("Mage", "Fire", "Dragon's Breath", 1),
              ("Mage", "Fire", "Hot Streak", 3), ("Mage", "Fire", "Burnout", 1),
              ("Mage", "Fire", "Living Bomb", 1),
+             ("Mage", "Fire", "Improved Scorch", 3), ("Mage", "Fire", "Flame Throwing", 1),
              ("Warrior", "Arms", "Improved Rend", 2), ("Warrior", "Arms", "Deflection", 3),
              ("Warrior", "Arms", "Improved Charge", 2), ("Warrior", "Arms", "Tactical Mastery", 3),
              ("Warrior", "Arms", "Improved Overpower", 2), ("Warrior", "Arms", "Anger Management", 1),
@@ -146,6 +147,7 @@ BUILDS = [
              ("Hunter", "Serpent Sting"), ("Paladin", "Seal of Righteousness"), ("Paladin", "Judgement of Light"),
              ("Paladin", "Blessing of Might"), ("Hunter", "Arcane Shot"), ("Hunter", "Concussive Shot"),
              ("Hunter", "Aspect of the Hawk"), ("Hunter", "Wing Clip"), ("Paladin", "Blessing of Wisdom"),
+             ("Hunter", "Aimed Shot"),
              ("Paladin", "Retribution Aura"), ("Hunter", "Multi-Shot"), ("Paladin", "Flash of Light"),
              ("Hunter", "Rapid Fire"), ("Hunter", "Feign Death"), ("Paladin", "Divine Shield"),
              ("Hunter", "Volley"), ("Paladin", "Holy Shock"), ("Paladin", "Cleanse"), ("Paladin", "Hammer of Wrath"),
@@ -165,7 +167,7 @@ BUILDS = [
              ("Hunter", "Marksmanship", "Marked for Death", 5), ("Hunter", "Marksmanship", "Chimera Shot", 1),
              ("Paladin", "Holy", "Spiritual Focus", 5), ("Paladin", "Holy", "Seals of the Pure", 5),
              ("Paladin", "Holy", "Healing Light", 3), ("Paladin", "Holy", "Divine Intellect", 5),
-             ("Paladin", "Holy", "Unyielding Faith", 2),
+             ("Paladin", "Holy", "Unyielding Faith", 2), ("Paladin", "Holy", "Aura Mastery", 1),
          ]),
     dict(id=4, name="Shadow Mender",
          description="Priest hybrid: shield and mend allies, wither foes with shadow.",
@@ -173,9 +175,9 @@ BUILDS = [
              ("Priest", "Smite"), ("Priest", "Lesser Heal"), ("Priest", "Power Word: Fortitude"),
              ("Priest", "Shadow Word: Pain"), ("Priest", "Power Word: Shield"), ("Priest", "Renew"), ("Priest", "Fade"),
              ("Priest", "Mind Blast"), ("Priest", "Inner Fire"), ("Priest", "Psychic Scream"), ("Priest", "Heal"),
-             ("Priest", "Dispel Magic"), ("Priest", "Flash Heal"),
+             ("Priest", "Dispel Magic"), ("Priest", "Flash Heal"), ("Priest", "Mind Flay"),
              ("Priest", "Prayer of Healing"), ("Priest", "Shadow Protection"), ("Priest", "Mind Control"),
-             ("Priest", "Abolish Disease"), ("Priest", "Levitate"), ("Priest", "Greater Heal"),
+             ("Priest", "Abolish Disease"), ("Priest", "Greater Heal"),
              ("Priest", "Prayer of Fortitude"), ("Priest", "Vampiric Touch"),
              ("Priest", "Shadow Word: Death"), ("Priest", "Binding Heal"), ("Priest", "Mind Sear"), ("Priest", "Divine Hymn"),
          ],
@@ -190,7 +192,7 @@ BUILDS = [
              ("Priest", "Shadow", "Misery", 3), ("Priest", "Shadow", "Improved Shadowform", 2),
              ("Priest", "Shadow", "Vampiric Touch", 1), ("Priest", "Shadow", "Pain and Suffering", 3),
              ("Priest", "Shadow", "Twisted Faith", 5),
-             ("Priest", "Shadow", "Dispersion", 1),
+             ("Priest", "Shadow", "Dispersion", 1), ("Priest", "Shadow", "Improved Spirit Tap", 2),
              ("Priest", "Discipline", "Twin Disciplines", 5), ("Priest", "Discipline", "Improved Inner Fire", 3),
              ("Priest", "Discipline", "Improved Power Word: Fortitude", 2), ("Priest", "Discipline", "Silent Resolve", 1),
              ("Priest", "Discipline", "Meditation", 3), ("Priest", "Discipline", "Inner Focus", 1),
@@ -206,6 +208,7 @@ BUILDS = [
              ("Druid", "Abolish Poison"), ("Druid", "Tranquility"),
              ("Druid", "Innervate"), ("Druid", "Barkskin"), ("Druid", "Gift of the Wild"),
              ("Druid", "Lifebloom"), ("Rogue", "Cloak of Shadows"), ("Druid", "Cyclone"), ("Druid", "Nourish"),
+             ("Druid", "Wild Growth"),
          ],
          talents=[
              ("Druid", "Restoration", "Improved Mark of the Wild", 2), ("Druid", "Restoration", "Nature's Focus", 3),
@@ -217,7 +220,7 @@ BUILDS = [
              ("Druid", "Restoration", "Living Spirit", 3), ("Druid", "Restoration", "Swiftmend", 1),
              ("Druid", "Restoration", "Empowered Rejuvenation", 5),
              ("Druid", "Restoration", "Tree of Life", 1), ("Druid", "Restoration", "Improved Tree of Life", 2),
-             ("Druid", "Restoration", "Wild Growth", 1),
+             ("Druid", "Restoration", "Improved Barkskin", 1),
              ("Rogue", "Subtlety", "Relentless Strikes", 1), ("Rogue", "Subtlety", "Master of Deception", 3),
              ("Rogue", "Subtlety", "Opportunity", 2), ("Rogue", "Subtlety", "Camouflage", 3),
              ("Rogue", "Subtlety", "Dirty Tricks", 2), ("Rogue", "Subtlety", "Elusiveness", 2),
@@ -282,7 +285,7 @@ BUILDS = [
              ("Warlock", "Destruction", "Shadow and Flame", 5),
              ("Warlock", "Destruction", "Backdraft", 3),
              ("Warlock", "Destruction", "Fire and Brimstone", 5),
-             ("Warlock", "Destruction", "Chaos Bolt", 1),
+             ("Warlock", "Destruction", "Molten Skin", 1),
              ("Warrior", "Fury", "Cruelty", 5), ("Warrior", "Fury", "Armored to the Teeth", 3),
              ("Warrior", "Fury", "Unbridled Wrath", 5),
              ("Warrior", "Fury", "Improved Cleave", 3),
@@ -296,7 +299,7 @@ BUILDS = [
              ("Mage", "Frost Nova"), ("Rogue", "Slice and Dice"), ("Rogue", "Kick"),
              ("Rogue", "Frozen Ambush"), ("Rogue", "Rupture"), ("Rogue", "Vanish"),
              ("Mage", "Cone of Cold"), ("Rogue", "Cheap Shot"), ("Rogue", "Kidney Shot"), ("Mage", "Ice Block"),
-             ("Rogue", "Blind"), ("Rogue", "Mutilate"),
+             ("Rogue", "Blind"), ("Mage", "Ice Barrier"), ("Rogue", "Mutilate"),
              ("Mage", "Ice Lance"), ("Rogue", "Cloak of Shadows"), ("Rogue", "Shiv"),
              ("Rogue", "Frozen Fan of Knives"),
          ],
@@ -307,7 +310,7 @@ BUILDS = [
              ("Mage", "Frost", "Shatter", 3), ("Mage", "Frost", "Arctic Reach", 2), ("Mage", "Frost", "Frost Channeling", 3),
              ("Mage", "Frost", "Cold Snap", 1), ("Mage", "Frost", "Frozen Core", 3),
              ("Mage", "Frost", "Winter's Chill", 3), ("Mage", "Frost", "Cold as Ice", 2),
-             ("Mage", "Frost", "Ice Barrier", 1), ("Mage", "Frost", "Arctic Winds", 5),
+             ("Mage", "Frost", "Frostbite", 1), ("Mage", "Frost", "Arctic Winds", 5),
              ("Mage", "Frost", "Fingers of Frost", 2), ("Mage", "Frost", "Empowered Frostbolt", 2),
              ("Mage", "Frost", "Brain Freeze", 3),
              ("Mage", "Frost", "Chilled to the Bone", 5),
@@ -339,7 +342,7 @@ BUILDS = [
              ("Druid", "Feral Combat", "Heart of the Wild", 5),
              ("Druid", "Feral Combat", "Leader of the Pack", 1), ("Druid", "Feral Combat", "Improved Leader of the Pack", 2),
              ("Druid", "Feral Combat", "Protector of the Pack", 3), ("Druid", "Feral Combat", "Infected Wounds", 3),
-             ("Druid", "Feral Combat", "Mangle", 1),
+             ("Druid", "Feral Combat", "Primal Tenacity", 1),
              ("Druid", "Feral Combat", "Rend and Tear", 5),
              ("Druid", "Feral Combat", "Berserk", 1),
              ("Shaman", "Enhancement", "Ancestral Knowledge", 5), ("Shaman", "Enhancement", "Enhancing Totems", 3),
@@ -354,8 +357,8 @@ BUILDS = [
              ("Hunter", "Aspect of the Hawk"), ("Rogue", "Sprint"), ("Hunter", "Wing Clip"),
              ("Hunter", "Mongoose Bite"), ("Hunter", "Venomous Multi-Shot"), ("Hunter", "Venomous Aimed Shot"),
              ("Hunter", "Freezing Trap"), ("Hunter", "Rapid Fire"), ("Hunter", "Feign Death"),
-             ("Hunter", "Counterattack"), ("Hunter", "Viper Sting"), ("Hunter", "Explosive Trap"),
-             ("Hunter", "Volley"), ("Hunter", "Steady Shot"), ("Hunter", "Tranquilizing Shot"),
+             ("Hunter", "Counterattack"), ("Hunter", "Viper Sting"),
+             ("Hunter", "Wyvern Sting"), ("Hunter", "Volley"), ("Hunter", "Black Arrow"), ("Hunter", "Steady Shot"),
              ("Hunter", "Snake Trap"), ("Hunter", "Venomous Kill Shot"), ("Rogue", "Tricks of the Trade"),
          ],
          talents=[
@@ -365,10 +368,9 @@ BUILDS = [
              ("Hunter", "Survival", "T.N.T.", 3), ("Hunter", "Survival", "Lock and Load", 3),
              ("Hunter", "Survival", "Killer Instinct", 3), ("Hunter", "Survival", "Hunter vs. Wild", 3),
              ("Hunter", "Survival", "Lightning Reflexes", 5),
-             ("Hunter", "Survival", "Wyvern Sting", 1), ("Hunter", "Survival", "Thrill of the Hunt", 3),
-             ("Hunter", "Survival", "Expose Weakness", 3),
+             ("Hunter", "Survival", "Thrill of the Hunt", 3), ("Hunter", "Survival", "Expose Weakness", 3),
              ("Hunter", "Survival", "Noxious Stings", 3), ("Hunter", "Survival", "Master Tactician", 5),
-             ("Hunter", "Survival", "Black Arrow", 1), ("Hunter", "Survival", "Sniper Training", 3),
+             ("Hunter", "Survival", "Sniper Training", 3), ("Hunter", "Survival", "Entrapment", 2),
              ("Hunter", "Survival", "Hunting Party", 3),
              ("Hunter", "Survival", "Explosive Shot", 1),
              ("Rogue", "Assassination", "Malice", 5), ("Rogue", "Assassination", "Remorseless Attacks", 2),
@@ -414,8 +416,8 @@ BUILDS = [
              ("Warrior", "Shield Bash"), ("Paladin", "Righteous Defense"), ("Paladin", "Righteous Fury"),
              ("Warrior", "Shield Block"), ("Paladin", "Consecration"), ("Warrior", "Holy Cleave"),
              ("Warrior", "Shield Wall"), ("Paladin", "Divine Shield"), ("Warrior", "Shield Slam"),
-             ("Paladin", "Cleanse"), ("Paladin", "Hammer of Wrath"),
-             ("Warrior", "Holy Devastate"), ("Paladin", "Holy Wrath"),
+             ("Paladin", "Holy Shield"), ("Paladin", "Cleanse"),
+             ("Warrior", "Holy Devastate"), ("Paladin", "Avenger's Shield"),
              ("Paladin", "Greater Blessing of Kings"), ("Paladin", "Divine Plea"), ("Paladin", "Shield of Righteousness"),
          ],
          talents=[
@@ -425,11 +427,10 @@ BUILDS = [
              ("Paladin", "Protection", "Improved Hammer of Justice", 2),
              ("Paladin", "Protection", "Blessing of Sanctuary", 1), ("Paladin", "Protection", "Reckoning", 5),
              ("Paladin", "Protection", "Sacred Duty", 2), ("Paladin", "Protection", "One-Handed Weapon Specialization", 3),
-             ("Paladin", "Protection", "Holy Shield", 1), ("Paladin", "Protection", "Ardent Defender", 3),
-             ("Paladin", "Protection", "Spiritual Attunement", 2),
+             ("Paladin", "Protection", "Ardent Defender", 3), ("Paladin", "Protection", "Spiritual Attunement", 2),
              ("Paladin", "Protection", "Redoubt", 3), ("Paladin", "Protection", "Combat Expertise", 3),
-             ("Paladin", "Protection", "Avenger's Shield", 1), ("Paladin", "Protection", "Touched by the Light", 3),
-             ("Paladin", "Protection", "Guarded by the Light", 2),
+             ("Paladin", "Protection", "Touched by the Light", 3), ("Paladin", "Protection", "Guarded by the Light", 2),
+             ("Paladin", "Protection", "Stoicism", 2),
              ("Paladin", "Protection", "Shield of the Templar", 3),
              ("Paladin", "Protection", "Hammer of the Righteous", 1),
              ("Warrior", "Protection", "Shield Specialization", 5), ("Warrior", "Protection", "Improved Bloodrage", 2),
@@ -476,8 +477,10 @@ def read_conf(path):
     cfg = dict(starting_ae=3, essence_start=4, te_start=10, ae_per_level=1, te_per_level=1,
                costs=[1, 2, 3, 5, 8], talent_cost=1, talent_flat=0, enforce_rows=1,
                respect_levels=1, trainer_only=1, include_racials=0, include_passives=1,
-               include_dk=1, elemental=1, elemental_in_pool=1, rarity_bump=1)
+               include_dk=1, elemental=1, elemental_in_pool=1, rarity_bump=1,
+               replace_ability_talents=1)
     keys = {
+        "ClasslessWildcard.ReplaceAbilityTalents": ("replace_ability_talents", int),
         "ClasslessWildcard.Elemental.Enable": ("elemental", int),
         "ClasslessWildcard.Elemental.InPool": ("elemental_in_pool", int),
         "ClasslessWildcard.Elemental.RarityBump": ("rarity_bump", int),
@@ -526,6 +529,7 @@ class Pool:
         self._talents()
         self._abilities()
         self._variants(manifest)
+        self._replaced_talents()
 
     # ---- helpers ------------------------------------------------------------
     def name(self, spell_id):
@@ -718,6 +722,38 @@ class Pool:
                 element=ranks[0]["element"])
             self.variants += 1
 
+    def _replaced_talents(self):
+        """Ability talents, the way ResolveTalentAbilityLines sees them: a
+        talent whose rank spell heads an ability line, or teaches one through
+        a learn effect, names that line. With ReplaceAbilityTalents on the
+        talent leaves the pool and the line stands in for it: owning the
+        ability meets a prerequisite on the talent and counts as one point in
+        its tree."""
+        self.replaced = {}       # talentId -> talent dict, with "lines"
+        self.line_talents = collections.defaultdict(list)   # first spell -> replaced talent ids
+        for t in self.talents.values():
+            lines = []
+            def add(sp):
+                first = self.first_of.get(sp, sp)
+                e = self.abilities.get(first)
+                if e and e["enabled"] and first not in lines:
+                    lines.append(first)
+            for sp in t["spells"]:
+                add(sp)
+                row = self.spell.row_of(sp)
+                for k in range(3):
+                    if self.spell.u(row, F["Effect"] + k) == E_LEARN_SPELL and self.spell.u(row, F["EffectTriggerSpell"] + k):
+                        add(self.spell.u(row, F["EffectTriggerSpell"] + k))
+            t["lines"] = lines
+        if not self.cfg["replace_ability_talents"]:
+            return
+        for tid in [tid for tid, t in self.talents.items() if t["lines"]]:
+            t = self.talents.pop(tid)
+            t["replaced"] = True
+            self.replaced[tid] = t
+            for first in t["lines"]:
+                self.line_talents[first].append(tid)
+
     # ---- lookups ------------------------------------------------------------
     def find_ability(self, cls, name):
         bit = CLASS_BITS[cls]
@@ -735,6 +771,9 @@ class Pool:
         bit = CLASS_BITS[cls]
         hits = [t for t in self.talents.values()
                 if t["class_mask"] == bit and t["tab_name"] == tab_name and t["name"] == name]
+        if not hits:
+            hits = [t for t in self.replaced.values()
+                    if t["class_mask"] == bit and t["tab_name"] == tab_name and t["name"] == name]
         return (hits[0], "") if hits else (None, "no talent %r in %s %s" % (name, cls, tab_name))
 
     # ---- catalog ------------------------------------------------------------
@@ -754,11 +793,18 @@ class Pool:
             if mask != bit:
                 continue
             print("  -- %s" % tab_name)
-            for t in sorted((t for t in self.talents.values() if t["tab"] == tab_id), key=lambda t: (t["row"], t["col"])):
+            everything = list(self.talents.values()) + list(self.replaced.values())
+            for t in sorted((t for t in everything if t["tab"] == tab_id), key=lambda t: (t["row"], t["col"])):
                 dep = ""
                 if t["depends_on"] and t["depends_on"] in self.talents:
                     dep = "  needs %s %d" % (self.talents[t["depends_on"]]["name"], t["depends_on_rank"] + 1)
-                print("     tier %2d  %-34s max %d%s" % (t["row"] + 1, t["name"], t["max_rank"], dep))
+                elif t["depends_on"] and t["depends_on"] in self.replaced:
+                    dep = "  needs the %s ability" % self.abilities[self.replaced[t["depends_on"]]["lines"][0]]["name"]
+                if t.get("replaced"):
+                    print("     tier %2d  %-34s an ability now: %s" % (
+                        t["row"] + 1, t["name"], ", ".join(self.abilities[f]["name"] for f in t["lines"])))
+                else:
+                    print("     tier %2d  %-34s max %d%s" % (t["row"] + 1, t["name"], t["max_rank"], dep))
 
 
 # =============================================================================
@@ -785,6 +831,13 @@ def resolve(pool, build):
         if t is None:
             problems.append("%s: %s" % (build["name"], note))
             continue
+        if t.get("replaced"):
+            # an ability talent: not a talent any more. The build lists the
+            # ability itself if it wants the spell; here it is just dropped.
+            print("  note: %s: the %s talent is the %s ability now; dropped from the talent list%s" % (
+                build["name"], name, ", ".join(pool.abilities[f]["name"] for f in t["lines"]),
+                "" if any(a["first"] in t["lines"] for a in abilities) else " (the build does not buy the ability)"))
+            continue
         if rank > t["max_rank"]:
             problems.append("%s: %s has %d ranks, asked for %d" % (build["name"], name, t["max_rank"], rank))
             rank = t["max_rank"]
@@ -808,6 +861,7 @@ def simulate(pool, build, abilities, talents, verbose=False):
     ranks = collections.Counter()
     tab_points = collections.Counter()
     ledger = []
+    counted = set()            # replaced talents already credited as a tree point
     ai = 0                     # next ability in strict order
     ti = 0                     # next talent entry in strict order
     for level in range(1, 81):
@@ -826,6 +880,11 @@ def simulate(pool, build, abilities, talents, verbose=False):
                 break
             ae -= e["cost"]
             owned.add(e["first"])
+            # an ability standing in for a talent counts as a point in its tree
+            for tid in pool.line_talents.get(e["first"], ()):
+                if tid not in counted:
+                    counted.add(tid)
+                    tab_points[pool.replaced[tid]["tab"]] += 1
             ai += 1
             late = level - unlock
             bought.append("%s (%d AE%s)" % (e["name"], e["cost"], ", %d late" % late if late else ""))
@@ -841,7 +900,15 @@ def simulate(pool, build, abilities, talents, verbose=False):
             cost = 0 if (cfg["talent_flat"] and ranks[t["id"]] > 0) else cfg["talent_cost"]
             if te < cost:
                 break
-            if t["depends_on"] and ranks[t["depends_on"]] < t["depends_on_rank"] + 1:
+            rep = pool.replaced.get(t["depends_on"]) if t["depends_on"] else None
+            if rep is not None:
+                # the prerequisite is an ability now: owning it is what counts
+                if not any(f in owned for f in rep["lines"]):
+                    problems.append("%s: %s needs the %s ability first; add it to the build's abilities"
+                                    % (build["name"], t["name"], pool.abilities[rep["lines"][0]]["name"]))
+                    ti = len(talents)
+                    break
+            elif t["depends_on"] and ranks[t["depends_on"]] < t["depends_on_rank"] + 1:
                 dep = pool.talents.get(t["depends_on"])
                 problems.append("%s: %s needs %s %d first; list it earlier"
                                 % (build["name"], t["name"], dep["name"] if dep else t["depends_on"], t["depends_on_rank"] + 1))
@@ -931,10 +998,10 @@ def main(argv=None):
 
     rows, failed = [], False
     for build in BUILDS:
+        print("== %s" % build["name"])
         abilities, talents, problems = resolve(pool, build)
         sim_problems, ledger, summary = simulate(pool, build, abilities, talents, verbose=args.ledger)
         problems += sim_problems
-        print("== %s" % build["name"])
         for line in ledger:
             print(line)
         print(summary)

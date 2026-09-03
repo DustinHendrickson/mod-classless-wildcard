@@ -35,8 +35,15 @@ _PALETTE_BYTES = 256 * 4
 _PIXELS_OFFSET = _HEADER_BYTES + _PALETTE_BYTES
 
 
-def encode_palettized(image) -> bytes:
-    """Encode a Pillow RGBA image as a palettized BLP2 with a full mip chain."""
+def encode_palettized(image, reserve=()) -> bytes:
+    """Encode a Pillow RGBA image as a palettized BLP2 with a full mip chain.
+
+    The palette is built from the base level: `reserve` colours first (a
+    caller's small overlay, such as an element badge, whose few pixels would
+    otherwise lose to the base art), then the image's own colours from most
+    to least common until the 256 slots are used. Anything left over, and
+    every mip level, maps to the nearest palette entry.
+    """
     from PIL import Image
 
     width, height = image.size
@@ -56,6 +63,16 @@ def encode_palettized(image) -> bytes:
                 idx = _nearest(palette, rgb)
                 palette_index[rgb] = idx
         return idx
+
+    for rgb in reserve:
+        index_of(tuple(rgb))
+    counts = {}
+    for r, g, b, a in image.convert("RGBA").getdata():
+        counts[(r, g, b)] = counts.get((r, g, b), 0) + 1
+    for rgb, _ in sorted(counts.items(), key=lambda kv: -kv[1]):
+        if len(palette) >= 256:
+            break
+        index_of(rgb)
 
     # build the mip chain: (indices, alpha) per level
     levels = []

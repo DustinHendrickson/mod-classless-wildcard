@@ -24,7 +24,7 @@ CREATE TABLE IF NOT EXISTS `cw_char_state` (
 CREATE TABLE IF NOT EXISTS `cw_char_abilities` (
   `guid` INT UNSIGNED NOT NULL,
   `first_spell` INT UNSIGNED NOT NULL,
-  `source` TINYINT UNSIGNED NOT NULL DEFAULT 0 COMMENT '0 picked, 1 rolled',
+  `source` TINYINT UNSIGNED NOT NULL DEFAULT 0 COMMENT '0 picked, 1 rolled, 2 granted by an ability talent',
   `locked` TINYINT UNSIGNED NOT NULL DEFAULT 0,
   PRIMARY KEY (`guid`, `first_spell`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='Owned classless ability lines';

@@ -147,6 +147,7 @@ void ClasslessMgr::LoadConfig(bool /*reload*/)
     cfg.modeChoiceDeadline = sConfigMgr->GetOption<uint8>("ClasslessWildcard.ModeChoiceDeadline", 5);
 
     cfg.includeDeathKnight = sConfigMgr->GetOption<bool>("ClasslessWildcard.IncludeDeathKnight", true);
+    cfg.replaceAbilityTalents = sConfigMgr->GetOption<bool>("ClasslessWildcard.ReplaceAbilityTalents", true);
     cfg.includeRacials = sConfigMgr->GetOption<bool>("ClasslessWildcard.IncludeRacials", false);
     cfg.includePassives = sConfigMgr->GetOption<bool>("ClasslessWildcard.IncludePassives", true);
     cfg.respectLevelReqs = sConfigMgr->GetOption<bool>("ClasslessWildcard.RespectLevelRequirements", true);
@@ -650,6 +651,7 @@ void ClasslessMgr::BuildLibrary()
     // done) and before overrides, so a realm can still tune any variant row
     // in cw_ability_override like any other ability.
     LoadVariants();
+    ResolveTalentAbilityLines();
 
     LoadOverrides();
     BuildFormSpellMap();
@@ -902,6 +904,84 @@ void ClasslessMgr::LoadVariants()
     LOG_INFO("module.classless",
              "mod-classless-wildcard: {} elemental variants registered ({} skipped), generation {}",
              added, skipped, generation);
+}
+
+// A talent that teaches a spell (Pyroblast, Mortal Strike, Mangle) is, on a
+// classless realm, just another door to an ability line the pool already
+// carries: the trainer ranks of that same spell. Taking the talent grants the
+// line outright, so the spell ranks up with level like anything bought or
+// rolled instead of sitting at the talent's rank 1 for the rest of the
+// character's life. Resolved once the pool is final: a talent rank spell that
+// heads a line, or teaches one through a learn effect, names that line.
+void ClasslessMgr::ResolveTalentAbilityLines()
+{
+    uint32 resolved = 0;
+    for (auto& entry : _talents)
+    {
+        TalentPoolEntry& t = entry.second;   // a structured binding cannot be captured below
+        t.abilityLines.clear();
+        auto add = [&](uint32 spellId)
+        {
+            auto itr = _spellToFirst.find(spellId);
+            if (itr == _spellToFirst.end())
+                return;
+            AbilityEntry const* e = GetAbility(itr->second);
+            if (!e || !e->enabled)
+                return;
+            if (std::find(t.abilityLines.begin(), t.abilityLines.end(), e->firstSpellId) == t.abilityLines.end())
+                t.abilityLines.push_back(e->firstSpellId);
+        };
+        for (uint8 r = 0; r < t.maxRank; ++r)
+        {
+            uint32 rankSpell = t.rankSpells[r];
+            if (!rankSpell)
+                continue;
+            add(rankSpell);
+            if (SpellInfo const* info = sSpellMgr->GetSpellInfo(rankSpell))
+                for (uint8 i = 0; i < MAX_SPELL_EFFECTS; ++i)
+                    if (info->Effects[i].Effect == SPELL_EFFECT_LEARN_SPELL && info->Effects[i].TriggerSpell)
+                        add(info->Effects[i].TriggerSpell);
+        }
+        if (!t.abilityLines.empty())
+            ++resolved;
+    }
+
+    // With ReplaceAbilityTalents on, those talents leave the list altogether:
+    // the ability line is the one way to the spell, and the entry is kept
+    // aside so a talent that depended on it can be met by owning the ability.
+    _replacedTalents.clear();
+    if (cfg.replaceAbilityTalents)
+    {
+        for (auto itr = _talents.begin(); itr != _talents.end();)
+        {
+            if (itr->second.abilityLines.empty())
+            {
+                ++itr;
+                continue;
+            }
+            _replacedTalents.emplace(itr->first, std::move(itr->second));
+            itr = _talents.erase(itr);
+        }
+        LOG_INFO("module.classless",
+                 "mod-classless-wildcard: {} ability talents taken off the Talents list; their ability lines stand in for them",
+                 _replacedTalents.size());
+        return;
+    }
+    LOG_INFO("module.classless",
+             "mod-classless-wildcard: {} talents teach an ability line and grant it outright", resolved);
+}
+
+// Whether a Hero owns an ability that stands in for a talent taken off the
+// list (0 when the talent is not one of those).
+bool ClasslessMgr::OwnsReplacedTalent(CharState const& st, uint32 talentId) const
+{
+    auto itr = _replacedTalents.find(talentId);
+    if (itr == _replacedTalents.end())
+        return false;
+    for (uint32 first : itr->second.abilityLines)
+        if (st.abilities.count(first))
+            return true;
+    return false;
 }
 
 // The spells that come free with a form or stance, from `cw_form_kits`. Both
@@ -1805,6 +1885,54 @@ void ClasslessMgr::HandleLogin(Player* player)
     TeachProficiencies(player);
     ApplyStatMods(player);
 
+    // A talent that has since left the list (ReplaceAbilityTalents) turns
+    // into the ability it stood for: the line is granted at no cost, the
+    // Talent Essence comes back on the Classless path, and the talent row goes.
+    {
+        std::vector<uint32> gone;
+        for (auto const& [talentId, rank] : st.talents)
+            if (_replacedTalents.count(talentId))
+                gone.push_back(talentId);
+        for (uint32 talentId : gone)
+        {
+            TalentPoolEntry const& t = _replacedTalents.at(talentId);
+            GrantSource source = st.mode == Mode::Wildcard ? GrantSource::Rolled : GrantSource::Picked;
+            for (uint32 first : t.abilityLines)
+                if (!st.abilities.count(first))
+                    if (AbilityEntry const* e = GetAbility(first))
+                        GrantAbilityInternal(player, *e, source, true, false);
+            // the talent's own spell, unless it is a rank of a line now owned
+            for (uint8 r = 0; r < t.maxRank; ++r)
+                if (t.rankSpells[r] && player->HasSpell(t.rankSpells[r]) && !FindAbilityBySpell(t.rankSpells[r]))
+                    player->removeSpell(t.rankSpells[r], SPEC_MASK_ALL, false);
+            if (st.mode == Mode::Classless)
+                st.talentEssence += cfg.talentCostPerRank;
+            st.talents.erase(talentId);
+            CharacterDatabase.Execute("DELETE FROM cw_char_talents WHERE guid = {} AND talent_id = {}",
+                                      player->GetGUID().GetCounter(), talentId);
+            if (!t.abilityLines.empty())
+                Msg(player, Acore::StringFormat("{} is an ability now. It is in your build{}.",
+                    SpellName(t.abilityLines[0]),
+                    st.mode == Mode::Classless ? ", and its Talent Essence is back" : ""));
+        }
+    }
+
+    // With ReplaceAbilityTalents off, an ability talent owned from before
+    // talents handed over their line gets the line now, so the spell starts
+    // ranking up like everyone else's.
+    {
+        std::vector<std::pair<TalentPoolEntry const*, uint32>> due;
+        for (auto const& [talentId, rank] : st.talents)
+            if (TalentPoolEntry const* t = GetTalent(talentId))
+                for (uint32 first : t->abilityLines)
+                    if (!st.abilities.count(first))
+                        due.emplace_back(t, first);
+        for (auto const& [t, first] : due)
+            if (AbilityEntry const* e = GetAbility(first))
+                if (!st.abilities.count(first))
+                    GrantAbilityInternal(player, *e, GrantSource::Talent, true, false);
+    }
+
     // Sweep again on every login, not just the first. The chassis class's own
     // spells come back on their own -- a Hero was showing Holy Light in the
     // Paladin tab of a spellbook they never trained -- and a first-login-only
@@ -2072,6 +2200,13 @@ void ClasslessMgr::GrantTalentRankInternal(Player* player, TalentPoolEntry const
     SyncSpellbookTabs(player);
     st.talents[t.talentId] = newRank;
 
+    // an ability talent hands over its whole ability line, so the spell keeps
+    // ranking up with level instead of stalling at the talent's rank 1
+    for (uint32 first : t.abilityLines)
+        if (!st.abilities.count(first))
+            if (AbilityEntry const* e = GetAbility(first))
+                GrantAbilityInternal(player, *e, GrantSource::Talent, persist, false);
+
     if (persist)
         CharacterDatabase.Execute(
             "REPLACE INTO cw_char_talents (guid, talent_id, talent_rank) VALUES ({}, {}, {})",
@@ -2089,8 +2224,24 @@ void ClasslessMgr::RemoveTalentInternal(Player* player, TalentPoolEntry const& t
     st.talents.erase(t.talentId);
 
     for (uint8 r = 0; r < t.maxRank; ++r)
-        if (t.rankSpells[r] && player->HasSpell(t.rankSpells[r]))
-            player->removeSpell(t.rankSpells[r], SPEC_MASK_ALL, false);
+    {
+        uint32 rankSpell = t.rankSpells[r];
+        if (!rankSpell || !player->HasSpell(rankSpell))
+            continue;
+        // a rank spell that is also rank 1 of a line the Hero bought or
+        // rolled stays: that line owns it now
+        if (AbilityEntry const* line = FindAbilityBySpell(rankSpell))
+            if (auto o = st.abilities.find(line->firstSpellId);
+                o != st.abilities.end() && o->second.source != GrantSource::Talent)
+                continue;
+        player->removeSpell(rankSpell, SPEC_MASK_ALL, false);
+    }
+
+    // the ability line the talent handed over goes with it
+    for (uint32 first : t.abilityLines)
+        if (auto o = st.abilities.find(first); o != st.abilities.end() && o->second.source == GrantSource::Talent)
+            if (AbilityEntry const* e = GetAbility(first))
+                RemoveAbilityInternal(player, *e, persist);
 
     if (persist)
         CharacterDatabase.Execute(
@@ -2306,6 +2457,11 @@ bool ClasslessMgr::UnlearnAbility(Player* player, uint32 firstSpellId, std::stri
         if (err) *err = "You do not own that ability.";
         return false;
     }
+    if (st.abilities[e->firstSpellId].source == GrantSource::Talent)
+    {
+        if (err) *err = "That ability came with a talent and leaves with it. Respec to give it up.";
+        return false;
+    }
 
     RemoveAbilityInternal(player, *e);
     if (cfg.refundOnUnlearn)
@@ -2322,6 +2478,10 @@ uint32 ClasslessMgr::SpentTalentRanksInTab(CharState const& st, uint32 tabId) co
         if (TalentPoolEntry const* t = GetTalent(talentId))
             if (t->tabId == tabId)
                 total += rank;
+    // an ability standing in for a talent of this tree counts as its point
+    for (auto const& [talentId, t] : _replacedTalents)
+        if (t.tabId == tabId && OwnsReplacedTalent(st, talentId))
+            ++total;
     return total;
 }
 
@@ -2364,9 +2524,15 @@ bool ClasslessMgr::BuyTalentRank(Player* player, uint32 talentId, std::string* e
         uint8 depRank = 0;
         if (auto itr = st.talents.find(t->dependsOn); itr != st.talents.end())
             depRank = itr->second;
+        // a prerequisite that became an ability is met by owning that ability
+        if (OwnsReplacedTalent(st, t->dependsOn))
+            depRank = MAX_TALENT_RANK;
         if (depRank < t->dependsOnRank + 1)
         {
             if (err) *err = "You are missing a prerequisite talent.";
+            if (auto rep = _replacedTalents.find(t->dependsOn); rep != _replacedTalents.end() && !rep->second.abilityLines.empty())
+                if (err) *err = Acore::StringFormat("That needs the {} ability first. It is in the Abilities list.",
+                                                    SpellName(rep->second.abilityLines[0]));
             return false;
         }
     }
@@ -2873,6 +3039,11 @@ bool ClasslessMgr::Reroll(Player* player, bool isTalent, uint32 entry, std::stri
         if (st.abilities[e->firstSpellId].locked)
         {
             if (err) *err = "That ability is locked. Unlock it first (.wildcard lock).";
+            return false;
+        }
+        if (st.abilities[e->firstSpellId].source == GrantSource::Talent)
+        {
+            if (err) *err = "That ability came with a talent. Reroll the talent instead.";
             return false;
         }
 

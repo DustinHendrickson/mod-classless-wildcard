@@ -106,6 +106,22 @@ ClasslessWildcard.IncludeDeathKnight = 1
 ClasslessWildcard.IncludeRacials = 0
 ClasslessWildcard.IncludePassives = 1
 ClasslessWildcard.ExcludedSpells = ""
+
+#
+#    ClasslessWildcard.ReplaceAbilityTalents
+#        Some talents teach a spell rather than a passive: Pyroblast, Mortal
+#        Strike, Mangle, Devastate, Aimed Shot, Hemorrhage, Ice Barrier. The
+#        ability pool already carries those spells as full rank lines, so with
+#        this on such talents are taken off the Talents list and the ability
+#        is the one way to get the spell. Owning the ability meets any talent
+#        prerequisite on the old talent and counts as one point in its tree.
+#        A Hero still holding one of those talents gets the ability instead at
+#        their next login, with the Talent Essence refunded on the Classless
+#        path. With this off the talents stay and taking one grants the
+#        ability line, so the spell still ranks up with level.
+#        Default: 1
+
+ClasslessWildcard.ReplaceAbilityTalents = 1
 ClasslessWildcard.TrainerTaughtOnly = 1
 ClasslessWildcard.RespectLevelRequirements = 1
 

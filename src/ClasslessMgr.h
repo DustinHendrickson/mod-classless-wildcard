@@ -159,6 +159,10 @@ private:
     // module-owned spells with no trainer, so they bypass TrainerTaughtOnly
     // and inherit their base's levels, class mask and spellbook tab.
     void LoadVariants();
+    // Which ability lines each talent's spells head or teach (Pyroblast,
+    // Mortal Strike, Mangle); taking the talent grants those lines.
+    void ResolveTalentAbilityLines();
+    bool OwnsReplacedTalent(ClasslessWildcard::CharState const& st, uint32 talentId) const;
     // form id -> the library ability that puts you in it, built from spell data
     void BuildFormSpellMap();
     // Give a Hero the stance or form an ability cannot be used without.
@@ -189,6 +193,9 @@ private:
 
     std::map<uint32, ClasslessWildcard::AbilityEntry> _abilities;      // firstSpellId -> entry
     std::map<uint32, ClasslessWildcard::TalentPoolEntry> _talents;     // talentId -> entry
+    // ability talents taken off the Talents list (ReplaceAbilityTalents):
+    // kept aside for prerequisite checks, tree point counts and migration
+    std::map<uint32, ClasslessWildcard::TalentPoolEntry> _replacedTalents;
     std::map<uint32, ClasslessWildcard::Archetype> _archetypes;
     std::unordered_map<uint32, uint32> _spellToFirst;                  // any rank -> firstSpellId
     // form/stance spell (any rank) -> the basic spells that come with it

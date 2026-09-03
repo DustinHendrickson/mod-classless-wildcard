@@ -115,6 +115,10 @@ Keep it, or spend a reroll.</em>
   with an extra hit that scales with spell power. See [Elemental variants](#elemental-variants).
 - **Talents are spells.** Talents are granted as their underlying spells and appear in the
   spellbook. The stock talent frame is unused, and native talent points are zero.
+- **Ability talents are abilities.** A talent that teaches a spell, such as Pyroblast, Mortal
+  Strike or Mangle, is not on the Talents list. The spell is in the Abilities list instead, at
+  the level its talent tier would open, with every rank. Owning it meets any prerequisite on
+  the old talent and counts as a point in that tree. `ReplaceAbilityTalents` turns this off.
 
 ### Everything works on one character
 
@@ -301,6 +305,7 @@ and are documented inline. The ones most likely to need changing:
 | `ClasslessWildcard.AllowModeChoice`                 | `1`          | Let players pick. `0` forces `DefaultMode` realm-wide           |
 | `ClasslessWildcard.ModeChoiceDeadline`              | `5`          | Level after which the path locks                               |
 | `ClasslessWildcard.IncludeDeathKnight`              | `1`          | Include DK abilities and talents; every Hero gets a rune block |
+| `ClasslessWildcard.ReplaceAbilityTalents`           | `1`          | Talents that teach a spell become that ability instead         |
 | `ClasslessWildcard.NpcEntry`                        | `990100`     | Hero Advancement NPC entry                                     |
 | `Chassis.Enable`                                    | `1`          | Put every character on one base class                          |
 | `Chassis.Class`                                     | `2`          | Which class. Mana classes only; others are refused at startup   |
@@ -382,7 +387,7 @@ logging out.
 
 <div align="center">
 
-<img src="docs/elemental_variants_icons.webp" alt="Six base attack icons, each followed by its seven elemental variants, badged in the top corner for Fire, Frost, Earth, Poison, Arcane, Shadow and Holy" width="92%">
+<img src="docs/elemental_variants_icons.webp" alt="Six base attack icons, each followed by its seven elemental variants, badged in the bottom-left corner for Fire, Frost, Earth, Poison, Arcane, Shadow and Holy" width="92%">
 
 <em>A variant keeps its base attack's icon and adds a badge for the element.<br>
 Left to right: the base attack, then Fire, Frost, Earth, Poison, Arcane, Shadow, Holy.</em>
