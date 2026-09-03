@@ -18,6 +18,7 @@ are spelled out.
 Covered flows:
   * the Archetypes button and flyout (Classless only, mirrors the NPC's
     "Apply a starter archetype" menu)
+  * the first-login wizard: path page, archetype page, sizing, empty slate
 
 Run:  python3 test_addon_flow.py
 """
@@ -222,22 +223,30 @@ def test_archetypes(h):
     h.check(fly["__shown"] is True, "flyout opens")
     h.check(str(fly.intro["__text"]) == "Loading...", "flyout says Loading... until the reply")
 
-    h.recv("AR|1|Blade Dancer|Fast melee striker: rogue strikes backed by warrior mobility.|4")
-    h.recv("AR|2|Battle Mage|Armored caster: fireballs up close, sword in hand.|4")
+    h.recv("AR|1|Blade Dancer|Fast melee striker: rogue strikes backed by warrior mobility.|26|71|0")
+    h.recv("AR|2|Battle Mage|Armored caster: fireballs up close, sword in hand.|26|71|1")
     h.recv("ARE|")
     rows = fly.rows
     h.check(rows[1]["__shown"] is True and rows[2]["__shown"] is True and rows[3]["__shown"] is False,
             "two rows shown, the rest hidden")
     name1 = str(rows[1].name["__text"])
-    h.check("Blade Dancer" in name1 and "4 abilities" in name1, "row shows name and ability count: %r" % name1)
+    h.check("Blade Dancer" in name1 and "26 abilities, 71 talent ranks" in str(rows[1].desc["__text"]),
+            "row shows the name, and the counts under it: %r" % str(rows[1].desc["__text"]))
+    h.check("following" in str(rows[2].name["__text"]) and str(rows[2].apply["__text"]) == "Stop",
+            "the followed archetype is tagged and offers Stop")
+    h.check(str(rows[1].apply["__text"]) == "Follow", "an unfollowed archetype offers Follow")
+    h.clear_sent()
+    h.click(rows[2].apply)
+    h.check("ARCHAPPLY 0" in h.sent(), "Stop sends ARCHAPPLY 0")
+    h.click(btn)
     h.check(str(rows[2].desc["__text"]).startswith("Armored caster"), "row shows the description")
-    h.check(fly["__h"] == 72 + 2 * 38 + 8, "flyout sized to two rows (%s)" % fly["__h"])
+    h.check(fly["__h"] == 72 + 2 * 46 + 8, "flyout sized to two rows (%s)" % fly["__h"])
     h.check(str(fly.intro["__text"]) == str(fly.INTRO), "intro text restored once the list arrives")
     h.check(wizard["__shown"] is False, "wizard stays closed (reply went to the flyout)")
 
     h.clear_sent()
     h.click(rows[1].apply)
-    h.check("ARCHAPPLY 1" in h.sent(), "Apply sends ARCHAPPLY with the archetype id")
+    h.check("ARCHAPPLY 1" in h.sent(), "Follow sends ARCHAPPLY with the archetype id")
     h.check(fly["__shown"] is False, "flyout closes after Apply")
     h.check(str(CW.tab) == "HERO", "panel switches to the Hero tab to show the purchase")
 
@@ -247,7 +256,7 @@ def test_archetypes(h):
 
     # a fresh list replaces the old one
     h.click(btn)
-    h.recv("AR|3|Ranger of the Light|Hybrid archer-paladin.|4")
+    h.recv("AR|3|Ranger of the Light|Hybrid archer-paladin.|25|71|0")
     h.recv("ARE|")
     h.check(rows[1]["__shown"] is True and rows[2]["__shown"] is False, "a new reply replaces the cached list")
     h.check("Ranger" in str(rows[1].name["__text"]), "row 1 is the new archetype")
@@ -256,7 +265,7 @@ def test_archetypes(h):
     h.recv("ARE|")
     h.check(rows[1]["__shown"] is False, "a reply with no rows clears the list")
     h.check("No archetypes" in str(fly.intro["__text"]), "empty list says so instead of Loading...")
-    h.check(fly["__h"] == 72 + 38 + 8, "flyout keeps one row of height when empty")
+    h.check(fly["__h"] == 72 + 46 + 8, "flyout keeps one row of height when empty")
 
     # the other flyouts close it and it closes them
     h.click(CW.helpBtn)
@@ -278,6 +287,47 @@ def test_archetypes(h):
     h.check(btn["__shown"] is True, "back on Classless: button returns")
 
 
+def test_wizard(h):
+    print("--- first-login wizard: path page, then archetype page")
+    CW, g = h.CW, h.g
+    wizard, frame, rows = CW.wizard, g.ClasslessWildcardFrame, CW.wizArchRows
+    frame["__shown"] = False
+    h.recv(state(255, level=1))
+    h.check(wizard["__shown"] is True, "no path chosen at level 1: wizard opens")
+    h.check(wizard["__w"] == 420 and str(CW.wizTitle["__text"]) == "Choose Your Path, Hero", "page 1: path choice, 420 wide")
+
+    h.clear_sent()
+    h.click(CW.wizClassless)
+    h.check("MODE 0" in h.sent() and "ARCH" in h.sent(), "Classless sends MODE 0 and asks for the archetypes")
+    h.recv("AR|1|Blade Dancer|Fast melee striker: rogue strikes backed by warrior mobility.|26|71|0")
+    h.recv("AR|2|Battle Mage|Armored caster: fireballs up close, sword in hand.|26|71|0")
+    h.recv("ARE|")
+    h.check(str(CW.wizTitle["__text"]) == "Pick a Starter Archetype", "page 2: archetype title")
+    h.check(rows[1]["__shown"] is True and rows[2]["__shown"] is True and rows[3]["__shown"] is False, "two rows shown, the rest hidden")
+    h.check(":" in str(rows[1].desc["__text"]), "description keeps its colon: %r" % str(rows[1].desc["__text"]))
+    h.check(wizard["__w"] == 480 and wizard["__h"] == 84 + 2 * 46 + 52, "wizard resized to fit (%sx%s)" % (wizard["__w"], wizard["__h"]))
+    h.check(CW.wizClassless["__shown"] is False and CW.wizLater["__shown"] is False and CW.wizArchSkip["__shown"] is True,
+            "path buttons hidden, empty-slate button shown")
+    h.check(CW.archFly["__shown"] is False, "panel flyout stays closed")
+
+    h.clear_sent()
+    h.click(rows[1].apply)
+    h.check("ARCHAPPLY 1" in h.sent(), "Choose sends ARCHAPPLY with the id")
+    h.check(wizard["__shown"] is False and frame["__shown"] is True and str(CW.tab) == "HERO", "wizard closes, panel opens on Hero")
+
+    CW.ShowPathChoice()
+    h.check(wizard["__w"] == 420 and wizard["__h"] == 300 and str(CW.wizTitle["__text"]) == "Choose Your Path, Hero",
+            "page 1 again restores size and title")
+    h.check(rows[1]["__shown"] is False and CW.wizArchSkip["__shown"] is False and CW.wizClassless["__shown"] is True,
+            "page 1 again hides rows and shows the path buttons")
+
+    h.recv("ARE|")  # a realm with no archetypes
+    h.check("No archetypes" in str(CW.wizText["__text"]) and wizard["__h"] == 84 + 46 + 52, "empty list says so and keeps one row of height")
+    frame["__shown"] = False
+    h.click(CW.wizArchSkip)
+    h.check(wizard["__shown"] is False and frame["__shown"] is True and str(CW.tab) == "ABIL", "empty slate closes the wizard and opens the browser")
+
+
 def main():
     try:
         h = Harness()
@@ -286,6 +336,7 @@ def main():
         return 1
     print("addon loaded: %d frames" % len(h.g.FRAMES))
     test_archetypes(h)
+    test_wizard(h)
     if h.failures:
         print("\n%d check(s) FAILED" % h.failures)
         return 1

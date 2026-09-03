@@ -171,12 +171,13 @@ The BLP **format matters** — a wrong header makes the client draw a green
 the genuine enc=1 textures the client ships: header `01 08 08 01` (encoding 1
 palettized, alphaDepth 8, **alphaType 8**, **hasMips 1**) with a **full mip
 chain** (256→1, `w*h` index bytes + `w*h` alpha bytes per level). alphaType 0 or
-a missing mip chain both fail to load. Pillow is optional; without it the icon
-step is skipped, not fatal.
+a missing mip chain both fail to load. Pillow is required: `install.py` installs
+it with pip when missing and aborts if it cannot, because a client without the
+painted icons is not the full install.
 
 The full Hero client -- name, single-class list, text, outfit, icon, exe patch,
-addon -- installs by **default**; `--minimal` and the `--no-*` flags turn pieces
-off. The icon needs no exe patch (textures are not signature-checked) and can be
+addon -- installs by **default**; the `--no-*` flags turn single pieces off
+for testing. The icon needs no exe patch (textures are not signature-checked) and can be
 skipped with `--no-hero-icon`. Swap `_draw_emblem` in `lib/blp.py` to change the
 mark.
 

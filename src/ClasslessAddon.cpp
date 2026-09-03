@@ -63,10 +63,21 @@ namespace
         player->GetSession()->SendPacket(&data);
     }
 
+    // For fields inside ':'/';'-delimited list records: every delimiter goes.
     std::string Sanitize(std::string s)
     {
         for (char& c : s)
             if (c == '|' || c == ';' || c == ':' || c == '\t' || c == '\n')
+                c = ' ';
+        return s;
+    }
+
+    // For a whole '|'-delimited field of free text (archetype names and
+    // descriptions): colons and semicolons are ordinary punctuation there.
+    std::string SanitizeText(std::string s)
+    {
+        for (char& c : s)
+            if (c == '|' || c == '\t' || c == '\n')
                 c = ' ';
         return s;
     }
@@ -327,11 +338,19 @@ namespace
             critPerAgi, spellCritPerInt, mp5PerSpi, hp5PerSpi));
     }
 
+    // AR|id|name|description|abilities|talent ranks|following
     void SendArchetypes(Player* player)
     {
+        CharState& st = sClasslessMgr->GetState(player);
         for (auto const& [id, arch] : sClasslessMgr->Archetypes())
-            SendAddon(player, Acore::StringFormat("AR|{}|{}|{}|{}",
-                id, Sanitize(arch.name), Sanitize(arch.description), uint32(arch.abilities.size())));
+        {
+            uint32 ranks = 0;
+            for (auto const& [talentId, rank] : arch.talents)
+                ranks += rank;
+            SendAddon(player, Acore::StringFormat("AR|{}|{}|{}|{}|{}|{}",
+                id, SanitizeText(arch.name), SanitizeText(arch.description),
+                uint32(arch.abilities.size()), ranks, st.archetype == id ? 1 : 0));
+        }
         SendAddon(player, "ARE|");
     }
 

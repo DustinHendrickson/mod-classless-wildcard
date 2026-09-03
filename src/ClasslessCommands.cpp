@@ -88,7 +88,19 @@ public:
             (st.mode == Mode::Classless ? "Classless" : "not chosen yet"));
         handler->PSendSysMessage("Abilities: {} | Talents: {}", st.abilities.size(), st.talents.size());
         if (st.mode == Mode::Classless)
+        {
             handler->PSendSysMessage("Ability Essence: {} | Talent Essence: {}", st.abilityEssence, st.talentEssence);
+            if (st.archetype)
+            {
+                std::string next;
+                auto queue = sClasslessMgr->ArchetypeQueue(player);
+                if (!queue.empty())
+                    next = queue.front().second > player->GetLevel()
+                        ? Acore::StringFormat(" (next: {} at level {})", sClasslessMgr->SpellNameOf(queue.front().first), uint32(queue.front().second))
+                        : Acore::StringFormat(" (next: {}, when you have the Ability Essence)", sClasslessMgr->SpellNameOf(queue.front().first));
+                handler->PSendSysMessage("Following: |cffffff00{}|r{}", sClasslessMgr->ArchetypeName(st.archetype), next);
+            }
+        }
         if (st.mode == Mode::Wildcard)
         {
             handler->PSendSysMessage("Rerolls: {} (you earn one with every roll the Wildcard deals; spend on either)",
@@ -246,12 +258,20 @@ public:
     {
         if (!CheckEnabled(handler))
             return true;
+        uint32 following = sClasslessMgr->GetState(handler->GetSession()->GetPlayer()).archetype;
         for (auto const& [id, arch] : sClasslessMgr->Archetypes())
-            handler->PSendSysMessage("{}. |cffffff00{}|r — {} ({} abilities)", id, arch.name, arch.description, uint32(arch.abilities.size()));
+        {
+            uint32 ranks = 0;
+            for (auto const& [talentId, rank] : arch.talents)
+                ranks += rank;
+            handler->PSendSysMessage("{}. |cffffff00{}|r: {} ({} abilities, {} talent ranks, level 1 to 80){}",
+                id, arch.name, arch.description, uint32(arch.abilities.size()), ranks,
+                following == id ? " |cff00ff00following|r" : "");
+        }
         if (sClasslessMgr->Archetypes().empty())
             handler->SendSysMessage("No archetypes are configured on this realm.");
         else
-            handler->SendSysMessage("Apply one with: .classless archetype <id>");
+            handler->SendSysMessage("Follow one with: .classless archetype <id>   Stop with: .classless archetype 0");
         return true;
     }
 

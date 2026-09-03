@@ -27,6 +27,7 @@ import argparse
 import json
 import os
 import shutil
+import subprocess
 import sys
 
 HERE = os.path.dirname(os.path.abspath(__file__))
@@ -274,8 +275,8 @@ def build_locale_patch(files, name, report, locale, theme=False, icon=False):
             raw = None
         atlas = blp.reskin_hero_cell(raw) if raw else None
         if atlas is None and raw is not None:
-            report.append("  Hero class icon      skipped (Python 'Pillow' not "
-                          "installed: pip install pillow)")
+            raise Abort("The Hero class icon could not be painted: the Python library "
+                        "'Pillow' is missing. Run:  python -m pip install --user pillow")
         elif atlas is None:
             report.append("  Hero class icon      skipped (class-icon atlas not found)")
         else:
@@ -323,8 +324,8 @@ def install_addon(wow_dir, dry_run, report, files=None):
         if atlas is not None:
             report.append("  addon class icons    embedded (classicons.blp)")
         elif raw is not None:
-            report.append("  addon class icons    using game atlas (Pillow not "
-                          "installed)")
+            raise Abort("The addon class icons could not be painted: the Python library "
+                        "'Pillow' is missing. Run:  python -m pip install --user pillow")
 
     return os.path.relpath(target, wow_dir).replace("\\", "/")
 
@@ -404,7 +405,6 @@ def do_install(args, wow_dir):
         print("  \"allow custom interface\" patch) to accept it -- backed up first to")
         print("  Wow.exe.classless-bak and reversible with --uninstall. CLOSE THE")
         print("  GAME before running this, or the patch cannot be written.")
-        print("  (Use --minimal for just the Hero name + single-class list + addon.)")
         print()
 
     if not args.yes and not args.dry_run:
@@ -429,14 +429,13 @@ def do_install(args, wow_dir):
         # Elemental ability variants: the server's generated spell rows have
         # to exist in the client's own Spell.dbc too, or the game has no name,
         # icon or tooltip for them. Appended to the player's tables, with one
-        # painted icon per base icon and element when Pillow is available.
+        # painted icon per base icon and element.
         if args.elemental:
             manifest_file = elemental.manifest_path()
             if os.path.exists(manifest_file):
                 try:
                     manifest = elemental.load_manifest(manifest_file)
-                    elemental.apply(files, dbc_payload, manifest, report,
-                                    want_icons=args.hero_icon)
+                    elemental.apply(files, dbc_payload, manifest, report)
                 except (elemental.ElementalError, dbc.DbcError, FileNotFoundError) as error:
                     report.append("  elemental variants  skipped (%s)" % error)
             else:
@@ -676,6 +675,35 @@ def do_uninstall(args, wow_dir):
 
 # -------------------------------------------------------------------- main
 
+def ensure_pillow():
+    """The install paints the Hero emblem and the elemental icons, so the
+    Python 'Pillow' library is required. Install it on the spot when it is
+    missing, and stop if that fails: a client without the icons is not the
+    full install."""
+    try:
+        import PIL  # noqa: F401
+        return
+    except ImportError:
+        pass
+    cmd = [sys.executable, "-m", "pip", "install", "--user", "pillow"]
+    print("The Python library 'Pillow' is needed to paint the Hero and elemental icons.")
+    print("Installing it now:  " + " ".join(cmd))
+    print()
+    try:
+        subprocess.run(cmd, check=True)
+    except (OSError, subprocess.CalledProcessError):
+        raise Abort("Pillow could not be installed automatically. Run this, then run the installer again:\n"
+                    "  " + " ".join(cmd))
+    import importlib
+    importlib.invalidate_caches()
+    try:
+        import PIL  # noqa: F401
+    except ImportError:
+        raise Abort("Pillow was installed but this Python cannot import it. Run this, then try again:\n"
+                    "  " + " ".join(cmd))
+    print()
+
+
 def main(argv=None):
     parser = argparse.ArgumentParser(
         description="Install the mod-classless-wildcard client patch and addon.",
@@ -693,11 +721,8 @@ def main(argv=None):
                         help="what every class is called (default: Hero)")
     parser.add_argument("--no-addon", dest="addon", action="store_false",
                         help="do not install the in-game addon")
-    # The full Hero client is the default. These turn pieces OFF.
-    parser.add_argument("--minimal", action="store_true",
-                        help="install only the Hero name + single-class list + "
-                             "addon: no creation-screen text, no Wow.exe patch, "
-                             "no armored outfit, no Hero icon")
+    # The full Hero client is the default. These turn single pieces OFF for
+    # maintainers; a player's install is always the full one.
     parser.add_argument("--no-creation-text", dest="glue", action="store_false",
                         help="skip the Hero creation-screen text and armored "
                              "outfit (and the Wow.exe patch they need)")
@@ -710,13 +735,11 @@ def main(argv=None):
                              "(only for clients that already accept custom "
                              "interface files)")
     args = parser.parse_args(argv)
-    if args.minimal:
-        args.glue = False
-        args.hero_icon = False
-        args.elemental = False
     # Wow.exe is patched only when installing the creation text, and only with
     # the verified community pattern set in lib/exepatch.py.
     args.exe = args.glue and args.exe_ok
+    if not args.uninstall:
+        ensure_pillow()
 
     print("mod-classless-wildcard client installer")
     print("=" * 39)

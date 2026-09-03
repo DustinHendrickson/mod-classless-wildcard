@@ -191,8 +191,9 @@ void ClasslessMgr::LoadConfig(bool /*reload*/)
     cfg.worldDropRareMultiplier = sConfigMgr->GetOption<float>("ClasslessWildcard.WorldDrops.RareMultiplier", 5.0f);
     cfg.worldDropHeirloomChance = sConfigMgr->GetOption<float>("ClasslessWildcard.WorldDrops.HeirloomChance", 2.0f);
 
-    cfg.startingAbilityEssence = sConfigMgr->GetOption<uint32>("ClasslessWildcard.Classless.StartingAbilityEssence", 9);
-    cfg.essenceStartLevel = sConfigMgr->GetOption<uint8>("ClasslessWildcard.Classless.EssenceStartLevel", 10);
+    cfg.startingAbilityEssence = sConfigMgr->GetOption<uint32>("ClasslessWildcard.Classless.StartingAbilityEssence", 3);
+    cfg.essenceStartLevel = sConfigMgr->GetOption<uint8>("ClasslessWildcard.Classless.EssenceStartLevel", 4);
+    cfg.talentEssenceStartLevel = sConfigMgr->GetOption<uint8>("ClasslessWildcard.Classless.TalentEssenceStartLevel", 10);
     cfg.abilityEssencePerLevel = sConfigMgr->GetOption<uint32>("ClasslessWildcard.Classless.AbilityEssencePerLevel", 1);
     cfg.talentEssencePerLevel = sConfigMgr->GetOption<uint32>("ClasslessWildcard.Classless.TalentEssencePerLevel", 1);
     cfg.talentCostPerRank = sConfigMgr->GetOption<uint32>("ClasslessWildcard.Classless.TalentCostPerRank", 1);
@@ -957,43 +958,194 @@ void ClasslessMgr::LoadArchetypes()
     LOG_INFO("module", "mod-classless-wildcard: loaded {} archetypes.", _archetypes.size());
 }
 
+std::string ClasslessMgr::SpellNameOf(uint32 spellId) const
+{
+    return SpellName(spellId);
+}
+
+std::string ClasslessMgr::ArchetypeName(uint32 archetypeId) const
+{
+    auto itr = _archetypes.find(archetypeId);
+    return itr == _archetypes.end() ? std::string("an archetype") : itr->second.name;
+}
+
+static std::string JoinNames(std::vector<std::string> const& names)
+{
+    std::string out;
+    for (std::string const& n : names)
+        out += (out.empty() ? "" : ", ") + n;
+    return out;
+}
+
 bool ClasslessMgr::ApplyArchetype(Player* player, uint32 archetypeId, std::string* err)
 {
     CharState& st = GetState(player);
     if (st.mode != Mode::Classless)
     {
-        if (err) *err = "Archetypes are starter builds for the Classless path.";
+        if (err) *err = "Archetypes are build templates for the Classless path.";
         return false;
     }
+
+    if (!archetypeId)
+    {
+        if (!st.archetype)
+        {
+            if (err) *err = "You are not following an archetype.";
+            return false;
+        }
+        std::string name = ArchetypeName(st.archetype);
+        st.archetype = 0;
+        SaveState(player);
+        Msg(player, Acore::StringFormat("You no longer follow |cffffff00{}|r. Everything you own stays; from here you buy your own abilities and talents.", name));
+        return true;
+    }
+
     auto itr = _archetypes.find(archetypeId);
     if (itr == _archetypes.end())
     {
         if (err) *err = "Unknown archetype.";
         return false;
     }
-
     Archetype const& arch = itr->second;
-    uint32 learned = 0;
-    for (uint32 firstSpell : arch.abilities)
-        if (BuyAbility(player, firstSpell, nullptr))
-            ++learned;
 
-    uint32 talentsLearned = 0;
-    for (auto const& [talentId, rank] : arch.talents)
-        for (uint8 r = 0; r < rank; ++r)
-            if (BuyTalentRank(player, talentId, nullptr))
-                ++talentsLearned;
-
-    if (!learned && !talentsLearned)
+    // An archetype replaces the build. Abilities come off with a full refund,
+    // exactly as unlearning them one by one would. Talents can only be reset
+    // by a respec, so a Hero who owns talents pays the respec fee; that respec
+    // also clears and refunds every ability.
+    if (!st.talents.empty())
     {
-        if (err) *err = "Nothing could be applied (not enough essence, or already known).";
-        return false;
+        std::string why;
+        if (!Respec(player, &why))
+        {
+            if (err) *err = "Following a new archetype resets your talents, which is a respec. " + why;
+            return false;
+        }
+    }
+    else
+    {
+        std::vector<uint32> owned;
+        for (auto const& [firstSpell, o] : st.abilities)
+            owned.push_back(firstSpell);
+        for (uint32 firstSpell : owned)
+            if (AbilityEntry const* e = GetAbility(firstSpell))
+            {
+                RemoveAbilityInternal(player, *e);
+                st.abilityEssence += AbilityCost(*e);
+            }
     }
 
-    Msg(player, Acore::StringFormat("Archetype |cffffff00{}|r applied: {} abilities, {} talent ranks. "
-        "AE left: |cff00ff00{}|r, TE left: |cff00ff00{}|r.",
-        arch.name, learned, talentsLearned, st.abilityEssence, st.talentEssence));
+    st.archetype = archetypeId;
+    SaveState(player);
+
+    FollowResult got = FollowArchetype(player);
+    std::string line = Acore::StringFormat("You now follow |cffffff00{}|r. Bought now: {} abilities, {} talent ranks.",
+        arch.name, got.abilities, got.talentRanks);
+    auto queue = ArchetypeQueue(player);
+    if (!queue.empty())
+    {
+        auto const& [firstSpell, unlock] = queue.front();
+        if (unlock > player->GetLevel())
+            line += Acore::StringFormat(" Next: {} at level {}.", SpellName(firstSpell), uint32(unlock));
+        else
+            line += Acore::StringFormat(" Next: {}, as soon as you have the Ability Essence.", SpellName(firstSpell));
+    }
+    Msg(player, line + Acore::StringFormat(" AE left: |cff00ff00{}|r, TE left: |cff00ff00{}|r.",
+        st.abilityEssence, st.talentEssence));
     return true;
+}
+
+uint32 ClasslessMgr::LevelsEarned(uint8 level, uint8 startLevel)
+{
+    return level >= startLevel ? uint32(level - startLevel + 1) : 0;
+}
+
+// The build's abilities are bought strictly in build order: the next one is
+// taken as soon as it is unlocked and affordable, and nothing after it is
+// touched before it. The cursor is the entry after the LAST owned one, so an
+// ability the player unlearned on purpose further back is left alone.
+size_t ClasslessMgr::ArchetypeCursor(CharState const& st, Archetype const& arch) const
+{
+    size_t cursor = 0;
+    for (size_t i = 0; i < arch.abilities.size(); ++i)
+        if (st.abilities.count(arch.abilities[i]))
+            cursor = i + 1;
+    return cursor;
+}
+
+ClasslessMgr::FollowResult ClasslessMgr::FollowArchetype(Player* player)
+{
+    FollowResult out;
+    CharState& st = GetState(player);
+    if (st.mode != Mode::Classless || !st.archetype)
+        return out;
+    auto itr = _archetypes.find(st.archetype);
+    if (itr == _archetypes.end())
+        return out;
+    Archetype const& arch = itr->second;
+
+    uint8 level = player->GetLevel();
+    for (size_t i = ArchetypeCursor(st, arch); i < arch.abilities.size(); ++i)
+    {
+        uint32 firstSpell = arch.abilities[i];
+        if (st.abilities.count(firstSpell))
+            continue;
+        AbilityEntry const* e = GetAbility(firstSpell);
+        if (!e || !e->enabled)
+            continue;
+        uint8 unlock = e->rankLevels.empty() ? 1 : e->rankLevels[0];
+        if (cfg.respectLevelReqs && unlock > level)
+            break;                                  // waits for the level
+        if (!BuyAbility(player, firstSpell, nullptr))
+        {
+            out.stalled.push_back(SpellName(firstSpell));
+            break;                                  // waits for essence
+        }
+        ++out.abilities;
+        out.learned.push_back(SpellName(firstSpell));
+    }
+
+    // Talents strictly in plan order. The plan is written tier by tier, so
+    // stopping at the first rank that cannot be bought yet keeps the tree
+    // rules honest, and the next level-up carries on from that point.
+    for (auto const& [talentId, rank] : arch.talents)
+    {
+        uint8 owned = 0;
+        if (auto o = st.talents.find(talentId); o != st.talents.end())
+            owned = o->second;
+        bool blocked = false;
+        while (owned < rank)
+        {
+            if (!BuyTalentRank(player, talentId, nullptr))
+            {
+                blocked = true;
+                break;
+            }
+            ++owned;
+            ++out.talentRanks;
+        }
+        if (blocked)
+            break;
+    }
+    return out;
+}
+
+std::vector<std::pair<uint32, uint8>> ClasslessMgr::ArchetypeQueue(Player* player)
+{
+    std::vector<std::pair<uint32, uint8>> out;
+    CharState& st = GetState(player);
+    auto itr = _archetypes.find(st.archetype);
+    if (!st.archetype || itr == _archetypes.end())
+        return out;
+    Archetype const& arch = itr->second;
+    for (size_t i = ArchetypeCursor(st, arch); i < arch.abilities.size(); ++i)
+    {
+        uint32 firstSpell = arch.abilities[i];
+        if (st.abilities.count(firstSpell))
+            continue;
+        if (AbilityEntry const* e = GetAbility(firstSpell))
+            out.emplace_back(firstSpell, e->rankLevels.empty() ? uint8(1) : e->rankLevels[0]);
+    }
+    return out;
 }
 
 bool ClasslessMgr::Rebirth(Player* player, Mode target, std::string* err)
@@ -1037,6 +1189,7 @@ bool ClasslessMgr::Rebirth(Player* player, Mode target, std::string* err)
 
     st.bans.clear();
     st.pity = 0;
+    st.archetype = 0;
     CharacterDatabase.Execute("DELETE FROM cw_char_bans WHERE guid = {}", guid);
 
     st.mode = target;
@@ -1045,9 +1198,8 @@ bool ClasslessMgr::Rebirth(Player* player, Mode target, std::string* err)
 
     if (target == Mode::Classless)
     {
-        uint32 levelsEarned = level >= cfg.essenceStartLevel ? uint32(level - cfg.essenceStartLevel + 1) : 0;
-        st.abilityEssence = cfg.startingAbilityEssence + levelsEarned * cfg.abilityEssencePerLevel;
-        st.talentEssence = levelsEarned * cfg.talentEssencePerLevel;
+        st.abilityEssence = cfg.startingAbilityEssence + LevelsEarned(level, cfg.essenceStartLevel) * cfg.abilityEssencePerLevel;
+        st.talentEssence = LevelsEarned(level, cfg.talentEssenceStartLevel) * cfg.talentEssencePerLevel;
         SaveState(player);
         Msg(player, Acore::StringFormat("|cffff8800Rebirth complete.|r You walk the Classless path anew — "
             "AE: |cff00ff00{}|r, TE: |cff00ff00{}|r.", st.abilityEssence, st.talentEssence));
@@ -1258,7 +1410,7 @@ void ClasslessMgr::LoadCharacter(Player* player, CharState& st)
 
     if (QueryResult result = CharacterDatabase.Query(
         "SELECT mode, ability_essence, talent_essence, pity, rerolls, last_level, "
-        "stat_str, stat_agi, stat_sta, stat_int, stat_spi, display_power FROM cw_char_state WHERE guid = {}", guid))
+        "stat_str, stat_agi, stat_sta, stat_int, stat_spi, display_power, archetype FROM cw_char_state WHERE guid = {}", guid))
     {
         Field* f = result->Fetch();
         st.mode = Mode(f[0].Get<uint8>());
@@ -1270,6 +1422,7 @@ void ClasslessMgr::LoadCharacter(Player* player, CharState& st)
         for (uint8 i = 0; i < 5; ++i)
             st.statAlloc[i] = f[6 + i].Get<uint32>();
         st.displayPower = f[11].Get<uint8>();
+        st.archetype = f[12].Get<uint32>();
     }
 
     if (QueryResult result = CharacterDatabase.Query(
@@ -1317,11 +1470,11 @@ void ClasslessMgr::SaveState(Player* player)
     CharState& st = GetState(player);
     CharacterDatabase.Execute(
         "REPLACE INTO cw_char_state (guid, mode, ability_essence, talent_essence, pity, rerolls, last_level, "
-        "stat_str, stat_agi, stat_sta, stat_int, stat_spi, display_power) VALUES ({}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {})",
+        "stat_str, stat_agi, stat_sta, stat_int, stat_spi, display_power, archetype) VALUES ({}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {})",
         player->GetGUID().GetCounter(), uint32(st.mode), st.abilityEssence, st.talentEssence, st.pity,
         st.rerolls, st.lastProcessedLevel,
         st.statAlloc[0], st.statAlloc[1], st.statAlloc[2], st.statAlloc[3], st.statAlloc[4],
-        uint32(st.displayPower));
+        uint32(st.displayPower), st.archetype);
 }
 
 bool ClasslessMgr::SetDisplayPower(Player* player, uint8 powerIdx, std::string* err)
@@ -1656,10 +1809,9 @@ void ClasslessMgr::HandleLevelUp(Player* player, uint8 oldLevel)
     for (uint8 lvl = oldLevel + 1; lvl <= newLevel; ++lvl)
     {
         if (st.mode == Mode::Classless && lvl >= cfg.essenceStartLevel)
-        {
             st.abilityEssence += cfg.abilityEssencePerLevel;
+        if (st.mode == Mode::Classless && lvl >= cfg.talentEssenceStartLevel)
             st.talentEssence += cfg.talentEssencePerLevel;
-        }
         else if (st.mode == Mode::Wildcard && lvl >= cfg.wcRollStartLevel)
         {
             uint32 offset = lvl - cfg.wcRollStartLevel;
@@ -1683,6 +1835,20 @@ void ClasslessMgr::HandleLevelUp(Player* player, uint8 oldLevel)
 
     st.lastProcessedLevel = newLevel;
     UpdateAbilityRanks(player);
+
+    if (st.mode == Mode::Classless && st.archetype)
+    {
+        FollowResult got = FollowArchetype(player);
+        std::string name = ArchetypeName(st.archetype);
+        if (!got.learned.empty())
+            Msg(player, Acore::StringFormat("|cffffff00{}|r: learned {}.", name, JoinNames(got.learned)));
+        if (got.talentRanks)
+            Msg(player, Acore::StringFormat("|cffffff00{}|r: {} talent rank{} bought.", name,
+                got.talentRanks, got.talentRanks == 1 ? "" : "s"));
+        if (!got.stalled.empty())
+            Msg(player, Acore::StringFormat("|cffffff00{}|r: {} is next and waits for Ability Essence.",
+                name, JoinNames(got.stalled)));
+    }
     SaveState(player);
 
     if (st.mode == Mode::Classless && newLevel >= cfg.essenceStartLevel && cfg.announce)
@@ -2210,9 +2376,13 @@ bool ClasslessMgr::Respec(Player* player, std::string* err)
 
     // rebuild full essence pools from the schedule
     uint8 level = player->GetLevel();
-    uint32 levelsEarned = level >= cfg.essenceStartLevel ? uint32(level - cfg.essenceStartLevel + 1) : 0;
-    st.abilityEssence = cfg.startingAbilityEssence + levelsEarned * cfg.abilityEssencePerLevel;
-    st.talentEssence = levelsEarned * cfg.talentEssencePerLevel;
+    st.abilityEssence = cfg.startingAbilityEssence + LevelsEarned(level, cfg.essenceStartLevel) * cfg.abilityEssencePerLevel;
+    st.talentEssence = LevelsEarned(level, cfg.talentEssenceStartLevel) * cfg.talentEssencePerLevel;
+    if (st.archetype)
+    {
+        Msg(player, Acore::StringFormat("You no longer follow |cffffff00{}|r.", ArchetypeName(st.archetype)));
+        st.archetype = 0;
+    }
 
     SaveState(player);
     Msg(player, Acore::StringFormat("Respec complete. AE: |cff00ff00{}|r, TE: |cff00ff00{}|r.",

@@ -20,11 +20,10 @@ The creation-screen text is a *signed* interface file, so the installer also app
 the well-known "allow custom interface" patch to `Wow.exe` (backed up first,
 reversible with `--uninstall`). **Close World of Warcraft before installing.**
 
-Want less? `--minimal` installs only the Hero name, the single-class list and the
-addon, and never touches `Wow.exe`. `--uninstall` always restores everything.
+`--uninstall` restores everything the installer changed, `Wow.exe` included.
 
-> The Hero emblem needs the Python **Pillow** library (`pip install pillow`). Without
-> it the icon step is skipped and the rest installs normally.
+> The Hero emblem and the elemental ability icons are painted with the Python **Pillow**
+> library. The installer installs it with pip when it is missing and stops if it cannot.
 
 ---
 
@@ -138,7 +137,6 @@ The full Hero client installs by default. These turn pieces off.
 | `--uninstall`         | Undo everything the installer did                                     |
 | `--yes` / `-y`        | Skip the confirmation prompt                                          |
 | `--name Champion`     | Call the class something other than `Hero`                            |
-| `--minimal`           | Only the Hero name + single-class list + addon (no text, outfit, icon, or exe patch) |
 | `--no-creation-text`  | Skip the Hero text + armored outfit (and the `Wow.exe` patch they need) |
 | `--no-hero-icon`      | Keep the stock class icon instead of the Hero emblem                  |
 | `--no-exe`            | Install the text but not the `Wow.exe` patch (only for clients that already accept custom UI) |

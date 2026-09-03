@@ -85,7 +85,25 @@ public:
 
     // ------- onboarding & exits -------
     std::map<uint32, ClasslessWildcard::Archetype> const& Archetypes() const { return _archetypes; }
+    // Follow an archetype: it replaces the current build and from then on
+    // its abilities and talent ranks are bought for the Hero as each one
+    // becomes available. Id 0 stops following.
     bool ApplyArchetype(Player* player, uint32 archetypeId, std::string* err);
+    std::string ArchetypeName(uint32 archetypeId) const;
+    std::string SpellNameOf(uint32 spellId) const;   // rank-1 spell name, for chat lines
+    struct FollowResult
+    {
+        uint32 abilities = 0;
+        uint32 talentRanks = 0;
+        std::vector<std::string> learned;   // ability names bought now
+        std::vector<std::string> stalled;   // unlocked, but not affordable
+    };
+    // Buy the followed archetype's abilities strictly in build order while
+    // each is unlocked and affordable, then its talent ranks in order.
+    FollowResult FollowArchetype(Player* player);
+    // What the build still has to buy, in order, with each unlock level.
+    std::vector<std::pair<uint32, uint8>> ArchetypeQueue(Player* player);
+    static uint32 LevelsEarned(uint8 level, uint8 startLevel);
     // Full reset + (optional) mode switch for gold — the late "exit" once the
     // level-based mode lock has passed.
     bool Rebirth(Player* player, ClasslessWildcard::Mode target, std::string* err);
@@ -152,6 +170,7 @@ private:
     void GrantFormKit(Player* player, ClasslessWildcard::AbilityEntry const& form,
                       ClasslessWildcard::GrantSource source);
     void LoadCharacter(Player* player, ClasslessWildcard::CharState& st);
+    size_t ArchetypeCursor(ClasslessWildcard::CharState const& st, ClasslessWildcard::Archetype const& arch) const;
     void GrantAbilityInternal(Player* player, ClasslessWildcard::AbilityEntry const& e,
                               ClasslessWildcard::GrantSource source, bool persist = true,
                               bool announce = true);

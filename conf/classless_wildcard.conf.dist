@@ -339,9 +339,13 @@ ClasslessWildcard.SuppressTalentPoints = 1
 # Classless (free-pick) economy: Ascension defaults
 ########################################
 
-ClasslessWildcard.Classless.StartingAbilityEssence = 9
-ClasslessWildcard.Classless.EssenceStartLevel = 10
+# Ability Essence follows a class's own pacing: a level 1 has 3 abilities, then
+# one more every level from 4 (9 by level 9, 80 by level 80). Talent Essence
+# starts at 10, one a level, the 71 points a class has at 80.
+ClasslessWildcard.Classless.StartingAbilityEssence = 3
+ClasslessWildcard.Classless.EssenceStartLevel = 4
 ClasslessWildcard.Classless.AbilityEssencePerLevel = 1
+ClasslessWildcard.Classless.TalentEssenceStartLevel = 10
 ClasslessWildcard.Classless.TalentEssencePerLevel = 1
 # AE cost per rarity: common,uncommon,rare,epic,legendary
 ClasslessWildcard.Classless.AbilityCostByRarity = "1,2,3,5,8"

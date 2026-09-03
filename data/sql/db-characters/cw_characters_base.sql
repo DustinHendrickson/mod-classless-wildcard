@@ -14,6 +14,7 @@ CREATE TABLE IF NOT EXISTS `cw_char_state` (
   `stat_int` INT UNSIGNED NOT NULL DEFAULT 0,
   `stat_spi` INT UNSIGNED NOT NULL DEFAULT 0,
   `display_power` TINYINT UNSIGNED NOT NULL DEFAULT 255 COMMENT '0 mana, 1 rage, 3 energy, 255 chassis default',
+  `archetype` INT UNSIGNED NOT NULL DEFAULT 0 COMMENT 'cw_archetypes.id the Hero follows, 0 none',
   PRIMARY KEY (`guid`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='Classless/Wildcard character state';
 

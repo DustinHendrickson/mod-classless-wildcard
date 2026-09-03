@@ -35,10 +35,29 @@ if not defined PYTHON (
 
 echo Using Python: %PYTHON%
 echo.
-echo This installs the full Hero client (name, single-class creation screen,
-echo Hero text + armored outfit + emblem). It patches Wow.exe to accept the
-echo custom interface, backing it up first. CLOSE WORLD OF WARCRAFT before
-echo continuing. For just the name and class list, run with --minimal.
+
+rem The install paints icons, which needs the Pillow library. Install it here
+rem so the player sees it happen, rather than deep inside the installer.
+call %PYTHON% -c "import PIL" >nul 2>&1
+if errorlevel 1 (
+    echo The Python library Pillow is needed to paint the Hero and elemental icons.
+    echo Installing it now...
+    call %PYTHON% -m pip install --user pillow
+    call %PYTHON% -c "import PIL" >nul 2>&1
+    if errorlevel 1 (
+        echo.
+        echo   Pillow could not be installed. Run this, then run install.bat again:
+        echo     %PYTHON% -m pip install --user pillow
+        echo.
+        pause
+        exit /b 1
+    )
+    echo.
+)
+echo This installs the full Hero client: the Hero name, the single-class
+echo creation screen, the Hero text, armored outfit and emblem, the elemental
+echo ability variants and the addon. It patches Wow.exe to accept the custom
+echo interface, backing it up first. CLOSE WORLD OF WARCRAFT before continuing.
 echo.
 
 call %PYTHON% install.py %*

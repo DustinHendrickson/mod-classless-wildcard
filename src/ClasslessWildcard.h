@@ -126,6 +126,7 @@ namespace ClasslessWildcard
         // two separate pools just made the UI read as three confusing numbers.
         uint32 rerolls = 0;
         uint8  lastProcessedLevel = 0;
+        uint32 archetype = 0;            // cw_archetypes.id the Hero follows (0 = none)
 
         // which resource bar the default unit frame displays
         // (0 mana, 1 rage, 3 energy, 255 = chassis default)
@@ -262,8 +263,9 @@ namespace ClasslessWildcard
         float  worldDropHeirloomChance = 2.0f;   // percent, rares and bosses only
 
         // classless (free-pick) economy
-        uint32 startingAbilityEssence = 9;
-        uint8  essenceStartLevel = 10;
+        uint32 startingAbilityEssence = 3;
+        uint8  essenceStartLevel = 4;          // ability essence income starts here
+        uint8  talentEssenceStartLevel = 10;   // talent essence income starts here
         uint32 abilityEssencePerLevel = 1;
         uint32 talentEssencePerLevel = 1;
         std::array<uint32, 5> abilityCostByRarity = { 1, 2, 3, 5, 8 };

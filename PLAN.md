@@ -134,8 +134,10 @@ Learned spells themselves persist natively in `character_spell` (we call
 
 ### 2.5 Free-pick mode (Ascension classless)
 
-- AE: `Classless.StartingAbilityEssence` (9) at creation; +1 AE and +1 TE per level
-  from level 10 (all configurable), matching Ascension's published economy.
+- AE: `Classless.StartingAbilityEssence` (3) at creation, +1 AE per level from
+  `EssenceStartLevel` (4); +1 TE per level from `TalentEssenceStartLevel` (10),
+  all configurable. The same totals as before (9 AE by 9, 80 by 80, 71 TE by 80),
+  paced the way a class learns its abilities.
 - Learn/unlearn through the NPC (browse by class → paginated spell lists with cost
   and rarity color) or `.classless learn <spellId>`; cost by rarity
   (default 1/2/3/5/8 AE), refund on unlearn, full respec for gold.
@@ -187,8 +189,10 @@ scrolls and locks), proficiencies, NPC gossip UI, command families, respec,
 config surface, SQL, README.
 
 **Phase 2 — onboarding, exits, itemization (implemented)**
-- Starter **archetypes** (`cw_archetypes` world table + 6 shipped builds) that
-  auto-spend a new Hero's essence — Ascension's role-focused onboarding.
+- **Archetypes** (`cw_archetypes` world table + 6 shipped builds): level 1 to 80
+  build templates a Classless Hero follows; the server buys each ability and
+  talent rank as it becomes available. Authored and simulated by
+  `data/sql/generators/gen_archetypes.py`.
 - **Rebirth**: config-gated full reset + path switch (classless ↔ wildcard) for
   gold after the mode lock; wildcard rebirths replay the roll schedule.
 - **Classless item pack**: 12 server-side items (int guns, str javelins, mail

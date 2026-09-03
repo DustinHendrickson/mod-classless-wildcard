@@ -1,9 +1,10 @@
 #!/usr/bin/env python3
 """Generate elemental variants of the pool's physical strikes.
 
-A variant is the base ability dealt as an element instead of Physical, at a
-reduced weapon coefficient, with a spell-power-scaled elemental add and, when
-a slot is free, one rider the element is known for. The shape is Blizzard's
+A variant is the base ability dealt as an element instead of Physical, at 85%
+of the base's own weapon multiplier, with a spell-power-scaled elemental add
+and, when a slot is free, one rider the element is known for. Its tooltip is
+the base's own description, modified for the element. The shape is Blizzard's
 own Frost Strike; see PLAN-elemental-variants.md.
 
 Reads the client's extracted DBCs and writes two things from ONE source, so
@@ -298,6 +299,55 @@ def candidates(spell, sla, skill, talent):
 # ---- variant construction -----------------------------------------------------
 
 
+# ---- text: each base's own description, modified for the element ---------------
+# Slot 1 is always the weapon percent, slot 2 the elemental add, slot 3 the
+# base's own extra effect (combo points, a debuff) or the element's rider.
+# {E} is the element word, {rider} the rider clause (empty when slot 3 is
+# taken). Tokens follow the client's tooltip grammar: $s1 the value of slot 1,
+# $o3 the total periodic damage of slot 3, $d the duration, $x1 chain targets.
+DESCRIPTIONS = {
+    "Backstab": "Backstab the target, causing $s1% weapon damage as {E} damage plus $s2 {E} damage{rider}.  Must be behind the target.  Requires a dagger in the main hand.  Awards $s3 combo $lpoint:points;.",
+    "Heroic Strike": "A strong attack that deals $s1% weapon damage as {E} damage plus $s2 {E} damage{rider} and causes a high amount of threat.",
+    "Cleave": "A sweeping attack that deals $s1% weapon damage as {E} damage plus $s2 {E} damage{rider} to the target and its $?s58366[two nearest allies][nearest ally].",
+    "Claw": "Claw the enemy, causing $s1% weapon damage as {E} damage plus $s2 {E} damage{rider}.  Awards $s3 combo $lpoint:points;.",
+    "Whirlwind": "In a whirlwind of steel you attack up to $i enemies within $a1 yards, causing $s1% weapon damage as {E} damage plus $s2 {E} damage to each enemy{rider}.",
+    "Sinister Strike": "An instant strike that causes $s2 {E} damage in addition to $s1% of your normal weapon damage, dealt as {E} damage{rider}.  Awards $s3 combo $lpoint:points;.",
+    "Multi-Shot": "Fires several missiles, hitting $x1 targets for $s1% weapon damage as {E} damage plus $s2 {E} damage{rider}.",
+    "Raptor Strike": "A strong attack that deals $s1% weapon damage as {E} damage plus $s2 {E} damage{rider}.",
+    "Shred": "Shred the target, causing $s1% weapon damage as {E} damage plus $s2 {E} damage{rider}.  Must be behind the target.  Awards $s3 combo $lpoint:points;.",
+    "Ravage": "Ravage the target, causing $s1% weapon damage as {E} damage plus $s2 {E} damage{rider}.  Must be prowling and behind the target.  Awards $s3 combo $lpoint:points;.",
+    "Maul": "A strong attack that deals $s1% weapon damage as {E} damage plus $s2 {E} damage{rider} and causes a high amount of threat.",
+    "Overpower": "Instantly overpower the enemy, causing $s1% weapon damage as {E} damage plus $s2 {E} damage{rider}.  Only useable after the target dodges.  The Overpower cannot be blocked, dodged or parried.",
+    "Ambush": "Ambush the target, causing $s1% weapon damage as {E} damage plus $s2 {E} damage{rider}.  Must be stealthed and behind the target.  Requires a dagger in the main hand.  Awards $s3 combo $lpoint:points;.",
+    "Hemorrhage": "An instant strike that deals $s1% weapon damage as {E} damage plus $s2 {E} damage{rider} and causes the target to hemorrhage, increasing any Physical damage dealt to the target by up to $s3.  Lasts $n charges or $d.  Awards 1 combo point.",
+    "Mortal Strike": "A vicious strike that deals $s1% weapon damage as {E} damage plus $s2 {E} damage{rider} and wounds the target, reducing the effectiveness of any healing by $s3% for $d.",
+    "Maim": "Finishing move that deals $s1% weapon damage as {E} damage plus $s2 {E} damage{rider} and stuns the target for 1 sec per combo point.  Non-player victim spellcasting is also interrupted for $32747d.",
+    "Aimed Shot": "An aimed shot that deals $s1% weapon damage as {E} damage plus $s2 {E} damage{rider} and reduces healing done to that target by $s3%.  Lasts $d.",
+    "Devastate": "Sunder the target's armor causing the Sunder Armor effect.  In addition, deals $s1% weapon damage as {E} damage plus $s2 {E} damage for each application of Sunder Armor on the target{rider}.  The Sunder Armor effect can stack up to $u times.",
+    "Mangle (Cat)": "Mangle the target for $s1% weapon damage as {E} damage plus $s2 {E} damage{rider} and causes the target to take $s3% additional damage from bleed effects for $d.  Awards $34071s1 combo $lpoint:points;.",
+    "Mangle (Bear)": "Mangle the target for $s1% weapon damage as {E} damage plus $s2 {E} damage{rider} and causes the target to take $s3% additional damage from bleed effects for $d.",
+    "Plague Strike": "A vicious strike that deals $s1% weapon damage as {E} damage plus $s2 {E} damage{rider} and infects the target with Blood Plague, a disease dealing Shadow damage over time.",
+    "Blood Strike": "Instantly strike the enemy, causing $s1% weapon damage as {E} damage plus $s2 {E} damage{rider}, total damage increased by ${$m3/2}.1% for each of your diseases on the target.",
+    "Obliterate": "A brutal instant attack that deals $s1% weapon damage as {E} damage plus $s2 {E} damage{rider}, total damage increased ${$m3/2}.1% per each of your diseases on the target, but consumes the diseases.",
+    "Death Strike": "A deadly attack that deals $s1% weapon damage as {E} damage plus $s2 {E} damage{rider}, total damage increased for each of your diseases on the target.",
+    "Fan of Knives": "Instantly throw both weapons at all targets within $a1 yards, causing $s1% weapon damage as {E} damage plus $s2 {E} damage{rider}.",
+    "Kill Shot": "You attempt to finish the wounded target off, firing a long range attack dealing $s1% weapon damage as {E} damage plus $s2 {E} damage{rider}.  Kill Shot can only be used on enemies that have 20% or less health.",
+    "Swipe (Cat)": "Swipe nearby enemies, inflicting $s1% weapon damage as {E} damage plus $s2 {E} damage{rider}.",
+}
+
+
+def check_tokens(desc, slots, duration):
+    """Every $s/$m/$o/$x/$a token must point at a filled slot, and $d at a
+    duration; returns the first token that does not, else ''."""
+    import re as _re
+    for m in _re.finditer(r"\$[smoxa]([1-3])", desc):
+        if slots[int(m.group(1)) - 1] is None:
+            return m.group(0)
+    if "$d" in desc and not duration:
+        return "$d"
+    return ""
+
+
 def build_variant(spell, sla, icon, visual, base_id, base_index, rank_index, elem,
                   first_variant_id, coeff_pct, sp_coeff):
     row = spell.row_of(base_id)
@@ -308,22 +358,35 @@ def build_variant(spell, sla, icon, visual, base_id, base_index, rank_index, ele
     # -- pull the base's effects apart
     weapon, other = [], []
     flat_add = 0
+    base_pct = 100          # the base's own weapon multiplier (Ambush 275%, Blood Strike 40%)
     for e in range(3):
         eff = vals[F["Effect"] + e]
         if not eff:
+            # Blood Strike keeps its per-disease bonus in a slot with no effect
+            # type at all; the core reads Effects[2].BasePoints for it, so the
+            # slot must survive as it is.
+            if vals[F["EffectBasePoints"] + e]:
+                other.append(e)
             continue
         if eff in WEAPON_EFFECTS:
             weapon.append(e)
             if eff in (E_WEAPON_DAMAGE, E_NORMALIZED_WEAPON_DMG, E_WEAPON_DAMAGE_NOSCHOOL):
                 flat_add += vals[F["EffectBasePoints"] + e] + max(1, vals[F["EffectDieSides"] + e])
+            elif eff == E_WEAPON_PERCENT_DAMAGE:
+                base_pct = base_pct * (vals[F["EffectBasePoints"] + e] + 1) // 100
         else:
             other.append(e)
     if not weapon:
         return None, "no weapon effect"
     if len(other) > 1:
         return None, "two non-weapon effects leave no room for the elemental add"
+    if base_name not in DESCRIPTIONS:
+        return None, "no description template for this base"
 
-    coeff = coeff_pct if elem["coeff"] is None else elem["coeff"]
+    # The kept share applies to the base's own multiplier, so Fiery Ambush is
+    # 85% of Ambush's 275%, not a flat 85% that would gut it.
+    keep = coeff_pct if elem["coeff"] is None else elem["coeff"]
+    coeff = max(1, int(round(base_pct * keep / 100.0)))
     add_value = int(round((flat_add + 3 + lvl * 0.6) * elem.get("add_mult", 1.0)))
 
     # -- lay the three slots out: weapon %, elemental add, [base other], [rider]
@@ -418,11 +481,10 @@ def build_variant(spell, sla, icon, visual, base_id, base_index, rank_index, ele
     name = "%s %s" % (elem["prefix"], base_name)
     rank_text = vals[F["Rank"]]
     word = elem["word"]
-    desc = ("An instant strike that deals $s1%% of your weapon damage as %s damage, plus $s2 %s damage"
-            % (word, word))
+    rider_text = ""
     if rider_slot is not None:
         n = rider_slot + 1
-        desc += {
+        rider_text = {
             "fire":   " and burns the target for $o%d %s damage over $d" % (n, word),
             "frost":  " and slows the target's movement by $s%d%% for $d" % n,
             "earth":  " and increases the time between the target's attacks by $s%d%% for $d" % n,
@@ -430,16 +492,10 @@ def build_variant(spell, sla, icon, visual, base_id, base_index, rank_index, ele
             "shadow": " and reduces the effectiveness of healing on the target by $s%d%% for $d" % n,
             "holy":   " and heals you for $s%d" % n,
         }[elem["key"]]
-    if hit_target["Chain"] >= 100 or (hit_target["Radius"] and hit_target["Chain"] <= 1):
-        desc += ", striking all enemies in range"
-    elif hit_target["Chain"] > 1:
-        desc += ", striking up to $x1 targets"
-    desc += "."
-    for e, sl in enumerate(slots):
-        if sl and sl["Effect"] == E_ADD_COMBO_POINTS:
-            desc += " Awards $s%d combo $lpoint:points;." % (e + 1)
-    if vals[F["Attributes"]] & 0x404:    # SPELL_ATTR0_ON_NEXT_SWING(_NO_DAMAGE)
-        desc = desc.replace("An instant strike that deals", "A strong attack, on your next swing, that deals")
+    desc = DESCRIPTIONS[base_name].replace("{E}", word).replace("{rider}", rider_text)
+    bad = check_tokens(desc, slots, duration)
+    if bad:
+        return None, "description token %s has nothing behind it" % bad
 
     # -- visual: base row with the element's impact kit
     base_visual = vals[F["SpellVisual"]]

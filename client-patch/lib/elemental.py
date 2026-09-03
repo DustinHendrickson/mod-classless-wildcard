@@ -18,7 +18,10 @@ Everything is appended to the player's own tables, so a community patch's
 rows survive, and nothing of Blizzard's is carried in the repository: the
 manifest holds ids, overrides and text, not copies of rows or art.
 
-Pillow is optional. Without it the variants still work and simply show their
+Pillow is required by the installer; without it apply() refuses to paint and
+the install stops. (Earlier versions fell back to the base icons, which is how
+variants ended up looking exactly like the ability they came from.) Without it
+the variants would still work and simply show their
 base's icon.
 """
 
@@ -354,7 +357,8 @@ def apply(files, payload: dict, manifest: dict, report: list, want_icons: bool =
         payload[SPELLICON] = patched
         report.append("  SpellIcon.dbc    %d painted icons registered" % added)
     elif want_icons:
-        report.append("  elemental icons  skipped (Python 'Pillow' not installed); variants use their base icons")
+        raise ElementalError("the elemental icons cannot be painted: the Python library "
+                             "'Pillow' is missing (python -m pip install --user pillow)")
 
     if SKILLLINEABILITY in payload:
         raw = payload[SKILLLINEABILITY]

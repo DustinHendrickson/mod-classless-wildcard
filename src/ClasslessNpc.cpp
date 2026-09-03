@@ -216,11 +216,23 @@ namespace
     void ShowArchetypes(Player* player, Creature* creature)
     {
         ClearGossipMenuFor(player);
+        uint32 following = sClasslessMgr->GetState(player).archetype;
         for (auto const& [id, arch] : sClasslessMgr->Archetypes())
+        {
+            uint32 ranks = 0;
+            for (auto const& [talentId, rank] : arch.talents)
+                ranks += rank;
             AddGossipItemFor(player, GOSSIP_ICON_TABARD,
-                Acore::StringFormat("|cffffff00{}|r — {}", arch.name, arch.description),
+                Acore::StringFormat("{}|cffffff00{}|r: {} ({} abilities, {} talent ranks, level 1 to 80)",
+                    following == id ? "[following] " : "", arch.name, arch.description,
+                    uint32(arch.abilities.size()), ranks),
                 GOSSIP_SENDER_MAIN, BASE_ARCHETYPE + id,
-                Acore::StringFormat("Apply the {} archetype? It spends your essence on a ready-made starter build.", arch.name), 0, false);
+                Acore::StringFormat("Follow the {} archetype? It replaces your build: abilities are unlearned and refunded, "
+                    "and if you own talents the respec fee applies. Its abilities and talents are then bought for you "
+                    "as you level.", arch.name), 0, false);
+        }
+        if (following)
+            AddGossipItemFor(player, GOSSIP_ICON_TALK, "Stop following my archetype", GOSSIP_SENDER_MAIN, BASE_ARCHETYPE);
         AddGossipItemFor(player, GOSSIP_ICON_TALK, "<- Back", GOSSIP_SENDER_MAIN, ACT_MAIN);
         SendGossipMenuFor(player, DEFAULT_GOSSIP_MESSAGE, creature->GetGUID());
     }

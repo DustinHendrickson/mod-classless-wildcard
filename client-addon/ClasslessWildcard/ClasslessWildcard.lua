@@ -144,7 +144,7 @@ titleBtn:SetScript("OnEnter", function(self)
         GameTooltip:AddLine("Click to reroll your starter abilities.", 0.3, 1, 0.3, true)
         GameTooltip:AddLine("Free before level 10 -- lock the ones you like.", 0.6, 0.9, 0.6, true)
     else
-        GameTooltip:SetText("Starting Hand — closed")
+        GameTooltip:SetText("Starting Hand (closed)")
         GameTooltip:AddLine("Free starter rolls end at level 10.", 0.8, 0.8, 0.8, true)
         GameTooltip:AddLine("Reroll anything you own one at a time from |cffffd100My Build|r, using the circular arrow beside it.", 0.6, 0.9, 0.6, true)
     end
@@ -581,11 +581,12 @@ statFly:SetWidth(260); statFly:SetHeight(250)
 statFly:SetPoint("BOTTOMRIGHT", frame, "BOTTOMRIGHT", -20, 56)
 statFly:SetFrameStrata("DIALOG")
 statFly:SetBackdrop({
-    bgFile = "Interface\\DialogFrame\\UI-DialogBox-Background",
+    bgFile = "Interface\\Buttons\\WHITE8X8",
     edgeFile = "Interface\\Tooltips\\UI-Tooltip-Border",
-    tile = true, tileSize = 32, edgeSize = 14,
+    tile = false, edgeSize = 14,
     insets = { left = 4, right = 4, top = 4, bottom = 4 },
 })
+statFly:SetBackdropColor(0.03, 0.03, 0.05, 0.97) -- solid: the panes underneath must not show through
 statFly:Hide()
 
 local statTitle = statFly:CreateFontString(nil, "OVERLAY", "GameFontNormal")
@@ -630,11 +631,12 @@ archFly:SetWidth(460); archFly:SetHeight(120)
 archFly:SetPoint("BOTTOMLEFT", frame, "BOTTOMLEFT", 20, 56)
 archFly:SetFrameStrata("DIALOG")
 archFly:SetBackdrop({
-    bgFile = "Interface\\DialogFrame\\UI-DialogBox-Background",
+    bgFile = "Interface\\Buttons\\WHITE8X8",
     edgeFile = "Interface\\Tooltips\\UI-Tooltip-Border",
-    tile = true, tileSize = 32, edgeSize = 14,
+    tile = false, edgeSize = 14,
     insets = { left = 4, right = 4, top = 4, bottom = 4 },
 })
+archFly:SetBackdropColor(0.03, 0.03, 0.05, 0.97) -- solid: the panes underneath must not show through
 archFly:EnableMouse(true)
 archFly:Hide()
 CW.archFly = archFly
@@ -643,56 +645,75 @@ archFly.title = archFly:CreateFontString(nil, "OVERLAY", "GameFontNormal")
 archFly.title:SetPoint("TOP", 0, -12)
 archFly.title:SetText("Starter Archetypes")
 
-archFly.INTRO = "An archetype buys a set of abilities and talent ranks with your essence in one step. Anything you already know is skipped. Abilities it buys can be unlearned for a refund and its talents are covered by Respec, like any other purchase."
+archFly.INTRO = "An archetype is a build you follow from level 1 to 80. Choosing one replaces your build: your abilities are unlearned and refunded, and if you own talents the respec fee applies. From then on its abilities and talents are bought for you as each becomes available. Stop following at any time; what you own stays."
 archFly.intro = archFly:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
 archFly.intro:SetPoint("TOPLEFT", 14, -30)
 archFly.intro:SetWidth(432)
 archFly.intro:SetJustifyH("LEFT")
 archFly.intro:SetText(archFly.INTRO)
 
-archFly.rows = {}
-for i = 1, 6 do
-    local r = CreateFrame("Frame", nil, archFly)
-    r:SetWidth(432); r:SetHeight(36)
-    r:SetPoint("TOPLEFT", 14, -72 - (i - 1) * 38)
+-- One archetype row: name and ability count on the first line, the
+-- description under it (it may wrap to a second line), and a button on the
+-- right. The panel flyout and the first-login wizard both use these.
+local ARCH_ROW_H = 46
+local function MakeArchRow(parent, width, buttonText)
+    local r = CreateFrame("Frame", nil, parent)
+    r:SetWidth(width); r:SetHeight(ARCH_ROW_H)
     r.name = r:CreateFontString(nil, "OVERLAY", "GameFontNormal")
     r.name:SetPoint("TOPLEFT", 0, 0)
-    r.name:SetWidth(350)
+    r.name:SetWidth(width - 82)
     r.name:SetJustifyH("LEFT")
     r.desc = r:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
     r.desc:SetPoint("TOPLEFT", 0, -16)
-    r.desc:SetWidth(350)
+    r.desc:SetWidth(width - 82)
     r.desc:SetJustifyH("LEFT")
+    r.desc:SetJustifyV("TOP")
     r.apply = CreateFrame("Button", nil, r, "UIPanelButtonTemplate")
     r.apply:SetWidth(70); r.apply:SetHeight(22)
     r.apply:SetPoint("RIGHT", 0, 0)
-    r.apply:SetText("Apply")
+    r.apply:SetText(buttonText)
+    r.apply.defaultText = buttonText
     r:Hide()
-    archFly.rows[i] = r
+    return r
 end
 
--- Fills the flyout from CW.archetypes (cached from the last AR/ARE reply) and
--- sizes it to the rows shown.
-local function RenderArchFly()
-    local list = CW.archetypes or {}
+-- Fills rows from an archetype list; onChoose(arch) runs when a row's button
+-- is clicked. Returns how many rows are showing.
+local function FillArchRows(rows, list, onChoose)
     local shown = 0
-    for i, r in ipairs(archFly.rows) do
+    for i, r in ipairs(rows) do
         local arch = list[i]
         if arch then
             local count = (arch.count == 1) and "1 ability" or (arch.count .. " abilities")
-            r.name:SetText("|cffffff00" .. arch.name .. "|r  |cffaaaaaa" .. count .. "|r")
-            r.desc:SetText(arch.desc)
-            r.apply:SetScript("OnClick", function()
-                Send("ARCHAPPLY " .. arch.id)
-                archFly:Hide()
-                CW.SetTab("HERO") -- show what the archetype bought
-            end)
+            if (arch.ranks or 0) > 0 then count = count .. ", " .. arch.ranks .. " talent ranks" end
+            r.name:SetText("|cffffff00" .. arch.name .. "|r" .. (arch.following and "  |cff00ff00following|r" or ""))
+            r.desc:SetText(arch.desc .. "  |cffaaaaaa" .. count .. "|r")
+            r.apply:SetText(arch.following and "Stop" or r.apply.defaultText)
+            r.apply:SetScript("OnClick", function() onChoose(arch) end)
             r:Show()
             shown = shown + 1
         else
             r:Hide()
         end
     end
+    return shown
+end
+
+archFly.rows = {}
+for i = 1, 6 do
+    local r = MakeArchRow(archFly, 432, "Follow")
+    r:SetPoint("TOPLEFT", 14, -72 - (i - 1) * ARCH_ROW_H)
+    archFly.rows[i] = r
+end
+
+-- Fills the flyout from CW.archetypes (cached from the last AR/ARE reply) and
+-- sizes it to the rows shown.
+local function RenderArchFly()
+    local shown = FillArchRows(archFly.rows, CW.archetypes or {}, function(arch)
+        Send("ARCHAPPLY " .. (arch.following and 0 or arch.id)) -- 0 = stop following
+        archFly:Hide()
+        CW.SetTab("HERO") -- show what the archetype bought
+    end)
     if shown > 0 then
         archFly.intro:SetText(archFly.INTRO)
     elseif CW.archetypesLoaded then
@@ -700,7 +721,7 @@ local function RenderArchFly()
     else
         archFly.intro:SetText("Loading...")
     end
-    archFly:SetHeight(72 + math.max(shown, 1) * 38 + 8)
+    archFly:SetHeight(72 + math.max(shown, 1) * ARCH_ROW_H + 8)
 end
 CW.RenderArchFly = RenderArchFly
 
@@ -809,10 +830,10 @@ local function BuildHelpText()
 "Spend two currencies to buy exactly what you want:",
 "   |cffffd100Ability Essence (AE)|r  buys abilities.",
 "   |cffffd100Talent Essence (TE)|r  buys talent ranks, one point per rank.",
-"You start with a pool of AE and earn |cff00ff00+1 AE and +1 TE every level from 10|r.",
+"You start with |cff00ff003 AE|r and earn |cff00ff00+1 AE every level from 4|r, the pace a class learns its abilities at. |cff00ff00Talent Essence arrives from level 10, +1 a level|r: 71 by 80, a full talent build.",
 "Abilities are priced by rarity -- |cff9d9d9d1|r / |cff1eff002|r / |cff0070dd3|r / |cffa335ee5|r / |cffff80008|r AE from common to legendary. Talents cost Talent Essence per rank and respect their tree's prerequisites and tier rules -- ranking one to 5 costs 5 TE, so pick your capstones carefully.",
 "Unlearning an ability refunds what you paid, |cffffd100Respec|r reshuffles your talents for gold, and every ability line you own |cff00ff00ranks up on its own|r as you level.",
-"|cffffd100Archetypes|r are starter builds. The |cffffd100Archetypes|r button on this panel, or the Hero Advancement NPC, buys a set of abilities and talent ranks with your essence in one step. Anything you already know is skipped, and everything it buys is a normal purchase you can unlearn or Respec.",
+"|cffffd100Archetypes|r are builds you follow from level 1 to 80. Pick one from the |cffffd100Archetypes|r button on this panel or at the Hero Advancement NPC: it replaces your build (abilities refunded, the respec fee if you own talents) and from then on buys its abilities and talents for you as each becomes available. Everything it buys is a normal purchase, and you can stop following it at any time.",
 "",
 "|cffff8800==  WILDCARD  --  the dice choose  ==|r",
 "The server rolls abilities and talents for you on a fixed schedule:",
@@ -1179,7 +1200,7 @@ local function RenderStats()
     local pending = PendingAlloc()
     local spent = PendingSpent()
     local unspent = CW.stats.budget - spent
-    statTitle:SetText("Primary Stats — |cff00ff00" .. unspent .. "|r of " .. CW.stats.budget .. " unspent")
+    statTitle:SetText("Primary Stats: |cff00ff00" .. unspent .. "|r of " .. CW.stats.budget .. " unspent")
     for i = 1, 5 do
         local r = statRows[i]
         r.label:SetText("|cffffd100" .. STAT_NAMES[i] .. "|r  " .. pending[i] .. " pts = +" .. (pending[i] * CW.stats.perPoint))
@@ -1309,18 +1330,19 @@ wizTitle:SetText("Choose Your Path, Hero")
 local wizText = wizard:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
 wizText:SetPoint("TOP", 0, -46)
 wizText:SetWidth(370)
-wizText:SetText("Every spell and talent of every class awaits — you have no class of your own, only a shared chassis (resource bar and base stats). Will you choose each ability yourself, or let the Wildcard decide your fate?")
+local WIZ_PATH_TEXT = "Every spell and talent of every class awaits. You have no class of your own, only a shared chassis (resource bar and base stats). Will you choose each ability yourself, or let the Wildcard decide your fate?"
+wizText:SetText(WIZ_PATH_TEXT)
 
 local wizClassless = CreateFrame("Button", nil, wizard, "UIPanelButtonTemplate")
 wizClassless:SetWidth(340); wizClassless:SetHeight(30)
 wizClassless:SetPoint("TOP", 0, -108)
-wizClassless:SetText("|cff00ccffClassless|r — pick every ability yourself")
+wizClassless:SetText("|cff00ccffClassless|r: pick every ability yourself")
 wizClassless:SetScript("OnClick", function() Send("MODE 0"); Send("ARCH") end)
 
 local wizWildcard = CreateFrame("Button", nil, wizard, "UIPanelButtonTemplate")
 wizWildcard:SetWidth(340); wizWildcard:SetHeight(30)
 wizWildcard:SetPoint("TOP", 0, -146)
-wizWildcard:SetText("|cffff8800Wildcard|r — random abilities, reroll the rest")
+wizWildcard:SetText("|cffff8800Wildcard|r: random abilities, reroll the rest")
 wizWildcard:SetScript("OnClick", function()
     Send("MODE 1")
     wizard:Hide()
@@ -1334,18 +1356,19 @@ wizLater:SetPoint("BOTTOM", 0, 14)
 wizLater:SetText("Decide later")
 wizLater:SetScript("OnClick", function() wizard:Hide() end)
 
--- archetype rows inside the wizard (shown after choosing Classless)
+-- Page 2: archetype rows (shown after choosing Classless). The wizard grows
+-- to fit them and shrinks back when page 1 is shown again.
+local WIZ_W, WIZ_H = 420, 300
+local WIZ_ARCH_W = 480
 local archRows = {}
 for i = 1, 6 do
-    local b = CreateFrame("Button", nil, wizard, "UIPanelButtonTemplate")
-    b:SetWidth(380); b:SetHeight(24)
-    b:SetPoint("TOP", 0, -96 - (i - 1) * 27)
-    b:Hide()
-    archRows[i] = b
+    local r = MakeArchRow(wizard, WIZ_ARCH_W - 40, "Choose")
+    r:SetPoint("TOPLEFT", 20, -84 - (i - 1) * ARCH_ROW_H)
+    archRows[i] = r
 end
 local archSkip = CreateFrame("Button", nil, wizard, "UIPanelButtonTemplate")
 archSkip:SetWidth(180); archSkip:SetHeight(22)
-archSkip:SetPoint("BOTTOM", 0, 40)
+archSkip:SetPoint("BOTTOM", 0, 14)
 archSkip:SetText("Start with an empty slate")
 archSkip:Hide()
 archSkip:SetScript("OnClick", function()
@@ -1354,26 +1377,41 @@ archSkip:SetScript("OnClick", function()
     CW.SetTab("ABIL")
 end)
 
-local function ShowArchetypeChoices()
-    wizTitle:SetText("Pick a Starter Archetype")
-    wizText:SetText("Archetypes spend your starting Ability Essence on a ready-made build. You can unlearn anything later.")
-    wizClassless:Hide(); wizWildcard:Hide()
-    for i, arch in ipairs(CW.archetypes) do
-        if i > 6 then break end
-        local b = archRows[i]
-        b:SetText("|cffffff00" .. arch.name .. "|r — " .. arch.desc)
-        b:SetScript("OnClick", function()
-            Send("ARCHAPPLY " .. arch.id)
-            wizard:Hide()
-            frame:Show()
-            CW.SetTab("HERO")
-        end)
-        b:Show()
-    end
-    archSkip:Show()
-    wizLater:Hide()
+local function ShowPathChoice()
+    wizard:SetWidth(WIZ_W); wizard:SetHeight(WIZ_H)
+    wizTitle:SetText("Choose Your Path, Hero")
+    wizText:SetWidth(370)
+    wizText:SetText(WIZ_PATH_TEXT)
+    wizClassless:Show(); wizWildcard:Show(); wizLater:Show()
+    for _, r in ipairs(archRows) do r:Hide() end
+    archSkip:Hide()
     wizard:Show()
 end
+
+local function ShowArchetypeChoices()
+    wizTitle:SetText("Pick a Starter Archetype")
+    wizText:SetWidth(WIZ_ARCH_W - 50)
+    wizClassless:Hide(); wizWildcard:Hide(); wizLater:Hide()
+    local shown = FillArchRows(archRows, CW.archetypes or {}, function(arch)
+        Send("ARCHAPPLY " .. arch.id)
+        wizard:Hide()
+        frame:Show()
+        CW.SetTab("HERO")
+    end)
+    if shown > 0 then
+        wizText:SetText("An archetype is a build you follow: its abilities and talents are bought for you as you level, all the way to 80. Change or stop it later from the Archetypes button.")
+    else
+        wizText:SetText("No archetypes are configured on this realm.")
+    end
+    wizard:SetWidth(WIZ_ARCH_W)
+    wizard:SetHeight(84 + math.max(shown, 1) * ARCH_ROW_H + 52)
+    archSkip:Show()
+    wizard:Show()
+end
+CW.wizard, CW.wizArchRows, CW.wizArchSkip = wizard, archRows, archSkip
+CW.wizClassless, CW.wizWildcard, CW.wizLater = wizClassless, wizWildcard, wizLater
+CW.wizTitle, CW.wizText = wizTitle, wizText
+CW.ShowPathChoice = ShowPathChoice
 
 -- ---------------------------------------------------------------------------
 -- universal resource bars: the client tracks mana/rage/energy for every
@@ -1995,9 +2033,9 @@ local function ShowResult()
         rvName:SetText(SpellLabel(d.spell, d.rarity))
     end
     if d.test then
-        rvSub:SetText((RARITY_NAMES[d.rarity or 0] or "") .. "  |cffff8800(preview — nothing is granted)|r")
+        rvSub:SetText((RARITY_NAMES[d.rarity or 0] or "") .. "  |cffff8800(preview, nothing is granted)|r")
     elseif d.flags == 1 then
-        rvSub:SetText("|cff00ff88Synergy roll — it complements your Hero!|r")
+        rvSub:SetText("|cff00ff88Synergy roll: it complements your Hero!|r")
     elseif d.isTalent then
         -- one talent point buys the talent whatever rank it landed on
         rvSub:SetText((RARITY_NAMES[d.rarity or 0] or "") .. "  |cffaaaaaa- dealt free, all ranks included|r")
@@ -2194,7 +2232,7 @@ handTitle:SetText("Your Starting Hand")
 
 local handHint = hand:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
 handHint:SetPoint("TOP", 0, -40)
-handHint:SetText("Click an ability to lock it in — |cffffd100gold ring + closed padlock = kept|r." ..
+handHint:SetText("Click an ability to lock it in: |cffffd100gold ring + closed padlock = kept|r." ..
     " Roll Abilities rerolls only the unlocked ones. Free until level 10!")
 
 local HAND_SLOTS = 8
@@ -2493,7 +2531,7 @@ local function HandleMessage(msg)
         end
         -- first-login onboarding: unchosen mode and still inside the window
         if s.mode == 255 and s.level < s.deadline and not frame:IsShown() and not wizard:IsShown() then
-            wizard:Show()
+            ShowPathChoice()
         end
 
     elseif kind == "RU" then
@@ -2572,7 +2610,9 @@ local function HandleMessage(msg)
             CW.archetypes = {}
             collectingArch = true
         end
-        tinsert(CW.archetypes, { id = tonumber(p[2]) or 0, name = p[3] or "?", desc = p[4] or "", count = tonumber(p[5]) or 0 })
+        tinsert(CW.archetypes, { id = tonumber(p[2]) or 0, name = p[3] or "?", desc = p[4] or "",
+                                 count = tonumber(p[5]) or 0, ranks = tonumber(p[6]) or 0,
+                                 following = (tonumber(p[7]) or 0) == 1 })
     elseif kind == "ARE" then
         if not collectingArch then CW.archetypes = {} end -- reply with no AR rows
         collectingArch = false
@@ -2791,7 +2831,7 @@ function CW.ClaimHotkey()
     end
 
     ClasslessWildcardDB.hotkeyClaimed = true
-    Print("No free hotkey was available — bind |cffffff00Toggle Hero Advancement|r under Key Bindings > ClasslessWildcard.")
+    Print("No free hotkey was available. Bind |cffffff00Toggle Hero Advancement|r under Key Bindings > ClasslessWildcard.")
 end
 
 -- exposed for debugging and third-party extensions

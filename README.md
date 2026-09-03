@@ -69,8 +69,8 @@ Every player also runs a one-click client setup that ships with the module. It p
 |                       | **Classless** (free pick)                                           | **Wildcard** (rolled)                                              |
 | --------------------- | ------------------------------------------------------------------- | ------------------------------------------------------------------ |
 | How you gain power    | Spend Ability Essence (AE) and Talent Essence (TE)                   | The server rolls abilities and talents for you                      |
-| Starting kit          | 9 AE to spend as you like                                            | 4 random abilities at level 1                                       |
-| Progression           | +1 AE and +1 TE per level from level 10                              | One roll per level from level 10, alternating ability and talent    |
+| Starting kit          | 3 AE to spend as you like                                            | 4 random abilities at level 1                                       |
+| Progression           | +1 AE per level from 4, +1 TE per level from 10                      | One roll per level from level 10, alternating ability and talent    |
 | Cost model            | Abilities cost 1 / 2 / 3 / 5 / 8 AE by rarity, talents 1 TE per rank | Free but weighted. Legendary is rarest, and talent rank is rarity   |
 | Control over outcomes | Total. Unlearning refunds, and a full respec costs gold              | Rerolls, ability locks, synergy rolls, reroll cooldowns             |
 | Changing your mind    | `.classless respec`                                                  | `.wildcard reroll`, Reroll Scrolls, Rebirth                         |
@@ -199,11 +199,16 @@ Keep it, or spend a reroll.</em>
   Shattrath City, placed beside that city's guild master so it is easy to find. Shattrath's
   stands by A'dal. Every spawn carries the full gossip UI plus the scroll and item vendor, and
   everything it offers is also reachable from the addon panel. `.npc add 990100` places more.
-- **Starter archetypes.** Six curated builds (*Blade Dancer*, *Battle Mage*, *Ranger of the
-  Light*, *Shadow Mender*, *Stealthy Healer*, *Storm Warrior*) that spend a Classless Hero's
-  essence on a coherent role in one step. Apply one from the addon's **Archetypes** button, from
-  the Hero Advancement NPC, or with `.classless archetype <id>`. Add your own rows to
-  `cw_archetypes`.
+- **Archetypes.** Six build templates (*Blade Dancer*, *Battle Mage*, *Ranger of the Light*,
+  *Shadow Mender*, *Stealthy Healer*, *Storm Warrior*) that a Classless Hero follows from level
+  1 to 80. Each is about 25 ability lines and 71 talent ranks. Following one replaces the
+  current build: abilities are unlearned and refunded, and if the Hero owns talents the respec
+  fee applies. From then on every ability is bought the level it unlocks and every talent rank
+  as soon as its tier and prerequisite allow, with the Hero's own essence, in the build's order.
+  Stop following at any time; what was bought stays. Choose from the addon's **Archetypes**
+  button, the Hero Advancement NPC, or `.classless archetype <id>`. The builds are written and
+  validated by `data/sql/generators/gen_archetypes.py`, which simulates each one from 1 to 80
+  against the essence schedule before writing `cw_archetypes.sql`.
 - **First-login onboarding.** A welcome flow, plus an addon wizard that walks a fresh character
   through picking a path.
 - **A starter kit that fits any build.** A new Hero cannot be given class starter gear, because
@@ -375,8 +380,8 @@ Everything the NPC and the addon do is also available as a chat command.
 | `.classless stats`                                | Show stat allocation and remaining points         |
 | `.classless stat str\|agi\|sta\|int\|spi <points>` | Allocate points. Reallocation is free             |
 | `.classless bar mana\|rage\|energy\|default`       | Pick which resource the main power bar displays   |
-| `.classless archetypes`                           | List starter archetypes and their IDs             |
-| `.classless archetype <id>`                       | Apply a starter archetype (Classless path)        |
+| `.classless archetypes`                           | List the archetypes and their IDs                 |
+| `.classless archetype <id>`                       | Follow an archetype. `0` stops following          |
 | `.classless rebirth classless\|wildcard`           | Full reset and path switch. Costs gold            |
 
 ### `.wildcard`
@@ -508,10 +513,12 @@ the same swing, the same combo point, and the same rank chain that grows as you 
 
 What changes is the damage. It is dealt as the element instead of Physical, so armour does not
 reduce it and resistance does, and anything that increases your Fire damage increases a Fiery
-strike. The attack keeps 85% of its weapon damage (75% for Holy, which almost nothing resists)
-and adds an elemental hit on top that grows with your spell power, so a variant rewards Intellect
-as well as attack power. Where the attack has a free effect slot it also carries one effect the
-element is known for:
+strike. The attack keeps 85% of its own weapon multiplier (75% for Holy, which almost nothing
+resists), so a Fiery Ambush deals 234% weapon damage where Ambush deals 275%, and adds an
+elemental hit on top that grows with your spell power, so a variant rewards Intellect as well as
+attack power. The tooltip is the ability's own description with the element written in, so a
+Frozen Backstab still tells you it must be behind the target and awards a combo point. Where the
+attack has a free effect slot it also carries one effect the element is known for:
 
 | Element | Extra effect on hit |
 | ------- | ------------------- |
@@ -566,7 +573,9 @@ inline. The ones most likely to need changing:
 | `ClasslessWildcard.NpcEntry`                        | `990100`     | Hero Advancement NPC entry                                     |
 | `Chassis.Enable`                                    | `1`          | Put every character on one base class                          |
 | `Chassis.Class`                                     | `2`          | Which class. Mana classes only; others are refused at startup   |
-| `Classless.StartingAbilityEssence`                  | `9`          | AE granted at character creation                               |
+| `Classless.StartingAbilityEssence`                  | `3`          | AE granted at character creation                               |
+| `Classless.EssenceStartLevel`                       | `4`          | First level that grants AE, one per level after it             |
+| `Classless.TalentEssenceStartLevel`                 | `10`         | First level that grants TE                                     |
 | `Classless.AbilityCostByRarity`                     | `1,2,3,5,8`  | AE cost per rarity tier                                        |
 | `Classless.AbilityEssencePerLevel`                  | `1`          | AE per level from `EssenceStartLevel`                          |
 | `Classless.TalentEssencePerLevel`                   | `1`          | TE per level                                                   |

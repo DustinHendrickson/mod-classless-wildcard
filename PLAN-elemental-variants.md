@@ -136,6 +136,13 @@ Keeping 100% of the weapon damage and changing only the school would be a straig
 85% is the opening guess (75% for Holy, which nothing resists); `cw_ability_override` and
 the per-element config multipliers are the dials.
 
+The share applies to the base's OWN weapon multiplier, not to 100%. The first full pass
+wrote a flat 85% for every base, which gutted anything above 100% (Ambush 275%, Ravage
+385%, Shred 225%, Backstab 150%) and quietly buffed anything below it (Blood Strike 40%,
+Fan of Knives 70%). The generator now multiplies: Fiery Ambush is 234%, Fiery Blood Strike
+34%. The variant's percent slot is `WEAPON_PERCENT_DAMAGE` on its own, so bases whose hit
+was normalized (`121`) become non-normalized; the gap only matters at extreme weapon speeds.
+
 **Why the elemental add is `SCHOOL_DAMAGE` with a spell-power coefficient, not a flat
 weapon add like Frost Strike's +87.** A flat weapon add scales with nothing.
 `SCHOOL_DAMAGE` honours `EffectBonusMultiplier` (Fire Blast's is 0.204), so the elemental
@@ -253,13 +260,21 @@ both near purple and they were indistinguishable on a purple base icon.
 ### 2.5 Tooltips
 
 The client renders `Description` from its own copy of the row, so a variant's text is
-written by the generator in stock tooltip syntax:
+written by the generator in stock tooltip syntax. It is the base's own description with
+the element written in, from a per-base template in `DESCRIPTIONS`, so every sentence the
+base carries (positional rules, combo points, weapon requirements) survives:
 
 ```
-Fiery Sinister Strike:
-  An instant strike that causes $s1% of your normal weapon damage as Fire damage, plus
-  $s2 Fire damage, and burns the target for $o3 Fire damage over $d. Awards 1 combo point.
+Fiery Backstab:
+  Backstab the target, causing $s1% weapon damage as Fire damage plus $s2 Fire damage.
+  Must be behind the target.  Requires a dagger in the main hand.  Awards $s3 combo point.
+Fiery Heroic Strike:
+  A strong attack that deals $s1% weapon damage as Fire damage plus $s2 Fire damage and
+  burns the target for $o3 Fire damage over $d and causes a high amount of threat.
 ```
+
+A base without a template is refused rather than given generic text, and every `$s`, `$m`,
+`$o`, `$x`, `$a` token in the result must point at a filled slot (`check_tokens`).
 
 `$s1`, `$s2`, `$o3` and `$d` are ordinary spell-text variables the client already expands
 from the effect fields. Because one generator emits both the server row and the client row
@@ -375,7 +390,7 @@ Built and checked against the DBC extract, not yet run in a client or on a serve
   buttons). Emits `cw_spells_elemental.sql` and `client-patch/elemental_manifest.json`
   from one run. Every full-run row was checked for the 234-column arity.
 - `client-patch/lib/elemental.py`, the installer step, wired into `install.py` behind
-  `--no-elemental` and off under `--minimal`. Appends to the player's own tables; uninstall
+  `--no-elemental`. Appends to the player's own tables; uninstall
   recognises the painted icons by their `CW_` prefix.
 - `src/ClasslessMgr.cpp` `LoadVariants()`, behind `Elemental.Enable`, uncompiled.
 - `client-patch/test_elemental.py` exercises the client step against an extract and passes,
@@ -460,8 +475,9 @@ In game, on a **Classless** character (Wildcard characters cannot buy):
 5. `.classless learn 950672`. It costs 2 AE: Sinister Strike is common, the variant is one
    tier up. "Unknown ability" here means step 2 failed.
 6. Open the spellbook. It files under the **Combat** tab (its base's), named Fiery Sinister
-   Strike, and the tooltip reads "An instant strike that deals 85% of your weapon damage as
-   Fire damage, plus 7 Fire damage. Awards 1 combo point." with numbers, not `$s1`. A blank
+   Strike, and the tooltip reads "An instant strike that causes 7 Fire damage in addition to
+   85% of your normal weapon damage, dealt as Fire damage. Awards 1 combo point." with
+   numbers, not `$s1`. A blank
    name or an empty tooltip means the client's Spell.dbc row is missing: step 4.
 7. The icon is Sinister Strike's, recoloured orange with a flame in the corner (Pillow), or
    Sinister Strike's own (no Pillow).
