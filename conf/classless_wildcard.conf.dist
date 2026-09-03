@@ -308,8 +308,8 @@ ClasslessWildcard.FormStarterKits = 1
 # installer prints the id of the manifest it applied; they must be the same.
 #
 # RollWeightPct is what keeps the Wildcard pool honest. Each strike gains seven
-# variants, and RarityBump alone does not make them roll less often (with the
-# default equal RarityWeights it changes only cost and colour). Each variant
+# variants, and RarityBump alone barely makes them roll less often (on the
+# default weights one tier is a 5% trim; it mostly changes cost and colour). Each variant
 # rolls at this percentage of its rarity weight, so at 15 the seven together
 # add about one more copy of the base to the pool rather than seven. Raise it
 # to see more elemental strikes; it does not affect Classless purchase costs.
@@ -368,16 +368,17 @@ ClasslessWildcard.Classless.RespecCostGold = 50
 #    random ability every AbilityEveryLevels.
 #
 #    RarityWeights: roll weight per rarity (common,uncommon,rare,epic,legendary).
-#    Season 9 rules (the default): equal weights, so every entry in the pool is
-#    equally likely, "completely, 100% random", and finding legendaries never
-#    lowers your chance to roll more. For Season-10-style rarity-weighted rolls
-#    use descending weights such as "100,60,30,10,3".
+#    The default "100,95,90,85,80" is a gentle slope: everything in the pool
+#    can turn up, a legendary just rolls at 80% the rate of a common, and
+#    finding legendaries never lowers your chance to roll more. Equal weights
+#    make every entry exactly as likely; steep ones such as "100,60,30,10,3"
+#    make the top tier a rare prize.
 #
 #    NOTE: this also decides the RANK a rolled talent lands on, because a
-#    talent's rank is its rarity (rank 1 common ... rank 5 legendary). With the
-#    equal weights below, every rank is equally likely. A rank 5 talent is as
-#    common as a rank 1. Use descending weights if you want high ranks to be
-#    the rare, exciting find: "100,60,30,10,3" makes rank 5 about a 1.5% roll.
+#    talent's rank is its rarity (rank 1 common ... rank 5 legendary). On the
+#    default slope a rank 5 rolls at 80% the rate of a rank 1. Use steep
+#    weights if you want high ranks to be the rare, exciting find:
+#    "100,60,30,10,3" makes rank 5 about a 1.5% roll.
 #
 #    Synergy rolls, pity and bans, in full:
 #
@@ -462,7 +463,7 @@ ClasslessWildcard.Wildcard.TalentEveryLevels = 2
 ClasslessWildcard.Wildcard.TalentRollOffset = 1
 ClasslessWildcard.Wildcard.AbilityEveryLevels = 2
 ClasslessWildcard.Wildcard.FreeRerollBelowLevel = 10
-ClasslessWildcard.Wildcard.RarityWeights = "100,100,100,100,100"
+ClasslessWildcard.Wildcard.RarityWeights = "100,95,90,85,80"
 ClasslessWildcard.Wildcard.SynergyBaseChance = 10
 ClasslessWildcard.Wildcard.SynergyIncrement = 10
 ClasslessWildcard.Wildcard.SynergyBanRolls = 25

@@ -249,7 +249,7 @@ void ClasslessMgr::LoadConfig(bool /*reload*/)
         // rules"). Set descending weights (e.g. 100,60,30,10,3) for Season-10-style
         // rarity-weighted rolls.
         std::vector<uint32> weights = ParseUintList(sConfigMgr->GetOption<std::string>(
-            "ClasslessWildcard.Wildcard.RarityWeights", "100,100,100,100,100"));
+            "ClasslessWildcard.Wildcard.RarityWeights", "100,95,90,85,80"));
         for (size_t i = 0; i < weights.size() && i < 5; ++i)
             cfg.wcRarityWeights[i] = weights[i];
     }

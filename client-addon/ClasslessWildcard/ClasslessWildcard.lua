@@ -953,7 +953,7 @@ local function BuildHelpText()
 "The server rolls abilities and talents for you on a fixed schedule:",
 "   |cff00ff00Level 1:|r  4 random abilities to begin.",
 "   |cff00ff00From level 10:|r  one roll every level, alternating -- an ability on the even levels, a talent on the odd ones. Talents come no more often than abilities because a talent roll can land on rank 5 outright.",
-"Rolls are rarity-weighted, so legendaries are the rarest.",
+"Rolls are rarity-weighted: a legendary turns up a little less often than a common.",
 "A talent roll also rolls the |cffffd100rank|r you land on, and the rank IS its rarity: rank 1 common, rank 2 uncommon, rank 3 rare, rank 4 epic, |cffff8000rank 5 legendary|r. The rank is drawn from anything above what you already have, not one step up, so a talent you hold at rank 2 can jump straight to rank 5 -- and a talent you have never seen can arrive at its top rank. A high rank is the jackpot: rolls cost you nothing, so landing on rank 5 hands you the full-strength talent for free, where a Classless Hero pays for every rank up to it. Rolling into a talent you already own upgrades it and rolls again, up to four times in one go.",
 "You steer your luck:",
 "   |cffffd100Rerolls|r -- every level from 10 grants you 3 reroll charges, and rerolls are free below level 10. One pool, spent on abilities or talents alike. Reroll straight from the popup, or later from |cffffd100My Build|r using the circular arrow next to anything you own.",
@@ -1258,16 +1258,27 @@ local STAT_DESC = {
     [5] = "Mana and health regeneration. Mana regeneration pauses for 5 seconds after you cast.",
 }
 
--- The module's own contribution from a stat, worked out with the same maths
--- the server uses so the two agree.
+-- What a stat is contributing right now, chassis and module together, with
+-- the same per-point rates the line above it quotes. It used to show only
+-- the module's share, which made Agility's melee and ranged attack power
+-- read as equal while the character sheet showed them apart.
 local function StatContribution(i, value)
     local s = CW.stats
-    if not s.uniStats then return nil end
-    if i == 2 then
-        local ap, rap = math.floor(value * (s.apPerAgi or 0)), math.floor(value * (s.rapPerAgi or 0))
+    local uni = s.uniStats
+    if i == 1 then
+        local ap = math.floor(value * (s.strMeleeAP or 2))
+        return "+" .. ap .. " melee attack power, +" .. math.floor(value * 0.5) .. " block value"
+    elseif i == 2 then
+        local melee = (s.agiMeleeAP or 0) + (uni and (s.apPerAgi or 0) or 0)
+        local ranged = (s.agiRangedAP or 1) + (uni and (s.rapPerAgi or 0) or 0)
+        local ap, rap = math.floor(value * melee), math.floor(value * ranged)
         if ap <= 0 and rap <= 0 then return nil end
-        return "+" .. ap .. " melee and +" .. rap .. " ranged attack power"
+        if ap > 0 then
+            return "+" .. ap .. " melee and +" .. rap .. " ranged attack power"
+        end
+        return "+" .. rap .. " ranged attack power"
     elseif i == 4 then
+        if not uni then return nil end
         local sp = math.floor(math.max(0, value - 10) * (s.spPerInt or 0))
         if sp <= 0 then return nil end
         return "+" .. sp .. " spell power"

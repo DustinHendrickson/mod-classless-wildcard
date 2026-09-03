@@ -370,6 +370,14 @@ def test_browser(h):
     h.recv(state(0))
     h.check(callable(CW.RefreshPanelArt), "panel art refresh is wired")
 
+    # stat tooltip: chassis and module rates together, so melee and ranged differ
+    h.recv("ST|10|4|1|0|0|0|0|0|1|1|1|1|0.5|2|0|1|0.0192|0.006|0.473|0.31")
+    agi = str(CW.StatContribution(2, 20))
+    h.check(agi == "+20 melee and +40 ranged attack power", "Agility tooltip counts the chassis ranged AP too: %r" % agi)
+    h.check(str(CW.StatContribution(1, 20)) == "+40 melee attack power, +10 block value", "Strength tooltip shows its attack power")
+    h.recv("ST|10|4|1|0|0|0|0|0|1|0|1|1|0.5|2|0|1|0.0192|0.006|0.473|0.31")
+    h.check(str(CW.StatContribution(2, 20)) == "+20 ranged attack power", "with the universal layer off only the chassis ranged AP remains")
+
 
 def main():
     try:

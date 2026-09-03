@@ -299,7 +299,7 @@ namespace ClasslessWildcard
         uint32 wcTalentEveryLevels = 2;
         uint32 wcAbilityEveryLevels = 2;
         uint8  wcFreeRerollLevel = 10;   // below this, rerolls are free
-        std::array<uint32, 5> wcRarityWeights = { 100, 60, 30, 10, 3 };
+        std::array<uint32, 5> wcRarityWeights = { 100, 95, 90, 85, 80 };
         uint32 wcSynergyBaseChance = 10;   // percent
         uint32 wcSynergyIncrement = 10;    // percent per pity point
         uint32 wcSynergyBanRolls = 25;

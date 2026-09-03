@@ -116,8 +116,9 @@ Keep it, or spend a reroll.</em>
 - **Talent rank is its rarity.** A talent roll also rolls which rank you land on, and the rank
   sets the tier: rank 1 common through rank 5 legendary. Rolls cost nothing, so landing on rank 5
   hands you the full-strength talent for free, where a Classless Hero pays for every rank up to
-  it. Rank odds follow `RarityWeights`. The shipped Season 9 default weights every rank equally;
-  use descending weights such as `100,60,30,10,3` to make rank 5 a rare prize. The exact rules
+  it. Rank odds follow `RarityWeights`. The shipped default, `100,95,90,85,80`, is a gentle
+  slope: a rank 5 rolls at 80% the rate of a rank 1. Steep weights such as `100,60,30,10,3`
+  make rank 5 a rare prize. The exact rules
   are under [How Wildcard rolls work](#how-wildcard-rolls-work).
 - **Rerolls scale with leveling.** Every level from 10 grants 3 reroll charges. Charges are one
   pool spent on abilities and talents alike, and anything you already own can be rerolled later
@@ -161,9 +162,10 @@ Keep it, or spend a reroll.</em>
   | Intellect | +15 mana (first 20 give +1 each), +0.5 spell power, 1% spell crit per 167 Intellect |
   | Spirit    | mana and health regeneration, rising with your Intellect                           |
 
-  Agility's melee attack power and Intellect's spell power are the module's addition, on top of
-  what the base class already converts, because a Hero's build can point in any direction. Both
-  rates are configurable under `UniversalStats`.
+  Agility's melee attack power, one of its two ranged attack power, and Intellect's spell power
+  are the module's addition, on top of what the base class already converts (every class gets 1
+  ranged attack power per Agility on its own), because a Hero's build can point in any
+  direction. The three rates are configurable under `UniversalStats`.
 
   Critical strike, spell critical strike and regeneration are worth less per point the higher
   your level: the same Agility that buys 1% critical strike per 8 points at level 20 needs 52 at
@@ -586,13 +588,14 @@ inline. The ones most likely to need changing:
 | `Wildcard.StartingAbilities`                        | `4`          | Abilities rolled at level 1                                    |
 | `Wildcard.RollStartLevel`                           | `10`         | Level the roll schedule begins                                 |
 | `Wildcard.TalentEveryLevels` / `AbilityEveryLevels` | `1` / `2`    | Roll cadence                                                   |
-| `Wildcard.RarityWeights`                            | `100,...`      | Roll weights per rarity tier. Also picks talent rank           |
+| `Wildcard.RarityWeights`                            | `100,95,90,85,80` | Roll weights per rarity tier. Also picks talent rank        |
 | `Wildcard.FreeRerollBelowLevel`                     | `10`         | Rerolls are free under this level                              |
 | `Wildcard.ScrollBuyEnable`                          | `1`          | Buy Scroll button on the addon panel                           |
 | `Wildcard.ScrollBuyBaseCopper` / `...PerLevelCopper`  | `500` / `500`| Scroll price in copper: base + per-level x level               |
 | `UniversalResources.Enable`                         | `1`          | Mana, rage and energy on every character                       |
 | `UniversalStats.SpellPowerPerIntellect`             | `0.5`        | Spell power per Intellect. 1 INT is worth about 1 STR          |
 | `UniversalStats.MeleeAPPerAgility`                  | `1`          | Melee attack power per Agility                                 |
+| `UniversalStats.RangedAPPerAgility`                 | `1`          | Ranged attack power per Agility, on top of the chassis's own 1 |
 | `ClasslessWildcard.ClasslessClassChecks`            | `1`          | Any relic equips; shields and reactive abilities work          |
 | `ClasslessWildcard.FormStarterKits`                 | `1`          | Forms and stances hand over their basic spells free            |
 | `ClasslessWildcard.Elemental.Enable`                | `1`          | Elemental variants of physical strikes in the pool           |
