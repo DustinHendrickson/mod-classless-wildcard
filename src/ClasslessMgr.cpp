@@ -68,6 +68,30 @@ namespace
         return Rarity::Legendary;
     }
 
+    AbilityType ClassifyAbility(SpellInfo const* info, bool passive)
+    {
+        if (passive)
+            return AbilityType::Passive;
+        if (!info)
+            return AbilityType::Utility;
+        for (uint8 i = 0; i < MAX_SPELL_EFFECTS; ++i)
+        {
+            SpellEffectInfo const& eff = info->Effects[i];
+            if (eff.Effect == SPELL_EFFECT_HEAL || eff.Effect == SPELL_EFFECT_HEAL_PCT
+                || eff.Effect == SPELL_EFFECT_HEAL_MAX_HEALTH
+                || (eff.Effect == SPELL_EFFECT_APPLY_AURA
+                    && (eff.ApplyAuraName == SPELL_AURA_PERIODIC_HEAL || eff.ApplyAuraName == SPELL_AURA_OBS_MOD_HEALTH)))
+                return AbilityType::Heal;
+        }
+        switch (info->DmgClass)
+        {
+            case SPELL_DAMAGE_CLASS_MELEE:  return AbilityType::Melee;
+            case SPELL_DAMAGE_CLASS_RANGED: return AbilityType::Ranged;
+            case SPELL_DAMAGE_CLASS_MAGIC:  return AbilityType::Spell;
+            default:                        return AbilityType::Utility;
+        }
+    }
+
     Rarity RarityFromSpellLevel(uint32 level)
     {
         if (level < 10) return Rarity::Common;
@@ -122,7 +146,7 @@ void ClasslessMgr::LoadConfig(bool /*reload*/)
     cfg.allowModeChoice = sConfigMgr->GetOption<bool>("ClasslessWildcard.AllowModeChoice", true);
     cfg.modeChoiceDeadline = sConfigMgr->GetOption<uint8>("ClasslessWildcard.ModeChoiceDeadline", 5);
 
-    cfg.includeDeathKnight = sConfigMgr->GetOption<bool>("ClasslessWildcard.IncludeDeathKnight", false);
+    cfg.includeDeathKnight = sConfigMgr->GetOption<bool>("ClasslessWildcard.IncludeDeathKnight", true);
     cfg.includeRacials = sConfigMgr->GetOption<bool>("ClasslessWildcard.IncludeRacials", false);
     cfg.includePassives = sConfigMgr->GetOption<bool>("ClasslessWildcard.IncludePassives", true);
     cfg.respectLevelReqs = sConfigMgr->GetOption<bool>("ClasslessWildcard.RespectLevelRequirements", true);
@@ -196,6 +220,12 @@ void ClasslessMgr::LoadConfig(bool /*reload*/)
     cfg.talentEssenceStartLevel = sConfigMgr->GetOption<uint8>("ClasslessWildcard.Classless.TalentEssenceStartLevel", 10);
     cfg.abilityEssencePerLevel = sConfigMgr->GetOption<uint32>("ClasslessWildcard.Classless.AbilityEssencePerLevel", 1);
     cfg.talentEssencePerLevel = sConfigMgr->GetOption<uint32>("ClasslessWildcard.Classless.TalentEssencePerLevel", 1);
+    // Printed at every load so a stale classless_wildcard.conf shows up in the
+    // worldserver log instead of as a Hero with the wrong amount of essence.
+    LOG_INFO("module.classless", "mod-classless-wildcard: Classless economy: {} AE at creation, +{} AE per level from {}, "
+             "+{} TE per level from {}",
+             cfg.startingAbilityEssence, cfg.abilityEssencePerLevel, uint32(cfg.essenceStartLevel),
+             cfg.talentEssencePerLevel, uint32(cfg.talentEssenceStartLevel));
     cfg.talentCostPerRank = sConfigMgr->GetOption<uint32>("ClasslessWildcard.Classless.TalentCostPerRank", 1);
     cfg.talentFlatCost = sConfigMgr->GetOption<bool>("ClasslessWildcard.Classless.TalentFlatCost", false);
     cfg.enforceTalentRows = sConfigMgr->GetOption<bool>("ClasslessWildcard.Classless.EnforceTalentRows", true);
@@ -489,9 +519,10 @@ void ClasslessMgr::BuildLibrary()
                     e.rankLevels[ri] = e.rankLevels[ri - 1];
         }
 
-        if (SpellInfo const* firstInfo = sSpellMgr->GetSpellInfo(e.firstSpellId))
-            if (firstInfo->SpellName[0])
-                e.name = firstInfo->SpellName[0];
+        SpellInfo const* firstInfo = sSpellMgr->GetSpellInfo(e.firstSpellId);
+        if (firstInfo && firstInfo->SpellName[0])
+            e.name = firstInfo->SpellName[0];
+        e.type = ClassifyAbility(firstInfo, e.passive);
 
         e.rarity = RarityFromSpellLevel(e.rankLevels[0]);
         e.cost = cfg.abilityCostByRarity[uint8(e.rarity)];
@@ -821,9 +852,10 @@ void ClasslessMgr::LoadVariants()
             if (e.rankLevels[ri] < e.rankLevels[ri - 1])
                 e.rankLevels[ri] = e.rankLevels[ri - 1];
 
-        if (SpellInfo const* firstInfo = sSpellMgr->GetSpellInfo(variantFirst))
-            if (firstInfo->SpellName[0])
-                e.name = firstInfo->SpellName[0];
+        SpellInfo const* firstInfo = sSpellMgr->GetSpellInfo(variantFirst);
+        if (firstInfo && firstInfo->SpellName[0])
+            e.name = firstInfo->SpellName[0];
+        e.type = ClassifyAbility(firstInfo, false);
 
         e.classMask = base.classMask;
         uint8 const bumped = uint8(std::min<uint32>(uint32(base.rarity) + cfg.elementalRarityBump,

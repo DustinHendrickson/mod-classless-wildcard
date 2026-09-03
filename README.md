@@ -88,7 +88,9 @@ realm forces one through config. **Rebirth** lets a player switch paths later fo
 <img src="docs/advancement_addon.webp" alt="The Character Advancement panel: an ability browser, talent trees for every class, and the current build side by side" width="92%">
 
 <em>The <b>Character Advancement</b> panel. Browse every class's abilities and talent trees,<br>
-with your build on the right. Lock or reroll anything you own from the same window.</em>
+with your build on the right. Lock or reroll anything you own from the same window.<br>
+Each list sorts by level, name or type from the buttons on its header, lowest level first by default,<br>
+and the ability list filters to melee, ranged, spells, heals, utility or passives.</em>
 
 <br><br>
 
@@ -140,11 +142,11 @@ Keep it, or spend a reroll.</em>
   second rule included. Rage and energy are what the module adds. A Hero who wants Spirit to
   regenerate mana during a fight learns Meditation, Arcane Meditation or Intensity, any of which
   any Hero can take.
-- **Death Knight abilities.** Off by default, because they cost runes and the core only builds a
-  rune block for a real Death Knight. Set `IncludeDeathKnight` to `1` and every Hero gets one:
-  runes, rune cooldowns and runic power. The stock UI cannot draw any of it, so the server sends
-  the rune state to the addon, which shows six pips coloured by rune type, dimmed while
-  recharging, plus a runic power bar.
+- **Death Knight abilities.** In the pool by default. They cost runes, and the core only builds
+  a rune block for a real Death Knight, so the module gives every Hero one: runes, rune
+  cooldowns and runic power. The stock UI cannot draw any of it, so the server sends the rune
+  state to the addon, which shows six pips coloured by rune type, dimmed while recharging, plus
+  a runic power bar. Set `IncludeDeathKnight` to `0` to leave Death Knight content out.
 - **Primary stat allocation.** A point budget spent freely across STR, AGI, STA, INT and SPI,
   applied immediately, with free reallocation at any time from the addon's Stats tab or
   `.classless stat`. The budget is `StartingPoints + PointsPerLevel x (level - 1)`, which on the
@@ -569,7 +571,7 @@ inline. The ones most likely to need changing:
 | `ClasslessWildcard.DefaultMode`                     | `0`          | `0` classless, `1` wildcard                                    |
 | `ClasslessWildcard.AllowModeChoice`                 | `1`          | Let players pick. `0` forces `DefaultMode` realm-wide           |
 | `ClasslessWildcard.ModeChoiceDeadline`              | `5`          | Level after which the path locks                               |
-| `ClasslessWildcard.IncludeDeathKnight`              | `0`          | Include DK abilities, which cost runes                         |
+| `ClasslessWildcard.IncludeDeathKnight`              | `1`          | Include DK abilities and talents; every Hero gets a rune block |
 | `ClasslessWildcard.NpcEntry`                        | `990100`     | Hero Advancement NPC entry                                     |
 | `Chassis.Enable`                                    | `1`          | Put every character on one base class                          |
 | `Chassis.Class`                                     | `2`          | Which class. Mana classes only; others are refused at startup   |
@@ -623,8 +625,8 @@ These follow from the stock 3.3.5a client and are not bugs:
 
 - **The talent frame is unused.** Talents are granted as their underlying spells, and native
   talent points are set to zero. Everything you learn appears in the spellbook.
-- **Death Knight abilities are disabled by default**, because they cost runes. Set
-  `IncludeDeathKnight` to `1` to enable them along with the rune bar the addon draws.
+- **Death Knight abilities are on by default.** They cost runes, so every Hero carries a rune
+  block and the addon draws the rune bar. Set `IncludeDeathKnight` to `0` to leave them out.
 
 ---
 

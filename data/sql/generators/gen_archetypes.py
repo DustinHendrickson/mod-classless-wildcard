@@ -259,7 +259,7 @@ def read_conf(path):
     cfg = dict(starting_ae=3, essence_start=4, te_start=10, ae_per_level=1, te_per_level=1,
                costs=[1, 2, 3, 5, 8], talent_cost=1, talent_flat=0, enforce_rows=1,
                respect_levels=1, trainer_only=1, include_racials=0, include_passives=1,
-               include_dk=0)
+               include_dk=1)
     keys = {
         "ClasslessWildcard.Classless.StartingAbilityEssence": ("starting_ae", int),
         "ClasslessWildcard.Classless.EssenceStartLevel": ("essence_start", int),

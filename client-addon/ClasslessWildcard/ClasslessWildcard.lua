@@ -86,6 +86,33 @@ local function SpellIcon(spellId)
     return icon or "Interface\\Icons\\INV_Misc_QuestionMark"
 end
 
+-- Browser sort orders and the ability type filter. The server sorts and
+-- filters, so a page comes back in the order asked for; the choice is kept in
+-- ClasslessWildcardDB across sessions.
+CW.BROWSE = {
+    ABIL_SORTS = { "Level 1-80", "Level 80-1", "Name A-Z", "Name Z-A", "By type" },
+    TAL_SORTS  = { "Tier 1-11", "Tier 11-1", "Name A-Z", "Name Z-A", "By type" },
+    -- label, and the type argument the server expects (0 = everything)
+    ABIL_TYPES = { { "All", 0 }, { "Melee", 2 }, { "Ranged", 3 }, { "Spells", 4 },
+                   { "Heals", 5 }, { "Utility", 1 }, { "Passive", 6 } },
+    TYPE_NAMES = { [0] = "Utility", [1] = "Melee", [2] = "Ranged", [3] = "Spell", [4] = "Heal", [5] = "Passive" },
+}
+CW.abilSort, CW.abilType, CW.talSort = 1, 1, 1
+
+local function RequestAbil(page)
+    CW.abilPage = page
+    Send("ABIL " .. CLASS_ORDER[CW.classIndex] .. " " .. page .. " " .. (CW.abilSort - 1)
+         .. " " .. CW.BROWSE.ABIL_TYPES[CW.abilType][2])
+end
+
+local function RequestTal(page)
+    local t = CW.tabs[CW.tabIndex]
+    if not t then return end
+    CW.talPage = page
+    Send("TAL " .. t.id .. " " .. page .. " " .. (CW.talSort - 1))
+end
+CW.RequestAbil, CW.RequestTal = RequestAbil, RequestTal
+
 -- ---------------------------------------------------------------------------
 -- main frame: "Character Advancement" — Ascension-style single-screen layout
 -- (class strip on top, Abilities + Talents panes, My Build sidebar, bottom bar)
@@ -93,12 +120,19 @@ end
 local frame = CreateFrame("Frame", "ClasslessWildcardFrame", UIParent)
 frame:SetWidth(950); frame:SetHeight(600)
 frame:SetPoint("CENTER")
-frame:SetBackdrop({
+-- The whole look of the panel (pane outlines, header strips, textured
+-- ground) is one baked image applied as the backdrop. RefreshPanelArt applies
+-- it again on entering the world, after a cinematic and whenever the panel
+-- opens: a brand-new character plays the intro movie right after addons
+-- load, and the client drops textures loaded before it, which left the panel
+-- flat until a reload.
+CW.PANEL_BACKDROP = {
     bgFile = "Interface\\AddOns\\ClasslessWildcard\\panel_bg", -- baked layout art
     edgeFile = "Interface\\DialogFrame\\UI-DialogBox-Border",
     tile = false, edgeSize = 32,
     insets = { left = 0, right = 0, top = 0, bottom = 0 },
-})
+}
+frame:SetBackdrop(CW.PANEL_BACKDROP)
 -- Opaque backing UNDER the baked art: panel_bg has transparent regions, so
 -- without this the world shows through the gaps between the painted panes.
 local frameBg = frame:CreateTexture(nil, "BACKGROUND", nil, -8)
@@ -130,6 +164,12 @@ titleGlow:SetTexture("Interface\\AddOns\\ClasslessWildcard\\glow")
 titleGlow:SetBlendMode("ADD")
 titleGlow:SetVertexColor(0.45, 0.75, 1)
 titleGlow:SetAlpha(0)
+
+function CW.RefreshPanelArt()
+    frame:SetBackdrop(CW.PANEL_BACKDROP)
+    titleIcon:SetTexture("Interface\\AddOns\\ClasslessWildcard\\icon")
+    titleGlow:SetTexture("Interface\\AddOns\\ClasslessWildcard\\glow")
+end
 
 titleBtn:SetScript("OnEnter", function(self)
     titleGlow:SetAlpha(0.9)
@@ -239,15 +279,13 @@ for i, classId in ipairs(CLASS_ORDER) do
     b:SetHighlightTexture("Interface\\Buttons\\ButtonHilight-Square", "ADD")
     b:SetScript("OnClick", function()
         CW.classIndex = i
-        CW.abilPage = 0
-        Send("ABIL " .. classId .. " 0")
+        RequestAbil(0)
         -- follow the class across: jump the Talents pane to that class's first
         -- tree, so both panes are showing the same class
         for idx, t in ipairs(CW.tabs) do
             if t.class == classId then
                 CW.tabIndex = idx
-                CW.talPage = 0
-                Send("TAL " .. t.id .. " 0")
+                RequestTal(0)
                 break
             end
         end
@@ -391,6 +429,7 @@ end
 -- Abilities pane -----------------------------------------------------------------
 local ABIL_X, ABIL_W = 24, 296
 MakePaneHeader(ABIL_X, ABIL_W, "Abilities")
+
 local abilEntries = {}
 for i = 1, ENTRIES do
     abilEntries[i] = MakeEntry(ABIL_X, PANE_TOP - 36 - (i - 1) * ENTRY_H, ABIL_W, i)
@@ -400,6 +439,57 @@ local abilPrev, abilPage, abilNext = MakePager(ABIL_X, ABIL_W, 66)
 -- Talents pane -------------------------------------------------------------------
 local TAL_X, TAL_W = 336, 296
 MakePaneHeader(TAL_X, TAL_W, "Talents")
+
+-- Sort and filter buttons sit at the ends of the header strips, either side
+-- of the pane titles. Clicking cycles the choice and reloads page 1. Block
+-- scoped: the main chunk is close to Lua's 200-local limit.
+do
+    local B = CW.BROWSE
+    local function MakeHeaderButton(x, width, label)
+        local b = CreateFrame("Button", nil, frame, "UIPanelButtonTemplate")
+        b:SetWidth(width); b:SetHeight(18)
+        b:SetPoint("TOPLEFT", x, PANE_TOP - 7)
+        b:SetText(label)
+        return b
+    end
+    local function SaveBrowseChoice(key, value)
+        ClasslessWildcardDB = ClasslessWildcardDB or {}
+        ClasslessWildcardDB[key] = value
+    end
+    local abilSortBtn = MakeHeaderButton(ABIL_X + 4, 92, B.ABIL_SORTS[1])
+    local abilTypeBtn = MakeHeaderButton(ABIL_X + ABIL_W - 96, 92, B.ABIL_TYPES[1][1])
+    local talSortBtn = MakeHeaderButton(TAL_X + 4, 92, B.TAL_SORTS[1])
+    abilSortBtn:SetScript("OnClick", function()
+        CW.abilSort = CW.abilSort % #B.ABIL_SORTS + 1
+        abilSortBtn:SetText(B.ABIL_SORTS[CW.abilSort])
+        SaveBrowseChoice("abilSort", CW.abilSort)
+        RequestAbil(0)
+    end)
+    abilTypeBtn:SetScript("OnClick", function()
+        CW.abilType = CW.abilType % #B.ABIL_TYPES + 1
+        abilTypeBtn:SetText(B.ABIL_TYPES[CW.abilType][1])
+        SaveBrowseChoice("abilType", CW.abilType)
+        RequestAbil(0)
+    end)
+    talSortBtn:SetScript("OnClick", function()
+        CW.talSort = CW.talSort % #B.TAL_SORTS + 1
+        talSortBtn:SetText(B.TAL_SORTS[CW.talSort])
+        SaveBrowseChoice("talSort", CW.talSort)
+        RequestTal(0)
+    end)
+    CW.abilSortBtn, CW.abilTypeBtn, CW.talSortBtn = abilSortBtn, abilTypeBtn, talSortBtn
+
+    -- saved choices arrive with the saved variables, after this file has run
+    function CW.LoadBrowseChoices()
+        ClasslessWildcardDB = ClasslessWildcardDB or {}
+        CW.abilSort = B.ABIL_SORTS[ClasslessWildcardDB.abilSort or 0] and ClasslessWildcardDB.abilSort or 1
+        CW.abilType = B.ABIL_TYPES[ClasslessWildcardDB.abilType or 0] and ClasslessWildcardDB.abilType or 1
+        CW.talSort = B.TAL_SORTS[ClasslessWildcardDB.talSort or 0] and ClasslessWildcardDB.talSort or 1
+        abilSortBtn:SetText(B.ABIL_SORTS[CW.abilSort])
+        abilTypeBtn:SetText(B.ABIL_TYPES[CW.abilType][1])
+        talSortBtn:SetText(B.TAL_SORTS[CW.talSort])
+    end
+end
 local treeLeft = CreateFrame("Button", nil, frame)
 treeLeft:SetPoint("TOPLEFT", TAL_X + 2, PANE_TOP - 36)
 StyleArrow(treeLeft, true)
@@ -415,6 +505,7 @@ for i = 1, TAL_ENTRIES do
     talEntries[i] = MakeEntry(TAL_X, PANE_TOP - 66 - (i - 1) * ENTRY_H, TAL_W, i)
 end
 local talPrev, talPage, talNext = MakePager(TAL_X, TAL_W, 66)
+CW.abilEntries, CW.talEntries = abilEntries, talEntries
 
 -- My Build sidebar ---------------------------------------------------------------
 local BUILD_X, BUILD_W = 668, 258
@@ -652,9 +743,11 @@ archFly.intro:SetWidth(432)
 archFly.intro:SetJustifyH("LEFT")
 archFly.intro:SetText(archFly.INTRO)
 
--- One archetype row: name and ability count on the first line, the
--- description under it (it may wrap to a second line), and a button on the
--- right. The panel flyout and the first-login wizard both use these.
+-- One archetype row: the name on the first line, the description under it
+-- (it may wrap), the ability and talent counts on a line of their own, and a
+-- button on the right. Rows are stacked from their measured text heights by
+-- FillArchRows, so nothing overlaps whatever the text wraps to. The panel
+-- flyout and the first-login wizard both use these.
 local ARCH_ROW_H = 46
 local function MakeArchRow(parent, width, buttonText)
     local r = CreateFrame("Frame", nil, parent)
@@ -668,6 +761,10 @@ local function MakeArchRow(parent, width, buttonText)
     r.desc:SetWidth(width - 82)
     r.desc:SetJustifyH("LEFT")
     r.desc:SetJustifyV("TOP")
+    r.counts = r:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+    r.counts:SetPoint("TOPLEFT", r.desc, "BOTTOMLEFT", 0, -2)
+    r.counts:SetWidth(width - 82)
+    r.counts:SetJustifyH("LEFT")
     r.apply = CreateFrame("Button", nil, r, "UIPanelButtonTemplate")
     r.apply:SetWidth(70); r.apply:SetHeight(22)
     r.apply:SetPoint("RIGHT", 0, 0)
@@ -677,26 +774,40 @@ local function MakeArchRow(parent, width, buttonText)
     return r
 end
 
--- Fills rows from an archetype list; onChoose(arch) runs when a row's button
--- is clicked. Returns how many rows are showing.
-local function FillArchRows(rows, list, onChoose)
-    local shown = 0
+-- Text height as the client renders it, never less than one line: the
+-- measurement is what the rows are stacked from.
+local function TextHeight(fs)
+    return math.max(12, fs:GetStringHeight() or 0)
+end
+
+-- Fills rows from an archetype list and stacks them from `top` (a distance
+-- below the parent's top edge) at x, each as tall as its text needs;
+-- onChoose(arch) runs when a row's button is clicked. Returns how many rows
+-- are showing and the height they used.
+local function FillArchRows(rows, list, onChoose, x, top)
+    local shown, y = 0, top
     for i, r in ipairs(rows) do
         local arch = list[i]
         if arch then
             local count = (arch.count == 1) and "1 ability" or (arch.count .. " abilities")
             if (arch.ranks or 0) > 0 then count = count .. ", " .. arch.ranks .. " talent ranks" end
             r.name:SetText("|cffffff00" .. arch.name .. "|r" .. (arch.following and "  |cff00ff00following|r" or ""))
-            r.desc:SetText(arch.desc .. "  |cffaaaaaa" .. count .. "|r")
+            r.desc:SetText(arch.desc)
+            r.counts:SetText("|cffaaaaaa" .. count .. "|r")
             r.apply:SetText(arch.following and "Stop" or r.apply.defaultText)
             r.apply:SetScript("OnClick", function() onChoose(arch) end)
+            local h = 16 + TextHeight(r.desc) + 2 + 12 + 8
+            r:ClearAllPoints()
+            r:SetPoint("TOPLEFT", x, -y)
+            r:SetHeight(h)
             r:Show()
+            y = y + h
             shown = shown + 1
         else
             r:Hide()
         end
     end
-    return shown
+    return shown, y - top
 end
 
 archFly.rows = {}
@@ -706,22 +817,25 @@ for i = 1, 6 do
     archFly.rows[i] = r
 end
 
--- Fills the flyout from CW.archetypes (cached from the last AR/ARE reply) and
--- sizes it to the rows shown.
+-- Fills the flyout from CW.archetypes (cached from the last AR/ARE reply):
+-- the intro text first, the rows stacked under whatever height it wrapped
+-- to, and the panel sized to the lot.
 local function RenderArchFly()
-    local shown = FillArchRows(archFly.rows, CW.archetypes or {}, function(arch)
-        Send("ARCHAPPLY " .. (arch.following and 0 or arch.id)) -- 0 = stop following
-        archFly:Hide()
-        CW.SetTab("HERO") -- show what the archetype bought
-    end)
-    if shown > 0 then
+    local list = CW.archetypes or {}
+    if #list > 0 then
         archFly.intro:SetText(archFly.INTRO)
     elseif CW.archetypesLoaded then
         archFly.intro:SetText("No archetypes are configured on this realm.")
     else
         archFly.intro:SetText("Loading...")
     end
-    archFly:SetHeight(72 + math.max(shown, 1) * ARCH_ROW_H + 8)
+    local top = 30 + TextHeight(archFly.intro) + 12
+    local shown, used = FillArchRows(archFly.rows, list, function(arch)
+        Send("ARCHAPPLY " .. (arch.following and 0 or arch.id)) -- 0 = stop following
+        archFly:Hide()
+        CW.SetTab("HERO") -- show what the archetype bought
+    end, 14, top)
+    archFly:SetHeight(top + math.max(used, ARCH_ROW_H) + 10)
 end
 CW.RenderArchFly = RenderArchFly
 
@@ -971,12 +1085,14 @@ local function RenderAbilPane()
             w.name:SetText(SpellLabel(e.id, e.rarity) .. (e.passive == 1 and " |cff888888(passive)|r" or ""))
             if e.owned == 1 then w.check:Show() else w.check:Hide() end
             local lvlText = LevelTag(e.lvl, s.level)
+            local typeTag = (CW.abilSort == 5 or CW.abilType ~= 1)
+                and ("|cffaaaaaa" .. (CW.BROWSE.TYPE_NAMES[e.type or 0] or "") .. "|r  ") or ""
             if s.mode == 1 then
-                w.sub:SetText((RARITY_NAMES[e.rarity] or "") .. lvlText)
+                w.sub:SetText(typeTag .. (RARITY_NAMES[e.rarity] or "") .. lvlText)
                 w.tipLine = "Dealt by Wildcard rolls"
                 w:SetScript("OnClick", nil)
             else
-                w.sub:SetText(e.cost .. " Ability Essence" .. lvlText)
+                w.sub:SetText(typeTag .. e.cost .. " Ability Essence" .. lvlText)
                 w.tipLine = e.owned == 1 and "Known" or "Click to learn"
                 local id = e.id
                 w:SetScript("OnClick", function()
@@ -1020,8 +1136,10 @@ local function RenderTalPane()
             w.name:SetText(SpellLabel(t.spell, t.rarity) .. "  |cffaaaaaa" .. t.owned .. "/" .. t.max .. "|r")
             if t.owned > 0 then w.check:Show() else w.check:Hide() end
             local tlvl = 10 + (t.row or 0) * 5
+            local typeTag = CW.talSort == 5
+                and ("|cffaaaaaa" .. (t.active == 1 and "Active" or "Passive") .. "|r  ") or ""
             if s.mode == 1 then
-                w.sub:SetText((RARITY_NAMES[t.rarity] or "") .. LevelTag(tlvl, s.level))
+                w.sub:SetText(typeTag .. (RARITY_NAMES[t.rarity] or "") .. LevelTag(tlvl, s.level))
                 w.tipLine = "Rolled at level-up"
                 w:SetScript("OnClick", nil)
             else
@@ -1030,7 +1148,7 @@ local function RenderTalPane()
                 local cost = CW.talentCost or 1
                 local costText = cost .. " Talent Essence"
                     .. (CW.talentFlat and " (all ranks)" or "/rank")
-                w.sub:SetText("Row " .. (t.row + 1) .. "  " .. costText .. LevelTag(tlvl, s.level))
+                w.sub:SetText(typeTag .. "Row " .. (t.row + 1) .. "  " .. costText .. LevelTag(tlvl, s.level))
                 w.tipLine = t.owned >= t.max and "Maxed" or "Click to learn a rank"
                 local id = t.talentId
                 w:SetScript("OnClick", function()
@@ -1251,11 +1369,11 @@ end)
 -- (and opens the matching flyout for the old STAT key)
 function CW.SetTab(key)
     CW.tab = key or CW.tab
-    Send("ABIL " .. CLASS_ORDER[CW.classIndex] .. " " .. CW.abilPage)
+    RequestAbil(CW.abilPage)
     if #CW.tabs == 0 then
         Send("TABS")
-    elseif CW.tabs[CW.tabIndex] then
-        Send("TAL " .. CW.tabs[CW.tabIndex].id .. " " .. CW.talPage)
+    else
+        RequestTal(CW.talPage)
     end
     Send("OWN"); Send("OWNT")
     if key == "STAT" then Send("STATS"); statFly:Show() end
@@ -1265,33 +1383,31 @@ end
 
 -- pane pagers / tree selector ------------------------------------------------------
 abilPrev:SetScript("OnClick", function()
-    if CW.abilPage > 0 then Send("ABIL " .. CLASS_ORDER[CW.classIndex] .. " " .. (CW.abilPage - 1)) end
+    if CW.abilPage > 0 then RequestAbil(CW.abilPage - 1) end
 end)
 abilNext:SetScript("OnClick", function()
-    if CW.abilPage + 1 < CW.abilTotal then Send("ABIL " .. CLASS_ORDER[CW.classIndex] .. " " .. (CW.abilPage + 1)) end
+    if CW.abilPage + 1 < CW.abilTotal then RequestAbil(CW.abilPage + 1) end
 end)
 treeLeft:SetScript("OnClick", function()
     if #CW.tabs > 0 then
         CW.tabIndex = CW.tabIndex > 1 and CW.tabIndex - 1 or #CW.tabs
-        CW.talPage = 0
-        Send("TAL " .. CW.tabs[CW.tabIndex].id .. " 0")
+        RequestTal(0)
     end
 end)
 treeRight:SetScript("OnClick", function()
     if #CW.tabs > 0 then
         CW.tabIndex = CW.tabIndex < #CW.tabs and CW.tabIndex + 1 or 1
-        CW.talPage = 0
-        Send("TAL " .. CW.tabs[CW.tabIndex].id .. " 0")
+        RequestTal(0)
     end
 end)
 talPrev:SetScript("OnClick", function()
-    if CW.talPage > 0 and CW.tabs[CW.tabIndex] then
-        Send("TAL " .. CW.tabs[CW.tabIndex].id .. " " .. (CW.talPage - 1))
+    if CW.talPage > 0 then
+        RequestTal(CW.talPage - 1)
     end
 end)
 talNext:SetScript("OnClick", function()
-    if CW.talPage + 1 < CW.talTotal and CW.tabs[CW.tabIndex] then
-        Send("TAL " .. CW.tabs[CW.tabIndex].id .. " " .. (CW.talPage + 1))
+    if CW.talPage + 1 < CW.talTotal then
+        RequestTal(CW.talPage + 1)
     end
 end)
 buildPrev:SetScript("OnClick", function()
@@ -1392,19 +1508,21 @@ local function ShowArchetypeChoices()
     wizTitle:SetText("Pick a Starter Archetype")
     wizText:SetWidth(WIZ_ARCH_W - 50)
     wizClassless:Hide(); wizWildcard:Hide(); wizLater:Hide()
-    local shown = FillArchRows(archRows, CW.archetypes or {}, function(arch)
-        Send("ARCHAPPLY " .. arch.id)
-        wizard:Hide()
-        frame:Show()
-        CW.SetTab("HERO")
-    end)
-    if shown > 0 then
+    local list = CW.archetypes or {}
+    if #list > 0 then
         wizText:SetText("An archetype is a build you follow: its abilities and talents are bought for you as you level, all the way to 80. Change or stop it later from the Archetypes button.")
     else
         wizText:SetText("No archetypes are configured on this realm.")
     end
     wizard:SetWidth(WIZ_ARCH_W)
-    wizard:SetHeight(84 + math.max(shown, 1) * ARCH_ROW_H + 52)
+    local top = 46 + TextHeight(wizText) + 14
+    local shown, used = FillArchRows(archRows, list, function(arch)
+        Send("ARCHAPPLY " .. arch.id)
+        wizard:Hide()
+        frame:Show()
+        CW.SetTab("HERO")
+    end, 20, top)
+    wizard:SetHeight(top + math.max(used, ARCH_ROW_H) + 52)
     archSkip:Show()
     wizard:Show()
 end
@@ -2557,7 +2675,7 @@ local function HandleMessage(msg)
         CW.abilTotal = tonumber(p[4]) or 1
         CW.abilRows = {}
         for _, f in ipairs(ParseEntries(p[5], 5)) do
-            tinsert(CW.abilRows, { id = f[1], rarity = f[2], cost = f[3], owned = f[4], passive = f[5], lvl = f[6] or 1 })
+            tinsert(CW.abilRows, { id = f[1], rarity = f[2], cost = f[3], owned = f[4], passive = f[5], lvl = f[6] or 1, type = f[7] or 0 })
         end
         RenderList()
 
@@ -2567,16 +2685,14 @@ local function HandleMessage(msg)
         end
     elseif kind == "TBE" then
         -- tabs just arrived: fill the Talents pane with the current tree
-        if CW.tabs[CW.tabIndex] then
-            Send("TAL " .. CW.tabs[CW.tabIndex].id .. " 0")
-        end
+        RequestTal(0)
 
     elseif kind == "TL" then
         CW.talPage = tonumber(p[3]) or 0
         CW.talTotal = tonumber(p[4]) or 1
         CW.talRows = {}
         for _, f in ipairs(ParseEntries(p[5], 6)) do
-            tinsert(CW.talRows, { talentId = f[1], spell = f[2], rarity = f[3], owned = f[4], max = f[5], row = f[6] })
+            tinsert(CW.talRows, { talentId = f[1], spell = f[2], rarity = f[3], owned = f[4], max = f[5], row = f[6], active = f[7] or 0 })
         end
         RenderList()
 
@@ -2703,12 +2819,17 @@ local events = CreateFrame("Frame")
 events:RegisterEvent("CHAT_MSG_ADDON")
 events:RegisterEvent("PLAYER_ENTERING_WORLD")
 events:RegisterEvent("UPDATE_BINDINGS")
+events:RegisterEvent("CINEMATIC_STOP")
 events:SetScript("OnEvent", function(self, event, arg1, arg2, arg3, arg4)
     if event == "CHAT_MSG_ADDON" then
         if arg1 == PREFIX and arg4 == UnitName("player") then
             HandleMessage(arg2)
         end
+    elseif event == "CINEMATIC_STOP" then
+        CW.RefreshPanelArt()
     elseif event == "PLAYER_ENTERING_WORLD" then
+        CW.RefreshPanelArt()
+        CW.LoadBrowseChoices()
         Send("HELLO")
         if CW.ClaimHotkey then CW.ClaimHotkey() end
         if CW.RefreshMicroTooltip then CW.RefreshMicroTooltip() end
@@ -2719,6 +2840,7 @@ events:SetScript("OnEvent", function(self, event, arg1, arg2, arg3, arg4)
 end)
 
 frame:SetScript("OnShow", function()
+    CW.RefreshPanelArt()
     Send("STATE")
     CW.SetTab(CW.tab)
     -- The first time this character opens the panel, greet them with the Help

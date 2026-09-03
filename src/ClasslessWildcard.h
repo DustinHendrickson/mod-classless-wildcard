@@ -59,6 +59,19 @@ namespace ClasslessWildcard
         Rolled = 1    // wildcard random roll
     };
 
+    // What an ability is for, from its rank-1 spell: the browser sorts and
+    // filters on it. Heals are checked first (a healing spell has a magic
+    // damage class too), then the spell's own damage class.
+    enum class AbilityType : uint8
+    {
+        Utility = 0,   // buffs, forms, stances, totems, control
+        Melee   = 1,
+        Ranged  = 2,
+        Spell   = 3,
+        Heal    = 4,
+        Passive = 5
+    };
+
     // One entry of the ability library: a spell line (first rank) + all its ranks.
     struct AbilityEntry
     {
@@ -73,6 +86,7 @@ namespace ClasslessWildcard
         bool   enabled = true;
         bool   passive = false;
         bool   variant = false;         // an elemental variant (cw_ability_variants)
+        AbilityType type = AbilityType::Utility;
     };
 
     // One entry of the talent pool.
@@ -179,7 +193,7 @@ namespace ClasslessWildcard
         uint8  modeChoiceDeadline = 5;
 
         // library filters
-        bool   includeDeathKnight = false;
+        bool   includeDeathKnight = true;
         bool   includeRacials = false;
         bool   includePassives = true;
         std::unordered_set<uint32> excludedSpells;

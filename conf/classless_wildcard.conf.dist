@@ -102,7 +102,7 @@ ClasslessWildcard.ModeChoiceDeadline = 5
 #        being lost.
 #        Default: 1
 
-ClasslessWildcard.IncludeDeathKnight = 0
+ClasslessWildcard.IncludeDeathKnight = 1
 ClasslessWildcard.IncludeRacials = 0
 ClasslessWildcard.IncludePassives = 1
 ClasslessWildcard.ExcludedSpells = ""

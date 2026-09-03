@@ -127,7 +127,20 @@ namespace
     }
 
     // ---- browse: abilities of one class, paged ----
-    void SendAbilityPage(Player* player, uint8 classId, uint32 page)
+    // Sort orders the browser offers. 0 is the default.
+    enum BrowseSort : uint32
+    {
+        SORT_LEVEL_ASC  = 0,   // unlock level (talents: tier), then name
+        SORT_LEVEL_DESC = 1,
+        SORT_NAME_ASC   = 2,
+        SORT_NAME_DESC  = 3,
+        SORT_TYPE       = 4    // grouped by type (talents: active before passive), then level
+    };
+
+    // ABIL <class> <page> [sort] [type]: type 0 shows everything, 1..6 keeps
+    // one AbilityType (its value + 1, so a missing argument means "all").
+    // Each record: first:rarity:cost:owned:passive:level:type
+    void SendAbilityPage(Player* player, uint8 classId, uint32 page, uint32 sort, uint32 typeArg)
     {
         CharState& st = sClasslessMgr->GetState(player);
         uint32 classMask = classId >= 1 && classId <= 11 ? (1u << (classId - 1)) : 0;
@@ -135,8 +148,29 @@ namespace
         std::vector<AbilityEntry const*> list;
         for (auto const& [firstSpell, e] : sClasslessMgr->Abilities())
             if (e.enabled && (e.classMask & classMask)
-                && (!e.variant || sClasslessMgr->cfg.elementalShowInBrowser))
+                && (!e.variant || sClasslessMgr->cfg.elementalShowInBrowser)
+                && (!typeArg || uint32(e.type) + 1 == typeArg))
                 list.push_back(&e);
+
+        auto level = [](AbilityEntry const* e) { return e->rankLevels.empty() ? 1u : uint32(e->rankLevels[0]); };
+        std::stable_sort(list.begin(), list.end(), [&](AbilityEntry const* a, AbilityEntry const* b)
+        {
+            switch (sort)
+            {
+                case SORT_LEVEL_DESC:
+                    return level(a) != level(b) ? level(a) > level(b) : a->name < b->name;
+                case SORT_NAME_ASC:
+                    return a->name != b->name ? a->name < b->name : level(a) < level(b);
+                case SORT_NAME_DESC:
+                    return a->name != b->name ? a->name > b->name : level(a) < level(b);
+                case SORT_TYPE:
+                    if (a->type != b->type)
+                        return uint8(a->type) < uint8(b->type);
+                    return level(a) != level(b) ? level(a) < level(b) : a->name < b->name;
+                default:
+                    return level(a) != level(b) ? level(a) < level(b) : a->name < b->name;
+            }
+        });
 
         uint32 totalPages = list.empty() ? 1 : (uint32(list.size()) + LIST_PAGE - 1) / LIST_PAGE;
         if (page >= totalPages)
@@ -147,9 +181,9 @@ namespace
         for (uint32 i = start; i < list.size() && i < start + LIST_PAGE; ++i)
         {
             AbilityEntry const* e = list[i];
-            body += Acore::StringFormat("{}:{}:{}:{}:{}:{};", e->firstSpellId, uint32(e->rarity),
+            body += Acore::StringFormat("{}:{}:{}:{}:{}:{}:{};", e->firstSpellId, uint32(e->rarity),
                 sClasslessMgr->AbilityCost(*e), st.abilities.count(e->firstSpellId) ? 1 : 0, e->passive ? 1 : 0,
-                e->rankLevels.empty() ? 1 : uint32(e->rankLevels[0]));
+                level(e), uint32(e->type));
         }
         SendAddon(player, body);
     }
@@ -179,17 +213,41 @@ namespace
         SendAddon(player, "TBE|");
     }
 
-    void SendTalentPage(Player* player, uint32 tabId, uint32 page)
+    // TAL <tab> <page> [sort]. Each record:
+    // talent:rank1spell:rarity:owned:max:row:active (active = the talent's
+    // rank-1 spell is something you cast, not a passive)
+    void SendTalentPage(Player* player, uint32 tabId, uint32 page, uint32 sort)
     {
         CharState& st = sClasslessMgr->GetState(player);
 
-        std::vector<TalentPoolEntry const*> list;
+        struct Row { TalentPoolEntry const* t; std::string name; bool active; };
+        std::vector<Row> list;
         for (auto const& [talentId, t] : sClasslessMgr->Talents())
             if (t.enabled && t.tabId == tabId)
-                list.push_back(&t);
-        std::sort(list.begin(), list.end(), [](auto a, auto b)
+            {
+                SpellInfo const* info = sSpellMgr->GetSpellInfo(t.rankSpells[0]);
+                list.push_back({ &t, info && info->SpellName[0] ? info->SpellName[0] : "",
+                                 info && !info->IsPassive() });
+            }
+        auto tree = [](Row const& a, Row const& b)
         {
-            return a->row != b->row ? a->row < b->row : a->col < b->col;
+            return a.t->row != b.t->row ? a.t->row < b.t->row : a.t->col < b.t->col;
+        };
+        std::stable_sort(list.begin(), list.end(), [&](Row const& a, Row const& b)
+        {
+            switch (sort)
+            {
+                case SORT_LEVEL_DESC:
+                    return a.t->row != b.t->row ? a.t->row > b.t->row : a.t->col < b.t->col;
+                case SORT_NAME_ASC:
+                    return a.name != b.name ? a.name < b.name : tree(a, b);
+                case SORT_NAME_DESC:
+                    return a.name != b.name ? a.name > b.name : tree(a, b);
+                case SORT_TYPE:
+                    return a.active != b.active ? a.active : tree(a, b);
+                default:
+                    return tree(a, b);
+            }
         });
 
         uint32 totalPages = list.empty() ? 1 : (uint32(list.size()) + TAL_PAGE - 1) / TAL_PAGE;
@@ -200,12 +258,12 @@ namespace
         uint32 start = page * TAL_PAGE;
         for (uint32 i = start; i < list.size() && i < start + TAL_PAGE; ++i)
         {
-            TalentPoolEntry const* t = list[i];
+            TalentPoolEntry const* t = list[i].t;
             uint8 owned = 0;
             if (auto itr = st.talents.find(t->talentId); itr != st.talents.end())
                 owned = itr->second;
-            body += Acore::StringFormat("{}:{}:{}:{}:{}:{};", t->talentId, t->rankSpells[0],
-                uint32(t->rarity), owned, t->maxRank, t->row);
+            body += Acore::StringFormat("{}:{}:{}:{}:{}:{}:{};", t->talentId, t->rankSpells[0],
+                uint32(t->rarity), owned, t->maxRank, t->row, list[i].active ? 1 : 0);
         }
         SendAddon(player, body);
     }
@@ -374,11 +432,11 @@ namespace
         if (cmd == "HELLO" || cmd == "STATE")
             SendState(player);
         else if (cmd == "ABIL")
-            SendAbilityPage(player, uint8(argNum(1)), argNum(2));
+            SendAbilityPage(player, uint8(argNum(1)), argNum(2), argNum(3), argNum(4));
         else if (cmd == "TABS")
             SendTalentTabs(player);
         else if (cmd == "TAL")
-            SendTalentPage(player, argNum(1), argNum(2));
+            SendTalentPage(player, argNum(1), argNum(2), argNum(3));
         else if (cmd == "OWN")
             SendOwnedAbilities(player);
         else if (cmd == "OWNT")
