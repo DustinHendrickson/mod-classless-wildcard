@@ -201,7 +201,8 @@ config surface, SQL, README.
   and answers with addon packets. Panels: class-tabbed ability browser
   (icons/tooltips/rarity), talent trees, My Hero (unlearn / reroll / lock),
   Wildcard (talent rerolls, cards, pity/synergy), first-login onboarding
-  wizard with archetype picks.
+  wizard with archetype picks, and an Archetypes flyout on the main panel so a
+  Classless Hero can apply a starter build at any time without the NPC.
 
 **Phase 4 — future fidelity upgrades**
 - Stat reallocation (spend points on str/agi/sta/int/spi, server-side mods).

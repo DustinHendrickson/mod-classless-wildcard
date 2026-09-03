@@ -200,8 +200,10 @@ Keep it, or spend a reroll.</em>
   stands by A'dal. Every spawn carries the full gossip UI plus the scroll and item vendor, and
   everything it offers is also reachable from the addon panel. `.npc add 990100` places more.
 - **Starter archetypes.** Six curated builds (*Blade Dancer*, *Battle Mage*, *Ranger of the
-  Light*, *Shadow Mender*, *Stealthy Healer*, *Storm Warrior*) that spend a new Hero's starting
-  essence on a coherent role. Add your own rows to `cw_archetypes`.
+  Light*, *Shadow Mender*, *Stealthy Healer*, *Storm Warrior*) that spend a Classless Hero's
+  essence on a coherent role in one step. Apply one from the addon's **Archetypes** button, from
+  the Hero Advancement NPC, or with `.classless archetype <id>`. Add your own rows to
+  `cw_archetypes`.
 - **First-login onboarding.** A welcome flow, plus an addon wizard that walks a fresh character
   through picking a path.
 - **A starter kit that fits any build.** A new Hero cannot be given class starter gear, because
@@ -374,7 +376,7 @@ Everything the NPC and the addon do is also available as a chat command.
 | `.classless stat str\|agi\|sta\|int\|spi <points>` | Allocate points. Reallocation is free             |
 | `.classless bar mana\|rage\|energy\|default`       | Pick which resource the main power bar displays   |
 | `.classless archetypes`                           | List starter archetypes and their IDs             |
-| `.classless archetype <id>`                       | Apply a starter build to a fresh Hero             |
+| `.classless archetype <id>`                       | Apply a starter archetype (Classless path)        |
 | `.classless rebirth classless\|wildcard`           | Full reset and path switch. Costs gold            |
 
 ### `.wildcard`

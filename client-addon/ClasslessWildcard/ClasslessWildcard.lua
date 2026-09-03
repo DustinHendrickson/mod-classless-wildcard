@@ -490,8 +490,8 @@ bottomLine:SetTexture("Interface\\Buttons\\WHITE8X8")
 bottomLine:SetVertexColor(0.82, 0.66, 0.20, 0.5)
 
 local bottomText = frame:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
--- sits in the empty gap between the left (Help/Buy Scroll) and right (Stats/
--- Rebirth/Respec) button clusters so it never overlaps a button
+-- sits in the empty gap between the left (Help, then Buy Scroll or Archetypes)
+-- and right (Stats/Rebirth/Respec) button clusters so it never overlaps a button
 bottomText:SetPoint("BOTTOM", -22, 33)
 bottomText:SetJustifyH("CENTER")
 
@@ -564,6 +564,17 @@ end)
 buyScrollBtn:SetScript("OnLeave", function() GameTooltip:Hide() end)
 CW.buyScrollBtn = buyScrollBtn
 
+-- Archetypes: the starter builds the Hero Advancement NPC offers, for the
+-- Classless path. Shares the slot beside Help with Buy Scroll: that one shows
+-- only on Wildcard and this one only on Classless, so they never overlap.
+-- Wired to archFly below.
+local archBtn = CreateFrame("Button", nil, frame, "UIPanelButtonTemplate")
+archBtn:SetWidth(100); archBtn:SetHeight(22)
+archBtn:SetPoint("BOTTOMLEFT", helpBtn, "BOTTOMRIGHT", 8, 0)
+archBtn:SetText("Archetypes")
+archBtn:Hide()
+CW.archBtn = archBtn
+
 -- stats flyout -------------------------------------------------------------------
 local statFly = CreateFrame("Frame", "ClasslessWildcardStats", frame)
 statFly:SetWidth(260); statFly:SetHeight(250)
@@ -609,6 +620,89 @@ local statReset = CreateFrame("Button", nil, statFly, "UIPanelButtonTemplate")
 statReset:SetWidth(100); statReset:SetHeight(22)
 statReset:SetPoint("BOTTOMRIGHT", -14, 12)
 statReset:SetText("Reset edits")
+
+-- archetype flyout ----------------------------------------------------------
+-- The same starter builds the Hero Advancement NPC lists, applied with one
+-- click. Classless only: the server refuses ARCHAPPLY on any other path, and
+-- UpdateStatus hides the button and this panel outside that mode.
+local archFly = CreateFrame("Frame", "ClasslessWildcardArchetypes", frame)
+archFly:SetWidth(460); archFly:SetHeight(120)
+archFly:SetPoint("BOTTOMLEFT", frame, "BOTTOMLEFT", 20, 56)
+archFly:SetFrameStrata("DIALOG")
+archFly:SetBackdrop({
+    bgFile = "Interface\\DialogFrame\\UI-DialogBox-Background",
+    edgeFile = "Interface\\Tooltips\\UI-Tooltip-Border",
+    tile = true, tileSize = 32, edgeSize = 14,
+    insets = { left = 4, right = 4, top = 4, bottom = 4 },
+})
+archFly:EnableMouse(true)
+archFly:Hide()
+CW.archFly = archFly
+
+archFly.title = archFly:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+archFly.title:SetPoint("TOP", 0, -12)
+archFly.title:SetText("Starter Archetypes")
+
+archFly.INTRO = "An archetype buys a set of abilities and talent ranks with your essence in one step. Anything you already know is skipped. Abilities it buys can be unlearned for a refund and its talents are covered by Respec, like any other purchase."
+archFly.intro = archFly:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+archFly.intro:SetPoint("TOPLEFT", 14, -30)
+archFly.intro:SetWidth(432)
+archFly.intro:SetJustifyH("LEFT")
+archFly.intro:SetText(archFly.INTRO)
+
+archFly.rows = {}
+for i = 1, 6 do
+    local r = CreateFrame("Frame", nil, archFly)
+    r:SetWidth(432); r:SetHeight(36)
+    r:SetPoint("TOPLEFT", 14, -72 - (i - 1) * 38)
+    r.name = r:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+    r.name:SetPoint("TOPLEFT", 0, 0)
+    r.name:SetWidth(350)
+    r.name:SetJustifyH("LEFT")
+    r.desc = r:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+    r.desc:SetPoint("TOPLEFT", 0, -16)
+    r.desc:SetWidth(350)
+    r.desc:SetJustifyH("LEFT")
+    r.apply = CreateFrame("Button", nil, r, "UIPanelButtonTemplate")
+    r.apply:SetWidth(70); r.apply:SetHeight(22)
+    r.apply:SetPoint("RIGHT", 0, 0)
+    r.apply:SetText("Apply")
+    r:Hide()
+    archFly.rows[i] = r
+end
+
+-- Fills the flyout from CW.archetypes (cached from the last AR/ARE reply) and
+-- sizes it to the rows shown.
+local function RenderArchFly()
+    local list = CW.archetypes or {}
+    local shown = 0
+    for i, r in ipairs(archFly.rows) do
+        local arch = list[i]
+        if arch then
+            local count = (arch.count == 1) and "1 ability" or (arch.count .. " abilities")
+            r.name:SetText("|cffffff00" .. arch.name .. "|r  |cffaaaaaa" .. count .. "|r")
+            r.desc:SetText(arch.desc)
+            r.apply:SetScript("OnClick", function()
+                Send("ARCHAPPLY " .. arch.id)
+                archFly:Hide()
+                CW.SetTab("HERO") -- show what the archetype bought
+            end)
+            r:Show()
+            shown = shown + 1
+        else
+            r:Hide()
+        end
+    end
+    if shown > 0 then
+        archFly.intro:SetText(archFly.INTRO)
+    elseif CW.archetypesLoaded then
+        archFly.intro:SetText("No archetypes are configured on this realm.")
+    else
+        archFly.intro:SetText("Loading...")
+    end
+    archFly:SetHeight(72 + math.max(shown, 1) * 38 + 8)
+end
+CW.RenderArchFly = RenderArchFly
 
 -- help flyout ---------------------------------------------------------------
 -- A scrollable "how it works" panel covering both systems. Static text, so it
@@ -718,6 +812,7 @@ local function BuildHelpText()
 "You start with a pool of AE and earn |cff00ff00+1 AE and +1 TE every level from 10|r.",
 "Abilities are priced by rarity -- |cff9d9d9d1|r / |cff1eff002|r / |cff0070dd3|r / |cffa335ee5|r / |cffff80008|r AE from common to legendary. Talents cost Talent Essence per rank and respect their tree's prerequisites and tier rules -- ranking one to 5 costs 5 TE, so pick your capstones carefully.",
 "Unlearning an ability refunds what you paid, |cffffd100Respec|r reshuffles your talents for gold, and every ability line you own |cff00ff00ranks up on its own|r as you level.",
+"|cffffd100Archetypes|r are starter builds. The |cffffd100Archetypes|r button on this panel, or the Hero Advancement NPC, buys a set of abilities and talent ranks with your essence in one step. Anything you already know is skipped, and everything it buys is a normal purchase you can unlearn or Respec.",
 "",
 "|cffff8800==  WILDCARD  --  the dice choose  ==|r",
 "The server rolls abilities and talents for you on a fixed schedule:",
@@ -763,18 +858,29 @@ RefreshHelpText()
 CW.helpFly = helpFly
 
 helpBtn:SetScript("OnClick", function()
-    statFly:Hide()
+    statFly:Hide(); archFly:Hide()
     if helpFly:IsShown() then helpFly:Hide() else helpFly:Show() end
 end)
 
 statsBtn:SetScript("OnClick", function()
-    helpFly:Hide()
+    helpFly:Hide(); archFly:Hide()
     if statFly:IsShown() then
         statFly:Hide()
     else
         Send("STATS")
         statFly:Show()
         if CW.RenderStats then CW.RenderStats() end -- render cached data now
+    end
+end)
+
+archBtn:SetScript("OnClick", function()
+    helpFly:Hide(); statFly:Hide()
+    if archFly:IsShown() then
+        archFly:Hide()
+    else
+        Send("ARCH")
+        RenderArchFly() -- cached list now; the ARE reply re-renders
+        archFly:Show()
     end
 end)
 
@@ -810,12 +916,14 @@ local function UpdateStatus()
         respecBtn:Enable()
         if s.rebirth == 1 then CW.rebirthBtn:Show() else CW.rebirthBtn:Hide() end
         CW.buyScrollBtn:Hide()
+        CW.archBtn:Show()
     elseif s.mode == 1 then
         statusText:SetText(modeText .. "   Rerolls: |cff00ff00" .. s.rerolls .. "|r")
         subStatusText:SetText("Level " .. s.level .. "   Scrolls: " .. s.scrolls .. "   Synergy chance: " .. s.chance .. "%   Pity: " .. s.pity)
         bottomText:SetText("Rerolls: |cff00ff00" .. s.rerolls .. "|r    Reroll Scrolls: |cff00ff00" .. s.scrolls .. "|r")
         respecBtn:Disable()
         if s.rebirth == 1 then CW.rebirthBtn:Show() else CW.rebirthBtn:Hide() end
+        CW.archBtn:Hide(); CW.archFly:Hide()
         if s.scrollBuy == 1 then
             CW.buyScrollBtn:SetText("Buy Scroll  " .. GetCoinTextureString(s.scrollCost or 0))
             CW.buyScrollBtn:Show()
@@ -825,6 +933,7 @@ local function UpdateStatus()
         subStatusText:SetText("Choose your path before level " .. s.deadline .. "!")
         CW.rebirthBtn:Hide()
         CW.buyScrollBtn:Hide()
+        CW.archBtn:Hide(); CW.archFly:Hide()
         bottomText:SetText("")
     end
 end
@@ -2465,9 +2574,13 @@ local function HandleMessage(msg)
         end
         tinsert(CW.archetypes, { id = tonumber(p[2]) or 0, name = p[3] or "?", desc = p[4] or "", count = tonumber(p[5]) or 0 })
     elseif kind == "ARE" then
+        if not collectingArch then CW.archetypes = {} end -- reply with no AR rows
         collectingArch = false
+        CW.archetypesLoaded = true
         if wizard:IsShown() then
             ShowArchetypeChoices()
+        elseif archFly:IsShown() then
+            RenderArchFly()
         end
 
     elseif kind == "ST" then
