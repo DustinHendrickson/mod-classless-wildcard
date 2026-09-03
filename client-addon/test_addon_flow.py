@@ -261,6 +261,23 @@ def test_archetypes(h):
     h.recv("ARE|")
     h.check(rows[1]["__shown"] is True and rows[2]["__shown"] is False, "a new reply replaces the cached list")
     h.check("Ranger" in str(rows[1].name["__text"]), "row 1 is the new archetype")
+    h.check(fly.list.scroll["__h"] == 50 and fly.list.child["__h"] == 50, "one row: the list is one row tall, nothing to scroll")
+
+    # the shipped realm sends thirteen: rows are made on demand and the list
+    # scrolls instead of growing the flyout past the panel
+    for i in range(1, 14):
+        h.recv("AR|%d|Build %d|Description %d.|24|71|0" % (i, i, i))
+    h.recv("ARE|")
+    h.check(rows[13] is not None and rows[13]["__shown"] is True and rows[14] is None,
+            "thirteen rows exist and show, no fourteenth")
+    h.check("Build 13" in str(rows[13].name["__text"]), "row 13 is the last archetype")
+    h.check(fly.list.child["__h"] == 13 * 50, "scroll child holds all thirteen (%s)" % fly.list.child["__h"])
+    h.check(fly.list.scroll["__h"] == 440, "visible list capped at 440 (%s)" % fly.list.scroll["__h"])
+    h.check(fly["__h"] == 54 + 440 + 10, "flyout sized to the capped list (%s)" % fly["__h"])
+    h.clear_sent()
+    h.click(rows[13].apply)
+    h.check("ARCHAPPLY 13" in h.sent(), "a row past the old six still applies its own id")
+    h.click(btn)
 
     # empty realm
     h.recv("ARE|")
@@ -321,6 +338,19 @@ def test_wizard(h):
             "page 1 again restores size and title")
     h.check(rows[1]["__shown"] is False and CW.wizArchSkip["__shown"] is False and CW.wizClassless["__shown"] is True,
             "page 1 again hides rows and shows the path buttons")
+    h.check(CW.wizArchList.scroll["__shown"] is False, "page 1 again hides the list")
+
+    # thirteen archetypes: the wizard stops growing at the list cap and scrolls
+    for i in range(1, 14):
+        h.recv("AR|%d|Build %d|Description %d.|24|71|0" % (i, i, i))
+    h.recv("ARE|")
+    h.check(rows[13]["__shown"] is True and CW.wizArchList.scroll["__shown"] is True, "thirteen rows shown in the list")
+    h.check(CW.wizArchList.scroll["__h"] == 440 and wizard["__h"] == 72 + 440 + 52,
+            "wizard sized to the capped list (%s)" % wizard["__h"])
+    h.clear_sent()
+    h.click(rows[13].apply)
+    h.check("ARCHAPPLY 13" in h.sent() and wizard["__shown"] is False, "choosing row 13 applies id 13 and closes the wizard")
+    CW.ShowPathChoice()
 
     h.recv("ARE|")  # a realm with no archetypes
     h.check("No archetypes" in str(CW.wizText["__text"]) and wizard["__h"] == 72 + 46 + 52, "empty list says so and keeps one row of height (%s)" % wizard["__h"])

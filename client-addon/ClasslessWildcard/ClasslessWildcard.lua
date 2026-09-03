@@ -780,13 +780,41 @@ local function TextHeight(fs)
     return math.max(12, fs:GetStringHeight() or 0)
 end
 
--- Fills rows from an archetype list and stacks them from `top` (a distance
--- below the parent's top edge) at x, each as tall as its text needs;
--- onChoose(arch) runs when a row's button is clicked. Returns how many rows
--- are showing and the height they used.
-local function FillArchRows(rows, list, onChoose, x, top)
-    local shown, y = 0, top
-    for i, r in ipairs(rows) do
+-- A scrollable stack of archetype rows. Rows are created for however many
+-- archetypes the realm sends and stacked inside a scroll child; once they
+-- need more than ARCH_LIST_MAX_H the host stops growing and the list scrolls
+-- instead, by mouse wheel or the bar that appears on its right. The panel
+-- flyout and the first-login wizard each own one.
+local ARCH_LIST_MAX_H = 440   -- tallest the visible part gets before it scrolls
+local ARCH_SCROLLBAR_W = 24   -- room kept on the right for the scroll bar
+local function MakeArchList(parent, name, width, buttonText)
+    local L = { rows = {}, width = width - ARCH_SCROLLBAR_W, buttonText = buttonText }
+    L.scroll = CreateFrame("ScrollFrame", name, parent, "UIPanelScrollFrameTemplate")
+    L.scroll:SetWidth(L.width); L.scroll:SetHeight(ARCH_ROW_H)
+    L.scroll.scrollBarHideable = 1   -- the bar shows only when there is something to scroll
+    L.scroll:Hide()
+    L.child = CreateFrame("Frame", nil, L.scroll)
+    L.child:SetWidth(L.width); L.child:SetHeight(1)
+    L.scroll:SetScrollChild(L.child)
+    for i = 1, 6 do   -- the usual count up front; FillArchRows makes the rest
+        L.rows[i] = MakeArchRow(L.child, L.width, buttonText)
+    end
+    return L
+end
+
+-- Fills a list from an archetype list and places it `top` below the host's
+-- top edge at x. Rows are stacked from their measured text heights, made on
+-- demand when the realm has more than the list has seen; onChoose(arch) runs
+-- when a row's button is clicked. Returns how many rows are showing and the
+-- height the visible part takes, which is what the host sizes itself from.
+local function FillArchRows(L, list, onChoose, x, top)
+    local y = 0
+    for i = 1, math.max(#list, #L.rows) do
+        local r = L.rows[i]
+        if not r then
+            r = MakeArchRow(L.child, L.width, L.buttonText)
+            L.rows[i] = r
+        end
         local arch = list[i]
         if arch then
             local count = (arch.count == 1) and "1 ability" or (arch.count .. " abilities")
@@ -798,24 +826,27 @@ local function FillArchRows(rows, list, onChoose, x, top)
             r.apply:SetScript("OnClick", function() onChoose(arch) end)
             local h = 16 + TextHeight(r.desc) + 2 + 12 + 8
             r:ClearAllPoints()
-            r:SetPoint("TOPLEFT", x, -y)
+            r:SetPoint("TOPLEFT", 0, -y)
             r:SetHeight(h)
             r:Show()
             y = y + h
-            shown = shown + 1
         else
             r:Hide()
         end
     end
-    return shown, y - top
+    local visible = math.min(y, ARCH_LIST_MAX_H)
+    L.child:SetHeight(math.max(y, 1))
+    L.scroll:ClearAllPoints()
+    L.scroll:SetPoint("TOPLEFT", x, -top)
+    L.scroll:SetHeight(math.max(visible, ARCH_ROW_H))
+    L.scroll:SetVerticalScroll(0)
+    L.scroll:UpdateScrollChildRect()
+    L.scroll:Show()
+    return #list, visible
 end
 
-archFly.rows = {}
-for i = 1, 6 do
-    local r = MakeArchRow(archFly, 432, "Follow")
-    r:SetPoint("TOPLEFT", 14, -72 - (i - 1) * ARCH_ROW_H)
-    archFly.rows[i] = r
-end
+archFly.list = MakeArchList(archFly, "ClasslessWildcardArchetypeList", 432, "Follow")
+archFly.rows = archFly.list.rows
 
 -- Fills the flyout from CW.archetypes (cached from the last AR/ARE reply):
 -- the intro text first, the rows stacked under whatever height it wrapped
@@ -830,7 +861,7 @@ local function RenderArchFly()
         archFly.intro:SetText("Loading...")
     end
     local top = 30 + TextHeight(archFly.intro) + 12
-    local shown, used = FillArchRows(archFly.rows, list, function(arch)
+    local shown, used = FillArchRows(archFly.list, list, function(arch)
         Send("ARCHAPPLY " .. (arch.following and 0 or arch.id)) -- 0 = stop following
         archFly:Hide()
         CW.SetTab("HERO") -- show what the archetype bought
@@ -1487,12 +1518,7 @@ wizLater:SetScript("OnClick", function() wizard:Hide() end)
 -- to fit them and shrinks back when page 1 is shown again.
 local WIZ_W, WIZ_H = 420, 300
 local WIZ_ARCH_W = 480
-local archRows = {}
-for i = 1, 6 do
-    local r = MakeArchRow(wizard, WIZ_ARCH_W - 40, "Choose")
-    r:SetPoint("TOPLEFT", 20, -84 - (i - 1) * ARCH_ROW_H)
-    archRows[i] = r
-end
+local wizList = MakeArchList(wizard, "ClasslessWildcardWizardArchetypes", WIZ_ARCH_W - 40, "Choose")
 local archSkip = CreateFrame("Button", nil, wizard, "UIPanelButtonTemplate")
 archSkip:SetWidth(180); archSkip:SetHeight(22)
 archSkip:SetPoint("BOTTOM", 0, 14)
@@ -1510,7 +1536,8 @@ local function ShowPathChoice()
     wizText:SetWidth(370)
     wizText:SetText(WIZ_PATH_TEXT)
     wizClassless:Show(); wizWildcard:Show(); wizLater:Show()
-    for _, r in ipairs(archRows) do r:Hide() end
+    wizList.scroll:Hide()
+    for _, r in ipairs(wizList.rows) do r:Hide() end
     archSkip:Hide()
     wizard:Show()
 end
@@ -1527,7 +1554,7 @@ local function ShowArchetypeChoices()
     end
     wizard:SetWidth(WIZ_ARCH_W)
     local top = 46 + TextHeight(wizText) + 14
-    local shown, used = FillArchRows(archRows, list, function(arch)
+    local shown, used = FillArchRows(wizList, list, function(arch)
         Send("ARCHAPPLY " .. arch.id)
         wizard:Hide()
         frame:Show()
@@ -1537,7 +1564,7 @@ local function ShowArchetypeChoices()
     archSkip:Show()
     wizard:Show()
 end
-CW.wizard, CW.wizArchRows, CW.wizArchSkip = wizard, archRows, archSkip
+CW.wizard, CW.wizArchRows, CW.wizArchList, CW.wizArchSkip = wizard, wizList.rows, wizList, archSkip
 CW.wizClassless, CW.wizWildcard, CW.wizLater = wizClassless, wizWildcard, wizLater
 CW.wizTitle, CW.wizText = wizTitle, wizText
 CW.ShowPathChoice = ShowPathChoice
