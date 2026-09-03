@@ -139,6 +139,34 @@ def main(argv=None):
     check("SkillLineAbility.dbc: variant rows open to every class", bad == 0 and added,
           "%d added, %d wrong" % (added, bad))
 
+    # ---- targeting ---------------------------------------------------------
+    # The percent hit and the elemental add must target exactly what the
+    # base's weapon effect targeted: an area strike stays an area strike, a
+    # chain strike keeps its chain. Compared against the base rows in the
+    # extract, not against the manifest's own copy of them.
+    raw = read("Spell.dbc")
+    c0, _, r0, base_records, _ = rows_of(raw)
+    base_rows = {struct.unpack_from("<I", base_records, i * r0)[0]: i for i in range(c0)}
+    WEAPON = {17, 31, 58, 121}
+    bad_target = 0
+    for v in variants:
+        b = base_rows.get(v["base"])
+        if b is None:
+            continue
+        brow = base_records[b * r0:(b + 1) * r0]
+        bu = lambda f: struct.unpack_from("<I", brow, f * 4)[0]
+        w0 = next((e for e in range(3) if bu(71 + e) in WEAPON), None)
+        if w0 is None:
+            continue
+        want = (bu(86 + w0), bu(89 + w0), bu(92 + w0), bu(104 + w0))
+        f = v["fields"]
+        for slot in (0, 1):
+            got = tuple(int(f.get(str(k + slot), 0)) for k in (86, 89, 92, 104))
+            if got != want:
+                bad_target += 1
+    check("targeting: percent hit and elemental add use the base's targets, radius and chain",
+          bad_target == 0, "%d slot(s) differ" % bad_target)
+
     # ---- rank chains --------------------------------------------------------
     # Every line's SkillLineAbility rows must supersede along the VARIANT line
     # (rank 1 -> rank 2 -> ... -> 0), never point at the base's ranks.
@@ -171,7 +199,7 @@ def main(argv=None):
         sample = variants[0]["icon"]
         bad = []
         for elem in manifest["elements"]:
-            icon = dict(sample, element=elem["key"], hue=elem["hue"], rim=elem["rim"], glyph=elem["glyph"])
+            icon = dict(sample, element=elem["key"], hue=elem["hue"], glyph=elem["glyph"])
             try:
                 painted_blp = elemental.render_icon(synthetic, icon)
                 w, h, _ = blp.decode_blp(painted_blp)

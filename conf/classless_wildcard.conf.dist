@@ -303,7 +303,9 @@ ClasslessWildcard.FormStarterKits = 1
 # data/sql/generators/gen_elemental_variants.py takes the weapon coefficient
 # (85% by default, 75% for Holy) and the spell power coefficient (0.15) as its
 # arguments, and writes the client manifest in the same run so tooltips match.
-# Every player must reinstall the client patch after the rows change.
+# Every player must reinstall the client patch after the rows change. The
+# startup log names the generation id the rows came from, and the client
+# installer prints the id of the manifest it applied; they must be the same.
 #
 # RollWeightPct is what keeps the Wildcard pool honest. Each strike gains seven
 # variants, and RarityBump alone does not make them roll less often (with the

@@ -222,25 +222,33 @@ the way the Hero emblem is. Nothing of Blizzard's is redistributed in the reposi
 each (base icon, element):
 
 1. `ClientFiles.find("Interface\Icons\<base>.blp")`, `blp.decode_blp` to RGBA.
-2. Element treatment in Pillow: shift the hue toward the element's colour, add a coloured
-   rim vignette, and stamp a small procedural glyph in one corner (flame, snowflake, boulder,
-   drop, star, eye), drawn the same way `_draw_emblem` draws the Hero emblem. The base icon
-   stays recognisable; the corner says which element.
+2. Element treatment in Pillow: the base icon is left exactly as drawn, and a square badge a
+   quarter of the icon wide sits in the top-right corner: a plate of black tinted toward the
+   element's colour, bordered in that colour, with a bold filled symbol of the element inside
+   (flame, snowflake, boulder, drop, star, crescent, sun). Drawn at four times the size and
+   scaled down, so it is clean at the 36 pixels the game shows icons at. The shape says which
+   ability; the badge says which element; nothing about the art changes. Two whole-icon tints
+   were tried first and rejected on a preview from a real client (one left elements
+   indistinguishable and read as haze, the other washed highlights out), which is why
+   `preview_elemental_icons.py` exists: every change to this gets judged the same way.
 3. `blp.encode_palettized`, written to `Interface\Icons\CW_<Element>_<BaseIconName>.blp`.
 4. A `SpellIcon.dbc` row per icon, ids from 5000 (the stock table tops out at 4375).
 
 Without Pillow the installer sets the variant's `SpellIconID` to the base's, so the spell
 still shows and works; only the tint is lost. Same policy as the Hero emblem today.
 
-| Element | Hue | Rim | Glyph |
-| ------- | --- | --- | ----- |
-| Fire    | orange-red | ember orange | flame |
-| Frost   | cyan | pale blue | snowflake |
-| Earth   | ochre-brown | moss green | boulder |
-| Poison  | sickly green | dark green | drop |
-| Arcane  | violet | magenta | four-point star |
-| Shadow  | desaturated purple | near-black | eye |
-| Holy    | warm gold, lifted brightness | pale gold | sunburst |
+| Element | Badge colour | Symbol |
+| ------- | ------------ | ------ |
+| Fire    | orange-red | flame |
+| Frost   | ice blue | snowflake |
+| Earth   | brown | boulder |
+| Poison  | acid green | drop |
+| Arcane  | hot magenta | four-point star |
+| Shadow  | deep indigo | crescent |
+| Holy    | gold | sun |
+
+Arcane and Shadow are deliberately far apart (magenta against indigo): the first pass put
+both near purple and they were indistinguishable on a purple base icon.
 
 ### 2.5 Tooltips
 
@@ -340,13 +348,14 @@ The installer:
 4. Ships all of it in the patch MPQ it already builds. `--uninstall` removes it with the
    rest.
 
-### 4.2 Cost to be aware of
+### 4.2 What the patch carries
 
-`Spell.dbc` is 47 MB uncompressed (49,839 rows of 936 bytes plus a 2.3 MB string block).
-The client loads exactly one copy, so the patch must carry the whole file, not a delta.
-PKWARE compression in the patch archive should bring it to roughly 15-20 MB; the largest
-DBC the patch ships today is under 1 MB. This is the one genuinely new cost of the feature,
-and it lands on every player's install. It is a one-time download, not a runtime cost.
+`Spell.dbc` is 47 MB uncompressed (49,839 rows of 936 bytes plus a 2.3 MB string block), and
+the client loads exactly one copy. The installer therefore reads the player's own `Spell.dbc`
+through the archive chain, appends the variant rows to it, and ships the result in the patch
+archive, PKWARE-compressed. The repository carries only the manifest (about 1.7 MB of ids,
+overrides and text); no Blizzard table is checked in. The player's patch archive does grow by
+the compressed table, a one-time download, not a runtime cost.
 
 ### 4.3 Addon
 
@@ -376,17 +385,26 @@ Built and checked against the DBC extract, not yet run in a client or on a serve
 - Realm switches beyond `Enable`: `InPool` (rolls and purchase) and `ShowInBrowser` (the
   addon's class menus and the NPC lists), both on by default.
 
-The shipped set is now the Phase 1 wave with full rank chains: Sinister Strike, Heroic
-Strike, Backstab, Raptor Strike, Claw and Maul across all seven elements, 462 spell rows in
-42 lines. Backstab, Claw and Sinister Strike variants carry no rider (their combo point
-takes the third slot); Heroic Strike, Raptor Strike and Maul variants carry theirs.
+The shipped set is now the full pass: every eligible base, every element, every rank. 29
+bases are eligible; Mocking Blow and Deadly Throw are skipped (two non-weapon effects leave
+no slot for the elemental hit), so **27 bases, 189 lines, 1,085 spell rows**, ids stable
+against the Phase 1 wave (its 462 ids did not move). The four Death Knight bases ship and
+register only on a realm with `IncludeDeathKnight` on; elsewhere `LoadVariants` skips them
+quietly and reports the count. Seventeen bases carry the elemental hit but no rider because
+their third slot is taken (combo points, Maim's stun, Mangle's bleed bonus, the DK strikes'
+disease effects, Whirlwind's off-hand trigger): Aimed Shot, Ambush, Backstab, Claw, Death
+Strike, Hemorrhage, Maim, both Mangles, Mortal Strike, Obliterate, Overpower, Plague Strike,
+Ravage, Shred, Sinister Strike, Whirlwind. Area and chain strikes keep the base's own
+targeting on every slot, so Fiery Whirlwind is still an area attack and Fiery Cleave still
+strikes two.
 
-Verified in game so far, on the Phase 0 spike (Fiery Sinister Strike rank 1): the variant was dealt in a Wildcard starting hand, so the server
-registered it and the roll reached it; the client resolved its name; the energy cost, melee
-range and weapon requirement copied from the base; the tooltip rendered its numbers (85%,
-7, 1 combo point); and the painted icon showed. Still to verify: the cast itself (Fire in
-the combat log, the swing with the fire impact), armour versus resistance on a plate mob,
-and the spell-power scaling of the add.
+Verified in game on the Phase 0 spike (Fiery Sinister Strike rank 1): dealt in a Wildcard
+starting hand, so the server registered it and the roll reached it; the client resolved its
+name; energy cost, melee range and weapon requirement copied from the base; the tooltip
+rendered its numbers; the painted icon showed; it cast; and the combat log reported the hit as
+**13 Fire**, which is 85% of a white swing plus the +7 add, the exact figure the recipe
+predicts. Still to check: armour versus resistance on a plate mob, and the add rising with
+Intellect.
 
 Found by that first roll: with the shipped equal rarity weights, `RarityBump` does not make
 a variant roll less often, so every strike would have gained seven siblings at full weight.
@@ -394,9 +412,30 @@ a variant roll less often, so every strike would have gained seven siblings at f
 
 ## 6. Phases
 
-**Phase 0, the spike.** One variant, Fiery Sinister Strike rank 1 (spell 950672), which is
-what the generator's default run ships. Verify it on a real client and server; every later
-phase assumes all of this holds, and this is where it is cheapest to find out it doesn't.
+**Phase 0, the spike: done.** Fiery Sinister Strike rank 1, verified in game (dealt in a
+starting hand, tooltip, icon, cast, `13 Fire` in the combat log). The procedure is kept below
+because every later addition should be checked the same way.
+
+**Phase 1, the pipeline: done.** Generator, installer step, `LoadVariants`, tests.
+
+**Phase 2, rank chains: done.** Every rank of every line, `spell_ranks`, `SupercededBySpell`
+walking the variant line.
+
+**Phase 3, riders and balance: riders done, balance open.** Every element's rider is in where
+a slot allows. The balance pass (the 85% coefficient, the 0.15 spell-power coefficient, the 15%
+roll weight, and whether any base wants a `cw_ability_override` row) needs play, not code.
+
+**Phase 4, the rest of the list: done except the decision.** Ranged, form-locked and Death
+Knight bases are in the shipped set. Talent-rooted lines (Mortal Strike, Devastate, Hemorrhage,
+Aimed Shot, Mangle) are in because the module's own pool already offers their trainer ranks
+without the talent; whether that is wanted is the open question below, not a technical gap.
+
+**In-game checks still worth doing on the full set**, because these shapes did not exist in
+the spike: a Fiery Whirlwind hitting a group, a Fiery Multi-Shot from a bow with ammo, a
+Mangle or Maul variant refusing to cast out of form, an Overpower variant still needing the
+dodge, and a rank 2 variant arriving on level-up for a line whose rank 1 is owned.
+
+### Phase 0 procedure
 
 Server:
 
@@ -461,22 +500,23 @@ on talent-spell bases.
 
 ---
 
+
 ## 7. Risks and open questions
 
 **Risks**
 
-- **Patch size.** Covered in 4.2. If 15-20 MB per install is unacceptable, the fallback is
-  to ship only the appended rows in a side file and have the installer splice them into the
-  player's own `Spell.dbc` at install time. Same outcome for the client, and the repo carries
-  kilobytes instead of a Blizzard table; the installer does more work. That is probably the
-  better design regardless and Phase 1 should start there.
+- **Patch size.** Resolved the way 4.2 describes: the installer splices the rows into the
+  player's own `Spell.dbc`, so the repository carries the manifest and no Blizzard table. The
+  player's patch archive still grows by one compressed copy of that table.
 - **Server and client rows must agree.** They come from one generator, which is the
   mitigation, but a realm that regenerates the SQL and forgets to re-ship the client manifest
-  gets tooltips that lie. The manifest should carry a hash the server logs at startup so a
-  mismatch is visible.
+  gets tooltips that lie. Mitigated: every run stamps a generation id into both outputs; the
+  worldserver logs the one it loaded and the installer prints the one it applied, so a
+  mismatch is two different strings side by side. "Regenerate, restart, reinstall" is still
+  the rule; this is how you find out it was skipped.
 - **Form abilities.** Claw and Maul carry a `Stances` mask; copying it keeps them form-locked,
-  which is correct, but the form-kit pairing (Bear Form hands over Maul) will not hand over
-  Earthen Maul unless a row is added. Phase 4.
+  which is correct, and the shipped set includes them. The form-kit pairing (Bear Form hands
+  over Maul) does not hand over Earthen Maul; a `cw_form_kits` row would, if wanted.
 - **Slows do not stack.** A Frozen strike's -30% will not add to Frostbolt's -40%; the
   stronger applies. That is stock behaviour and fine, but worth saying in the tooltip text so
   it does not read as a bug.
@@ -486,6 +526,8 @@ on talent-spell bases.
 1. Should owning a base exclude its variants, or the reverse? Current answer: no exclusion.
    A variant can be dealt alongside its base in the same hand, which the first test roll
    appeared to do. Whether that is a feature or a duplicate is a play-test question.
-2. Should talent-spell bases get variants in the ability pool? Current answer: not in the
-   first four phases.
+2. Talent-rooted bases (Mortal Strike, Devastate, Hemorrhage, Aimed Shot, Mangle) have
+   variants, because the module's own pool already offers their trainer ranks without the
+   talent and the generator mirrors the pool. If that is not wanted, the fix belongs in the
+   pool filter, and the variants follow.
 3. Are the seven prefixes right? Fiery, Frozen, Earthen, Venomous, Arcane, Shadow, Holy.

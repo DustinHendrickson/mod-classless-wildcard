@@ -29,3 +29,4 @@ __pycache__/
 
 # Parsed cache of the core item_template display pool (rebuilt on demand)
 data/sql/generators/displays_pool.json
+elemental_icons_preview.png

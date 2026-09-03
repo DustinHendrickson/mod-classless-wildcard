@@ -183,18 +183,25 @@ Keep it, or spend a reroll.</em>
   brings Taunt, Berserker Stance brings Pummel. Without this a Hero could roll Bear Form and find
   they had turned into a creature with no way to attack. The pairs are rows in `cw_form_kits`, so
   you can add your own, and one config flag turns the whole feature off.
-- **Elemental variants of physical strikes.** Six weapon attacks currently come in seven
-  elemental forms each: Sinister Strike, Heroic Strike, Backstab, Raptor Strike, Claw and Maul,
-  as Fiery, Frozen, Earthen, Venomous, Arcane, Shadow and Holy, every rank included. A variant is
+- **Elemental variants of physical strikes.** Twenty-seven weapon attacks come in seven
+  elemental forms each, every rank included: Fiery, Frozen, Earthen, Venomous, Arcane, Shadow and
+  Holy versions of Sinister Strike, Backstab, Ambush, Hemorrhage, Heroic Strike, Cleave,
+  Whirlwind, Overpower, Mortal Strike, Devastate, Raptor Strike, Multi-Shot, Aimed Shot, Kill
+  Shot, Claw, Shred, Ravage, Maul, Maim, Swipe, both Mangles, Fan of Knives, and, when Death
+  Knight abilities are enabled, Blood Strike, Plague Strike, Obliterate and Death Strike. A
+  variant is
   the same attack with the same cost, cooldown and swing, but its damage is dealt as that element
   instead of Physical, so armour does not reduce it and resistance does. It keeps 85% of the
   weapon damage (75% for Holy), adds an elemental hit that grows with spell power, and where the
   ability has room carries one effect the element is known for: Fire burns, Frost slows, Earth
   slows attacks, Poison poisons, Shadow reduces healing taken, Holy heals you, and Arcane hits
-  harder instead. Variants roll and are bought like any other ability, one rarity tier above the
-  attack they come from. Their icons are the base attack's icon recoloured for the element,
-  painted by the client installer when Python's Pillow library is present; without it a
-  variant shows its base attack's icon.
+  harder instead. Attacks that already use all three of their effect slots (a combo point, a
+  stun, a bleed bonus) carry the elemental hit but not the extra effect. Mocking Blow and Deadly
+  Throw have no variants at all, because neither has room for the elemental hit. Variants roll
+  and are bought like any other ability, one rarity tier above the
+  attack they come from. Each variant uses its base attack's icon with an element badge in the
+  top corner, a small colour-coded plate and symbol, added by the client installer when
+  Python's Pillow library is present; without it a variant shows its base attack's plain icon.
 - **Class quests are open to everyone.** Every class's quest chains are available to every Hero,
   so the warrior's Whirlwind Axe chain, the warlock's pet summoning quests and every class mount
   chain are reachable instead of dead content. Applied automatically and reversible. See

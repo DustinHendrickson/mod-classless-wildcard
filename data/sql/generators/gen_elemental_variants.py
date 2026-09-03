@@ -21,11 +21,14 @@ the server's numbers and the client's tooltips cannot drift:
 Run:  python3 gen_elemental_variants.py [--dbc DIR] [--bases NAME,NAME,...]
                                         [--elements fire,frost,...] [--ranks first|top|all]
 
-Defaults are the shipped set: the Phase 1 wave of six bases, every element,
-every rank. The Phase 0 spike was
+Defaults are the shipped set: every eligible base, every element, every rank.
+The Phase 1 wave was
+    --bases "Sinister Strike,Heroic Strike,Backstab,Raptor Strike,Claw,Maul"
+and the Phase 0 spike
     --bases "Sinister Strike" --elements fire --ranks first
 """
 import argparse
+import hashlib
 import json
 import os
 import struct
@@ -160,25 +163,25 @@ DURATION_6S, DURATION_12S = 32, 29     # SpellDuration.dbc indices, verified
 ELEMENTS = [
     dict(key="fire",   idx=1, prefix="Fiery",    school=4,  word="Fire",   kit=728,
          rider=("dot", 2000, DURATION_6S), coeff=None,
-         hue=(255, 110, 30), rim=(255, 150, 40), glyph="flame"),
+         hue=(255, 96, 24), glyph="flame"),
     dict(key="frost",  idx=2, prefix="Frozen",   school=16, word="Frost",  kit=4991,
          rider=("aura", A_MOD_DECREASE_SPEED, -31, 0, DURATION_6S), coeff=None,
-         hue=(90, 200, 255), rim=(170, 220, 255), glyph="snowflake"),
+         hue=(72, 196, 255), glyph="snowflake"),
     dict(key="earth",  idx=3, prefix="Earthen",  school=8,  word="Nature", kit=3055,
          rider=("aura", A_MOD_MELEE_HASTE, -11, 0, DURATION_6S), coeff=None,
-         hue=(170, 120, 50), rim=(110, 150, 60), glyph="boulder"),
+         hue=(150, 100, 30), glyph="boulder"),
     dict(key="poison", idx=4, prefix="Venomous", school=8,  word="Nature", kit=3031,
          rider=("dot", 3000, DURATION_12S), coeff=None,
-         hue=(120, 200, 60), rim=(40, 110, 30), glyph="drop"),
+         hue=(108, 210, 40), glyph="drop"),
     dict(key="arcane", idx=5, prefix="Arcane",   school=64, word="Arcane", kit=1005,
          rider=None, coeff=None, add_mult=1.5,
-         hue=(190, 110, 255), rim=(230, 80, 230), glyph="star"),
+         hue=(255, 72, 232), glyph="star"),
     dict(key="shadow", idx=6, prefix="Shadow",   school=32, word="Shadow", kit=6898,
          rider=("aura", A_MOD_HEALING_PCT, -21, 127, DURATION_6S), coeff=None,
-         hue=(110, 70, 140), rim=(25, 15, 35), glyph="eye"),
+         hue=(72, 36, 130), glyph="crescent"),
     dict(key="holy",   idx=7, prefix="Holy",     school=2,  word="Holy",   kit=6359,
          rider=("heal",), coeff=75,
-         hue=(255, 225, 140), rim=(255, 240, 190), glyph="sunburst"),
+         hue=(255, 210, 84), glyph="sun"),
 ]
 ELEMENT_BY_KEY = {e["key"]: e for e in ELEMENTS}
 
@@ -324,17 +327,22 @@ def build_variant(spell, sla, icon, visual, base_id, base_index, rank_index, ele
     add_value = int(round((flat_add + 3 + lvl * 0.6) * elem.get("add_mult", 1.0)))
 
     # -- lay the three slots out: weapon %, elemental add, [base other], [rider]
+    # The base's own targeting for its weapon hit: a single enemy for a
+    # strike, an area for Whirlwind, a chain for Cleave. The percent hit, the
+    # elemental add and any debuff rider all use it, so an area strike stays
+    # an area strike as a variant.
+    w0 = weapon[0]
+    hit_target = dict(TargetA=vals[F["EffectImplicitTargetA"] + w0],
+                      TargetB=vals[F["EffectImplicitTargetB"] + w0],
+                      Radius=vals[F["EffectRadiusIndex"] + w0],
+                      Chain=vals[F["EffectChainTarget"] + w0])
     slots = []                        # list of dicts: effect fields for one slot
     slots.append(dict(Effect=E_WEAPON_PERCENT_DAMAGE, BasePoints=coeff - 1, DieSides=1,
-                      TargetA=TARGET_UNIT_TARGET_ENEMY, TargetB=0, Aura=0, Amplitude=0,
-                      Misc=0, MiscB=0, Trigger=0, Bonus=0.0, RealPerLevel=0.0, Mechanic=0,
-                      Radius=vals[F["EffectRadiusIndex"] + weapon[0]],
-                      Chain=vals[F["EffectChainTarget"] + weapon[0]]))
+                      Aura=0, Amplitude=0, Misc=0, MiscB=0, Trigger=0, Bonus=0.0,
+                      RealPerLevel=0.0, Mechanic=0, **hit_target))
     slots.append(dict(Effect=E_SCHOOL_DAMAGE, BasePoints=add_value - 1, DieSides=1,
-                      TargetA=TARGET_UNIT_TARGET_ENEMY, TargetB=0, Aura=0, Amplitude=0,
-                      Misc=0, MiscB=0, Trigger=0, Bonus=sp_coeff, RealPerLevel=0.0, Mechanic=0,
-                      Radius=vals[F["EffectRadiusIndex"] + weapon[0]],
-                      Chain=vals[F["EffectChainTarget"] + weapon[0]]))
+                      Aura=0, Amplitude=0, Misc=0, MiscB=0, Trigger=0, Bonus=sp_coeff,
+                      RealPerLevel=0.0, Mechanic=0, **hit_target))
     for e in other:
         slots.append(dict(Effect=vals[F["Effect"] + e], BasePoints=vals[F["EffectBasePoints"] + e],
                           DieSides=vals[F["EffectDieSides"] + e],
@@ -354,9 +362,9 @@ def build_variant(spell, sla, icon, visual, base_id, base_index, rank_index, ele
     rider_slot = None
     duration = vals[F["DurationIndex"]]
     if rider and len(slots) < 3:
-        r = dict(Effect=E_APPLY_AURA, BasePoints=0, DieSides=1, TargetA=TARGET_UNIT_TARGET_ENEMY,
-                 TargetB=0, Aura=0, Amplitude=0, Misc=0, MiscB=0, Trigger=0, Bonus=0.0,
-                 RealPerLevel=0.0, Mechanic=0, Radius=0, Chain=0)
+        r = dict(Effect=E_APPLY_AURA, BasePoints=0, DieSides=1, Aura=0, Amplitude=0,
+                 Misc=0, MiscB=0, Trigger=0, Bonus=0.0, RealPerLevel=0.0, Mechanic=0,
+                 **hit_target)
         if rider[0] == "dot":
             r.update(Aura=A_PERIODIC_DAMAGE, BasePoints=max(1, add_value // 2) - 1,
                      Amplitude=rider[1])
@@ -365,7 +373,8 @@ def build_variant(spell, sla, icon, visual, base_id, base_index, rank_index, ele
             r.update(Aura=rider[1], BasePoints=rider[2], Misc=rider[3])
             duration = duration or rider[4]
         elif rider[0] == "heal":
-            r.update(Effect=E_HEAL, BasePoints=add_value - 1, TargetA=TARGET_UNIT_CASTER)
+            r.update(Effect=E_HEAL, BasePoints=add_value - 1, TargetA=TARGET_UNIT_CASTER,
+                     TargetB=0, Radius=0, Chain=0)
         rider_slot = len(slots)
         slots.append(r)
     while len(slots) < 3:
@@ -421,6 +430,10 @@ def build_variant(spell, sla, icon, visual, base_id, base_index, rank_index, ele
             "shadow": " and reduces the effectiveness of healing on the target by $s%d%% for $d" % n,
             "holy":   " and heals you for $s%d" % n,
         }[elem["key"]]
+    if hit_target["Chain"] >= 100 or (hit_target["Radius"] and hit_target["Chain"] <= 1):
+        desc += ", striking all enemies in range"
+    elif hit_target["Chain"] > 1:
+        desc += ", striking up to $x1 targets"
     desc += "."
     for e, sl in enumerate(slots):
         if sl and sl["Effect"] == E_ADD_COMBO_POINTS:
@@ -458,7 +471,7 @@ def build_variant(spell, sla, icon, visual, base_id, base_index, rank_index, ele
                 name=name, rank_text=rank_text, description=desc, values=new,
                 overrides=overrides, visual=dict(id=visual_id, base=base_visual, impact_kit=elem["kit"]),
                 icon=dict(id=icon_id, base_icon=base_icon, base_path=base_icon_path,
-                          element=elem["key"], hue=elem["hue"], rim=elem["rim"], glyph=elem["glyph"]),
+                          element=elem["key"], hue=elem["hue"], glyph=elem["glyph"]),
                 sla=sla_fields, sla_id=sla_id, note=lost), None
 
 
@@ -471,6 +484,18 @@ def sql_literal(v):
     if isinstance(v, float):
         return repr(v)
     return str(v)
+
+
+def generation_id(variants):
+    """Twelve hex digits over every field the server deals and the client shows.
+    Written into both outputs by the same run, so a server and a client from
+    different runs can be told apart by comparing two strings."""
+    h = hashlib.sha1()
+    for v in sorted(variants, key=lambda x: x["id"]):
+        h.update(json.dumps([v["id"], v["name"], v["rank_text"], v["description"],
+                             v["values"], v["visual"], v["icon"]["id"], v["sla"]],
+                            sort_keys=True, default=str).encode("utf-8"))
+    return h.hexdigest()[:12]
 
 
 def write_sql(variants, path, run_desc):
@@ -490,6 +515,7 @@ def write_sql(variants, path, run_desc):
     L.append("-- generator, so what the server deals and what the tooltip shows agree.")
     L.append("--")
     L.append("-- This run: %s" % run_desc)
+    L.append("-- Generation: %s (the client manifest from the same run carries the same id)" % generation_id(variants))
     L.append("")
     L.append("CREATE TABLE IF NOT EXISTS `cw_ability_variants` (")
     L.append("  `variant_first_spell` INT UNSIGNED NOT NULL COMMENT 'rank 1 of the variant line',")
@@ -498,6 +524,13 @@ def write_sql(variants, path, run_desc):
     L.append("  `enabled`             TINYINT UNSIGNED NOT NULL DEFAULT 1,")
     L.append("  PRIMARY KEY (`variant_first_spell`)")
     L.append(") ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='Classless elemental ability variants';")
+    L.append("")
+    L.append("CREATE TABLE IF NOT EXISTS `cw_ability_variants_meta` (")
+    L.append("  `key`   VARCHAR(32) NOT NULL,")
+    L.append("  `value` VARCHAR(64) NOT NULL,")
+    L.append("  PRIMARY KEY (`key`)")
+    L.append(") ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='Which generator run the variant rows came from';")
+    L.append("REPLACE INTO `cw_ability_variants_meta` (`key`, `value`) VALUES ('generation', '%s');" % generation_id(variants))
     L.append("")
     lo, hi = SPELL_BASE, SPELL_BLOCK_END
     L.append("DELETE FROM `spell_dbc` WHERE `ID` BETWEEN %d AND %d;" % (lo, hi))
@@ -547,9 +580,10 @@ def write_sql(variants, path, run_desc):
 
 
 def write_manifest(variants, path, run_desc):
-    out = dict(version=1, run=run_desc, spell_block=[SPELL_BASE, SPELL_BLOCK_END],
+    out = dict(version=1, run=run_desc, generation=generation_id(variants),
+               spell_block=[SPELL_BASE, SPELL_BLOCK_END],
                elements=[dict(key=e["key"], idx=e["idx"], prefix=e["prefix"], school=e["school"],
-                              impact_kit=e["kit"], hue=e["hue"], rim=e["rim"], glyph=e["glyph"])
+                              impact_kit=e["kit"], hue=e["hue"], glyph=e["glyph"])
                          for e in ELEMENTS],
                variants=[])
     for v in variants:
@@ -567,7 +601,7 @@ def write_manifest(variants, path, run_desc):
 def main(argv=None):
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--dbc", default=DEFAULT_DBC, help="directory of extracted 3.3.5a DBCs")
-    ap.add_argument("--bases", default=PHASE1_BASES, help="comma-separated base ability names, or ALL")
+    ap.add_argument("--bases", default="ALL", help="comma-separated base ability names, or ALL")
     ap.add_argument("--elements", default="ALL", help="comma-separated element keys, or ALL")
     ap.add_argument("--ranks", default="all", choices=("first", "top", "all"))
     ap.add_argument("--coefficient", type=int, default=85, help="weapon damage kept, percent")
@@ -640,8 +674,9 @@ def main(argv=None):
 
     print("wrote %s" % os.path.normpath(args.out_sql))
     print("wrote %s" % os.path.normpath(args.out_manifest))
+    print("  generation %s  (the server logs this at startup; the installer prints it)" % generation_id(variants))
     print("  %d variant spell rows from %d base(s) x %d element(s)" % (len(variants), len(want_bases), len(want_elems)))
-    for b, e, why in skipped:
+    for b, e, why in sorted(set(skipped)):
         print("  skipped %s / %s: %s" % (b, e, why))
     no_rider = sorted({(v["base_name"], v["element"]) for v in variants if v["note"]})
     if no_rider:

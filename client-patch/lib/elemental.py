@@ -209,96 +209,95 @@ def retarget_unpainted(variants, painted: set):
 
 # ----------------------------------------------------------------- icons
 
-def _glyph(draw, kind, box, colour, outline):
-    """A small procedural mark for the corner of the icon, supersampled by the caller."""
+def _shade(colour, factor):
+    """Darken (factor < 1) or lighten toward white (factor > 1) a colour."""
+    if factor <= 1:
+        return tuple(int(c * factor) for c in colour)
+    t = factor - 1
+    return tuple(min(255, int(c + (255 - c) * t)) for c in colour)
+
+
+BADGE_FRACTION = 0.25   # of the icon's width, in the top-right corner
+
+
+def _symbol(draw, kind, box, colour, background):
+    """A bold, filled element symbol. Thin strokes vanish at the size these are
+    shown, so every mark here is a solid shape."""
     x0, y0, x1, y1 = box
     w, h = x1 - x0, y1 - y0
-    cx, cy = (x0 + x1) / 2, (y0 + y1) / 2
-    lw = max(2, int(w * 0.09))
+    cx, cy = (x0 + x1) / 2.0, (y0 + y1) / 2.0
+    thick = max(2, int(w * 0.16))
     if kind == "flame":
-        pts = [(cx, y0), (x1 - w * 0.12, cy + h * 0.15), (cx + w * 0.1, y1),
-               (x0 + w * 0.12, cy + h * 0.2), (cx - w * 0.15, cy - h * 0.05)]
-        draw.polygon(pts, fill=colour, outline=outline)
+        draw.polygon([(cx, y0), (x1 - w * 0.08, cy + h * 0.10), (cx + w * 0.12, y1),
+                      (x0 + w * 0.08, cy + h * 0.15), (cx - w * 0.22, cy - h * 0.10)], fill=colour)
+        draw.ellipse((cx - w * 0.16, cy + h * 0.05, cx + w * 0.16, y1 - h * 0.05), fill=background)
     elif kind == "snowflake":
-        r = w * 0.45
+        r = w * 0.46
         for k in range(3):
             a = math.pi / 2 + k * math.pi / 3
             draw.line([(cx - r * math.cos(a), cy - r * math.sin(a)),
-                       (cx + r * math.cos(a), cy + r * math.sin(a))], fill=colour, width=lw)
-        draw.ellipse((cx - lw, cy - lw, cx + lw, cy + lw), fill=colour)
+                       (cx + r * math.cos(a), cy + r * math.sin(a))], fill=colour, width=thick)
     elif kind == "boulder":
-        pts = [(x0 + w * 0.1, cy + h * 0.1), (x0 + w * 0.3, y0 + h * 0.15), (cx + w * 0.15, y0 + h * 0.05),
-               (x1 - w * 0.08, cy - h * 0.1), (x1 - w * 0.15, y1 - h * 0.1), (x0 + w * 0.25, y1 - h * 0.05)]
-        draw.polygon(pts, fill=colour, outline=outline)
+        draw.polygon([(x0 + w * 0.05, cy + h * 0.15), (x0 + w * 0.25, y0 + h * 0.15),
+                      (cx + w * 0.15, y0 + h * 0.05), (x1 - w * 0.05, cy - h * 0.10),
+                      (x1 - w * 0.15, y1 - h * 0.05), (x0 + w * 0.22, y1)], fill=colour)
     elif kind == "drop":
-        draw.polygon([(cx, y0), (x1 - w * 0.2, cy + h * 0.1), (x0 + w * 0.2, cy + h * 0.1)], fill=colour)
-        draw.ellipse((x0 + w * 0.2, cy - h * 0.15, x1 - w * 0.2, y1), fill=colour, outline=outline)
+        draw.polygon([(cx, y0), (x1 - w * 0.18, cy + h * 0.05), (x0 + w * 0.18, cy + h * 0.05)], fill=colour)
+        draw.ellipse((x0 + w * 0.18, cy - h * 0.22, x1 - w * 0.18, y1), fill=colour)
     elif kind == "star":
         pts = []
         for k in range(8):
             a = math.pi / 2 + k * math.pi / 4
-            rr = w * 0.48 if k % 2 == 0 else w * 0.18
+            rr = w * 0.50 if k % 2 == 0 else w * 0.17
             pts.append((cx + rr * math.cos(a), cy - rr * math.sin(a)))
-        draw.polygon(pts, fill=colour, outline=outline)
-    elif kind == "eye":
-        draw.ellipse((x0, cy - h * 0.28, x1, cy + h * 0.28), fill=colour, outline=outline)
-        draw.ellipse((cx - w * 0.16, cy - h * 0.16, cx + w * 0.16, cy + h * 0.16), fill=outline)
-    elif kind == "sunburst":
-        r = w * 0.22
-        draw.ellipse((cx - r, cy - r, cx + r, cy + r), fill=colour, outline=outline)
+        draw.polygon(pts, fill=colour)
+    elif kind == "crescent":
+        r = w * 0.44
+        draw.ellipse((cx - r, cy - r, cx + r, cy + r), fill=colour)
+        draw.ellipse((cx - r + w * 0.30, cy - r - h * 0.08, cx + r + w * 0.30, cy + r - h * 0.08), fill=background)
+    elif kind == "sun":
+        r = w * 0.24
         for k in range(8):
             a = k * math.pi / 4
-            draw.line([(cx + r * 1.3 * math.cos(a), cy + r * 1.3 * math.sin(a)),
-                       (cx + w * 0.5 * math.cos(a), cy + w * 0.5 * math.sin(a))], fill=colour, width=lw)
+            draw.line([(cx + r * 1.2 * math.cos(a), cy + r * 1.2 * math.sin(a)),
+                       (cx + w * 0.5 * math.cos(a), cy + w * 0.5 * math.sin(a))], fill=colour, width=thick)
+        draw.ellipse((cx - r, cy - r, cx + r, cy + r), fill=colour)
 
 
 def render_icon(base_blp: bytes, icon) -> bytes | None:
-    """Paint the element onto the base icon. Returns BLP2 bytes, or None without Pillow."""
+    """Stamp an element badge on the base icon. Returns BLP2 bytes, or None without Pillow.
+
+    The base icon is left exactly as drawn. A square plate of black tinted
+    toward the element's colour sits in the top-right corner, a quarter of the
+    icon wide, bordered in the element's colour, with a bold filled symbol of
+    the element inside it. Drawn at four times the size and scaled down, so the
+    edges are clean at the 36 pixels the game shows icons at.
+    """
     try:
-        from PIL import Image, ImageDraw, ImageChops
+        from PIL import Image, ImageDraw
     except ImportError:
         return None
 
     width, height, rgba = blp.decode_blp(base_blp)
     img = Image.frombytes("RGBA", (width, height), rgba)
     hue = tuple(icon["hue"])
-    rim = tuple(icon["rim"])
+    # a dark element colour (Shadow, Earth) needs a lifted symbol to read on the plate
+    v = max(hue) / 255.0
+    symbol = _shade(hue, 1.0 + (1.0 - v) * 0.8) if v < 0.75 else hue
+    plate = _shade(hue, 0.20)
 
-    # 1. shift the colour toward the element: keep the base's shading (its
-    #    luminance) but lend it the element's hue
-    lum = img.convert("L")
-    tint = Image.new("RGB", img.size, hue)
-    coloured = ImageChops.multiply(tint, Image.merge("RGB", (lum, lum, lum)))
-    coloured = Image.blend(img.convert("RGB"), coloured, 0.55)
+    scale = 4
+    size = max(8, int(round(width * BADGE_FRACTION)))
+    big = size * scale
+    badge = Image.new("RGBA", (big, big), (0, 0, 0, 0))
+    draw = ImageDraw.Draw(badge)
+    draw.rectangle((0, 0, big - 1, big - 1), fill=plate + (255,), outline=hue + (255,), width=scale)
+    inset = int(big * 0.17)
+    _symbol(draw, icon["glyph"], (inset, inset, big - inset, big - inset), symbol + (255,), plate + (255,))
+    badge = badge.resize((size, size), Image.LANCZOS)
 
-    # 2. a rim in the element's colour, strongest at the edges
-    s = 4
-    big = (width * s, height * s)
-    mask = Image.new("L", big, 0)
-    d = ImageDraw.Draw(mask)
-    steps = 14
-    for i in range(steps):
-        inset = int(min(big) * 0.02 * i)
-        d.rectangle((inset, inset, big[0] - 1 - inset, big[1] - 1 - inset),
-                    outline=int(255 * (1 - i / steps) ** 2), width=max(1, s))
-    mask = mask.resize(img.size, Image.LANCZOS)
-    rim_layer = Image.new("RGB", img.size, rim)
-    coloured = Image.composite(rim_layer, coloured, mask)
-
-    # 3. the glyph, bottom-right, drawn large and downscaled for clean edges
-    glyph = Image.new("RGBA", big, (0, 0, 0, 0))
-    gd = ImageDraw.Draw(glyph)
-    gw = int(big[0] * 0.34)
-    box = (big[0] - gw - int(big[0] * 0.06), big[1] - gw - int(big[1] * 0.06),
-           big[0] - int(big[0] * 0.06), big[1] - int(big[1] * 0.06))
-    shadow = (0, 0, 0, 170)
-    _glyph(gd, icon["glyph"], tuple(c + max(1, s) for c in box), shadow, shadow)
-    _glyph(gd, icon["glyph"], box, rim + (255,), (20, 20, 20, 255))
-    glyph = glyph.resize(img.size, Image.LANCZOS)
-
-    out = coloured.convert("RGBA")
-    out.alpha_composite(glyph)
-    out.putalpha(img.getchannel("A"))
+    out = img.copy()
+    out.alpha_composite(badge, (width - size, 0))
     return blp.encode_palettized(out)
 
 
@@ -311,6 +310,9 @@ def apply(files, payload: dict, manifest: dict, report: list, want_icons: bool =
     variants = [dict(v, fields=dict(v["fields"])) for v in manifest["variants"]]
     if not variants:
         return payload
+    report.append("  elemental variants  generation %s: %d variant(s); the worldserver logs the "
+                  "generation it loaded, and the two must match"
+                  % (manifest.get("generation", "unknown"), len(variants)))
 
     # icons first, so variants whose icon fails can fall back before the
     # spell rows are written

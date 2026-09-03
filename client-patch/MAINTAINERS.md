@@ -239,9 +239,21 @@ synthetic BLP.
 python3 test_elemental.py --dbc "B:/New folder/dbc"
 ```
 
+`preview_elemental_icons.py` renders every shipped base icon in every element
+from a real client's art into one sheet, at twice the in-game size, so a change
+to the element colours or to `render_icon` can be judged before anyone
+reinstalls:
+
+```bash
+python3 preview_elemental_icons.py "B:/World.of.Warcraft.3.3.5a" --out preview.png
+```
+
 The manifest itself is generated, together with the server's SQL, by
 `data/sql/generators/gen_elemental_variants.py`; regenerate both from one run
-so the server's numbers and the client's tooltips stay identical. Its defaults
+so the server's numbers and the client's tooltips stay identical. Each run stamps a
+twelve-digit generation id into both: the installer prints it in its report and the
+worldserver logs it when it registers the variants, so a server and a client from
+different runs can be told apart at a glance. Its defaults
 produce the shipped set; `--bases ALL --elements ALL --ranks all` produces
 every eligible strike, and `--bases "Sinister Strike" --elements fire --ranks
 first` is the single-variant spike used to prove the pipeline. After any

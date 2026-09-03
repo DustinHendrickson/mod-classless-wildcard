@@ -776,9 +776,12 @@ void ClasslessMgr::LoadVariants()
         auto baseItr = _abilities.find(baseFirst);
         if (baseItr == _abilities.end() || !baseItr->second.enabled)
         {
-            LOG_WARN("module.classless",
-                     "mod-classless-wildcard: variant {} skipped, base {} is not in the ability pool",
-                     variantFirst, baseFirst);
+            // Expected for the Death Knight strikes on a realm with
+            // IncludeDeathKnight off, so this is debug, not a warning; the
+            // summary line below still carries the count.
+            LOG_DEBUG("module.classless",
+                      "mod-classless-wildcard: variant {} skipped, base {} is not in the ability pool",
+                      variantFirst, baseFirst);
             ++skipped;
             continue;
         }
@@ -845,8 +848,20 @@ void ClasslessMgr::LoadVariants()
         ++added;
     } while (result->NextRow());
 
-    LOG_INFO("module.classless", "mod-classless-wildcard: {} elemental variants registered ({} skipped)",
-             added, skipped);
+    // The generation id the rows were produced with. The client installer
+    // prints the same id for the manifest it applied; when the two differ, a
+    // player's tooltips describe rows this server is not running.
+    std::string generation = "unknown";
+    if (QueryResult meta = WorldDatabase.Query(
+            "SELECT 1 FROM information_schema.TABLES WHERE TABLE_SCHEMA = DATABASE() "
+            "AND TABLE_NAME = 'cw_ability_variants_meta'"))
+        if (QueryResult gen = WorldDatabase.Query(
+                "SELECT `value` FROM cw_ability_variants_meta WHERE `key` = 'generation'"))
+            generation = gen->Fetch()[0].Get<std::string>();
+
+    LOG_INFO("module.classless",
+             "mod-classless-wildcard: {} elemental variants registered ({} skipped), generation {}",
+             added, skipped, generation);
 }
 
 // The spells that come free with a form or stance, from `cw_form_kits`. Both
