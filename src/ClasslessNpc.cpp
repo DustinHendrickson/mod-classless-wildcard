@@ -249,7 +249,8 @@ namespace
 
         std::vector<AbilityEntry const*> list;
         for (auto const& [firstSpell, e] : sClasslessMgr->Abilities())
-            if (e.enabled && (e.classMask & classMask) && !st.abilities.count(firstSpell))
+            if (e.enabled && (e.classMask & classMask) && !st.abilities.count(firstSpell)
+                && (!e.variant || sClasslessMgr->cfg.elementalShowInBrowser))
                 list.push_back(&e);
 
         uint32 start = page * PAGE_SIZE;

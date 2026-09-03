@@ -72,6 +72,7 @@ namespace ClasslessWildcard
         uint32 weight = 100;            // wildcard roll weight
         bool   enabled = true;
         bool   passive = false;
+        bool   variant = false;         // an elemental variant (cw_ability_variants)
     };
 
     // One entry of the talent pool.
@@ -246,6 +247,9 @@ namespace ClasslessWildcard
         // variant is registered one rarity tier above its base
         bool   elementalEnable = true;
         uint32 elementalRarityBump = 1;
+        uint32 elementalRollWeightPct = 15;   // of the rarity weight, per variant
+        bool   elementalInPool = true;        // rolled and buyable; off = owned ones keep working
+        bool   elementalShowInBrowser = true; // listed in the addon's class menus and the NPC
 
         // Classless gear as world drops. The catalogue was vendor-only, which
         // made the Hero Advancement NPC the only answer to "where does gear

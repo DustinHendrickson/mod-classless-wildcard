@@ -183,6 +183,9 @@ void ClasslessMgr::LoadConfig(bool /*reload*/)
     cfg.formKitsEnable = sConfigMgr->GetOption<bool>("ClasslessWildcard.FormStarterKits", true);
     cfg.elementalEnable = sConfigMgr->GetOption<bool>("ClasslessWildcard.Elemental.Enable", true);
     cfg.elementalRarityBump = sConfigMgr->GetOption<uint32>("ClasslessWildcard.Elemental.RarityBump", 1);
+    cfg.elementalRollWeightPct = sConfigMgr->GetOption<uint32>("ClasslessWildcard.Elemental.RollWeightPct", 15);
+    cfg.elementalInPool = sConfigMgr->GetOption<bool>("ClasslessWildcard.Elemental.InPool", true);
+    cfg.elementalShowInBrowser = sConfigMgr->GetOption<bool>("ClasslessWildcard.Elemental.ShowInBrowser", true);
     cfg.worldDropEnable = sConfigMgr->GetOption<bool>("ClasslessWildcard.WorldDrops.Enable", true);
     cfg.worldDropChance = sConfigMgr->GetOption<float>("ClasslessWildcard.WorldDrops.Chance", 1.0f);
     cfg.worldDropRareMultiplier = sConfigMgr->GetOption<float>("ClasslessWildcard.WorldDrops.RareMultiplier", 5.0f);
@@ -786,6 +789,7 @@ void ClasslessMgr::LoadVariants()
         AbilityEntry e;
         e.firstSpellId = variantFirst;
         e.passive = false;
+        e.variant = true;
 
         // rank chain from spell_ranks, exactly as the stock pass walks it
         for (uint32 sp = variantFirst; sp; sp = sSpellMgr->GetNextSpellInChain(sp))
@@ -822,7 +826,13 @@ void ClasslessMgr::LoadVariants()
                                                     uint32(Rarity::Legendary)));
         e.rarity = static_cast<Rarity>(bumped);
         e.cost = cfg.abilityCostByRarity[bumped];
-        e.weight = 0; // 0 = use rarity weight
+        // Roll weight is set explicitly rather than left to rarity. With the
+        // shipped equal rarity weights the bump above changes nothing about
+        // how often a variant rolls, and every strike gains seven siblings:
+        // left at the rarity weight, the Wildcard pool would be mostly
+        // elemental strikes. At 15% each, the seven together roughly equal one
+        // more copy of the base.
+        e.weight = std::max<uint32>(1, cfg.wcRarityWeights[bumped] * cfg.elementalRollWeightPct / 100);
 
         // same spellbook tab as the base
         if (auto lineItr = _spellSkillLine.find(base.firstSpellId); lineItr != _spellSkillLine.end())
@@ -2031,6 +2041,11 @@ bool ClasslessMgr::BuyAbility(Player* player, uint32 firstSpellId, std::string* 
         if (err) *err = "That spell is not part of the classless library.";
         return false;
     }
+    if (e->variant && !cfg.elementalInPool)
+    {
+        if (err) *err = "Elemental variants are not available on this realm.";
+        return false;
+    }
     if (st.abilities.count(e->firstSpellId))
     {
         if (err) *err = "You already know that ability.";
@@ -2354,6 +2369,8 @@ uint32 ClasslessMgr::RollAbility(Player* player, GrantSource source)
         for (auto const& [firstSpell, e] : _abilities)
         {
             if (!e.enabled || st.abilities.count(firstSpell) || IsBanned(st, false, firstSpell))
+                continue;
+            if (e.variant && !cfg.elementalInPool)
                 continue;
             if (!e.name.empty() && ownedNames.count(e.name))
                 continue;

@@ -21,7 +21,9 @@ the server's numbers and the client's tooltips cannot drift:
 Run:  python3 gen_elemental_variants.py [--dbc DIR] [--bases NAME,NAME,...]
                                         [--elements fire,frost,...] [--ranks first|top|all]
 
-Defaults are the Phase 0 spike: Sinister Strike, Fire, rank 1 only.
+Defaults are the shipped set: the Phase 1 wave of six bases, every element,
+every rank. The Phase 0 spike was
+    --bases "Sinister Strike" --elements fire --ranks first
 """
 import argparse
 import json
@@ -35,6 +37,10 @@ OUT_SQL = os.path.join(HERE, os.pardir, "db-world", "cw_spells_elemental.sql")
 OUT_MANIFEST = os.path.join(HERE, os.pardir, os.pardir, os.pardir,
                             "client-patch", "elemental_manifest.json")
 DEFAULT_DBC = r"B:\New folder\dbc"
+# The Phase 1 wave: six bases that between them cover on-next-swing (Heroic,
+# Raptor), positional (Backstab), combo points (Sinister), and form-locked
+# (Claw, Maul) strikes, so every copied attribute gets exercised.
+PHASE1_BASES = "Sinister Strike,Heroic Strike,Backstab,Raptor Strike,Claw,Maul"
 
 # ---- id blocks --------------------------------------------------------------
 # Deterministic: a variant's id depends on its base's position in the FULL
@@ -419,7 +425,7 @@ def build_variant(spell, sla, icon, visual, base_id, base_index, rank_index, ele
     for e, sl in enumerate(slots):
         if sl and sl["Effect"] == E_ADD_COMBO_POINTS:
             desc += " Awards $s%d combo $lpoint:points;." % (e + 1)
-    if vals[F["Attributes"]] & 0x4:      # SPELL_ATTR0_ON_NEXT_SWING
+    if vals[F["Attributes"]] & 0x404:    # SPELL_ATTR0_ON_NEXT_SWING(_NO_DAMAGE)
         desc = desc.replace("An instant strike that deals", "A strong attack, on your next swing, that deals")
 
     # -- visual: base row with the element's impact kit
@@ -561,9 +567,9 @@ def write_manifest(variants, path, run_desc):
 def main(argv=None):
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--dbc", default=DEFAULT_DBC, help="directory of extracted 3.3.5a DBCs")
-    ap.add_argument("--bases", default="Sinister Strike", help="comma-separated base ability names, or ALL")
-    ap.add_argument("--elements", default="fire", help="comma-separated element keys, or ALL")
-    ap.add_argument("--ranks", default="first", choices=("first", "top", "all"))
+    ap.add_argument("--bases", default=PHASE1_BASES, help="comma-separated base ability names, or ALL")
+    ap.add_argument("--elements", default="ALL", help="comma-separated element keys, or ALL")
+    ap.add_argument("--ranks", default="all", choices=("first", "top", "all"))
     ap.add_argument("--coefficient", type=int, default=85, help="weapon damage kept, percent")
     ap.add_argument("--sp-coefficient", type=float, default=0.15, help="spell power coefficient of the add")
     ap.add_argument("--out-sql", default=OUT_SQL)
@@ -617,6 +623,14 @@ def main(argv=None):
                     if v["sla"]:
                         v["sla"][2] = v["first"]
                 line.append(v)
+            # SkillLineAbility's SupercededBySpell is what the spellbook uses
+            # to hide a rank once a higher one is known. Copied from the base
+            # it would point at the BASE's next rank, and learning Sinister
+            # Strike rank 2 would hide Fiery Sinister Strike rank 1. Walk the
+            # variant line instead; the top rank is superseded by nothing.
+            for k, v in enumerate(line):
+                if v["sla"]:
+                    v["sla"][8] = line[k + 1]["id"] if k + 1 < len(line) else 0
             variants.extend(line)
 
     run_desc = "bases=%s elements=%s ranks=%s coefficient=%d spellpower=%.2f" % (
@@ -629,6 +643,13 @@ def main(argv=None):
     print("  %d variant spell rows from %d base(s) x %d element(s)" % (len(variants), len(want_bases), len(want_elems)))
     for b, e, why in skipped:
         print("  skipped %s / %s: %s" % (b, e, why))
+    no_rider = sorted({(v["base_name"], v["element"]) for v in variants if v["note"]})
+    if no_rider:
+        by_base = {}
+        for b, e in no_rider:
+            by_base.setdefault(b, []).append(e)
+        for b, es in sorted(by_base.items()):
+            print("  no rider (slots full) on %s: %s" % (b, ", ".join(es)))
     for v in variants[:8]:
         print("\n  %d  %s  (%s)  base %d %s" % (v["id"], v["name"], v["rank_text"], v["base"], v["base_name"]))
         for e in range(3):

@@ -304,8 +304,28 @@ ClasslessWildcard.FormStarterKits = 1
 # (85% by default, 75% for Holy) and the spell power coefficient (0.15) as its
 # arguments, and writes the client manifest in the same run so tooltips match.
 # Every player must reinstall the client patch after the rows change.
+#
+# RollWeightPct is what keeps the Wildcard pool honest. Each strike gains seven
+# variants, and RarityBump alone does not make them roll less often (with the
+# default equal RarityWeights it changes only cost and colour). Each variant
+# rolls at this percentage of its rarity weight, so at 15 the seven together
+# add about one more copy of the base to the pool rather than seven. Raise it
+# to see more elemental strikes; it does not affect Classless purchase costs.
+#
+# InPool: whether variants are dealt by Wildcard rolls and sold on the Classless
+# path. Off, a Hero who already owns one keeps it and can still unlearn it;
+# no new ones are handed out. This is the switch to use on a realm where
+# variants have already been dealt. Enable = 0 does not register them at all,
+# which is only safe before any have been given.
+#
+# ShowInBrowser: whether variants are listed in the addon's class menus and the
+# Hero Advancement NPC's lists. Off, they still roll and still appear in My
+# Build once owned; they are just not browsed.
 ClasslessWildcard.Elemental.Enable = 1
 ClasslessWildcard.Elemental.RarityBump = 1
+ClasslessWildcard.Elemental.RollWeightPct = 15
+ClasslessWildcard.Elemental.InPool = 1
+ClasslessWildcard.Elemental.ShowInBrowser = 1
 ClasslessWildcard.WorldDrops.Enable = 1
 ClasslessWildcard.WorldDrops.Chance = 1.0
 ClasslessWildcard.WorldDrops.RareMultiplier = 5.0

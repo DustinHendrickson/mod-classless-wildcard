@@ -241,7 +241,11 @@ python3 test_elemental.py --dbc "B:/New folder/dbc"
 
 The manifest itself is generated, together with the server's SQL, by
 `data/sql/generators/gen_elemental_variants.py`; regenerate both from one run
-so the server's numbers and the client's tooltips stay identical.
+so the server's numbers and the client's tooltips stay identical. Its defaults
+produce the shipped set; `--bases ALL --elements ALL --ranks all` produces
+every eligible strike, and `--bases "Sinister Strike" --elements fire --ranks
+first` is the single-variant spike used to prove the pipeline. After any
+regeneration the server needs a restart and every player a client reinstall.
 
 `selftest.py` runs the whole pipeline against a real client without writing to it:
 

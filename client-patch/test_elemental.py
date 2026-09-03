@@ -139,6 +139,26 @@ def main(argv=None):
     check("SkillLineAbility.dbc: variant rows open to every class", bad == 0 and added,
           "%d added, %d wrong" % (added, bad))
 
+    # ---- rank chains --------------------------------------------------------
+    # Every line's SkillLineAbility rows must supersede along the VARIANT line
+    # (rank 1 -> rank 2 -> ... -> 0), never point at the base's ranks.
+    lines = {}
+    for v in variants:
+        lines.setdefault(v["first"], []).append(v)
+    bad_chain, multi = 0, 0
+    for first, members in lines.items():
+        members.sort(key=lambda v: v["rank"])
+        if len(members) > 1:
+            multi += 1
+        for k, v in enumerate(members):
+            expect = members[k + 1]["id"] if k + 1 < len(members) else 0
+            if v["sla"] and v["sla"][8] != expect:
+                bad_chain += 1
+            if v["rank"] != k + 1:
+                bad_chain += 1
+    check("rank chains: SupercededBySpell walks the variant line",
+          bad_chain == 0, "%d line(s), %d multi-rank, %d bad" % (len(lines), multi, bad_chain))
+
     # ---- icons ------------------------------------------------------------
     if blp.have_pillow():
         from PIL import Image

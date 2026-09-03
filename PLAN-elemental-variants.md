@@ -369,21 +369,77 @@ Built and checked against the DBC extract, not yet run in a client or on a serve
   `--no-elemental` and off under `--minimal`. Appends to the player's own tables; uninstall
   recognises the painted icons by their `CW_` prefix.
 - `src/ClasslessMgr.cpp` `LoadVariants()`, behind `Elemental.Enable`, uncompiled.
-- `client-patch/test_elemental.py` exercises the client step against an extract and passes.
+- `client-patch/test_elemental.py` exercises the client step against an extract and passes,
+  including a rank-chain check: every variant line's `SupercededBySpell` walks the variant
+  line, not the base's (the first generator copied the base's, which would have hidden a
+  variant in the spellbook the moment a higher rank of the base was learned).
+- Realm switches beyond `Enable`: `InPool` (rolls and purchase) and `ShowInBrowser` (the
+  addon's class menus and the NPC lists), both on by default.
 
-The shipped state is the Phase 0 spike, one variant: Fiery Sinister Strike rank 1. What
-remains is the in-game verification list under Phase 0 below, on a real client and server.
+The shipped set is now the Phase 1 wave with full rank chains: Sinister Strike, Heroic
+Strike, Backstab, Raptor Strike, Claw and Maul across all seven elements, 462 spell rows in
+42 lines. Backstab, Claw and Sinister Strike variants carry no rider (their combo point
+takes the third slot); Heroic Strike, Raptor Strike and Maul variants carry theirs.
+
+Verified in game so far, on the Phase 0 spike (Fiery Sinister Strike rank 1): the variant was dealt in a Wildcard starting hand, so the server
+registered it and the roll reached it; the client resolved its name; the energy cost, melee
+range and weapon requirement copied from the base; the tooltip rendered its numbers (85%,
+7, 1 combo point); and the painted icon showed. Still to verify: the cast itself (Fire in
+the combat log, the swing with the fire impact), armour versus resistance on a plate mob,
+and the spell-power scaling of the add.
+
+Found by that first roll: with the shipped equal rarity weights, `RarityBump` does not make
+a variant roll less often, so every strike would have gained seven siblings at full weight.
+`Elemental.RollWeightPct` (default 15) now sets each variant's roll weight explicitly.
 
 ## 6. Phases
 
-**Phase 0, the spike.** Hand-build **one** variant, Fiery Sinister Strike rank 1, with
-hand-written SQL rows, a hand-patched `Spell.dbc` and `SpellVisual.dbc`, and one
-hand-tinted icon. Verify on a real client and server, in this order: it can be learned, it
-casts, the combat log shows Fire damage, resistance rather than armour mitigates it, the
-burn ticks, a fire-damage talent boosts it, the tooltip renders with the right numbers, the
-icon shows, the swing plays with a fire impact, and it appears in the Wildcard reveal. Every
-later phase assumes all of that holds; this is where it is cheapest to find out it doesn't.
-Also where the shadow impact kit gets chosen.
+**Phase 0, the spike.** One variant, Fiery Sinister Strike rank 1 (spell 950672), which is
+what the generator's default run ships. Verify it on a real client and server; every later
+phase assumes all of this holds, and this is where it is cheapest to find out it doesn't.
+
+Server:
+
+1. Rebuild the worldserver (the module's C++ changed).
+2. Start it. The DB updater applies `cw_spells_elemental.sql` on this start, before the spell
+   store loads, so one start is enough. In the log, look for the file being applied and then
+   `1 elemental variants registered (0 skipped)`. A `variant 950672 skipped` warning means the
+   base was not in the pool; `no elemental variants configured` means the SQL did not apply,
+   which `SELECT ID FROM spell_dbc WHERE ID = 950672;` confirms either way.
+
+Client:
+
+3. `pip install pillow` if the icon should be painted (without it the base icon is used).
+4. Close WoW, run the installer. The summary must show `Elemental variants: yes` and the
+   report must list `Spell.dbc 1 elemental variant rows appended`, `SpellVisual.dbc 1 rows`,
+   `SkillLineAbility.dbc 1 variant rows` and, with Pillow, `SpellIcon.dbc 1 painted icons
+   registered`. The installer clears the cache; if archives are ever copied by hand, delete
+   `Cache\WDB` too, or the client keeps showing the old spell table.
+
+In game, on a **Classless** character (Wildcard characters cannot buy):
+
+5. `.classless learn 950672`. It costs 2 AE: Sinister Strike is common, the variant is one
+   tier up. "Unknown ability" here means step 2 failed.
+6. Open the spellbook. It files under the **Combat** tab (its base's), named Fiery Sinister
+   Strike, and the tooltip reads "An instant strike that deals 85% of your weapon damage as
+   Fire damage, plus 7 Fire damage. Awards 1 combo point." with numbers, not `$s1`. A blank
+   name or an empty tooltip means the client's Spell.dbc row is missing: step 4.
+7. The icon is Sinister Strike's, recoloured orange with a flame in the corner (Pillow), or
+   Sinister Strike's own (no Pillow).
+8. Cast it on a training dummy. The combat log entry must say **Fire**; the target must show
+   the fire impact while the character plays the normal Sinister Strike swing; a combo point
+   must appear.
+9. Cast Sinister Strike and the variant alternately on a plate-wearing mob and compare
+   against their tooltips: the physical one lands well under its number, the Fire one close
+   to it. That is armour ignored and resistance applied.
+10. Optional, the hybrid scaling: add Intellect on the Stats panel and watch the "plus N Fire
+    damage" part of the tooltip rise while the weapon part does not.
+11. The Wildcard reveal, if wanted: on a Wildcard character, insert
+    `(950672, 255, 0, 1000000, 1)` into `cw_ability_override` (`first_spell, rarity, cost,
+    weight, enabled`), restart, reroll anything you own, and the replacement is the variant,
+    drawn with the reveal's name and icon. Delete the row afterwards.
+
+Also where the shadow impact kit gets chosen, once Fire is confirmed.
 
 **Phase 1, the pipeline.** `gen_elemental_variants.py` reading extracted DBCs (path
 configurable; the current extract is at `B:\New folder\dbc`), `elemental.py` in the
@@ -428,6 +484,8 @@ on talent-spell bases.
 **Open questions, none blocking Phase 0**
 
 1. Should owning a base exclude its variants, or the reverse? Current answer: no exclusion.
+   A variant can be dealt alongside its base in the same hand, which the first test roll
+   appeared to do. Whether that is a feature or a duplicate is a play-test question.
 2. Should talent-spell bases get variants in the ability pool? Current answer: not in the
    first four phases.
 3. Are the seven prefixes right? Fiery, Frozen, Earthen, Venomous, Arcane, Shadow, Holy.

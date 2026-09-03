@@ -183,8 +183,9 @@ Keep it, or spend a reroll.</em>
   brings Taunt, Berserker Stance brings Pummel. Without this a Hero could roll Bear Form and find
   they had turned into a creature with no way to attack. The pairs are rows in `cw_form_kits`, so
   you can add your own, and one config flag turns the whole feature off.
-- **Elemental variants of every strike.** Each physical weapon attack in the pool also exists in
-  seven elemental forms: Fiery, Frozen, Earthen, Venomous, Arcane, Shadow and Holy. A variant is
+- **Elemental variants of physical strikes.** Six weapon attacks currently come in seven
+  elemental forms each: Sinister Strike, Heroic Strike, Backstab, Raptor Strike, Claw and Maul,
+  as Fiery, Frozen, Earthen, Venomous, Arcane, Shadow and Holy, every rank included. A variant is
   the same attack with the same cost, cooldown and swing, but its damage is dealt as that element
   instead of Physical, so armour does not reduce it and resistance does. It keeps 85% of the
   weapon damage (75% for Holy), adds an elemental hit that grows with spell power, and where the
@@ -531,6 +532,9 @@ inline. The ones most likely to need changing:
 | `ClasslessWildcard.FormStarterKits`                 | `1`          | Forms and stances hand over their basic spells free            |
 | `ClasslessWildcard.Elemental.Enable`                | `1`          | Elemental variants of physical strikes in the pool           |
 | `ClasslessWildcard.Elemental.RarityBump`            | `1`          | Rarity tiers a variant sits above its base attack            |
+| `ClasslessWildcard.Elemental.RollWeightPct`         | `15`         | How often a variant rolls, as a percent of its base's weight |
+| `ClasslessWildcard.Elemental.InPool`                | `1`          | Variants can be rolled and bought; `0` stops new ones only   |
+| `ClasslessWildcard.Elemental.ShowInBrowser`         | `1`          | Variants appear in the addon's class menus and the NPC       |
 | `ClasslessWildcard.WorldDrops.Enable`               | `1`          | Mobs can drop the classless gear                               |
 | `ClasslessWildcard.WorldDrops.Chance`               | `1.0`        | Percent per kill, banded to the mob's level                    |
 | `ClasslessWildcard.WorldDrops.RareMultiplier`       | `5.0`        | Chance multiplier for rares, rare elites and bosses            |
