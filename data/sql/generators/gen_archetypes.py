@@ -589,6 +589,8 @@ def simulate(pool, build, abilities, talents, verbose=False):
                 break
             if cfg["enforce_rows"] and tab_points[t["tab"]] < t["row"] * 5:
                 break               # wait for more points in the tree
+            if cfg["respect_levels"] and level < 10 + t["row"] * 5:
+                break               # the tier's own level (BuyTalentRank enforces it too)
             te -= cost
             ranks[t["id"]] += 1
             tab_points[t["tab"]] += 1

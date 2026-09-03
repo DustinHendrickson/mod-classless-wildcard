@@ -2336,6 +2336,15 @@ bool ClasslessMgr::BuyTalentRank(Player* player, uint32 talentId, std::string* e
         if (err) *err = Acore::StringFormat("You need {} points in this tree to unlock that tier.", t->row * 5);
         return false;
     }
+    // The tier's own level, the rule the browser labels rows with and the
+    // Wildcard roll pool applies: tier R opens at level 10 + 5R. The essence
+    // schedule already lands there on its own; this keeps it true whatever
+    // the schedule is set to.
+    if (cfg.respectLevelReqs && player->GetLevel() < 10 + t->row * 5)
+    {
+        if (err) *err = Acore::StringFormat("That talent tier requires level {}.", 10 + t->row * 5);
+        return false;
+    }
 
     st.talentEssence -= cost;
     GrantTalentRankInternal(player, *t, ownedRank + 1);
