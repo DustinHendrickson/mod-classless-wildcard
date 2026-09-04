@@ -71,6 +71,8 @@ StubMT.__index = function(self, k)
     if k == "GetObjectType" then return function(s) return rawget(s, "__kind") end end
     if k == "SetHeight" then return function(s, v) rawset(s, "__h", v) end end
     if k == "SetWidth" then return function(s, v) rawset(s, "__w", v) end end
+    if k == "SetAlpha" then return function(s, v) rawset(s, "__alpha", v) end end
+    if k == "GetAlpha" then return function(s) return rawget(s, "__alpha") or 1 end end
     if k == "GetFont" then return function() return "Fonts\\FRIZQT__.TTF", 12, "" end end
     if k == "GetCenter" then return function() return 0, 0 end end
     if k == "GetPoint" then return function() return "CENTER", nil, "CENTER", 0, 0 end end
@@ -140,7 +142,8 @@ function UnitPower() return 100 end
 function UnitPowerMax() return 100 end
 function UnitPowerType() return 0, "MANA" end
 function UnitClass() return "Paladin", "PALADIN", 2 end
-function GetTime() return 100 end
+NOW = 100
+function GetTime() return NOW end
 function GetSpellInfo(id) return "Spell " .. tostring(id), "Rank 1", "Interface\\Icons\\INV_Misc_QuestionMark", 0, false, 0, 0, 0, 0 end
 function GetCoinTextureString(c) return tostring(c) .. "c" end
 function GetBindingKey() return nil end
@@ -462,6 +465,57 @@ def test_auto_hand(h):
     h.check(hand["__shown"] is False, "nor a Wildcard Hero past the free-reroll level")
 
 
+def test_hand_animation(h):
+    print("--- the die rolls the row and deals as it passes")
+    CW = h.CW
+    hand, die, slots = CW.handFrame, CW.handDie, CW.handSlots
+
+    def step(dt):
+        h.rt.execute("NOW = NOW + %r" % dt)
+        hand["__scripts"]["OnUpdate"](hand, dt)
+
+    h.recv(state(1, level=4))
+    hand["__shown"] = True
+    hand["__scripts"]["OnShow"](hand)
+    h.recv("OA|133:0:0:1;772:0:0:1;1752:0:0:1;686:0:0:1;")
+    h.recv("OAE|")
+
+    a = CW.handAnim
+    h.check(a is not None and str(a.phase) == "in", "starts off the row, bouncing in")
+    h.check(die["__shown"] is True and die["__alpha"] == 0, "die starts invisible")
+    h.check(all(s["__alpha"] == 0 for s in [slots[i] for i in range(1, 5)]),
+            "no card is showing yet")
+
+    # ride in: the die must travel right, and still deal nothing
+    step(0.3)
+    h.check(CW.handAnim.popped[1] is None, "nothing dealt during the run-in")
+    h.check(die["__alpha"] > 0, "die fades in on the way (%.2f)" % die["__alpha"])
+
+    step(0.3)
+    h.check(str(CW.handAnim.phase) == "roll", "reaches the first card and starts rolling")
+    h.check(CW.handAnim.popped[1] is not None, "card 1 dealt as the die arrives")
+    h.check(CW.handAnim.popped[4] is None, "card 4 not dealt yet")
+
+    step(0.5)
+    p = CW.handAnim.popped
+    h.check(p[2] is not None and p[4] is None,
+            "the row keeps dealing, and the last card is still to come")
+
+    step(0.5)
+    h.check(CW.handAnim.popped[4] is not None, "the last card deals as the die reaches it")
+    h.check(str(CW.handAnim.phase) == "out", "then the die runs on past the row")
+
+    times = [CW.handAnim.popped[i] for i in range(1, 5)]
+    step(0.31)
+    h.check(die["__shown"] is False, "die is gone once it has left the row")
+
+    step(0.3)
+    h.check(CW.handAnim is None, "animation ends once every card has settled")
+    h.check(all(slots[i]["__alpha"] == 1 for i in range(1, 5)), "all four cards fully shown")
+    h.check(times == sorted(times) and len(times) == 4,
+            "and they were dealt strictly left to right (%s)" % (times,))
+
+
 def test_starting_hand(h):
     print("--- starting hand: only the cards the Wildcard dealt")
     CW, g = h.CW, h.g
@@ -508,6 +562,7 @@ def main():
     test_browser(h)
     test_state_packet(h)
     test_auto_hand(h)
+    test_hand_animation(h)
     test_starting_hand(h)
     if h.failures:
         print("\n%d check(s) FAILED" % h.failures)

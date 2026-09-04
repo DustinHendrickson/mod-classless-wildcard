@@ -2418,7 +2418,7 @@ local HAND_SPACING = 56
 local handSlots = {}
 -- spinning die shown while the hand rolls in (same atlas as the reveal)
 local handDie = hand:CreateTexture(nil, "OVERLAY")
-handDie:SetWidth(96); handDie:SetHeight(96)
+handDie:SetWidth(72); handDie:SetHeight(72)
 handDie:SetPoint("CENTER", 0, 0)
 handDie:SetTexture("Interface\\AddOns\\ClasslessWildcard\\d20_spin")
 handDie:Hide()
@@ -2565,50 +2565,111 @@ local function RenderHand()
         end
     end
 
-    -- deal-in animation (die spins, then cards pop in one by one)
+    -- Deal-in animation. The die bounces in from off the left, rolls along the
+    -- row, and each card appears as the die reaches it; past the last card the
+    -- die runs on and fades out. Everything the OnUpdate below needs is worked
+    -- out here, where the layout is already known.
     if CW.handAnimatePending then
         CW.handAnimatePending = nil
-        CW.handAnim = { t0 = GetTime(), phase = "spin" }
-        handDie:Show()
-        for i = 1, HAND_SLOTS do handSlots[i]:SetAlpha(0) end
+        if n > 0 then
+            -- x of each card's centre, as an offset from the frame's centre,
+            -- and the y the row sits at (frame is 460x210, cards 44 tall with
+            -- their top edge 96 down)
+            local xs = {}
+            for i = 1, n do xs[i] = startX + (i - 1) * HAND_SPACING + 22 - 230 end
+            CW.handAnim = {
+                t0 = GetTime(), phase = "in", n = n, xs = xs, popped = {},
+                slotX = startX, rowY = -13, spin = 0,
+                fromX = xs[1] - 200,        -- off the left edge
+                toX = xs[n] + 200,          -- off the right edge
+            }
+            handDie:Show()
+            handDie:SetAlpha(0)
+            for i = 1, HAND_SLOTS do handSlots[i]:SetAlpha(0) end
+        else
+            CW.handAnim = nil
+            handDie:Hide()
+        end
     elseif not CW.handAnim then
         for i = 1, HAND_SLOTS do handSlots[i]:SetAlpha(1) end
     end
 end
 CW.RenderHand = RenderHand
 
-local HAND_SPIN_TIME, HAND_POP_STEP, HAND_POP_TIME = 1.0, 0.14, 0.28
-hand:SetScript("OnUpdate", function()
+-- in: bounce on from the left. roll: travel the row, dealing as it goes.
+-- out: carry on past the last card and fade. pop: how long a card takes to
+-- arrive once the die has reached it. lift: how far below its place a card
+-- starts. spin: die frames per second (the atlas is 16 frames).
+local HAND_IN_TIME, HAND_ROLL_TIME, HAND_OUT_TIME = 0.55, 0.95, 0.30
+local HAND_POP_TIME, HAND_LIFT, HAND_BOUNCE, HAND_SPIN_RATE = 0.24, 14, 30, 34
+hand:SetScript("OnUpdate", function(self, elapsed)
     local a = CW.handAnim
     if not a then return end
     local now = GetTime()
-    if a.phase == "spin" then
-        local p = (now - a.t0) / HAND_SPIN_TIME
+    local t = now - a.t0
+    local x, y = a.xs[a.n], a.rowY
+
+    if a.phase ~= "done" then
+        -- one continuous tumble for the whole run, timed rather than counted
+        -- per frame so it looks the same at 30fps and at 144
+        a.spin = a.spin + (elapsed or 0) * HAND_SPIN_RATE
+        local idx = math.floor(a.spin) % 16
+        handDie:SetTexCoord((idx % 8) / 8, (idx % 8 + 1) / 8,
+                            math.floor(idx / 8) / 2, (math.floor(idx / 8) + 1) / 2)
+    end
+
+    if a.phase == "in" then
+        local p = math.min(1, t / HAND_IN_TIME)
+        local e = 1 - (1 - p) * (1 - p) * (1 - p)          -- ease out, fast then settling
+        x = a.fromX + (a.xs[1] - a.fromX) * e
+        -- two decaying hops, touching down on the row at the end of each
+        y = a.rowY + math.abs(math.sin(p * math.pi * 2)) * HAND_BOUNCE * (1 - p)
+        handDie:SetAlpha(p)
+        if p >= 1 then a.phase = "roll"; a.t0 = now end
+    elseif a.phase == "roll" then
+        local p = math.min(1, t / HAND_ROLL_TIME)
+        x = a.xs[1] + (a.xs[a.n] - a.xs[1]) * p
+        handDie:SetAlpha(1)
+        if p >= 1 then a.phase = "out"; a.t0 = now end
+    elseif a.phase == "out" then
+        local p = math.min(1, t / HAND_OUT_TIME)
+        x = a.xs[a.n] + (a.toX - a.xs[a.n]) * p
+        handDie:SetAlpha(1 - p)
         if p >= 1 then
-            a.phase = "pop"
-            a.t0 = now
             handDie:Hide()
-            if PlaySound then pcall(PlaySound, "LEVELUPSOUND") end
-            return
-        end
-        local e = 1 - (1 - p) * (1 - p)
-        local idx = math.floor(e * 32) % 16
-        handDie:SetTexCoord((idx % 8) / 8, (idx % 8 + 1) / 8, math.floor(idx / 8) / 2, (math.floor(idx / 8) + 1) / 2)
-    elseif a.phase == "pop" then
-        local done = true
-        for i = 1, HAND_SLOTS do
-            local slot = handSlots[i]
-            if slot:IsShown() then
-                local p = (now - a.t0 - (i - 1) * HAND_POP_STEP) / HAND_POP_TIME
-                if p < 0 then p = 0 end
-                if p > 1 then p = 1 else done = false end
-                slot:SetAlpha(p)
-            end
-        end
-        if done then
-            CW.handAnim = nil
+            a.phase = "done"
         end
     end
+
+    if a.phase ~= "done" then
+        handDie:ClearAllPoints()
+        handDie:SetPoint("CENTER", x, y)
+        -- Every card the die has reached starts arriving. Read from the die's
+        -- ACTUAL position rather than from the roll phase, so the first card
+        -- deals on the same frame the run-in puts the die on top of it instead
+        -- of a frame later.
+        for i = 1, a.n do
+            if not a.popped[i] and x >= a.xs[i] then
+                a.popped[i] = now
+                if PlaySound then pcall(PlaySound, "igMainMenuOptionCheckBoxOn") end
+            end
+        end
+    end
+
+    -- cards fade and rise into place from the moment the die reached them
+    local settled = (a.phase == "done")
+    for i = 1, HAND_SLOTS do
+        local slot = handSlots[i]
+        if i <= a.n then
+            local since = a.popped[i]
+            local q = since and math.min(1, (now - since) / HAND_POP_TIME) or 0
+            local e = 1 - (1 - q) * (1 - q)
+            slot:SetAlpha(e)
+            slot:SetPoint("TOPLEFT", a.slotX + (i - 1) * HAND_SPACING, -96 - (1 - e) * HAND_LIFT)
+            if q < 1 then settled = false end
+        end
+    end
+    if settled then CW.handAnim = nil end
 end)
 
 handRoll:SetScript("OnClick", function()
@@ -2649,6 +2710,7 @@ hand:SetScript("OnHide", function() CW.suppressReveals = false end)
 -- exposed for tests / third-party extensions
 CW.revealFrame, CW.revealKeep, CW.revealReroll = reveal, rvKeep, rvReroll
 CW.handFrame, CW.handRoll, CW.handKeep = hand, handRoll, handKeep
+CW.handSlots, CW.handDie = handSlots, handDie
 
 -- ---------------------------------------------------------------------------
 -- protocol handling
