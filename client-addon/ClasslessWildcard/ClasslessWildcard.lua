@@ -660,6 +660,16 @@ end)
 buyScrollBtn:SetScript("OnLeave", function() GameTooltip:Hide() end)
 CW.buyScrollBtn = buyScrollBtn
 
+-- Settings: the addon's own options, wired to setFly further down (it needs
+-- the bar frame, which is built after this).
+local setBtn = CreateFrame("Button", nil, frame, "UIPanelButtonTemplate")
+setBtn:SetWidth(90); setBtn:SetHeight(22)
+-- past the widest thing that can occupy the shared slot beside Help, so the
+-- row does not reflow when Buy Scroll gives way to Archetypes
+setBtn:SetPoint("BOTTOMLEFT", 266, 26)
+setBtn:SetText("Settings")
+CW.settingsBtn = setBtn
+
 -- Archetypes: the starter builds the Hero Advancement NPC offers, for the
 -- Classless path. Shares the slot beside Help with Buy Scroll: that one shows
 -- only on Wildcard and this one only on Classless, so they never overlap.
@@ -673,6 +683,7 @@ CW.archBtn = archBtn
 
 -- stats flyout -------------------------------------------------------------------
 local statFly = CreateFrame("Frame", "ClasslessWildcardStats", frame)
+CW.statFly = statFly
 statFly:SetWidth(260); statFly:SetHeight(250)
 statFly:SetPoint("BOTTOMRIGHT", frame, "BOTTOMRIGHT", -20, 56)
 statFly:SetFrameStrata("DIALOG")
@@ -999,7 +1010,7 @@ local function BuildHelpText()
 "Open the roll screen any time with the |cffffd100dice crest|r at the top-left of this window.",
 "",
 "|cff40ff40==  Shared by both paths  ==|r",
-"   |cffffd100Universal resources|r -- you carry mana, rage AND energy at once, and each spell draws its own, so nothing is ever unusable. Toggle the extra bars with |cffffd100/cwbars|r.",
+"   |cffffd100Universal resources|r -- you carry mana, rage AND energy at once, and each spell draws its own, so nothing is ever unusable. The extra bars sit beside your unit frame and remember where you drag them. |cffffd100Settings|r on this panel picks which of them to show, including runes, runic power and combo points; |cffffd100/cwbars|r toggles the lot.",
 "   |cffffd100Primary stats|r -- you get points every level to spend across STR / AGI / STA / INT / SPI, and reallocating them is free at any time. Open the |cffffd100Stats|r button and hover any stat to see exactly what it is doing for your Hero right now.",
 "      |cffffd100Strength|r -- " .. StatPerPoint(1) .. " per point.",
 "      |cffffd100Agility|r -- " .. StatPerPoint(2) .. " per point.",
@@ -1031,12 +1042,12 @@ RefreshHelpText()
 CW.helpFly = helpFly
 
 helpBtn:SetScript("OnClick", function()
-    statFly:Hide(); archFly:Hide()
+    statFly:Hide(); archFly:Hide(); CW.setFly:Hide()
     if helpFly:IsShown() then helpFly:Hide() else helpFly:Show() end
 end)
 
 statsBtn:SetScript("OnClick", function()
-    helpFly:Hide(); archFly:Hide()
+    helpFly:Hide(); archFly:Hide(); CW.setFly:Hide()
     if statFly:IsShown() then
         statFly:Hide()
     else
@@ -1047,7 +1058,7 @@ statsBtn:SetScript("OnClick", function()
 end)
 
 archBtn:SetScript("OnClick", function()
-    helpFly:Hide(); statFly:Hide()
+    helpFly:Hide(); statFly:Hide(); CW.setFly:Hide()
     if archFly:IsShown() then
         archFly:Hide()
     else
@@ -1594,13 +1605,69 @@ CW.ShowPathChoice = ShowPathChoice
 -- the other pools (movable; /cwbars toggles them).
 -- ---------------------------------------------------------------------------
 local POWER_INFO = {
-    { index = 0, name = "Mana",   r = 0.25, g = 0.45, b = 1.00 },
-    { index = 1, name = "Rage",   r = 1.00, g = 0.25, b = 0.25 },
-    { index = 3, name = "Energy", r = 1.00, g = 0.90, b = 0.25 },
+    { index = 0, key = "mana",   name = "Mana",   r = 0.25, g = 0.45, b = 1.00 },
+    { index = 1, key = "rage",   name = "Rage",   r = 1.00, g = 0.25, b = 0.25 },
+    { index = 3, key = "energy", name = "Energy", r = 1.00, g = 0.90, b = 0.25 },
 }
 
+-- Every layout number for this frame in one place, and every row centred from
+-- them instead of placed with a hand-written offset. The old offsets are what
+-- made the block look crooked: the combo row sat 12px from the left edge and
+-- 56 from the right, and the rune row 14 from the left and 18 from the right
+-- with its rings hanging up into the row above.
+--
+-- The pip sizes are taken from the client's own frames rather than from taste.
+-- ComboFrame's point is a 12x16 cell holding a 12x12 socket, with a 6x5 gem
+-- inside it drawn 8 wide and a 14x16 star flashed over it on the way in.
+-- RuneFrame's button is 18x18 with the rune AND its ring both drawn at 24, so
+-- the art is meant to overhang its cell; the old code drew the rune at 18 and
+-- the ring at 26, which is why the two never sat together. Everything here is
+-- those proportions, the combo art at 1.5x so a pip reads at the same weight
+-- as a rune.
+local BARS = {
+    W = 160, PAD = 7, TOP = 7, BOTTOM = 8, GAP = 6,
+    BAR_H = 14, BAR_STEP = 17,
+    CP = 18, CP_GAP = 5, CP_GEM_W = 12, CP_GEM_H = 8,
+    CP_SHINE_W = 21, CP_SHINE_H = 24, CP_LINGER = 1.5,
+    RUNE = 18, RUNE_GAP = 4, RUNE_ART = 24, RUNE_OVER = 3,
+    RUNE_SHINE_W = 40, RUNE_SHINE_H = 24,
+    RUNIC_H = 13, FLASH = 0.45,
+}
+
+-- Every row the frame can draw, in the order the settings panel lists them.
+BARS.ROWS = {
+    { key = "mana",   label = "Mana" },
+    { key = "rage",   label = "Rage" },
+    { key = "energy", label = "Energy" },
+    { key = "runes",  label = "Runes" },
+    { key = "runic",  label = "Runic Power" },
+    { key = "combo",  label = "Combo Points" },
+}
+
+-- A row the player has switched off is stored by its presence in barsOff, so a
+-- saved-variables file written before this existed, and a brand new one, both
+-- start with every row on.
+function CW.BarRowOn(key)
+    ClasslessWildcardDB = ClasslessWildcardDB or {}
+    local off = ClasslessWildcardDB.barsOff
+    return not (off and off[key])
+end
+
+function CW.SetBarRow(key, on)
+    ClasslessWildcardDB = ClasslessWildcardDB or {}
+    ClasslessWildcardDB.barsOff = ClasslessWildcardDB.barsOff or {}
+    ClasslessWildcardDB.barsOff[key] = (not on) or nil
+    CW.UpdateBarsVisibility()
+end
+
+-- x of the first item in a row of `count` items `w` wide, `gap` apart, so the
+-- row ends up centred in the frame.
+function CW.RowStart(count, w, gap)
+    return math.floor((BARS.W - (count * w + (count - 1) * gap)) / 2 + 0.5)
+end
+
 local barsFrame = CreateFrame("Frame", "ClasslessWildcardBars", UIParent)
-barsFrame:SetWidth(160); barsFrame:SetHeight(58)
+barsFrame:SetWidth(BARS.W); barsFrame:SetHeight(58)
 if PlayerFrame then
     -- dock under the player frame so ALL pools read as one unit frame
     barsFrame:SetPoint("TOPLEFT", PlayerFrame, "BOTTOMLEFT", 100, 24)
@@ -1614,53 +1681,169 @@ barsFrame:SetBackdrop({
     insets = { left = 3, right = 3, top = 3, bottom = 3 },
 })
 barsFrame:SetMovable(true); barsFrame:EnableMouse(true)
+barsFrame:SetClampedToScreen(true)
+
+function CW.BarsDragStart()
+    ClasslessWildcardDB = ClasslessWildcardDB or {}
+    if ClasslessWildcardDB.barsLocked then return end
+    barsFrame.dragging = true
+    barsFrame:StartMoving()
+end
+
+-- Where you put it is where it stays. The frame was movable but the position
+-- was never written down, so every login threw it back under the player frame.
+function CW.BarsDragStop()
+    barsFrame:StopMovingOrSizing()
+    ClasslessWildcardDB = ClasslessWildcardDB or {}
+    local point, _rel, relPoint, x, y = barsFrame:GetPoint()
+    if point then
+        ClasslessWildcardDB.barsPos = { point = point, relPoint = relPoint, x = x, y = y }
+    end
+end
+
 barsFrame:RegisterForDrag("LeftButton")
-barsFrame:SetScript("OnDragStart", barsFrame.StartMoving)
-barsFrame:SetScript("OnDragStop", barsFrame.StopMovingOrSizing)
+barsFrame:SetScript("OnDragStart", CW.BarsDragStart)
+barsFrame:SetScript("OnDragStop", CW.BarsDragStop)
 barsFrame:Hide()
+
+-- Hand a drag on a child back to the frame. Nearly every pixel of it is
+-- covered by something that wants the mouse -- the pools answer clicks, the
+-- pip rows and the runic bar answer hovers -- so without this there is almost
+-- nothing left to grab the frame by.
+function CW.BarsDragProxy(f)
+    f:RegisterForDrag("LeftButton")
+    f:SetScript("OnDragStart", CW.BarsDragStart)
+    f:SetScript("OnDragStop", CW.BarsDragStop)
+end
+
+-- Put it back where the player left it. Runs on PLAYER_ENTERING_WORLD, because
+-- saved variables are not loaded yet while this file is being read.
+function CW.RestoreBarsPosition()
+    ClasslessWildcardDB = ClasslessWildcardDB or {}
+    local pos = ClasslessWildcardDB.barsPos
+    if not pos or not pos.point then return end
+    barsFrame:ClearAllPoints()
+    barsFrame:SetPoint(pos.point, UIParent, pos.relPoint or pos.point, pos.x or 0, pos.y or 0)
+end
+
+function CW.ResetBarsPosition()
+    ClasslessWildcardDB = ClasslessWildcardDB or {}
+    ClasslessWildcardDB.barsPos = nil
+    barsFrame:ClearAllPoints()
+    if PlayerFrame then
+        barsFrame:SetPoint("TOPLEFT", PlayerFrame, "BOTTOMLEFT", 100, 24)
+    else
+        barsFrame:SetPoint("TOPLEFT", UIParent, "TOPLEFT", 20, -180)
+    end
+end
+
+-- The hairline goes in front of the first section under the pools, whichever
+-- of the three that turns out to be.
+function CW.BarsRule(y)
+    if not barsFrame.needRule then return y end
+    barsFrame.needRule = false
+    barsFrame.divider:ClearAllPoints()
+    barsFrame.divider:SetPoint("TOPLEFT", BARS.PAD, -y)
+    barsFrame.divider:Show()
+    return y + 1 + BARS.GAP
+end
+
+-- The client flashes a star when a combo point lands and again when a rune
+-- comes back. Same texture, same reason: a pip quietly changing colour in the
+-- corner of the screen is easy to play right past.
+function CW.FlashPip(tex, dur)
+    if not tex then return end
+    tex.fadeLeft = dur or BARS.FLASH
+    tex.fadeFor = tex.fadeLeft
+    tex:SetAlpha(1)
+    barsFrame.flashes = barsFrame.flashes or {}
+    for _, t in ipairs(barsFrame.flashes) do
+        if t == tex then return end
+    end
+    table.insert(barsFrame.flashes, tex)
+end
 
 local powerBars = {}
 for i, info in ipairs(POWER_INFO) do
     local bar = CreateFrame("StatusBar", nil, barsFrame)
-    bar:SetWidth(146); bar:SetHeight(14)
-    bar:SetPoint("TOPLEFT", 7, -6 - (i - 1) * 17)
+    bar:SetWidth(BARS.W - BARS.PAD * 2); bar:SetHeight(BARS.BAR_H)
+    bar:SetPoint("TOPLEFT", BARS.PAD, -BARS.TOP - (i - 1) * BARS.BAR_STEP)
     bar:SetStatusBarTexture("Interface\\TargetingFrame\\UI-StatusBar")
     bar:SetStatusBarColor(info.r, info.g, info.b)
     bar:SetMinMaxValues(0, 100)
+    -- an empty bar used to show the dialog backdrop straight through it, so a
+    -- pool at zero read as a hole in the frame instead of as an empty bar
+    bar.bg = bar:CreateTexture(nil, "BACKGROUND")
+    bar.bg:SetAllPoints(bar)
+    bar.bg:SetTexture("Interface\\TargetingFrame\\UI-StatusBar")
+    bar.bg:SetVertexColor(info.r * 0.22, info.g * 0.22, info.b * 0.22, 0.9)
     bar.label = bar:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
     bar.label:SetPoint("CENTER", 0, 0)
+    bar.label:SetShadowColor(0, 0, 0, 1)
+    bar.label:SetShadowOffset(1, -1)
     bar.powerIndex = info.index
     bar.powerName = info.name
+    bar.rowKey = info.key
     -- click a pool to make it the MAIN bar on the default unit frame
     bar:EnableMouse(true)
+    CW.BarsDragProxy(bar)
+    bar:SetScript("OnMouseDown", function() barsFrame.dragging = false end)
     bar:SetScript("OnMouseUp", function(self)
+        -- the click that ends a drag is not a click on the bar
+        if barsFrame.dragging then barsFrame.dragging = false return end
         Send("BAR " .. self.powerIndex)
     end)
     bar:SetScript("OnEnter", function(self)
         GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
         GameTooltip:AddLine(self.powerName)
         GameTooltip:AddLine("Click to make this your main resource bar", 1, 1, 1)
+        GameTooltip:AddLine("Drag the frame to move it. /cwbars lock pins it in place.",
+            0.7, 0.7, 0.7, true)
         GameTooltip:Show()
     end)
     bar:SetScript("OnLeave", function() GameTooltip:Hide() end)
     powerBars[i] = bar
 end
+CW.powerBars = powerBars
+CW.barsFrame = barsFrame
 
--- combo points: always visible under the bars (the default target frame also
--- shows them, for any chassis, whenever the server awards them)
+-- A hairline under the pools. Combo points and runes are not more resources,
+-- and with nothing between them the block read as one long list of bars.
+barsFrame.divider = barsFrame:CreateTexture(nil, "ARTWORK")
+barsFrame.divider:SetTexture(1, 1, 1, 0.14)
+barsFrame.divider:SetWidth(BARS.W - BARS.PAD * 2)
+barsFrame.divider:SetHeight(1)
+barsFrame.divider:Hide()
+
+-- Combo points, drawn the way ComboFrame draws them: an always-there socket,
+-- a gem that lights inside it, and a star that flashes on the way in. Like
+-- ComboFrame the row only exists while there are points to show, so every
+-- character that never builds one is not carrying an empty row around.
 local comboDots = {}
 for i = 1, 5 do
     local bg = barsFrame:CreateTexture(nil, "ARTWORK")
-    bg:SetWidth(12); bg:SetHeight(16)
+    bg:SetWidth(BARS.CP); bg:SetHeight(BARS.CP)
     bg:SetTexture("Interface\\ComboFrame\\ComboPoint")
-    bg:SetTexCoord(0, 0.375, 0, 1)
+    bg:SetTexCoord(0, 0.375, 0, 0.75)      -- the 12x12 socket, without its 4 blank rows
+    bg:Hide()
+
     local shine = barsFrame:CreateTexture(nil, "OVERLAY")
-    shine:SetWidth(8); shine:SetHeight(16)
+    shine:SetWidth(BARS.CP_GEM_W); shine:SetHeight(BARS.CP_GEM_H)
     shine:SetPoint("CENTER", bg, "CENTER", 0, 0)
     shine:SetTexture("Interface\\ComboFrame\\ComboPoint")
-    shine:SetTexCoord(0.375, 0.5625, 0, 1)
+    shine:SetTexCoord(0.375, 0.5625, 0.1875, 0.5)   -- the 6x5 gem, likewise
     shine:SetAlpha(0)
-    comboDots[i] = { bg = bg, shine = shine }
+    shine:Hide()
+
+    local flash = barsFrame:CreateTexture(nil, "OVERLAY")
+    flash:SetWidth(BARS.CP_SHINE_W); flash:SetHeight(BARS.CP_SHINE_H)
+    flash:SetPoint("CENTER", bg, "CENTER", 0, 0)
+    flash:SetTexture("Interface\\ComboFrame\\ComboPoint")
+    flash:SetTexCoord(0.5625, 1, 0, 1)
+    flash:SetBlendMode("ADD")
+    flash:SetAlpha(0)
+
+    comboDots[i] = { bg = bg, shine = shine, flash = flash, lit = false }
 end
 CW.comboDots = comboDots
 
@@ -1686,48 +1869,110 @@ local RUNE_COLOR = {
     [3] = { 0.70, 0.35, 0.90 },   -- death
 }
 
-local RUNE_SIZE = 18
 local runePips = {}
 for i = 1, 6 do
     local holder = CreateFrame("Frame", nil, barsFrame)
-    holder:SetWidth(RUNE_SIZE); holder:SetHeight(RUNE_SIZE)
+    holder:SetWidth(BARS.RUNE); holder:SetHeight(BARS.RUNE)
 
+    -- rune and ring are both drawn larger than the cell and centred on it,
+    -- exactly as RuneFrame does it, so they sit inside one another
     local rune = holder:CreateTexture(nil, "ARTWORK")
-    rune:SetAllPoints(holder)
+    rune:SetWidth(BARS.RUNE_ART); rune:SetHeight(BARS.RUNE_ART)
+    rune:SetPoint("CENTER", holder, "CENTER", 0, 0)
 
-    -- the ring the player frame draws around a real Death Knight's runes
     local ring = holder:CreateTexture(nil, "OVERLAY")
-    ring:SetWidth(RUNE_SIZE * 1.45); ring:SetHeight(RUNE_SIZE * 1.45)
+    ring:SetWidth(BARS.RUNE_ART); ring:SetHeight(BARS.RUNE_ART)
     ring:SetPoint("CENTER", holder, "CENTER", 0, 0)
     if not ring:SetTexture("Interface\\PlayerFrame\\UI-PlayerFrame-Deathknight-Ring") then
         ring:Hide()
     end
 
+    local flash = holder:CreateTexture(nil, "OVERLAY")
+    flash:SetWidth(BARS.RUNE_SHINE_W); flash:SetHeight(BARS.RUNE_SHINE_H)
+    flash:SetPoint("CENTER", holder, "CENTER", 0, 0)
+    flash:SetTexture("Interface\\ComboFrame\\ComboPoint")
+    flash:SetTexCoord(0.5625, 1, 0, 1)
+    flash:SetBlendMode("ADD")
+    flash:SetAlpha(0)
+
     holder:Hide()
-    runePips[i] = { frame = holder, rune = rune, ring = ring }
+    runePips[i] = { frame = holder, rune = rune, ring = ring, flash = flash, ready = false }
 end
 CW.runePips = runePips
 
+-- Same width and inset as the pools above it, which it was not: it was 10px
+-- narrower and 5px further in, so the Death Knight block sat visibly off. It
+-- also now carries its value, like every other pool in the frame.
 local runicBar = CreateFrame("StatusBar", nil, barsFrame)
-runicBar:SetWidth(136); runicBar:SetHeight(8)
+runicBar:SetWidth(BARS.W - BARS.PAD * 2); runicBar:SetHeight(BARS.RUNIC_H)
 runicBar:SetStatusBarTexture("Interface\\TargetingFrame\\UI-StatusBar")
 runicBar:SetStatusBarColor(0.00, 0.82, 1.00)
 runicBar:SetMinMaxValues(0, 1)
 runicBar:SetValue(0)
+runicBar:EnableMouse(true)
 runicBar:Hide()
 local runicBg = runicBar:CreateTexture(nil, "BACKGROUND")
 runicBg:SetAllPoints(runicBar)
-runicBg:SetTexture(0, 0, 0, 0.5)
+runicBg:SetTexture("Interface\\TargetingFrame\\UI-StatusBar")
+runicBg:SetVertexColor(0.00, 0.18, 0.22, 0.9)
+runicBar.label = runicBar:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+runicBar.label:SetPoint("CENTER", 0, 0)
+runicBar.label:SetShadowColor(0, 0, 0, 1)
+runicBar.label:SetShadowOffset(1, -1)
+CW.BarsDragProxy(runicBar)
+runicBar:SetScript("OnEnter", function(self)
+    GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
+    GameTooltip:AddLine("Runic Power")
+    GameTooltip:AddLine("Spending runes builds it. Abilities that cost it spend it.",
+        1, 1, 1, true)
+    GameTooltip:Show()
+end)
+runicBar:SetScript("OnLeave", function() GameTooltip:Hide() end)
 CW.runicBar = runicBar
+
+-- Invisible catchers so the two picture rows can answer a hover the way the
+-- bars above them do, and can be dragged like the rest of the frame.
+for _, key in ipairs({ "comboMouse", "runeMouse" }) do
+    local m = CreateFrame("Frame", nil, barsFrame)
+    m:EnableMouse(true)
+    m:Hide()
+    m:SetScript("OnLeave", function() GameTooltip:Hide() end)
+    CW.BarsDragProxy(m)
+    barsFrame[key] = m
+end
+barsFrame.comboMouse:SetScript("OnEnter", function(self)
+    GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
+    GameTooltip:AddLine("Combo Points")
+    GameTooltip:AddLine(string.format("%d of 5 on your target.", barsFrame.comboCount or 0),
+        1, 1, 1)
+    GameTooltip:AddLine("Anything that builds them builds them, whatever else you have picked.",
+        0.7, 0.7, 0.7, true)
+    GameTooltip:Show()
+end)
+barsFrame.runeMouse:SetScript("OnEnter", function(self)
+    GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
+    GameTooltip:AddLine("Runes")
+    GameTooltip:AddLine(string.format("%d of 6 ready.", barsFrame.runesReady or 0), 1, 1, 1)
+    GameTooltip:AddLine("A dimmed rune is recharging. Spending one builds runic power.",
+        0.7, 0.7, 0.7, true)
+    GameTooltip:Show()
+end)
 
 function CW.RefreshBars()
     local displayed = UnitPowerType("player")
-    local shown = 0
+    local shown, rows = 0, 0
+    -- y walks down the frame, so a row that is not there costs nothing and
+    -- everything below it closes up instead of leaving a gap
+    local y = BARS.TOP
     for _, bar in ipairs(powerBars) do
         local maxPower = UnitPowerMax("player", bar.powerIndex)
-        -- with universal resources active, ALWAYS render all three pools —
-        -- a 0/0 bar is a visible bug report, not something to hide
-        if (maxPower and maxPower > 0) or CW.state.universalResources == 1 then
+        -- with universal resources active, ALWAYS render all three pools --
+        -- a 0/0 bar is a visible bug report, not something to hide. Switching
+        -- one off in the settings is the one exception, because that is the
+        -- player saying they know.
+        local want = CW.BarRowOn(bar.rowKey)
+            and ((maxPower and maxPower > 0) or CW.state.universalResources == 1)
+        if want then
             maxPower = maxPower or 0
             local cur = UnitPower("player", bar.powerIndex) or 0
             bar:SetMinMaxValues(0, math.max(1, maxPower))
@@ -1736,11 +1981,91 @@ function CW.RefreshBars()
             local marker = (bar.powerIndex == displayed) and "|cffffd100\194\187|r " or ""
             bar.label:SetText(marker .. bar.powerName .. ": " .. cur .. "/" .. maxPower)
             shown = shown + 1
-            bar:SetPoint("TOPLEFT", 7, -6 - (shown - 1) * 17)
+            bar:ClearAllPoints()
+            bar:SetPoint("TOPLEFT", BARS.PAD, -y)
             bar:Show()
+            y = y + BARS.BAR_STEP
         else
             bar:Hide()
         end
+    end
+    if shown > 0 then y = y - (BARS.BAR_STEP - BARS.BAR_H) end
+    rows = shown
+    barsFrame.needRule = shown > 0
+
+    -- runes, in their own section under the pools
+    local runes = CW.state.runes
+    local ready = 0
+    if runes and CW.BarRowOn("runes") then
+        y = CW.BarsRule(y + BARS.GAP)
+        y = y + BARS.RUNE_OVER          -- the art hangs outside its cell
+        local x = CW.RowStart(6, BARS.RUNE, BARS.RUNE_GAP)
+        for i = 1, 6 do
+            local r = runes[i]
+            local pip = runePips[i]
+            if r then
+                local kind = r.kind or 0
+                -- a rune on cooldown is dimmed rather than hidden, so the row
+                -- never changes width and the eye can count what is missing
+                local up = r.ready and true or false
+                if not pip.rune:SetTexture(RUNE_TEXTURE[kind] or RUNE_TEXTURE[0]) then
+                    local c = RUNE_COLOR[kind] or RUNE_COLOR[0]
+                    pip.rune:SetTexture(c[1], c[2], c[3])
+                end
+                pip.rune:SetVertexColor(1, 1, 1, 1)
+                pip.rune:SetAlpha(up and 1 or 0.30)
+                if pip.rune.SetDesaturated then
+                    pip.rune:SetDesaturated(not up)
+                end
+                -- the client tints the ring down to .6 grey; a spent rune's
+                -- ring goes darker still so the row reads at a glance
+                pip.ring:SetVertexColor(0.6, 0.6, 0.6, 1)
+                pip.ring:SetAlpha(up and 1 or 0.35)
+                if up and not pip.ready then CW.FlashPip(pip.flash) end
+                pip.ready = up
+                if up then ready = ready + 1 end
+                pip.frame:ClearAllPoints()
+                pip.frame:SetPoint("TOPLEFT", barsFrame, "TOPLEFT",
+                    x + (i - 1) * (BARS.RUNE + BARS.RUNE_GAP), -y)
+                pip.frame:Show()
+            else
+                pip.frame:Hide()
+                pip.ready = false
+            end
+        end
+        barsFrame.runeMouse:ClearAllPoints()
+        barsFrame.runeMouse:SetPoint("TOPLEFT", BARS.PAD, -(y - BARS.RUNE_OVER))
+        barsFrame.runeMouse:SetWidth(BARS.W - BARS.PAD * 2)
+        barsFrame.runeMouse:SetHeight(BARS.RUNE + BARS.RUNE_OVER * 2)
+        barsFrame.runeMouse:Show()
+        y = y + BARS.RUNE + BARS.RUNE_OVER
+        rows = rows + 1
+    else
+        for i = 1, 6 do
+            runePips[i].frame:Hide()
+            runePips[i].ready = false
+        end
+        barsFrame.runeMouse:Hide()
+    end
+    barsFrame.runesReady = ready
+
+    -- Runic power stands on its own rather than inside the rune block: a
+    -- player who wants the pool but not the six pips gets exactly that.
+    local runicMax = CW.state.runicMax or 0
+    if runicMax > 0 and CW.BarRowOn("runic") then
+        local cur = CW.state.runic or 0
+        -- close under the pips when they are there, its own section when not
+        if rows > shown then y = y + 4 else y = CW.BarsRule(y + BARS.GAP) end
+        runicBar:ClearAllPoints()
+        runicBar:SetPoint("TOPLEFT", BARS.PAD, -y)
+        runicBar:SetMinMaxValues(0, runicMax)
+        runicBar:SetValue(cur)
+        runicBar.label:SetText("Runic Power: " .. cur .. "/" .. runicMax)
+        runicBar:Show()
+        y = y + BARS.RUNIC_H
+        rows = rows + 1
+    else
+        runicBar:Hide()
     end
 
     -- The stock client hides combo points for non-rogue classes (Wow.exe gates
@@ -1749,58 +2074,46 @@ function CW.RefreshBars()
     local cp = CW.state.comboPoints or 0
     local ok, ccp = pcall(GetComboPoints, "player", "target")
     if ok and ccp and ccp > cp then cp = ccp end
-    for i = 1, 5 do
-        comboDots[i].bg:SetPoint("TOPLEFT", 12 + (i - 1) * 20, -8 - shown * 17)
-        comboDots[i].shine:SetAlpha(i <= cp and 1 or 0)
-    end
-
-    -- runes, drawn under the combo pips when the server is mirroring them
-    local extra = 0
-    local runes = CW.state.runes
-    if runes then
-        local top = -8 - shown * 17 - 20
-        for i = 1, 6 do
-            local r = runes[i]
-            local pip = runePips[i]
-            if r then
-                local kind = r.kind or 0
-                -- a rune on cooldown is dimmed rather than hidden, so the row
-                -- never changes width and the eye can count what is missing
-                local ready = r.ready
-                if not pip.rune:SetTexture(RUNE_TEXTURE[kind] or RUNE_TEXTURE[0]) then
-                    local c = RUNE_COLOR[kind] or RUNE_COLOR[0]
-                    pip.rune:SetTexture(c[1], c[2], c[3])
-                end
-                pip.rune:SetVertexColor(1, 1, 1, 1)
-                pip.rune:SetAlpha(ready and 1 or 0.30)
-                if pip.rune.SetDesaturated then
-                    pip.rune:SetDesaturated(not ready)
-                end
-                pip.ring:SetAlpha(ready and 1 or 0.45)
-                pip.frame:ClearAllPoints()
-                pip.frame:SetPoint("TOPLEFT", barsFrame, "TOPLEFT", 14 + (i - 1) * 22, top)
-                pip.frame:Show()
-            else
-                pip.frame:Hide()
-            end
+    barsFrame.comboCount = cp
+    local now = GetTime()
+    if cp > 0 then barsFrame.cpAt = now end
+    -- hold the row a moment after the last point is spent, so a finisher shows
+    -- the sockets going dark instead of the row vanishing mid-swing
+    local showCombo = CW.BarRowOn("combo")
+        and (cp > 0 or (barsFrame.cpAt and now - barsFrame.cpAt < BARS.CP_LINGER))
+    if showCombo then
+        y = CW.BarsRule(y + BARS.GAP)
+        local x = CW.RowStart(5, BARS.CP, BARS.CP_GAP)
+        for i = 1, 5 do
+            local dot = comboDots[i]
+            local lit = i <= cp
+            dot.bg:ClearAllPoints()
+            dot.bg:SetPoint("TOPLEFT", x + (i - 1) * (BARS.CP + BARS.CP_GAP), -y)
+            dot.bg:Show()
+            dot.shine:SetAlpha(lit and 1 or 0)
+            dot.shine:Show()
+            if lit and not dot.lit then CW.FlashPip(dot.flash) end
+            dot.lit = lit
         end
-        extra = extra + 20
-
-        if (CW.state.runicMax or 0) > 0 then
-            runicBar:SetPoint("TOPLEFT", 12, top - 18)
-            runicBar:SetMinMaxValues(0, CW.state.runicMax)
-            runicBar:SetValue(CW.state.runic or 0)
-            runicBar:Show()
-            extra = extra + 12
-        else
-            runicBar:Hide()
-        end
+        barsFrame.comboMouse:ClearAllPoints()
+        barsFrame.comboMouse:SetPoint("TOPLEFT", x, -y)
+        barsFrame.comboMouse:SetWidth(5 * BARS.CP + 4 * BARS.CP_GAP)
+        barsFrame.comboMouse:SetHeight(BARS.CP)
+        barsFrame.comboMouse:Show()
+        y = y + BARS.CP
+        rows = rows + 1
     else
-        for i = 1, 6 do runePips[i].frame:Hide() end
-        runicBar:Hide()
+        for i = 1, 5 do
+            comboDots[i].bg:Hide()
+            comboDots[i].shine:Hide()
+            comboDots[i].lit = false
+        end
+        barsFrame.comboMouse:Hide()
     end
 
-    barsFrame:SetHeight(shown * 17 + 30 + extra)
+    if barsFrame.needRule then barsFrame.divider:Hide() end
+    barsFrame.rowsShown = rows
+    barsFrame:SetHeight(y + BARS.BOTTOM)
     return shown
 end
 
@@ -1817,19 +2130,192 @@ function CW.UpdateBarsVisibility()
     if enabled then
         barsFrame:Show()
         CW.RefreshBars()
+        -- every row switched off is the same as the frame switched off; an
+        -- empty box is not a resource display
+        if (barsFrame.rowsShown or 0) == 0 then barsFrame:Hide() end
     else
         barsFrame:Hide()
     end
+    if not barsFrame:IsShown() and barsFrame.flashes then
+        -- nothing fades while the frame is down, so a flash caught mid-way
+        -- would still be burning when it comes back
+        for _, tex in ipairs(barsFrame.flashes) do tex:SetAlpha(0) end
+        barsFrame.flashes = nil
+    end
 end
 
+-- The tick lives on its own always-shown frame rather than on the bar frame.
+-- The bar frame hides itself when it has nothing to draw -- every row off, or
+-- only combo points and none on the target -- and a hidden frame gets no
+-- OnUpdate, so driving the poll from it would mean it could never come back.
+CW.barsTicker = CreateFrame("Frame", nil, UIParent)
 local barsElapsed = 0
-barsFrame:SetScript("OnUpdate", function(self, elapsed)
-    barsElapsed = barsElapsed + (elapsed or 0)
+CW.barsTicker:SetScript("OnUpdate", function(self, elapsed)
+    elapsed = elapsed or 0
+    -- the gain flashes fade every frame; the numbers only need five reads a
+    -- second, and re-laying the whole frame out that often is wasteful
+    local flashes = barsFrame.flashes
+    if flashes and #flashes > 0 then
+        for i = #flashes, 1, -1 do
+            local tex = flashes[i]
+            tex.fadeLeft = (tex.fadeLeft or 0) - elapsed
+            if tex.fadeLeft <= 0 then
+                tex:SetAlpha(0)
+                table.remove(flashes, i)
+            else
+                tex:SetAlpha(tex.fadeLeft / (tex.fadeFor or BARS.FLASH))
+            end
+        end
+    end
+    barsElapsed = barsElapsed + elapsed
     if barsElapsed >= 0.2 then
         barsElapsed = 0
-        CW.RefreshBars()
+        CW.UpdateBarsVisibility()
     end
 end)
+
+-- ---------------------------------------------------------------------------
+-- settings flyout
+--
+-- Which of the resource rows to draw, plus the two things about the bar frame
+-- itself that are worth a checkbox. Everything in here is opt-out and stored
+-- by absence, so a saved-variables file written before this panel existed
+-- opens with every row already on.
+--
+-- Wrapped in a do block: the pieces it needs afterwards go on CW, and the rest
+-- of its locals give their registers back at the end rather than spending them
+-- out of the 200 this chunk gets.
+-- ---------------------------------------------------------------------------
+do
+    local ROWS = {
+        { head = "Resource bars" },
+        { key = "frame", label = "Show the bars",
+          tip = "The mini-bars beside your unit frame. Drag them anywhere you like." },
+        { key = "lock", label = "Lock in place",
+          tip = "Stops the bars being dragged by accident." },
+        { head = "Show a bar for" },
+    }
+    for _, row in ipairs(BARS.ROWS) do
+        ROWS[#ROWS + 1] = {
+            key = row.key, label = row.label,
+            tip = "Hides this row. The resource itself is unchanged: abilities " ..
+                "still build and spend it.",
+        }
+    end
+
+    local fly = CreateFrame("Frame", "ClasslessWildcardSettings", frame)
+    fly:SetWidth(240)
+    fly:SetPoint("BOTTOMLEFT", frame, "BOTTOMLEFT", 20, 56)
+    fly:SetFrameStrata("DIALOG")
+    fly:SetBackdrop({
+        bgFile = "Interface\\Buttons\\WHITE8X8",
+        edgeFile = "Interface\\Tooltips\\UI-Tooltip-Border",
+        tile = false, edgeSize = 14,
+        insets = { left = 4, right = 4, top = 4, bottom = 4 },
+    })
+    fly:SetBackdropColor(0.03, 0.03, 0.05, 0.97) -- solid: the panes underneath must not show through
+    fly:EnableMouse(true)
+    fly:Hide()
+    CW.setFly = fly
+
+    fly.title = fly:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+    fly.title:SetPoint("TOP", 0, -12)
+    fly.title:SetText("Settings")
+
+    local checks = {}
+    local y = 34
+    for i, row in ipairs(ROWS) do
+        if row.head then
+            if i > 1 then y = y + 6 end   -- a heading needs air above it
+            local h = fly:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+            h:SetPoint("TOPLEFT", 16, -y)
+            h:SetText("|cffffd100" .. row.head .. "|r")
+            y = y + 19
+        else
+            local name = "ClasslessWildcardSetting" .. i
+            local cb = CreateFrame("CheckButton", name, fly, "UICheckButtonTemplate")
+            cb:SetWidth(24); cb:SetHeight(24)
+            cb:SetPoint("TOPLEFT", 18, -y)
+            local label = _G[name .. "Text"]
+            if label then label:SetText(row.label) end
+            cb.rowKey = row.key
+            cb:SetScript("OnClick", function(self)
+                local on = self:GetChecked() and true or false
+                ClasslessWildcardDB = ClasslessWildcardDB or {}
+                if self.rowKey == "frame" then
+                    ClasslessWildcardDB.hideBars = (not on) or nil
+                    CW.UpdateBarsVisibility()
+                elseif self.rowKey == "lock" then
+                    ClasslessWildcardDB.barsLocked = on or nil
+                else
+                    CW.SetBarRow(self.rowKey, on)
+                end
+                CW.RenderSettings()
+            end)
+            cb:SetScript("OnEnter", function(self)
+                GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
+                GameTooltip:AddLine(row.label)
+                GameTooltip:AddLine(row.tip, 1, 1, 1, true)
+                GameTooltip:Show()
+            end)
+            cb:SetScript("OnLeave", function() GameTooltip:Hide() end)
+            checks[#checks + 1] = cb
+            y = y + 24
+        end
+    end
+
+    local reset = CreateFrame("Button", nil, fly, "UIPanelButtonTemplate")
+    reset:SetWidth(150); reset:SetHeight(22)
+    reset:SetPoint("TOPLEFT", 18, -y - 8)
+    reset:SetText("Reset bar position")
+    reset:SetScript("OnClick", function() CW.ResetBarsPosition() end)
+    reset:SetScript("OnEnter", function(self)
+        GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
+        GameTooltip:AddLine("Reset bar position")
+        GameTooltip:AddLine("Puts the bars back under the player frame.", 1, 1, 1, true)
+        GameTooltip:Show()
+    end)
+    reset:SetScript("OnLeave", function() GameTooltip:Hide() end)
+    fly:SetHeight(y + 8 + 22 + 14)
+
+    -- The panel is the one place these live, so it reads them back rather than
+    -- remembering what it drew: /cwbars and the minimap button change the same
+    -- settings from outside it.
+    function CW.RenderSettings()
+        ClasslessWildcardDB = ClasslessWildcardDB or {}
+        for _, cb in ipairs(checks) do
+            local on
+            if cb.rowKey == "frame" then
+                on = ClasslessWildcardDB.hideBars ~= true
+            elseif cb.rowKey == "lock" then
+                on = ClasslessWildcardDB.barsLocked == true
+            else
+                on = CW.BarRowOn(cb.rowKey)
+            end
+            -- 1/nil, never false: SetChecked is not reliably boolean here
+            cb:SetChecked(on and 1 or nil)
+        end
+    end
+    CW.settingsChecks = checks
+
+    setBtn:SetScript("OnClick", function()
+        CW.helpFly:Hide(); CW.statFly:Hide(); CW.archFly:Hide()
+        if fly:IsShown() then
+            fly:Hide()
+        else
+            CW.RenderSettings()
+            fly:Show()
+        end
+    end)
+    setBtn:SetScript("OnEnter", function(self)
+        GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
+        GameTooltip:AddLine("Settings")
+        GameTooltip:AddLine("Choose which resource bars to show, and where they sit.",
+            1, 1, 1, true)
+        GameTooltip:Show()
+    end)
+    setBtn:SetScript("OnLeave", function() GameTooltip:Hide() end)
+end
 
 -- ---------------------------------------------------------------------------
 -- spellbook tabs
@@ -1927,10 +2413,25 @@ tabWatcher:SetScript("OnEvent", function()
 end)
 
 SLASH_CLASSLESSWILDCARDBARS1 = "/cwbars"
-SlashCmdList["CLASSLESSWILDCARDBARS"] = function()
+SlashCmdList["CLASSLESSWILDCARDBARS"] = function(msg)
     ClasslessWildcardDB = ClasslessWildcardDB or {}
-    ClasslessWildcardDB.hideBars = not ClasslessWildcardDB.hideBars
-    CW.UpdateBarsVisibility()
+    local cmd = strtrim(strlower(msg or ""))
+    if cmd == "lock" or cmd == "unlock" then
+        ClasslessWildcardDB.barsLocked = (cmd == "lock")
+        Print(cmd == "lock" and "Resource bars locked in place."
+            or "Resource bars unlocked. Drag them anywhere.")
+    elseif cmd == "reset" then
+        CW.ResetBarsPosition()
+        Print("Resource bars moved back under the player frame.")
+    elseif cmd == "show" or cmd == "hide" then
+        ClasslessWildcardDB.hideBars = (cmd == "hide")
+        CW.UpdateBarsVisibility()
+    elseif cmd == "" then
+        ClasslessWildcardDB.hideBars = not ClasslessWildcardDB.hideBars
+        CW.UpdateBarsVisibility()
+    else
+        Print("/cwbars, or /cwbars show, hide, lock, unlock, reset.")
+    end
 end
 
 -- ---------------------------------------------------------------------------
@@ -3420,6 +3921,7 @@ events:SetScript("OnEvent", function(self, event, arg1, arg2, arg3, arg4)
     elseif event == "PLAYER_ENTERING_WORLD" then
         CW.RefreshPanelArt()
         CW.LoadBrowseChoices()
+        CW.RestoreBarsPosition()
         Send("HELLO")
         if CW.ClaimHotkey then CW.ClaimHotkey() end
         if CW.RefreshMicroTooltip then CW.RefreshMicroTooltip() end

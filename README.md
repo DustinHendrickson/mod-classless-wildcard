@@ -302,16 +302,29 @@ Everything the NPC and the addon do is also available as a chat command.
 
 ### Addon
 
-| Command               | What it does                            |
-| --------------------- | --------------------------------------- |
-| `/cw` or `/classless` | Open the Character Advancement panel    |
-| `/cw help`            | Open the built-in guide to both systems |
-| `/cwbars`             | Toggle the universal resource mini-bars |
+| Command                 | What it does                                       |
+| ----------------------- | -------------------------------------------------- |
+| `/cw` or `/classless`   | Open the Character Advancement panel               |
+| `/cw help`              | Open the built-in guide to both systems            |
+| `/cwbars`               | Toggle the universal resource mini-bars            |
+| `/cwbars show \| hide`  | Set the mini-bars instead of toggling them         |
+| `/cwbars lock \| unlock` | Pin the mini-bars in place, or let them be dragged |
+| `/cwbars reset`         | Put the mini-bars back under the player frame      |
 
 The addon binds the advancement panel to **`N`**, the stock Talents key, unless the player has
 already rebound it, in which case it uses the first free key among `J`, `Y`, `G` and `K`. The
 panel, the Help guide and the resource bars can all be rebound under
 **Key Bindings > ClasslessWildcard**.
+
+The mini-bars remember where they were dragged to, per account. They show mana, rage and energy
+always, and add a rune row, a runic power bar and a combo point row only while the character
+actually has those, so nothing empty is left on screen.
+
+The **Settings** button on the advancement panel has a checkbox per row -- mana, rage, energy,
+runes, runic power, combo points -- plus the frame's own show and lock switches and a position
+reset. A row is stored only when it is switched off, so an existing `ClasslessWildcard.lua`
+saved-variables file opens with everything on. Switching every row off puts the frame away
+entirely rather than leaving an empty box on screen.
 
 ---
 
