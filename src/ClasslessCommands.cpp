@@ -315,12 +315,13 @@ public:
         return true;
     }
 
-    static bool HandleRerollTalent(ChatHandler* handler, uint32 talentId)
+    static bool HandleRerollTalent(ChatHandler* handler, uint32 talentId, Optional<uint32> scrolls)
     {
         if (!CheckEnabled(handler))
             return true;
         std::string err;
-        if (!sClasslessMgr->Reroll(handler->GetSession()->GetPlayer(), true, talentId, &err) && !err.empty())
+        if (!sClasslessMgr->Reroll(handler->GetSession()->GetPlayer(), true, talentId, &err,
+                                   scrolls.value_or(0)) && !err.empty())
             handler->SendSysMessage(err);
         return true;
     }

@@ -1098,7 +1098,8 @@ local function BuildHelpText()
 "   |cff00ff00Level 1:|r  4 random abilities to begin.",
 "   |cff00ff00From level 10:|r  one roll every level, alternating -- an ability on the even levels, a talent on the odd ones. Talents come no more often than abilities because a talent roll can land on rank 5 outright.",
 "Rolls are rarity-weighted: a legendary turns up about a quarter as often as a common, so most of what you are dealt is common and a legendary is a real find.",
-"A talent roll also rolls the |cffffd100rank|r you land on, and the rank IS its rarity: rank 1 common, rank 2 uncommon, rank 3 rare, rank 4 epic, |cffff8000rank 5 legendary|r. The rank is drawn from anything above what you already have, not one step up, so a talent you hold at rank 2 can jump straight to rank 5 -- and a talent you have never seen can arrive at its top rank. A high rank is the jackpot: rolls cost you nothing, so landing on rank 5 hands you the full-strength talent for free, where a Classless Hero pays for every rank up to it. Rolling into a talent you already own upgrades it, and only ever to a rank above the one you hold. One roll gives you one thing: it never chains.",
+"A talent roll also rolls the |cffffd100rank|r you land on, and the rank IS its rarity: rank 1 common, rank 2 uncommon, rank 3 rare, rank 4 epic, |cffff8000rank 5 legendary|r. The rank is drawn from anything above what you already have, not one step up, so a talent you hold at rank 2 can jump straight to rank 5 -- and a talent you have never seen can arrive at its top rank. A high rank is the jackpot: rolls cost you nothing, so landing on rank 5 hands you the full-strength talent for free, where a Classless Hero pays for every rank up to it. A roll only ever gives you a talent you do not already have, so nothing you own is ever taken or replaced. One roll gives you one thing: it never chains.",
+"   |cffffd100Deepening a talent|r -- because a roll never raises a rank, the way to push a talent higher is to reroll it and stake |cffffd100Reroll Scrolls|r on it. The reroll costs its charge as usual and trades the talent away for a new one; every extra scroll you stake buys a chance to keep it and raise its rank instead. If the stake lands the new rank is drawn from anything above the one you hold, so it can jump more than one. If it fails the scrolls are spent and the talent is traded away as normal. Use the circular arrow beside a talent in |cffffd100My Build|r.",
 "You steer your luck:",
 "   |cffffd100Rerolls|r -- every level from 10 grants you 3 reroll charges, and rerolls are free below level 10. One pool, spent on abilities or talents alike. Reroll straight from the popup, or later from |cffffd100My Build|r using the circular arrow next to anything you own.",
 "   |cffffd100Lock|r -- while the starting hand is open, the padlock holds an ability back from |cffffd100Roll Abilities|r, which rerolls everything unlocked at once. Once free rolls end the padlocks come off for good: from then on you reroll one ability at a time, and only the one you choose.",
@@ -1321,6 +1322,19 @@ function CW.LocksMatter()
     return s.mode == 1 and (s.level or 1) < (s.freeReroll or 10)
 end
 
+-- Rerolling a talent trades it away for a new one. Staking extra Reroll
+-- Scrolls on it buys a chance to keep it and raise its rank instead, so the
+-- same button either widens the build or deepens it.
+function CW.TalentUpgradeOdds(scrolls)
+    local s = CW.state
+    return math.min(100, (s.tuBase or 0) + (scrolls or 0) * (s.tuPerScroll or 0))
+end
+
+function CW.CanStakeScrolls()
+    local s = CW.state
+    return (s.tuPerScroll or 0) > 0 and (s.tuMaxScrolls or 0) > 0
+end
+
 local function BuildList()
     local merged = {}
     for _, e in ipairs(CW.owned) do
@@ -1397,8 +1411,13 @@ local function RenderBuild()
                     r.actBtn.tex:SetTexture("Interface\\Buttons\\UI-RotationRight-Button-Up")
                     r.actBtn.tex:SetVertexColor(1, 0.85, 0.3)
                     local id, kind = it.id, it.kind
+                    local tname, trank, tmax = SpellLabel(it.spell, it.rarity), it.rank, it.max
                     r.actBtn:SetScript("OnClick", function()
-                        Send((kind == "T" and "RRT " or "RR ") .. id)
+                        if kind == "T" then
+                            CW.AskTalentReroll(id, tname, trank, tmax)
+                        else
+                            Send("RR " .. id)
+                        end
                     end)
                     r.actBtn:SetScript("OnEnter", function(self)
                         GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
@@ -2301,6 +2320,105 @@ CW.barsTicker:SetScript("OnUpdate", function(self, elapsed)
         CW.UpdateBarsVisibility()
     end
 end)
+
+-- ---------------------------------------------------------------------------
+-- talent reroll: trade it away, or stake scrolls on its rank
+-- ---------------------------------------------------------------------------
+do
+    local fly = CreateFrame("Frame", "ClasslessWildcardTalentReroll", frame)
+    fly:SetWidth(360); fly:SetHeight(200)
+    fly:SetPoint("CENTER", frame, "CENTER", 0, 0)
+    fly:SetFrameStrata("DIALOG")
+    fly:SetBackdrop({
+        bgFile = "Interface\\Buttons\\WHITE8X8",
+        edgeFile = "Interface\\Tooltips\\UI-Tooltip-Border",
+        tile = false, edgeSize = 14,
+        insets = { left = 4, right = 4, top = 4, bottom = 4 },
+    })
+    fly:SetBackdropColor(0.03, 0.03, 0.05, 0.97)
+    fly:EnableMouse(true)
+    fly:Hide()
+    CW.talentRerollFly = fly
+
+    fly.title = fly:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+    fly.title:SetPoint("TOP", 0, -12)
+
+    fly.body = fly:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+    fly.body:SetPoint("TOPLEFT", 16, -36)
+    fly.body:SetWidth(328)
+    fly.body:SetJustifyH("LEFT")
+
+    fly.stake = fly:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+    fly.stake:SetPoint("TOP", 0, -96)
+
+    fly.minus = CreateFrame("Button", nil, fly, "UIPanelButtonTemplate")
+    fly.minus:SetWidth(26); fly.minus:SetHeight(24)
+    fly.minus:SetPoint("TOP", -110, -92)
+    fly.minus:SetText("-")
+    fly.plus = CreateFrame("Button", nil, fly, "UIPanelButtonTemplate")
+    fly.plus:SetWidth(26); fly.plus:SetHeight(24)
+    fly.plus:SetPoint("TOP", 110, -92)
+    fly.plus:SetText("+")
+
+    fly.go = CreateFrame("Button", nil, fly, "UIPanelButtonTemplate")
+    fly.go:SetWidth(150); fly.go:SetHeight(26)
+    fly.go:SetPoint("BOTTOMLEFT", 16, 14)
+    fly.cancel = CreateFrame("Button", nil, fly, "UIPanelButtonTemplate")
+    fly.cancel:SetWidth(150); fly.cancel:SetHeight(26)
+    fly.cancel:SetPoint("BOTTOMRIGHT", -16, 14)
+    fly.cancel:SetText("Cancel")
+    fly.cancel:SetScript("OnClick", function() fly:Hide() end)
+
+    function CW.RenderTalentReroll()
+        local s = CW.state
+        local n = fly.scrolls or 0
+        local max = math.min(s.tuMaxScrolls or 0, s.scrolls or 0)
+        if n > max then n = max; fly.scrolls = n end
+        local odds = CW.TalentUpgradeOdds(n)
+
+        fly.title:SetText("Reroll " .. (fly.talentName or "this talent"))
+        fly.body:SetText("A reroll trades this talent away and the Wildcard deals you a new one "
+            .. "in its place. Stake Reroll Scrolls on it instead and they buy a chance to |cffffd100keep|r "
+            .. "it and raise its rank. If the stake fails, it is traded away as normal.\n\n"
+            .. "You have |cff00ff00" .. (s.scrolls or 0) .. "|r Reroll Scroll"
+            .. (((s.scrolls or 0) == 1) and "" or "s") .. ".")
+        if max > 0 then
+            fly.stake:SetText("Stake |cffffd100" .. n .. "|r  =  |cff00ff00" .. odds .. "%|r to raise its rank")
+            fly.minus:Show(); fly.plus:Show()
+        else
+            fly.stake:SetText("|cffaaaaaaNo scrolls to stake|r")
+            fly.minus:Hide(); fly.plus:Hide()
+        end
+        fly.go:SetText(n > 0 and ("Reroll + " .. n) or "Reroll")
+    end
+
+    fly.plus:SetScript("OnClick", function()
+        fly.scrolls = (fly.scrolls or 0) + 1
+        CW.RenderTalentReroll()
+    end)
+    fly.minus:SetScript("OnClick", function()
+        fly.scrolls = math.max(0, (fly.scrolls or 0) - 1)
+        CW.RenderTalentReroll()
+    end)
+    fly.go:SetScript("OnClick", function()
+        Send("RRT " .. fly.talentId .. " " .. (fly.scrolls or 0))
+        fly:Hide()
+    end)
+
+    -- A maxed talent has no rank left to win, so the stake is not offered and
+    -- the reroll goes straight out.
+    function CW.AskTalentReroll(talentId, name, rank, maxRank)
+        if not CW.CanStakeScrolls() or (rank or 0) >= (maxRank or 0)
+            or (CW.state.scrolls or 0) <= 0 then
+            Send("RRT " .. talentId .. " 0")
+            return
+        end
+        CW.helpFly:Hide(); CW.statFly:Hide(); CW.archFly:Hide(); CW.setFly:Hide()
+        fly.talentId, fly.talentName, fly.scrolls = talentId, name, 0
+        CW.RenderTalentReroll()
+        fly:Show()
+    end
+end
 
 -- ---------------------------------------------------------------------------
 -- settings flyout
@@ -3923,6 +4041,10 @@ local function HandleMessage(msg)
         s.scrollCost = tonumber(p[14]) or 0
         s.scrollBuy = tonumber(p[15]) or 0
         s.freeReroll = tonumber(p[16]) or 10   -- Wildcard.FreeRerollLevel
+        -- what a scroll staked on a talent reroll buys
+        s.tuBase = tonumber(p[17]) or 0
+        s.tuPerScroll = tonumber(p[18]) or 0
+        s.tuMaxScrolls = tonumber(p[19]) or 0
         CW.UpdateBarsVisibility()
         UpdateStatus()
         -- fresh Wildcard hero: lock & roll your starting hand

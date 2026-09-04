@@ -294,6 +294,13 @@ void ClasslessMgr::LoadConfig(bool /*reload*/)
             cfg.wcTalentRankWeights[i] = weights[i];
     }
 
+    cfg.wcTalentUpgradeBase = sConfigMgr->GetOption<uint32>(
+        "ClasslessWildcard.Wildcard.TalentUpgradeBaseChance", 0);
+    cfg.wcTalentUpgradePerScroll = sConfigMgr->GetOption<uint32>(
+        "ClasslessWildcard.Wildcard.TalentUpgradePerScroll", 20);
+    cfg.wcTalentUpgradeMaxScrolls = sConfigMgr->GetOption<uint32>(
+        "ClasslessWildcard.Wildcard.TalentUpgradeMaxScrolls", 5);
+
     cfg.wcSynergyBaseChance = sConfigMgr->GetOption<uint32>("ClasslessWildcard.Wildcard.SynergyBaseChance", 10);
     cfg.wcSynergyIncrement = sConfigMgr->GetOption<uint32>("ClasslessWildcard.Wildcard.SynergyIncrement", 10);
     cfg.wcSynergyBanRolls = sConfigMgr->GetOption<uint32>("ClasslessWildcard.Wildcard.SynergyBanRolls", 25);
@@ -3484,12 +3491,12 @@ uint32 ClasslessMgr::RollTalent(Player* player)
             {
                 if (!t.enabled || IsBanned(st, true, talentId))
                     continue;
-                // A talent already owned is only worth rolling when the roll
-                // can land ABOVE the rank held: anything else would be a roll
-                // spent handing back what the Hero already has.
-                auto itr = st.talents.find(talentId);
-                if (itr != st.talents.end() && itr->second >= t.maxRank)
-                    continue; // maxed out: nothing left to win
+                // A roll only ever hands over a talent the Hero does not
+                // have. Deepening one already held is what a reroll with
+                // scrolls is for, so a roll is never spent on something the
+                // Hero already owns.
+                if (st.talents.count(talentId))
+                    continue;
                 anyLevel.push_back(&t);
                 if (!cfg.respectLevelReqs || player->GetLevel() >= 10 + t.row * 5)
                     candidates.push_back(&t);
@@ -3558,15 +3565,11 @@ uint32 ClasslessMgr::RollTalent(Player* player)
             Msg(player, "|cff00ff88Synergy roll!|r This talent complements your Hero.");
         }
 
-        uint8 ownedRank = 0;
-        if (auto itr = st.talents.find(chosen->talentId); itr != st.talents.end())
-            ownedRank = itr->second;
-
         // the roll decides the RANK too, not just the talent, on its own
         // weight ladder: rank 5 is roughly a twentieth as likely as rank 1
-        uint8 newRank = RollTalentRank(*chosen, ownedRank);
+        uint8 newRank = RollTalentRank(*chosen, 0);
         if (!newRank)
-            return lastGranted; // maxed (shouldn't happen: those are filtered out)
+            return lastGranted; // no rank to give (a zero-rank talent row)
         Rarity shown = RankRarity(*chosen, newRank);
 
         GrantTalentRankInternal(player, *chosen, newRank);
@@ -3575,17 +3578,14 @@ uint32 ClasslessMgr::RollTalent(Player* player)
             PushAddon(player, Acore::StringFormat("RV|T|{}|{}|{}|{}|{}",
                 chosen->talentId, chosen->rankSpells[newRank - 1], uint32(shown),
                 uint32(newRank), synergy ? 1 : 0));
-
-        if (ownedRank)
-            Msg(player, Acore::StringFormat("{} was already yours at rank {}. The roll takes it to {}.",
-                SpellName(chosen->rankSpells[0]), uint32(ownedRank), uint32(newRank)));
     }
 
     SaveState(player);
     return lastGranted;
 }
 
-bool ClasslessMgr::Reroll(Player* player, bool isTalent, uint32 entry, std::string* err)
+bool ClasslessMgr::Reroll(Player* player, bool isTalent, uint32 entry, std::string* err,
+                          uint32 extraScrolls)
 {
     CharState& st = GetState(player);
     if (st.mode != Mode::Wildcard)
@@ -3606,28 +3606,77 @@ bool ClasslessMgr::Reroll(Player* player, bool isTalent, uint32 entry, std::stri
             return false;
         }
 
+        uint8 const heldRank = itr->second;
+        bool const canDeepen = heldRank < t->maxRank;
+
+        // Extra scrolls buy a chance to KEEP this talent and raise its rank
+        // rather than trade it away. There is nothing to raise on a maxed one.
+        extraScrolls = std::min<uint32>(extraScrolls, cfg.wcTalentUpgradeMaxScrolls);
+        if (extraScrolls && !canDeepen)
+        {
+            if (err) *err = Acore::StringFormat(
+                "{} is already at rank {}. There is no higher rank to roll for.",
+                SpellName(t->rankSpells[0]), uint32(t->maxRank));
+            return false;
+        }
+
+        // The reroll itself is one charge, or one scroll when no charge is
+        // left, or nothing below the free-reroll level. Every extra is a
+        // scroll on top, at any level.
+        uint32 scrolls = extraScrolls;
+        bool spendCharge = false;
         if (!free)
         {
             if (st.rerolls > 0)
-                --st.rerolls; // earned charge (granted with every roll)
-            else if (player->HasItemCount(cfg.wcScrollItemId, 1))
-                player->DestroyItemCount(cfg.wcScrollItemId, 1, true);
+                spendCharge = true;
             else
+                ++scrolls;
+        }
+        if (scrolls && !player->HasItemCount(cfg.wcScrollItemId, int32(scrolls)))
+        {
+            if (err) *err = extraScrolls
+                ? Acore::StringFormat("That costs {} Reroll Scrolls and you do not have that many.", scrolls)
+                : std::string("No rerolls left. You earn one with every roll the Wildcard deals you, or buy a Reroll Scroll.");
+            return false;
+        }
+        if (spendCharge)
+            --st.rerolls;
+        if (scrolls)
+            player->DestroyItemCount(cfg.wcScrollItemId, scrolls, true);
+
+        ++st.pity;
+
+        uint32 const chance = std::min<uint32>(100,
+            cfg.wcTalentUpgradeBase + extraScrolls * cfg.wcTalentUpgradePerScroll);
+        if (canDeepen && chance && roll_chance_i(int32(chance)))
+        {
+            // Kept and deepened. Nothing was given up, so nothing is banned.
+            uint8 const newRank = RollTalentRank(*t, heldRank);
+            if (newRank)
             {
-                if (err) *err = "No rerolls left. You earn one with every roll the Wildcard deals you, or buy a Reroll Scroll.";
-                return false;
+                GrantTalentRankInternal(player, *t, newRank);
+                if (!_revealSuppress)
+                    PushAddon(player, Acore::StringFormat("RV|T|{}|{}|{}|{}|0",
+                        t->talentId, t->rankSpells[newRank - 1],
+                        uint32(RankRarity(*t, newRank)), uint32(newRank)));
+                Msg(player, Acore::StringFormat("{} rises to rank {} of {}.",
+                    SpellName(t->rankSpells[0]), uint32(newRank), uint32(t->maxRank)));
+                PruneCompanions(player);
+                SaveState(player);
+                return true;
             }
         }
 
+        // Traded away: it goes, it cannot come straight back, and the Wildcard
+        // deals one new talent in its place.
+        if (extraScrolls)
+            Msg(player, Acore::StringFormat("{} did not hold. The Wildcard deals again.",
+                SpellName(t->rankSpells[0])));
         RemoveTalentInternal(player, *t);
 
         st.bans.push_back({ entry, true, int32(cfg.wcSynergyBanRolls) });
         SaveBans(player->GetGUID(), st);
-        ++st.pity;
 
-        // One charge, one roll -- the same deal an ability reroll offers. This
-        // used to roll once per rank given up, so rerolling a rank 5 talent
-        // dealt five new talents, each of which could chain into more.
         RollTalent(player);
     }
     else

@@ -93,7 +93,7 @@ namespace
         // realm that tuned Wildcard.FreeRerollLevel got an addon that disagreed
         // with its own server. Fields are read by position now, and anything the
         // addon does not know about is ignored, so the packet can simply grow.
-        SendAddon(player, Acore::StringFormat("S|{}|{}|{}|{}|{}|{}|{}|{}|{}|{}|{}|{}|{}|{}|{}",
+        SendAddon(player, Acore::StringFormat("S|{}|{}|{}|{}|{}|{}|{}|{}|{}|{}|{}|{}|{}|{}|{}|{}|{}|{}",
             uint32(st.mode), st.abilityEssence, st.talentEssence, st.pity, chance,
             scrolls, player->GetLevel(), cfg.modeChoiceDeadline,
             cfg.rebirthEnable ? 1 : 0, cfg.rebirthCostGold,
@@ -105,7 +105,11 @@ namespace
             st.rerolls, sClasslessMgr->IsExempt(player) ? 0 : 1,
             sClasslessMgr->ScrollBuyCost(player->GetLevel()),
             (cfg.wcScrollBuyEnable && player->GetLevel() >= cfg.wcFreeRerollLevel) ? 1 : 0,
-            uint32(cfg.wcFreeRerollLevel)));
+            uint32(cfg.wcFreeRerollLevel),
+            // fields 17-19: what a scroll buys on a talent reroll, so the
+            // addon can show the odds instead of guessing them
+            cfg.wcTalentUpgradeBase, cfg.wcTalentUpgradePerScroll,
+            cfg.wcTalentUpgradeMaxScrolls));
 
         // Talent pricing, so the browser can label what a talent actually
         // costs instead of assuming. Sent as its own message rather than more
@@ -491,7 +495,10 @@ namespace
                 SendErr(player, err.empty() ? "Nothing to reroll: everything is locked." : err);
         }
         else if (cmd == "RRT")
-            sClasslessMgr->Reroll(player, true, argNum(1), &err) ? SendOk(player, "RRT") : SendErr(player, err);
+            // "RRT <talentId> [extraScrolls]" -- each extra scroll buys a
+            // chance to keep the talent and raise its rank instead
+            sClasslessMgr->Reroll(player, true, argNum(1), &err, argNum(2))
+                ? SendOk(player, "RRT") : SendErr(player, err);
         else if (cmd == "LOCK")
         {
             // "LOCK <id> <0|1>" sets the padlock outright; "LOCK <id>" still

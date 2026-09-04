@@ -362,6 +362,7 @@ and are documented inline. The ones most likely to need changing:
 | `Wildcard.RollStartLevel`                           | `10`         | Level the roll schedule begins                                 |
 | `Wildcard.TalentEveryLevels` / `AbilityEveryLevels` | `1` / `2`    | Roll cadence                                                   |
 | `Wildcard.RarityWeights`                            | `100,85,65,45,25` | Roll weight per rarity tier: which entry a roll lands on    |
+| `Wildcard.TalentUpgradePerScroll`                   | `20`         | Percent per scroll staked on keeping a rerolled talent          |
 | `Wildcard.FreeRerollBelowLevel`                     | `10`         | Rerolls are free under this level                              |
 | `Wildcard.ScrollBuyEnable`                          | `1`          | Buy Scroll button on the addon panel                           |
 | `Wildcard.ScrollBuyBaseCopper` / `...PerLevelCopper`  | `500` / `500`| Scroll price in copper: base + per-level x level               |
@@ -466,10 +467,25 @@ ladder, `TalentRankWeights`, defaulting to `100,75,50,25,10`, which makes rank 5
 twentieth as likely as rank 1. The rank sets the rarity shown, unless the talent's own rarity in
 `cw_talent_override` is higher.
 
-A talent you already own is rolled only when the roll can land **above** the rank you hold, and
-then it upgrades that talent. Talents at maximum rank are excluded, and an ability you already own
-is never rolled. **One roll grants exactly one thing**, and a reroll spends one charge for one new
-talent whatever rank was given up.
+A roll only ever hands over a talent you do **not** already have, and an ability you already own
+is never rolled either. **One roll grants exactly one thing.** Nothing you own is ever replaced or
+taken by a roll: everything is additive.
+
+**Deepening a talent.** Since a roll never raises a rank, the way to deepen a talent is to reroll
+it and stake Reroll Scrolls on the outcome. A talent reroll costs its charge or scroll as usual
+and trades the talent away for a new random one. Each extra scroll staked adds
+`Wildcard.TalentUpgradePerScroll` percentage points (20 by default, on top of
+`TalentUpgradeBaseChance`) to the chance that the talent is **kept and its rank raised** instead.
+Five scrolls is a certainty on the defaults.
+
+If the stake lands, the new rank is drawn from every rank above the one you hold on
+`TalentRankWeights`, so it can jump more than one, and nothing is banned because nothing was given
+up. If it fails, the scrolls are spent and the talent is traded away as normal. A talent already
+at its maximum has no rank to win, so the stake is refused and the reroll goes straight out.
+
+That makes the same button the choice between widening a build and deepening it: reroll for
+something new, or pay to keep what you have and push it further. It is offered by the reroll die
+in **My Build**, by the Hero Advancement NPC, and by `.wildcard rerolltalent <talentId> [scrolls]`.
 
 **Reroll cooldowns.** Rerolling something puts it on a cooldown, counted in rolls, so the reroll
 cannot hand it straight back. The default `SynergyBanRolls` of 25 excludes a pick from the next

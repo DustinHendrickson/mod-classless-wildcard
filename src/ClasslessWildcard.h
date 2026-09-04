@@ -354,6 +354,12 @@ namespace ClasslessWildcard
         // which talent, rank decides how much of it you get in one roll, and
         // a rank is worth a whole point where a rarity is only flavour.
         std::array<uint32, 5> wcTalentRankWeights = { 100, 75, 50, 25, 10 };
+        // Rerolling a talent trades it away for a new one. Extra scrolls buy a
+        // chance to keep it and raise its rank instead, so a Hero can either
+        // widen the build or deepen it.
+        uint32 wcTalentUpgradeBase = 0;         // percent with no extra scroll
+        uint32 wcTalentUpgradePerScroll = 20;   // percentage points each
+        uint32 wcTalentUpgradeMaxScrolls = 5;
         uint32 wcSynergyBaseChance = 10;   // percent
         uint32 wcSynergyIncrement = 10;    // percent per pity point
         uint32 wcSynergyBanRolls = 25;

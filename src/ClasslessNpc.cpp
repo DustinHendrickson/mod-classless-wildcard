@@ -66,7 +66,8 @@ namespace
         BASE_MY_ABILITIES_PG  = 600000000, // + page
         BASE_LOCK_ABILITY     = 700000000, // + firstSpellId
         BASE_REROLL_TALENT    = 800000000, // + talentId
-        BASE_MY_TALENTS_PG    = 900000000  // + page
+        BASE_MY_TALENTS_PG    = 900000000, // + page
+        BASE_TALENT_DEEPEN    = 1000000000 // + talentId (reroll, one scroll spent on its rank)
     };
 
     char const* ClassNameById(uint8 classId)
@@ -426,6 +427,18 @@ namespace
                 Acore::StringFormat("Reroll: {}{}|r [{}/{}]", RarityColor(t->rarity), SpellNameOf(t->rankSpells[0]), rank, t->maxRank),
                 GOSSIP_SENDER_MAIN, BASE_REROLL_TALENT + talentId,
                 "Reroll this talent? It is replaced by one new random talent. (Consumes a Scroll from level 10.)", 0, false);
+
+            // and the same reroll with a scroll staked on keeping it instead
+            if (uint32 const per = sClasslessMgr->cfg.wcTalentUpgradePerScroll;
+                per && rank < t->maxRank && sClasslessMgr->cfg.wcTalentUpgradeMaxScrolls)
+            {
+                uint32 const odds = std::min<uint32>(100, sClasslessMgr->cfg.wcTalentUpgradeBase + per);
+                AddGossipItemFor(player, GOSSIP_ICON_MONEY_BAG,
+                    Acore::StringFormat("   ...and stake a Reroll Scroll on its rank ({}%)", odds),
+                    GOSSIP_SENDER_MAIN, BASE_TALENT_DEEPEN + talentId,
+                    Acore::StringFormat("Spend one extra Reroll Scroll for a {}% chance to KEEP this talent and raise its rank instead? If it fails, the talent is replaced as normal.", odds),
+                    0, false);
+            }
         }
 
         if (start + PAGE_SIZE < owned.size())
@@ -455,7 +468,13 @@ public:
     {
         std::string err;
 
-        if (action >= BASE_MY_TALENTS_PG)
+        if (action >= BASE_TALENT_DEEPEN)
+        {
+            if (!sClasslessMgr->Reroll(player, true, action - BASE_TALENT_DEEPEN, &err, 1) && !err.empty())
+                ChatHandler(player->GetSession()).SendSysMessage(err);
+            ShowMyTalents(player, creature, 0);
+        }
+        else if (action >= BASE_MY_TALENTS_PG)
             ShowMyTalents(player, creature, action - BASE_MY_TALENTS_PG);
         else if (action >= BASE_REROLL_TALENT)
         {

@@ -1010,6 +1010,90 @@ def test_lock_window(h):
     frame["__shown"] = False
 
 
+def test_talent_reroll(h):
+    print("--- talent reroll: trade it away, or stake scrolls on its rank")
+    CW, g = h.CW, h.g
+    frame = g.ClasslessWildcardFrame
+    fly = CW.talentRerollFly
+    frame["__shown"] = True
+
+    def rows():
+        out = {}
+        for i in range(1, 12):
+            r = CW.buildRows[i]
+            if r is None:
+                break
+            if r["__shown"]:
+                out[str(r.name["__text"])] = r
+        return out
+
+    # a Wildcard hero holding one talent at 2 of 5, with scrolls in the bag.
+    # fields 17-19 are the stake terms: 0% base, 20 a scroll, 5 at most
+    h.recv("S|1|0|0|0|10|3|40|5|1|50|2|1|5000|1|10|0|20|5")
+    h.check(CW.state.tuPerScroll == 20 and CW.state.tuMaxScrolls == 5,
+            "the stake terms come from the server (%s per scroll, %s max)"
+            % (CW.state.tuPerScroll, CW.state.tuMaxScrolls))
+    h.check(CW.TalentUpgradeOdds(0) == 0 and CW.TalentUpgradeOdds(2) == 40
+            and CW.TalentUpgradeOdds(9) == 100,
+            "odds are base plus per-scroll, capped at 100 (%s)" % CW.TalentUpgradeOdds(2))
+
+    h.recv("OA|")
+    h.recv("OAE|")
+    h.recv("OT|1500:12345:2:2:5;")
+    h.recv("OTE|")
+    row = list(rows().values())[0]
+
+    # ---- the die opens the choice rather than firing straight away
+    h.clear_sent()
+    h.click(row.actBtn)
+    h.check(fly["__shown"] is True, "the reroll die asks first, it does not just trade it away")
+    h.check(h.sent() == [], "and nothing is sent until the choice is made (%s)" % h.sent())
+    h.check("keep" in str(fly.body["__text"]), "the panel explains what a stake buys")
+
+    # ---- staking is bounded by what you hold and by the server's maximum
+    for _ in range(9):
+        h.click(fly.plus)
+    h.check(fly.scrolls == 3, "you cannot stake more scrolls than you own (%s)" % fly.scrolls)
+    h.check("60%" in str(fly.stake["__text"]),
+            "three scrolls reads as 60%% (%s)" % fly.stake["__text"])
+    h.click(fly.minus)
+    h.check(fly.scrolls == 2 and "40%" in str(fly.stake["__text"]),
+            "and the odds follow the count down (%s)" % fly.stake["__text"])
+
+    h.clear_sent()
+    h.click(fly.go)
+    h.check(h.sent() == ["RRT 1500 2"], "the stake goes with the reroll (%s)" % h.sent())
+    h.check(fly["__shown"] is False, "and the panel closes")
+
+    # ---- a plain reroll still costs nothing extra
+    h.click(row.actBtn)
+    h.clear_sent()
+    h.click(fly.go)
+    h.check(h.sent() == ["RRT 1500 0"], "staking nothing sends a plain reroll (%s)" % h.sent())
+
+    # ---- a maxed talent has no rank to win, so it never asks
+    h.recv("OT|1500:12345:2:5:5;")
+    h.recv("OTE|")
+    row = list(rows().values())[0]
+    fly["__shown"] = False
+    h.clear_sent()
+    h.click(row.actBtn)
+    h.check(fly["__shown"] is False and h.sent() == ["RRT 1500 0"],
+            "a maxed talent rerolls straight out, with no stake offered (%s)" % h.sent())
+
+    # ---- and so does a Hero with no scrolls to stake
+    h.recv("S|1|0|0|0|10|0|40|5|1|50|2|1|5000|1|10|0|20|5")
+    h.recv("OT|1500:12345:2:2:5;")
+    h.recv("OTE|")
+    row = list(rows().values())[0]
+    h.clear_sent()
+    h.click(row.actBtn)
+    h.check(fly["__shown"] is False and h.sent() == ["RRT 1500 0"],
+            "no scrolls, no question (%s)" % h.sent())
+
+    frame["__shown"] = False
+
+
 def test_resource_bars(h):
     print("--- resource bars: sections, centring, and where you left them")
     CW = h.CW
@@ -1288,6 +1372,7 @@ def main():
     test_starting_hand(h)
     test_locks(h)
     test_lock_window(h)
+    test_talent_reroll(h)
     test_reveal_layout(h)
     test_resource_bars(h)
     test_settings(h)

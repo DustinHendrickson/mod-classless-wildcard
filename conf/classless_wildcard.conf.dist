@@ -480,6 +480,31 @@ ClasslessWildcard.Wildcard.RarityWeights = "100,85,65,45,25"
 #        Default: "100,75,50,25,10"
 ClasslessWildcard.Wildcard.TalentRankWeights = "100,75,50,25,10"
 
+#    ClasslessWildcard.Wildcard.TalentUpgradeBaseChance
+#    ClasslessWildcard.Wildcard.TalentUpgradePerScroll
+#    ClasslessWildcard.Wildcard.TalentUpgradeMaxScrolls
+#        A roll only ever hands over a talent the Hero does not already have,
+#        so the way to deepen one is to reroll it and stake Reroll Scrolls on
+#        the outcome.
+#
+#        A talent reroll costs its charge or scroll as usual and trades the
+#        talent away for a new one. Every EXTRA scroll staked on it adds
+#        TalentUpgradePerScroll percentage points, on top of
+#        TalentUpgradeBaseChance, to the chance that the talent is kept and its
+#        rank raised instead. On the defaults one scroll is 20% and five is
+#        100%. A failed stake still spends the scrolls and the talent is traded
+#        away as normal.
+#
+#        The new rank is drawn from every rank above the one held, on
+#        TalentRankWeights, so a stake that lands can jump more than one rank.
+#        A talent already at its maximum has no rank to win and the stake is
+#        refused. Set TalentUpgradePerScroll or TalentUpgradeMaxScrolls to 0 to
+#        turn staking off entirely.
+#        Default: 0, 20 and 5
+ClasslessWildcard.Wildcard.TalentUpgradeBaseChance = 0
+ClasslessWildcard.Wildcard.TalentUpgradePerScroll = 20
+ClasslessWildcard.Wildcard.TalentUpgradeMaxScrolls = 5
+
 #    ClasslessWildcard.Wildcard.SynergyBaseChance
 #        Percent chance a roll is a synergy roll, before pity. 0 turns synergy
 #        rolls off.

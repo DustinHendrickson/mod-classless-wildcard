@@ -65,7 +65,10 @@ public:
     // returns granted entry (firstSpellId / talentId) or 0
     uint32 RollAbility(Player* player, ClasslessWildcard::GrantSource source = ClasslessWildcard::GrantSource::Rolled);
     uint32 RollTalent(Player* player);
-    bool Reroll(Player* player, bool isTalent, uint32 entry, std::string* err);
+    // `extraScrolls` applies to talents only: each one buys a chance to keep
+    // the talent and raise its rank instead of trading it away.
+    bool Reroll(Player* player, bool isTalent, uint32 entry, std::string* err,
+                uint32 extraScrolls = 0);
     // Reroll every unlocked ability in one pass, from the server's own state.
     // The starting hand used to fire one RR per ability from a client snapshot,
     // which went stale the moment the first one landed. Returns how many were
