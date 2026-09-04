@@ -71,6 +71,13 @@ and installs the addon that players use to buy abilities and see rolls. See
 
 <div align="center">
 
+<img src="docs/hero_creation.webp" alt="The WotLK character creation screen with no class list: the race panel on the left, and a Hero panel on the right listing what a Hero can do" width="96%">
+
+<em><b>Character creation.</b> There is no class list. Pick a race, and the panel on the right<br>
+tells you what every character gets: all armour and weapons, every resource, and any spell in the game.</em>
+
+<br><br>
+
 <img src="docs/advancement_addon.webp" alt="The Character Advancement panel: an ability browser, talent trees for every class, and the current build side by side" width="92%">
 
 <em>The <b>Character Advancement</b> panel. Browse every class's abilities and talent trees,<br>
@@ -82,6 +89,13 @@ with your build on the right. Lock or reroll anything you own from the same wind
 
 <em>A <b>Wildcard</b> roll. The die lands on a new ability and shows its rarity.<br>
 Keep it, or spend a reroll.</em>
+
+<br><br>
+
+<img src="docs/stat_allocation.webp" alt="The primary stat panel with a row per stat showing the character's total and what it grants, and a tooltip breaking Spirit down further" width="72%">
+
+<em><b>Primary stats.</b> Every row carries your total and what that total is worth,<br>
+projected as you spend. Reallocating is free.</em>
 
 </div>
 
@@ -500,7 +514,7 @@ logging out.
 
 <div align="center">
 
-<img src="docs/elemental_variants_icons.webp" alt="Six base attack icons, each followed by its seven elemental variants, badged in the bottom-left corner for Fire, Frost, Earth, Poison, Arcane, Shadow and Holy" width="92%">
+<img src="docs/elemental_variants_icons.webp" alt="Six base attack icons, each followed by its seven elemental variants, badged along the bottom edge for Fire, Frost, Earth, Poison, Arcane, Shadow and Holy" width="92%">
 
 <em>A variant keeps its base attack's icon and adds a badge for the element.<br>
 Left to right: the base attack, then Fire, Frost, Earth, Poison, Arcane, Shadow, Holy.</em>

@@ -3575,9 +3575,11 @@ uint32 ClasslessMgr::RollTalent(Player* player)
         GrantTalentRankInternal(player, *chosen, newRank);
         lastGranted = chosen->talentId;
         if (!_revealSuppress)
-            PushAddon(player, Acore::StringFormat("RV|T|{}|{}|{}|{}|{}",
+            // field 8 is the talent's maximum rank: the reveal needs it to know
+            // whether this one still has a rank left to stake scrolls on
+            PushAddon(player, Acore::StringFormat("RV|T|{}|{}|{}|{}|{}|{}",
                 chosen->talentId, chosen->rankSpells[newRank - 1], uint32(shown),
-                uint32(newRank), synergy ? 1 : 0));
+                uint32(newRank), synergy ? 1 : 0, uint32(chosen->maxRank)));
     }
 
     SaveState(player);
@@ -3656,9 +3658,9 @@ bool ClasslessMgr::Reroll(Player* player, bool isTalent, uint32 entry, std::stri
             {
                 GrantTalentRankInternal(player, *t, newRank);
                 if (!_revealSuppress)
-                    PushAddon(player, Acore::StringFormat("RV|T|{}|{}|{}|{}|0",
+                    PushAddon(player, Acore::StringFormat("RV|T|{}|{}|{}|{}|0|{}",
                         t->talentId, t->rankSpells[newRank - 1],
-                        uint32(RankRarity(*t, newRank)), uint32(newRank)));
+                        uint32(RankRarity(*t, newRank)), uint32(newRank), uint32(t->maxRank)));
                 Msg(player, Acore::StringFormat("{} rises to rank {} of {}.",
                     SpellName(t->rankSpells[0]), uint32(newRank), uint32(t->maxRank)));
                 PruneCompanions(player);

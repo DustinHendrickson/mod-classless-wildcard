@@ -1425,6 +1425,11 @@ local function RenderBuild()
                         local left = (CW.state.rerolls or 0) + (CW.state.scrolls or 0)
                         GameTooltip:AddLine("You have |cff00ff00" .. left .. "|r reroll" .. (left == 1 and "" or "s")
                             .. " (charges + scrolls).", 1, 1, 1)
+                        -- a talent with a rank still to win can be kept instead
+                        if kind == "T" and CW.CanStakeScrolls() and (trank or 0) < (tmax or 0) then
+                            GameTooltip:AddLine("Trades it away for a new talent. Stake Reroll Scrolls "
+                                .. "instead to keep this one and raise its rank.", 0.4, 1, 0.4, true)
+                        end
                         GameTooltip:Show()
                     end)
                     r.actBtn:SetScript("OnLeave", function() GameTooltip:Hide() end)
@@ -2325,10 +2330,13 @@ end)
 -- talent reroll: trade it away, or stake scrolls on its rank
 -- ---------------------------------------------------------------------------
 do
-    local fly = CreateFrame("Frame", "ClasslessWildcardTalentReroll", frame)
+    -- On UIParent, not the panel: it is offered from the roll reveal too, and
+    -- the reveal shows with the panel closed, where a child of a hidden frame
+    -- cannot appear at all.
+    local fly = CreateFrame("Frame", "ClasslessWildcardTalentReroll", UIParent)
     fly:SetWidth(360); fly:SetHeight(200)
-    fly:SetPoint("CENTER", frame, "CENTER", 0, 0)
-    fly:SetFrameStrata("DIALOG")
+    fly:SetPoint("CENTER", UIParent, "CENTER", 0, 0)
+    fly:SetFrameStrata("FULLSCREEN_DIALOG")
     fly:SetBackdrop({
         bgFile = "Interface\\Buttons\\WHITE8X8",
         edgeFile = "Interface\\Tooltips\\UI-Tooltip-Border",
@@ -2381,14 +2389,20 @@ do
             .. "in its place. Stake Reroll Scrolls on it instead and they buy a chance to |cffffd100keep|r "
             .. "it and raise its rank. If the stake fails, it is traded away as normal.\n\n"
             .. "You have |cff00ff00" .. (s.scrolls or 0) .. "|r Reroll Scroll"
-            .. (((s.scrolls or 0) == 1) and "" or "s") .. ".")
+            .. (((s.scrolls or 0) == 1) and "" or "s")
+            .. ((s.scrolls or 0) > 0 and "." or ", and up to |cffffd100" .. (s.tuMaxScrolls or 0)
+                .. "|r can be staked on one reroll. Buy them with the button on this panel."))
         if max > 0 then
             fly.stake:SetText("Stake |cffffd100" .. n .. "|r  =  |cff00ff00" .. odds .. "%|r to raise its rank")
-            fly.minus:Show(); fly.plus:Show()
         else
-            fly.stake:SetText("|cffaaaaaaNo scrolls to stake|r")
-            fly.minus:Hide(); fly.plus:Hide()
+            -- nothing to stake, so say what one WOULD buy: that is the whole
+            -- reason to go and get some
+            fly.stake:SetText("|cffaaaaaaOne scroll would buy |r|cff00ff00"
+                .. CW.TalentUpgradeOdds(1) .. "%|cffaaaaaa to raise its rank|r")
         end
+        fly.minus:Show(); fly.plus:Show()
+        if n > 0 then fly.minus:Enable() else fly.minus:Disable() end
+        if n < max then fly.plus:Enable() else fly.plus:Disable() end
         fly.go:SetText(n > 0 and ("Reroll + " .. n) or "Reroll")
     end
 
@@ -2402,20 +2416,34 @@ do
     end)
     fly.go:SetScript("OnClick", function()
         Send("RRT " .. fly.talentId .. " " .. (fly.scrolls or 0))
+        local sent = fly.onSent
+        fly.onSent = nil
         fly:Hide()
+        if sent then sent() end
     end)
 
     -- A maxed talent has no rank left to win, so the stake is not offered and
     -- the reroll goes straight out.
-    function CW.AskTalentReroll(talentId, name, rank, maxRank)
-        if not CW.CanStakeScrolls() or (rank or 0) >= (maxRank or 0)
-            or (CW.state.scrolls or 0) <= 0 then
+    -- Opens for any talent that still has a rank to win, whether or not the
+    -- Hero has a scroll to stake. Skipping it when they had none hid the whole
+    -- mechanic from everyone who had not already bought scrolls, which is
+    -- everyone who has not yet been told what scrolls are for.
+    -- `onSent` runs once the reroll has actually gone out, so the caller can
+    -- react. The roll reveal uses it to hold itself open for the replacement.
+    function CW.AskTalentReroll(talentId, name, rank, maxRank, onSent)
+        if not CW.CanStakeScrolls() or (rank or 0) >= (maxRank or 0) then
             Send("RRT " .. talentId .. " 0")
+            if onSent then onSent() end
             return
         end
         CW.helpFly:Hide(); CW.statFly:Hide(); CW.archFly:Hide(); CW.setFly:Hide()
         fly.talentId, fly.talentName, fly.scrolls = talentId, name, 0
+        fly.onSent = onSent
         CW.RenderTalentReroll()
+        -- above the reveal when it is the reveal asking
+        if CW.revealFrame and CW.revealFrame:IsShown() then
+            fly:SetFrameLevel(CW.revealFrame:GetFrameLevel() + 10)
+        end
         fly:Show()
     end
 end
@@ -3101,6 +3129,33 @@ for _, b in ipairs({ rvKeep, rvReroll }) do
     end
 end
 
+-- Out of charges and out of scrolls, the reroll button becomes the way to
+-- get one: it buys a Reroll Scroll, and the next press spends it. The price is
+-- on the button, so pressing it is the confirmation. The panel's own Buy
+-- Scroll button asks first with a StaticPopup, which cannot be used here: the
+-- reveal sits on FULLSCREEN_DIALOG and the popup would open behind it.
+function rvFX.SetRerollButton()
+    local s = CW.state
+    local charges = (s.rerolls or 0) + (s.scrolls or 0)
+    rvReroll.buy = nil
+    if (s.level or 1) < (s.freeReroll or 10) then
+        rvReroll:SetText("Reroll (free)")
+        rvReroll:Enable()
+    elseif charges > 0 then
+        rvReroll:SetText("Reroll (" .. charges .. ")")
+        rvReroll:Enable()
+    elseif (s.scrollBuy or 0) == 1 then
+        rvReroll.buy = true
+        rvReroll:SetText("Buy Scroll  " .. GetCoinTextureString(s.scrollCost or 0))
+        rvReroll:Enable()
+    else
+        rvReroll:SetText("Reroll (0)")
+        rvReroll:Disable()
+    end
+    -- the price makes for a longer label than "Reroll (3)" ever is
+    rvReroll:SetWidth(rvReroll.buy and 210 or 150)
+end
+
 local rvAnim = { phase = "idle", t0 = 0, data = nil }
 CW.revealQueue = {}
 CW.revealAnim = rvAnim
@@ -3330,17 +3385,7 @@ local function ShowResult()
     rvTextScrim:SetPoint("CENTER", 0, blockTop - blockH / 2 - 24)
     -- reroll button shows what the player can actually spend
     local s = CW.state
-    local charges = (s.rerolls or 0) + (s.scrolls or 0)
-    if (s.level or 1) < (s.freeReroll or 10) then
-        rvReroll:SetText("Reroll (free)")
-        rvReroll:Enable()
-    elseif charges > 0 then
-        rvReroll:SetText("Reroll (" .. charges .. ")")
-        rvReroll:Enable()
-    else
-        rvReroll:SetText("Reroll (0)")
-        rvReroll:Disable()
-    end
+    rvFX.SetRerollButton()
     rvKeep:Show(); rvReroll:Show()
     -- No sound here. The tier's own sound already played on the burst frame,
     -- where the colour and the starburst land; a level-up fanfare on top of it
@@ -3519,6 +3564,12 @@ end)
 
 rvKeep:SetScript("OnClick", NextReveal)
 rvReroll:SetScript("OnClick", function()
+    if rvReroll.buy then
+        -- buy only. The state that comes back turns this into "Reroll (1)",
+        -- so nothing is spent on a roll the player did not ask for.
+        Send("BUYSCROLL 0")
+        return
+    end
     local d = rvAnim.data
     if not d then
         NextReveal()
@@ -3532,7 +3583,13 @@ rvReroll:SetScript("OnClick", function()
                            rarity = math.random(0, 4), flags = 0, test = true })
         return
     end
-    Send((d.isTalent and "RRT " or "RR ") .. d.entry)
+    if d.isTalent then
+        -- the same choice My Build offers: trade it away, or stake scrolls on
+        -- keeping it and raising its rank
+        CW.AskTalentReroll(d.entry, SpellLabel(d.spell, d.rarity), d.rank, d.maxRank, AwaitReroll)
+        return
+    end
+    Send("RR " .. d.entry)
     AwaitReroll()   -- hold this reveal open; the replacement lands in its place
 end)
 
@@ -4045,6 +4102,8 @@ local function HandleMessage(msg)
         s.tuBase = tonumber(p[17]) or 0
         s.tuPerScroll = tonumber(p[18]) or 0
         s.tuMaxScrolls = tonumber(p[19]) or 0
+        -- a scroll bought from the reveal changes what its own button says
+        if reveal:IsShown() and rvFX.SetRerollButton then rvFX.SetRerollButton() end
         CW.UpdateBarsVisibility()
         UpdateStatus()
         -- fresh Wildcard hero: lock & roll your starting hand
@@ -4216,7 +4275,8 @@ local function HandleMessage(msg)
                                rarity = tonumber(p[4]) or 0, flags = tonumber(p[5]) or 0 })
         elseif p[2] == "T" then
             CW.EnqueueReveal({ isTalent = true, entry = tonumber(p[3]) or 0, spell = tonumber(p[4]) or 0,
-                               rarity = tonumber(p[5]) or 0, rank = tonumber(p[6]) or 1, flags = tonumber(p[7]) or 0 })
+                               rarity = tonumber(p[5]) or 0, rank = tonumber(p[6]) or 1, flags = tonumber(p[7]) or 0,
+                               maxRank = tonumber(p[8]) or 0 })
         end
 
     elseif kind == "OK" then

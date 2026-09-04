@@ -963,7 +963,87 @@ def test_reveal_layout(h):
             "and they are big enough to hit (%sx%s)"
             % (CW.revealKeep["__w"], CW.revealKeep["__h"]))
 
+    # ---- out of charges, the reroll button becomes the way to get one
+    reveal["__shown"] = True
+    roll = CW.revealReroll
+
+    def st(scrolls, rerolls, level, buy):
+        return "S|1|0|0|0|10|%d|%d|5|1|50|%d|1|5000|%d|10|0|20|5" % (
+            scrolls, level, rerolls, buy)
+
+    h.recv(st(scrolls=0, rerolls=0, level=40, buy=1))
+    h.check(roll.buy is True and "Buy Scroll" in str(roll["__text"]),
+            "with nothing left to spend, Reroll becomes Buy Scroll (%s)" % roll["__text"])
+    h.check("5000" in str(roll["__text"]), "with the price on it (%s)" % roll["__text"])
+    h.check(roll["__enabled"] is not False, "and it is clickable")
+    h.clear_sent()
+    h.click(roll)
+    h.check(h.sent() == ["BUYSCROLL 0"],
+            "clicking it buys, and only buys (%s)" % h.sent())
+
+    h.recv(st(scrolls=1, rerolls=0, level=40, buy=1))
+    h.check(roll.buy is None and str(roll["__text"]) == "Reroll (1)",
+            "the scroll arriving turns it back into a reroll (%s)" % roll["__text"])
+
+    h.recv(st(scrolls=0, rerolls=0, level=40, buy=0))
+    h.check(str(roll["__text"]) == "Reroll (0)" and roll["__enabled"] is False,
+            "a realm with scroll buying off still shows a dead button (%s)" % roll["__text"])
+
+    h.recv(st(scrolls=0, rerolls=0, level=4, buy=0))
+    h.check(str(roll["__text"]) == "Reroll (free)",
+            "and below the free-reroll level it costs nothing (%s)" % roll["__text"])
+
+    # ---- a rolled TALENT offers the same stake the build list does
+    h.recv(st(scrolls=3, rerolls=2, level=40, buy=1))
+    h.rt.execute("""
+        local CW = ClasslessWildcard_API
+        CW.suppressReveals = false
+        CW.revealQueue = {}
+        CW.revealAnim.phase = "idle"
+        CW.revealAnim.awaiting = false
+        CW.revealFrame:Hide()
+    """)
+    h.recv("RV|T|1500|12345|2|2|0|5")
+    for dt in (1.7, 0.05, 0.4):
+        h.rt.execute("NOW = NOW + %r" % dt)
+        reveal["__scripts"]["OnUpdate"](reveal, dt)
+    d = CW.revealAnim.data
+    h.check(d is not None and d.maxRank == 5,
+            "the reveal knows the talent's ceiling (%s)" % (d and d.maxRank))
+
+    picker = CW.talentRerollFly
+    picker["__shown"] = False
+    h.clear_sent()
+    h.click(roll)
+    h.check(picker["__shown"] is True,
+            "rerolling a rolled talent from the reveal offers the stake")
+    h.check(h.sent() == [], "and sends nothing until the choice is made (%s)" % h.sent())
+    h.click(picker.plus)
+    h.click(picker.go)
+    h.check(h.sent() == ["RRT 1500 1"], "the stake goes out from the reveal too (%s)" % h.sent())
+    h.check(CW.revealAnim.awaiting is True,
+            "and the reveal holds open for what replaces it")
+
+    # ---- a rolled ABILITY has no rank, so it rerolls straight out
+    h.rt.execute("""
+        local CW = ClasslessWildcard_API
+        CW.revealQueue = {}
+        CW.revealAnim.phase = "idle"
+        CW.revealAnim.awaiting = false
+        CW.revealFrame:Hide()
+    """)
+    h.recv("RV|A|133|0|0")
+    for dt in (1.7, 0.05, 0.4):
+        h.rt.execute("NOW = NOW + %r" % dt)
+        reveal["__scripts"]["OnUpdate"](reveal, dt)
+    picker["__shown"] = False
+    h.clear_sent()
+    h.click(roll)
+    h.check(picker["__shown"] is False and h.sent() == ["RR 133"],
+            "an ability reveal rerolls straight out (%s)" % h.sent())
+
     h.rt.execute("ClasslessWildcard_API.revealFX.HideInfo()")
+    reveal["__shown"] = False
 
 
 def test_lock_window(h):
@@ -1081,15 +1161,34 @@ def test_talent_reroll(h):
     h.check(fly["__shown"] is False and h.sent() == ["RRT 1500 0"],
             "a maxed talent rerolls straight out, with no stake offered (%s)" % h.sent())
 
-    # ---- and so does a Hero with no scrolls to stake
+    # ---- with NO scrolls it still opens, so the mechanic is discoverable by
+    #      the people who have not bought any yet
     h.recv("S|1|0|0|0|10|0|40|5|1|50|2|1|5000|1|10|0|20|5")
     h.recv("OT|1500:12345:2:2:5;")
     h.recv("OTE|")
     row = list(rows().values())[0]
+    fly["__shown"] = False
+    h.clear_sent()
+    h.click(row.actBtn)
+    h.check(fly["__shown"] is True, "with no scrolls it still asks, rather than hiding the option")
+    h.check("20%" in str(fly.stake["__text"]),
+            "and says what one scroll would buy (%s)" % fly.stake["__text"])
+    h.check(fly.plus["__enabled"] is False,
+            "with nothing to stake, + is disabled rather than missing")
+    h.clear_sent()
+    h.click(fly.go)
+    h.check(h.sent() == ["RRT 1500 0"], "and it still rerolls plainly (%s)" % h.sent())
+
+    # ---- a server that does not offer staking asks nothing
+    h.recv("S|1|0|0|0|10|3|40|5|1|50|2|1|5000|1|10")
+    h.recv("OT|1500:12345:2:2:5;")
+    h.recv("OTE|")
+    row = list(rows().values())[0]
+    fly["__shown"] = False
     h.clear_sent()
     h.click(row.actBtn)
     h.check(fly["__shown"] is False and h.sent() == ["RRT 1500 0"],
-            "no scrolls, no question (%s)" % h.sent())
+            "a server that sends no stake terms gets a plain reroll (%s)" % h.sent())
 
     frame["__shown"] = False
 
