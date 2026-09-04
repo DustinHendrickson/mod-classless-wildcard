@@ -1,104 +1,178 @@
 #
-# mod-classless-wildcard configuration
+# mod-classless-wildcard
+#
+# Every character is a Hero: character creation offers races only, and abilities
+# and talents are earned from the whole game rather than from a class. A Hero
+# walks one of two paths. CLASSLESS spends two essence currencies on exactly
+# what it wants. WILDCARD is dealt random abilities and talents on a schedule
+# and rerolls what it dislikes.
+#
+# Full documentation, including the world tables and the client patch, is in the
+# module's README.
+#
+# RELOADING. Most settings are read per use and respond to `.reload config`.
+# The spell library is built once at startup, so anything marked
+# [RESTART REQUIRED] needs a worldserver restart to take effect.
+#
+# CONTENTS
+#    1  General
+#    2  Chassis
+#    3  Spell library
+#    4  Ability rarity
+#    5  Elemental variants
+#    6  Classless path: essence economy
+#    7  Wildcard path: rolls, rerolls and scrolls
+#    8  Character creation: strip, starter kit, proficiencies, riding
+#    9  Class rules the module answers for a Hero
+#   10  Universal resources
+#   11  Universal stats
+#   12  Primary stat allocation
+#   13  World drops
+#   14  Rebirth
+#   15  Hero Advancement NPC
 #
 
 [worldserver]
 
-########################################
-# General
-########################################
-#
+########################################################################
+# 1  General
+########################################################################
+
 #    ClasslessWildcard.Enable
-#        Enable the classless / wildcard system.
+#        Master switch for the classless / wildcard system.
 #        Default: 1
-#
-#    ClasslessWildcard.Announce
-#        Send login/level status messages to players.
-#        Default: 1
-#
-#    ClasslessWildcard.DefaultMode
-#        Mode assigned when a player doesn't choose one in time.
-#        0 = Classless (free-pick), 1 = Wildcard (random rolls)
-#        Default: 0
-#
-#    ClasslessWildcard.AllowModeChoice
-#        Let each character pick its own mode at the Hero Advancement NPC
-#        (or .classless mode) before the deadline level. If 0, DefaultMode
-#        applies to everyone (realm-wide mode).
-#        Default: 1
-#
-#    ClasslessWildcard.ModeChoiceDeadline
-#        Level at which an unchosen character is locked into DefaultMode.
-#        Default: 5
-
-#
-#    ClasslessWildcard.ExemptAccountPrefixes
-#        Comma-separated account-name prefixes that play with VANILLA class
-#        rules: no essences or rolls, native talent points, class trainers
-#        work. Required for mod-playerbots: its random-bot accounts
-#        (default prefix "rndbot") initialize their spells and talents
-#        directly and must not be stripped by the classless system.
-#        Default: "rndbot"
-
 ClasslessWildcard.Enable = 1
+
+#    ClasslessWildcard.Announce
+#        Send login and level status messages to players.
+#        Default: 1
 ClasslessWildcard.Announce = 1
-ClasslessWildcard.ExemptAccountPrefixes = "rndbot"
+
+#    ClasslessWildcard.DefaultMode
+#        The path a character is locked into if it never chooses one.
+#          0 = Classless (free-pick)
+#          1 = Wildcard (random rolls)
+#        Default: 0
 ClasslessWildcard.DefaultMode = 0
+
+#    ClasslessWildcard.AllowModeChoice
+#        Let each character pick its own path at the Hero Advancement NPC, in
+#        the addon, or with `.classless mode`, up to ModeChoiceDeadline. With
+#        this off, DefaultMode applies to the whole realm.
+#        Default: 1
 ClasslessWildcard.AllowModeChoice = 1
+
+#    ClasslessWildcard.ModeChoiceDeadline
+#        Level at which a character that has not chosen is locked into
+#        DefaultMode.
+#        Default: 5
 ClasslessWildcard.ModeChoiceDeadline = 5
 
-########################################
-# Spell library
-########################################
-#
-# Everything in this section is read when the world builds its ability library,
-# which happens once at startup. A `.reload config` will not rebuild it, so
-# changes here need a worldserver restart.
-#
-#    ClasslessWildcard.IncludeDeathKnight
-#        Include Death Knight spells/talents in the library.
-#
-#        DK abilities cost RUNES, and the core only builds a character's rune
-#        block for a Death Knight. With this on, the module answers the "is
-#        this a Death Knight?" question the rune code asks, so every Hero gets
-#        a working rune block, rune cooldowns and runic power. With it off
-#        nothing is allocated and nothing ticks.
-#
-#        The stock UI draws the rune bar only for real Death Knight characters,
-#        so the server mirrors the rune block over the addon channel and the
-#        addon draws six pips -- coloured by rune type, dimmed while on
-#        cooldown -- plus a runic power bar, under the resource mini-bars. They
-#        appear only once the server actually sends runes, so nothing changes
-#        on a realm with this off.
-#
-#        Still experimental: rune COSTS and regeneration are the core's, but no
-#        Hero has the Death Knight talents and passives those abilities were
-#        balanced around, so expect the numbers to feel odd before they feel
-#        broken.
-#
-#        Turning this OFF once Heroes have bought Death Knight abilities leaves
-#        those abilities on the characters that own them, and they cost nothing
-#        to cast: the rune check is skipped for anyone the module no longer
-#        answers "Death Knight" for. Add the spells to ExcludedSpells, or have
-#        the affected characters Rebirth, before switching it off.
-#        Default: 0
+#    ClasslessWildcard.ExemptAccountPrefixes
+#        Comma-separated account-name prefixes that play by VANILLA class
+#        rules: no essences or rolls, native talent points, working class
+#        trainers. Required for mod-playerbots, whose random-bot accounts
+#        initialise their own spells and talents and must not be stripped.
+#        Default: "rndbot"
+ClasslessWildcard.ExemptAccountPrefixes = "rndbot"
 
+########################################################################
+# 2  Chassis
+########################################################################
 #
+#    Every Hero runs on ONE class, whatever was picked at creation. That is
+#    what makes this classless rather than "classless with a class
+#    underneath": the core's per-class math differs between classes (base
+#    stats, base health and mana, which stat feeds attack power, the crit and
+#    dodge conversion ratios), so while characters keep different classes the
+#    class quietly becomes a build decision again.
+#
+#    With one chassis that math is identical for everyone by construction. The
+#    class chosen at creation is then nothing but the model and the name, and
+#    the name reads "Hero" once the client patch is installed.
+#
+#    Characters are converted at creation, and existing characters convert on
+#    their next login. Accounts matched by ExemptAccountPrefixes keep their
+#    real class.
+
+#    ClasslessWildcard.Chassis.Enable
+#        Force every character onto Chassis.Class. Off returns the module to
+#        per-class behaviour, where a character's class still affects its
+#        stats and resources.
+#        Default: 1
+ClasslessWildcard.Chassis.Enable = 1
+
+#    ClasslessWildcard.Chassis.Class
+#        The class id every Hero runs on. It MUST be a class with a real mana
+#        pool, so the supported set is:
+#          2 Paladin   5 Priest   7 Shaman   8 Mage   9 Warlock   11 Druid
+#        Warrior, Rogue, Hunter and Death Knight are refused at startup with an
+#        error in the log and replaced with Paladin: a Hero casts whatever it
+#        learns, a great many of those spells cost mana or a percentage of base
+#        mana, and on a rage or energy chassis there is no pool to pay from.
+#
+#        Paladin is the default and what the module is built around: a real
+#        base mana, spirit regeneration, plate base armour, and no forms,
+#        stances or runes to suppress. Rage and energy are layered on by the
+#        universal-resource system in section 10, so a Paladin-chassis Hero
+#        still pays rage for Bloodthirst and energy for Sinister Strike.
+#
+#        Changing this on a live realm re-converts every character on their
+#        next login and shifts their base stats. Decide before launch.
+#        Default: 2
+ClasslessWildcard.Chassis.Class = 2
+
+########################################################################
+# 3  Spell library
+########################################################################
+#
+#    [RESTART REQUIRED] Everything in this section is read when the world
+#    builds its ability library, once at startup. `.reload config` will not
+#    rebuild it.
+
+#    ClasslessWildcard.IncludeDeathKnight
+#        Include Death Knight spells and talents in the library.
+#
+#        DK abilities cost RUNES, and the core only builds a rune block for a
+#        Death Knight. With this on the module answers the "is this a Death
+#        Knight?" question the rune code asks, so every Hero gets a working
+#        rune block, rune cooldowns and runic power. With it off nothing is
+#        allocated and nothing ticks.
+#
+#        The stock UI draws the rune bar only for real Death Knights, so the
+#        server mirrors the rune block over the addon channel and the addon
+#        draws six pips coloured by rune type and dimmed while recharging,
+#        plus a runic power bar. They appear only once the server sends runes.
+#
+#        Still experimental: rune costs and regeneration are the core's, but no
+#        Hero has the Death Knight talents and passives those abilities were
+#        balanced around.
+#
+#        Turning this OFF once Heroes own Death Knight abilities leaves those
+#        abilities in place and they cost nothing to cast, because the rune
+#        check is skipped for anyone the module no longer answers "Death
+#        Knight" for. Add the spells to ExcludedSpells, or have the affected
+#        characters Rebirth, before switching it off.
+#        Default: 1
+ClasslessWildcard.IncludeDeathKnight = 1
+
 #    ClasslessWildcard.IncludeRacials
 #        Include racial spells in the library.
 #        Default: 0
-#
+ClasslessWildcard.IncludeRacials = 0
+
 #    ClasslessWildcard.IncludePassives
-#        Include passive class spells in the ability library.
+#        Include passive class spells in the library.
 #        Default: 1
-#
+ClasslessWildcard.IncludePassives = 1
+
 #    ClasslessWildcard.ExcludedSpells
-#        Comma-separated spell ids to remove from the library entirely.
+#        Comma-separated spell ids removed from the library entirely.
 #        Default: ""
-#
+ClasslessWildcard.ExcludedSpells = ""
+
 #    ClasslessWildcard.TrainerTaughtOnly
-#        Only spells that classes ACTUALLY learn enter the library. A class
-#        learns a spell in three ways, and all three count:
+#        Keep only spells a class ACTUALLY learns. All three ways count:
 #          * from a class trainer, which also gives every rank its true learn
 #            level, and that is what tiering and rarity are based on
 #          * with the class itself, at level 1 or at the level the spell says
@@ -106,343 +180,38 @@ ClasslessWildcard.ModeChoiceDeadline = 5
 #          * from a class quest, which rewards a spell whose only job is to
 #            teach the real one (Defensive Stance, Berserker Stance, Taunt,
 #            Bear Form, Maul, the warlock demons, the shaman totems)
-#        This removes NPC and pet spell variants such as "Demonic Immolate",
-#        which no class learns any of those three ways.
+#        This removes NPC and pet variants such as "Demonic Immolate", which no
+#        class learns any of those three ways.
 #        Default: 1
-#
+ClasslessWildcard.TrainerTaughtOnly = 1
+
 #    ClasslessWildcard.RespectLevelRequirements
-#        Tiered acquisition: rolls and purchases respect each spell's own
-#        learn level (rank 1) and each talent's tree-row level (10 + row*5),
-#        so low-level Heroes can't be dealt end-game spells. If the level-legal
-#        pool is ever exhausted, rolls fall back to the full pool rather than
-#        being lost.
+#        Rolls and purchases respect each spell's own learn level (rank 1) and
+#        each talent's tree-row level (10 + row * 5), so low-level Heroes are
+#        not dealt end-game spells. If the level-legal pool is ever exhausted a
+#        roll falls back to the lowest-level entries left rather than being
+#        lost.
 #        Default: 1
+ClasslessWildcard.RespectLevelRequirements = 1
 
-ClasslessWildcard.IncludeDeathKnight = 1
-ClasslessWildcard.IncludeRacials = 0
-ClasslessWildcard.IncludePassives = 1
-ClasslessWildcard.ExcludedSpells = ""
-
-#
 #    ClasslessWildcard.ReplaceAbilityTalents
 #        Some talents teach a spell rather than a passive: Pyroblast, Mortal
 #        Strike, Mangle, Devastate, Aimed Shot, Hemorrhage, Ice Barrier. The
 #        ability pool already carries those spells as full rank lines, so with
-#        this on such talents are taken off the Talents list and the ability
-#        is the one way to get the spell. Owning the ability meets any talent
-#        prerequisite on the old talent and counts as one point in its tree.
+#        this on such talents leave the Talents list and the ability is the one
+#        way to get the spell. Owning the ability satisfies any prerequisite on
+#        the old talent and counts as a point in its tree.
+#
 #        A Hero still holding one of those talents gets the ability instead at
 #        their next login, with the Talent Essence refunded on the Classless
-#        path. With this off the talents stay and taking one grants the
-#        ability line, so the spell still ranks up with level.
+#        path. With this off the talents stay, and taking one grants the
+#        ability line so the spell still ranks up with level.
 #        Default: 1
-
 ClasslessWildcard.ReplaceAbilityTalents = 1
-ClasslessWildcard.TrainerTaughtOnly = 1
-ClasslessWildcard.RespectLevelRequirements = 1
 
-########################################
-# Proficiencies & talents
-########################################
-#
-#    ClasslessWildcard.TeachProficiencies
-#        Teach all armor/weapon proficiencies on login (classless gear use).
-#        Default: 1
-#
-#    ClasslessWildcard.ProficiencySpells
-#        The proficiency spells taught, plus the ranged use-abilities:
-#        Shoot 5019 fires WANDS only; bows/guns/crossbows need Shoot 3018 and
-#        thrown weapons need Throw 2764. (Those two are also auto-taught
-#        whenever the matching proficiency is in this list, so older lists
-#        keep working.)
-#        Default: cloth/leather/mail/plate/shield, all weapon types, wands,
-#                 wand Shoot, ranged Shoot, Throw, dual wield
-#
-#    ClasslessWildcard.SuppressTalentPoints
-#        Zero out native talent points (talents flow through the module).
-#        Default: 1
-
-#
-#    ClasslessWildcard.BlockOutsideSpellSources
-#        Class trainers (and the odd quest reward) would let players learn
-#        class spells for gold, bypassing the essence/roll economy. When
-#        enabled, any classless-library spell learned outside the module is
-#        reverted with a hint pointing at the Hero Advancement system.
-#        Profession/secondary trainers are unaffected.
-#        Default: 1
-
-#
-#    ClasslessWildcard.ClasslessClassChecks
-#        The core asks "is this player a <class>?" wherever behaviour is
-#        class-specific. Every Hero runs one chassis, so by default the chassis
-#        answers -- and a classless character inherits its restrictions. With
-#        this on the module answers YES for the cases where classless should
-#        mean every class at once:
-#
-#          * equipping ANY relic. Libram, Idol, Totem, Sigil and the warlock
-#            relic all share slot 17, but the core hands that slot to one class
-#            each. On the Paladin chassis a Hero could wear a Libram and nothing
-#            else, however much druid or shaman their build had bought.
-#          * shields, which the core limits to Paladin/Warrior/Shaman. The
-#            default chassis passes anyway; this keeps it true on any chassis.
-#          * the reactive-ability aura states behind Overpower, Revenge,
-#            Riposte and Counterattack, which the core sets only for the class
-#            each belongs to.
-#          * pets. Pet::Create types a pet from its owner's class, so on a
-#            one-chassis realm every summoned pet came out untyped: an error
-#            logged on each summon, no dismiss prompt, and the pet not recorded
-#            as the current one. The module types it from the pet instead --
-#            tamed beasts are hunter pets, everything else is a summoned pet --
-#            and answers the warlock pet question so a demon counts as
-#            permanent. The Death Knight pet question is deliberately left
-#            alone: LoadPetFromDB refuses to load a pet for a Death Knight
-#            without the Master of Ghouls flag, so answering it would stop
-#            pets loading at all.
-#
-#        Everything else keeps answering with the real chassis class on
-#        purpose: Death Knight rune handling and the stat/talent maths break if
-#        a character claims to be every class at once.
-#        Default: 1
-
-#
-#    ClasslessWildcard.SpellbookTabs
-#        Which spellbook tab a spell lands under is decided by the CLIENT, from
-#        SkillLineAbility.dbc: each class has a fixed set of spec tabs (Holy,
-#        Protection, Retribution for the Paladin chassis) and a known spell is
-#        filed under one only if its own row says it belongs to that class --
-#        so a rolled Fireball sat in General while its row said "Mage". The
-#        client patch fixes that by making every class spell belong to every
-#        class, and the addon builds the extra tab buttons, because Blizzard
-#        only ever made 8 and a Hero can span all 33 spec lines. Empty tabs
-#        stay hidden, so a Hero sees only the schools they actually know.
-#
-#        This setting is the SERVER half, and it is not about the tabs: it
-#        keeps the Hero's class skill lines in step with what they know. The
-#        core re-adds the chassis class's lines every login and auto-teaches
-#        their starter spells with them (that is how Holy Light kept coming
-#        back), so a line the Hero has nothing in is taken away, and lines they
-#        do have something in are added so the core's own skill bookkeeping
-#        stays consistent.
-#
-#          0 = off (stock behaviour: the chassis lines stay, starter spells
-#              come back each login)
-#          1 = keep lines in step with what the Hero owns (no empty lines)
-#          2 = every class line present from the start
-#
-#        Default: 1
-
-#
-#    ClasslessWildcard.FormStarterKits
-#        A shapeshift form or a warrior stance does nothing on its own. Draw
-#        Bear Form out of the deck with nothing to go with it and you have
-#        turned into a creature that cannot attack. With this on, gaining a form
-#        also hands over the basic spells that go with it -- free, immediately,
-#        and counting as owned abilities like anything else: Cat Form brings
-#        Claw and Prowl, Bear Form brings Maul and Demoralizing Roar, Battle
-#        Stance brings Charge, Defensive Stance Taunt, Berserker Stance Pummel.
-#        Neither side has to be a form: Tame Beast brings Call Pet, Revive Pet,
-#        Feed Pet and Dismiss Pet, which are otherwise out of the pool because
-#        none of them does anything without it.
-#        The pairs are data, in the `cw_form_kits` world table -- add your own
-#        rows, or set a row's `enabled` to 0 to drop just that one.
-#
-#        The same flag covers the reverse, which needs no table at all: an
-#        ability that can ONLY be used in a stance or form hands over that form
-#        when you gain it. Charge brings Battle Stance, Revenge Defensive
-#        Stance, Whirlwind Berserker Stance, Shred Cat Form. Read from each
-#        spell's own shapeshift mask, so it covers every stance-locked ability
-#        in the game without naming any of them.
-#
-#        Anything handed over this way is a free extra, not one of your rolls:
-#        it is not a card in the starting hand, it cannot be rerolled or
-#        unlearned on its own, and it leaves when nothing you own still needs
-#        it. Reroll the ability it came with instead.
-#        Default: 1
-
-#
-#    ClasslessWildcard.IgnoreSpellTools
-#        Some spells demand a class tool before they may be cast: Stoneskin
-#        Totem needs an Earth Totem, Runeforging needs a runeforge. Those tools
-#        are handed to one class each, and a Hero belongs to none, so the spell
-#        arrives with a red "Tools:" line and refuses to cast however it was
-#        earned. With this on, the tool requirement is cleared from every spell
-#        in the library. Reagents are untouched, because those are vendor goods
-#        anyone can buy.
-#
-#        The client keeps its own copy of the requirement, so the client patch
-#        clears the same two columns. Without it the tooltip keeps the red line
-#        and the client refuses the cast before the server sees it.
-#
-#        Read at worldserver start. The requirement is cleared from the loaded
-#        spell data once, so turning this off needs a restart, not a reload.
-#        Default: 1
-
-#
-#    ClasslessWildcard.WorldDrops.*
-#        Classless gear as world drops, so the Hero Advancement NPC is not the
-#        only answer to "where does gear come from".
-#
-#        Enable (default 1): any mob can drop a piece of the classless
-#        catalogue. The piece is banded to the MOB's level, not the killer's, so
-#        a level 20 zone yields level 20 gear whoever kills there -- farming
-#        low-level mobs at 80 returns low-level gear, exactly as normal loot
-#        does. Critters, totems, pets and summons never drop.
-#
-#        Chance (default 1.0): percent chance per qualifying kill, so roughly
-#        one piece per hundred mobs.
-#
-#        RareMultiplier (default 5.0): Chance is multiplied by this for rares,
-#        rare elites and world bosses.
-#
-#        HeirloomChance (default 2.0): percent chance for a scaling heirloom,
-#        rolled ONLY on rares, rare elites and world bosses, and rolled before
-#        the ordinary drop as the better prize. Heirlooms scale to 80, so this
-#        is the one that really matters -- set it to 0 to keep them vendor-only.
-#
-#        Nothing here touches creature_loot_template: drops are added to the
-#        kill's loot in C++, so there is no world data to revert.
-
-#
-#    ClasslessWildcard.StripStartingSpells
-#        Clean-slate creation: remove the chassis class's default class
-#        abilities at first login. Heroes then get everything through essences
-#        (classless) or rolls (wildcard). Racials, languages and Attack are
-#        untouched.
-#        Default: 1
-#
-#    ClasslessWildcard.StarterKit.*
-#        The neutral Hero kit given at creation.
-#
-#        StripEquipped (default 1): destroy EVERY piece of gear the shell class
-#        was created wearing, so the Hero starts bare. Without this the shell's
-#        default shirt/pants/boots stay on and the kit armour below falls
-#        through to the bags instead of equipping.
-#
-#        StarterKit.Equip is auto-equipped after the strip (armour only, so it
-#        lands on the character): Recruit's shirt/pants/boots by default. Do NOT
-#        put weapons here -- weapons belong in Items so they go to the bag.
-#
-#        StarterKit.Bag: an 8-slot bag equipped at creation so the kit fits
-#        (default 5573 = Green Leather Bag; 0 = no bag).
-#
-#        StarterKit.Items go into the BAGS, unequipped -- the neutral weapons
-#        so the Hero can use any ability it rolls. The Hero equips a weapon from
-#        the bag when they want one. Default: Worn Shortsword, Worn Wooden
-#        Shield, one of each basic weapon type, a bow + 200 Rough Arrows, a gun
-#        + 200 Light Shot, one Crude Throwing Axe (thrown weapons do not stack
-#        or deplete on 3.3.5a, so one is all you need), and a stack of 20 Tough
-#        Hunk of Bread + 20 Refreshing Spring Water so the Hero can eat and
-#        drink back to full between fights.
-#
-#        No wand: 3.3.5a has nothing below a green that a level 1 character can
-#        equip, and a green does not belong in a kit of worn starter weapons.
-#
-#        Each list is comma-separated item:count.
-
-ClasslessWildcard.StripStartingSpells = 1
-ClasslessWildcard.StarterKit.Enable = 1
-ClasslessWildcard.StarterKit.StripEquipped = 1
-ClasslessWildcard.StarterKit.Bag = 5573
-ClasslessWildcard.StarterKit.Equip = "38:1,39:1,40:1"
-ClasslessWildcard.StarterKit.Items = "25:1,2362:1,2092:2,36:1,1194:1,2361:1,12282:1,35:1,2504:1,2512:200,2508:1,2516:200,25861:1,4540:20,159:20"
-
-ClasslessWildcard.TeachProficiencies = 1
-ClasslessWildcard.BlockOutsideSpellSources = 1
-ClasslessWildcard.ClasslessClassChecks = 1
-ClasslessWildcard.SpellbookTabs = 1
-ClasslessWildcard.FormStarterKits = 1
-ClasslessWildcard.IgnoreSpellTools = 1
-# Elemental ability variants: every physical strike in the pool also exists as
-# Fiery, Frozen, Earthen, Venomous, Arcane, Shadow and Holy versions that deal
-# their damage as that element, keep a little less of the weapon damage, add an
-# elemental hit that scales with spell power, and where a slot allows carry one
-# rider the element is known for. They roll and are bought like any ability, one
-# rarity tier above their base (RarityBump). The rows live in
-# cw_ability_variants and spell_dbc and are generated, not hand-written:
-# data/sql/generators/gen_elemental_variants.py takes the weapon coefficient
-# (85% by default, 75% for Holy) and the spell power coefficient (0.15) as its
-# arguments, and writes the client manifest in the same run so tooltips match.
-# Every player must reinstall the client patch after the rows change. The
-# startup log names the generation id the rows came from, and the client
-# installer prints the id of the manifest it applied; they must be the same.
-#
-# RollWeightPct is what keeps the Wildcard pool honest. Each strike gains seven
-# variants, and RarityBump alone barely makes them roll less often (on the
-# default weights one tier is a 5% trim; it mostly changes cost and colour). Each variant
-# rolls at this percentage of its rarity weight, so at 15 the seven together
-# add about one more copy of the base to the pool rather than seven. Raise it
-# to see more elemental strikes; it does not affect Classless purchase costs.
-#
-# InPool: whether variants are dealt by Wildcard rolls and sold on the Classless
-# path. Off, a Hero who already owns one keeps it and can still unlearn it;
-# no new ones are handed out. This is the switch to use on a realm where
-# variants have already been dealt. Enable = 0 does not register them at all,
-# which is only safe before any have been given.
-#
-# ShowInBrowser: whether variants are listed in the addon's class menus and the
-# Hero Advancement NPC's lists. Off, they still roll and still appear in My
-# Build once owned; they are just not browsed.
-ClasslessWildcard.Elemental.Enable = 1
-ClasslessWildcard.Elemental.RarityBump = 1
-ClasslessWildcard.Elemental.RollWeightPct = 15
-ClasslessWildcard.Elemental.InPool = 1
-ClasslessWildcard.Elemental.ShowInBrowser = 1
-ClasslessWildcard.WorldDrops.Enable = 1
-ClasslessWildcard.WorldDrops.Chance = 1.0
-ClasslessWildcard.WorldDrops.RareMultiplier = 5.0
-ClasslessWildcard.WorldDrops.HeirloomChance = 2.0
-ClasslessWildcard.ProficiencySpells = "9078,9077,8737,750,9116,201,202,196,197,198,199,200,227,1180,15590,264,266,5011,2567,5009,5019,3018,2764,674"
-ClasslessWildcard.SuppressTalentPoints = 1
-
-#    ClasslessWildcard.Riding.Enable
-#        Train the riding skill for every Hero, free, as they reach the level
-#        for it. Riding is not class power: it is not in the classless library,
-#        it never rolls and it cannot be bought with essence. Set to 0 to
-#        leave riding to the trainers.
-#        Default: 1
-#
-#    ClasslessWildcard.Riding.Grants
-#        spell:level pairs. The default is each rank at the level its trainer
-#        sells it: Apprentice 20, Journeyman 40, Expert (flying) 60, Cold
-#        Weather Flying 68, Artisan (epic flying) 70.
-#
-#        Set every level to 1 to grant them all at character creation. The
-#        riding spells carry no level of their own (all five read SpellLevel 0),
-#        so this list and each mount item's RequiredLevel are the only gates.
-#
-#        Cold Weather Flying (54197) grants no skill. It is the permission to
-#        fly in Northrend, sold by the same trainer, so it is listed with the
-#        ranks.
-ClasslessWildcard.Riding.Enable = 1
-ClasslessWildcard.Riding.Grants = "33388:20,33391:40,34090:60,54197:68,34091:70"
-
-########################################
-# Classless (free-pick) economy: Ascension defaults
-########################################
-
-# Ability Essence follows a class's own pacing: a level 1 has 3 abilities, then
-# one more every level from 4 (9 by level 9, 80 by level 80). Talent Essence
-# starts at 10, one a level, the 71 points a class has at 80.
-ClasslessWildcard.Classless.StartingAbilityEssence = 3
-ClasslessWildcard.Classless.EssenceStartLevel = 4
-ClasslessWildcard.Classless.AbilityEssencePerLevel = 1
-ClasslessWildcard.Classless.TalentEssenceStartLevel = 10
-ClasslessWildcard.Classless.TalentEssencePerLevel = 1
-# AE cost per rarity: common,uncommon,rare,epic,legendary
-ClasslessWildcard.Classless.AbilityCostByRarity = "1,2,3,5,8"
-ClasslessWildcard.Classless.TalentCostPerRank = 1
-# Optional: charge only the FIRST rank, so a talent costs one point however far
-# you rank it. Off by default -- in Classless you pick what you buy, so every
-# rank is paid for at TalentCostPerRank. (Wildcard is where a rank 5 costs "one
-# point": the roll hands you the rank for free, whatever it lands on.)
-ClasslessWildcard.Classless.TalentFlatCost = 0
-ClasslessWildcard.Classless.EnforceTalentRows = 1
-ClasslessWildcard.Classless.RefundOnUnlearn = 1
-ClasslessWildcard.Classless.RespecCostGold = 50
-
-########################################
-# Ability rarity
-########################################
+########################################################################
+# 4  Ability rarity
+########################################################################
 #
 #    Rarity sets how often an ability rolls, what it costs a Classless Hero and
 #    what colour it is shown in. It is taken from the strongest of three
@@ -454,320 +223,685 @@ ClasslessWildcard.Classless.RespecCostGold = 50
 #      TalentRows       the deepest talent row that teaches the line, where row
 #                       R costs 5R points to reach. Four thresholds, same order.
 #      LevelFloors      the level the first rank is learned at, as a FLOOR only:
-#                       two thresholds, for uncommon and rare, and never higher.
+#                       two thresholds, for uncommon and rare, never higher.
 #
 #    Set any threshold to 0 to switch that signal off. A row in
-#    cw_ability_override replaces the result outright.
+#    `cw_ability_override` replaces the result outright.
+#
+#    [RESTART REQUIRED]
+
+#    ClasslessWildcard.Rarity.CooldownSeconds
+#        Cooldown thresholds for uncommon, rare, epic, legendary.
+#        Default: "30,60,180,600"
 ClasslessWildcard.Rarity.CooldownSeconds = "30,60,180,600"
+
+#    ClasslessWildcard.Rarity.TalentRows
+#        Talent-row thresholds, same order.
+#        Default: "2,4,6,8"
 ClasslessWildcard.Rarity.TalentRows = "2,4,6,8"
+
+#    ClasslessWildcard.Rarity.LevelFloors
+#        Learn-level floors for uncommon and rare.
+#        Default: "25,50"
 ClasslessWildcard.Rarity.LevelFloors = "25,50"
 
-########################################
-# Wildcard mode: Season 10 defaults
-########################################
+########################################################################
+# 5  Elemental variants
+########################################################################
 #
-#    Schedule: StartingAbilities random abilities at creation; from
-#    RollStartLevel, one random talent every TalentEveryLevels and one
-#    random ability every AbilityEveryLevels.
+#    Every physical strike in the pool also exists as Fiery, Frozen, Earthen,
+#    Venomous, Arcane, Shadow and Holy versions. Each deals its damage as that
+#    element, keeps a little less of the weapon damage, adds an elemental hit
+#    that scales with spell power, and where a slot allows carries one rider
+#    the element is known for. They roll and are bought like any ability.
 #
-#    RarityWeights: roll weight per rarity (common,uncommon,rare,epic,legendary).
-#    The default "100,95,90,85,80" is a gentle slope: everything in the pool
-#    can turn up, a legendary just rolls at 80% the rate of a common, and
-#    finding legendaries never lowers your chance to roll more. Equal weights
-#    make every entry exactly as likely; steep ones such as "100,60,30,10,3"
-#    make the top tier a rare prize.
+#    The rows live in `cw_ability_variants` and `spell_dbc` and are generated,
+#    not hand-written: data/sql/generators/gen_elemental_variants.py takes the
+#    weapon coefficient (85%, 75% for Holy) and the spell power coefficient
+#    (0.15) as arguments and writes the client manifest in the same run, so
+#    tooltips match. Every player must reinstall the client patch after the
+#    rows change. The startup log names the generation id the rows came from
+#    and the client installer prints the id it applied; they must match.
 #
-#    NOTE: this also decides the RANK a rolled talent lands on, because a
-#    talent's rank is its rarity (rank 1 common ... rank 5 legendary). On the
-#    default slope a rank 5 rolls at 80% the rate of a rank 1. Use steep
-#    weights if you want high ranks to be the rare, exciting find:
-#    "100,60,30,10,3" makes rank 5 about a 1.5% roll.
-#
-#    Synergy rolls, pity and bans, in full:
-#
-#      Every ability and talent in the pool carries the class mask it came from
-#      (which classes could learn it). A Hero's own mask is the union of the
-#      masks of everything it already owns. On a SYNERGY ROLL the candidate
-#      pool is narrowed to entries sharing at least one class with that mask
-#      before the weighted pick happens, so the result complements the build
-#      instead of being drawn from the whole library. If nothing in the pool
-#      matches, the roll proceeds normally and does not count as a synergy.
-#
-#      The chance that any given roll is a synergy roll is
-#          SynergyBaseChance + (pity * SynergyIncrement), capped at 100
-#      With the defaults: 10%, rising 10 points per pity point.
-#
-#      PITY COUNTS REROLLS, not rolls. Only a reroll increments it; a scheduled
-#      level-up roll never does. So a Hero who never rerolls sits at a flat
-#      SynergyBaseChance for the whole game, and a Hero who has rerolled nine
-#      times without a synergy hit rolls the tenth at 100%. A synergy roll
-#      resets pity to 0, and so does Rebirth.
-#
-#      Worth knowing before you tune this: the owned mask only ever grows.
-#      Wildcard deals StartingAbilities random abilities at level 1, usually
-#      from that many different classes, so within a few levels the mask covers
-#      most of the game and the synergy filter excludes very little. Synergy
-#      shapes the early build strongly and progressively less after that, while
-#      still announcing itself in chat. Treat SynergyBaseChance and
-#      SynergyIncrement as early-game controls. Set SynergyBaseChance to 0 to
-#      turn synergy rolls off entirely.
-#
-#    SynergyBanRolls is a separate mechanic despite the shared prefix, and the
-#    name is misleading: it is a REROLL COOLDOWN, not a ban list and nothing to
-#    do with moderation. When a player rerolls something, that entry is held out
-#    of their pool for a while so the reroll cannot immediately hand back the
-#    exact thing they just rerolled. It applies whether or not the reroll cost
-#    anything, so free rerolls below FreeRerollBelowLevel stamp a cooldown too.
-#    It is automatic, per character,
-#    stored in cw_char_bans, and survives logout. The cooldown is counted in
-#    rolls, not time, and the replacement roll counts as the first one: the
-#    default 25 keeps a rerolled entry out of 24 rolls, after which it can be
-#    dealt again.
-#
-#    Be aware how long 24 rolls actually is. Every roll of either kind ticks
-#    every cooldown the character has running, and on the default cadence
-#    (TalentEveryLevels = 1, AbilityEveryLevels = 2, from RollStartLevel) a Hero
-#    receives about 1.5 rolls per level. 24 rolls is therefore roughly SIXTEEN
-#    LEVELS: reroll something at level 12 and it cannot return until about level
-#    28. At the default this makes a reroll close to a permanent decision rather
-#    than a do-over. Rerolling often shortens the wait, since each replacement
-#    roll also ticks every cooldown.
-#
-#    Pick the value for the behaviour you want:
-#      0   an entry can be dealt straight back by its own replacement roll
-#      3   stops an immediate repeat, back in the pool within a couple of levels
-#      25  (default) a rerolled entry is gone for most of a leveling stretch
-#
-#    Whatever the value, a cooldown never costs a Hero a level-appropriate roll.
-#    If every entry the Hero could actually use is owned or on cooldown, the
-#    cooldowns of that kind are released and the pool is rebuilt before the roll
-#    falls back to entries above the Hero's level. Level-appropriateness outranks
-#    the cooldown, which matters most below FreeRerollBelowLevel: rerolls there
-#    cost nothing, so a player can churn them freely, while the pool of entries
-#    legal at level 1 is the smallest it will ever be. Without the release, a
-#    few minutes of free rerolling would starve the early pool outright.
-#
-#    This is NOT how you ban a problem ability realm-wide. For that, set
-#    `enabled` = 0 on its row in cw_ability_override or cw_talent_override,
-#    which removes it from the pool for every Hero permanently.
+#    [RESTART REQUIRED]
 
-# The starting hand is 4 cards. Anything higher is clamped to 4 at load, with a
-# line in the worldserver log.
+#    ClasslessWildcard.Elemental.Enable
+#        Register the variants at all. Off does not register them, which is
+#        only safe before any have been handed out. To stop handing out new
+#        ones on a realm where they already exist, use InPool instead.
+#        Default: 1
+ClasslessWildcard.Elemental.Enable = 1
+
+#    ClasslessWildcard.Elemental.RarityBump
+#        Tiers above the base line's rarity, capped at legendary.
+#        Default: 1
+ClasslessWildcard.Elemental.RarityBump = 1
+
+#    ClasslessWildcard.Elemental.RollWeightPct
+#        Each variant rolls at this percentage of its rarity's weight. This is
+#        what keeps the Wildcard pool honest: each strike gains seven variants,
+#        and RarityBump alone barely changes how often they roll. At 15 the
+#        seven together add about one more copy of the base to the pool rather
+#        than seven. Raise it to see more elemental strikes. It does not affect
+#        Classless purchase costs.
+#        Default: 15
+ClasslessWildcard.Elemental.RollWeightPct = 15
+
+#    ClasslessWildcard.Elemental.InPool
+#        Whether variants are dealt by Wildcard rolls and sold on the Classless
+#        path. Off, a Hero who owns one keeps it and can still unlearn it; no
+#        new ones are handed out.
+#        Default: 1
+ClasslessWildcard.Elemental.InPool = 1
+
+#    ClasslessWildcard.Elemental.ShowInBrowser
+#        Whether variants are listed in the addon's class menus and the NPC's
+#        lists. Off, they still roll and still appear in My Build once owned.
+#        Default: 1
+ClasslessWildcard.Elemental.ShowInBrowser = 1
+
+########################################################################
+# 6  Classless path: essence economy
+########################################################################
+#
+#    Ability Essence follows a class's own pacing: a level 1 has 3 abilities,
+#    then one more every level from 4, reaching 80 by level 80. Talent Essence
+#    starts at 10, one a level, the 71 points a class has at 80.
+
+#    ClasslessWildcard.Classless.StartingAbilityEssence
+#        Ability Essence a new Hero begins with.
+#        Default: 3
+ClasslessWildcard.Classless.StartingAbilityEssence = 3
+
+#    ClasslessWildcard.Classless.EssenceStartLevel
+#        First level that grants Ability Essence.
+#        Default: 4
+ClasslessWildcard.Classless.EssenceStartLevel = 4
+
+#    ClasslessWildcard.Classless.AbilityEssencePerLevel
+#        Ability Essence granted per level from EssenceStartLevel.
+#        Default: 1
+ClasslessWildcard.Classless.AbilityEssencePerLevel = 1
+
+#    ClasslessWildcard.Classless.TalentEssenceStartLevel
+#        First level that grants Talent Essence.
+#        Default: 10
+ClasslessWildcard.Classless.TalentEssenceStartLevel = 10
+
+#    ClasslessWildcard.Classless.TalentEssencePerLevel
+#        Talent Essence granted per level from TalentEssenceStartLevel.
+#        Default: 1
+ClasslessWildcard.Classless.TalentEssencePerLevel = 1
+
+#    ClasslessWildcard.Classless.AbilityCostByRarity
+#        Ability Essence cost per rarity: common, uncommon, rare, epic,
+#        legendary.
+#        Default: "1,2,3,5,8"
+ClasslessWildcard.Classless.AbilityCostByRarity = "1,2,3,5,8"
+
+#    ClasslessWildcard.Classless.TalentCostPerRank
+#        Talent Essence charged for each rank.
+#        Default: 1
+ClasslessWildcard.Classless.TalentCostPerRank = 1
+
+#    ClasslessWildcard.Classless.TalentFlatCost
+#        Charge only the FIRST rank, so a talent costs one point however far it
+#        is ranked. Off by default: in Classless you choose what you buy, so
+#        every rank is paid for. Wildcard is where a rank 5 costs "one point",
+#        because the roll hands over whatever rank it lands on.
+#        Default: 0
+ClasslessWildcard.Classless.TalentFlatCost = 0
+
+#    ClasslessWildcard.Classless.EnforceTalentRows
+#        Require the points-spent-in-tree total that each talent row demands.
+#        Default: 1
+ClasslessWildcard.Classless.EnforceTalentRows = 1
+
+#    ClasslessWildcard.Classless.RefundOnUnlearn
+#        Refund the essence paid when an ability is unlearned.
+#        Default: 1
+ClasslessWildcard.Classless.RefundOnUnlearn = 1
+
+#    ClasslessWildcard.Classless.RespecCostGold
+#        Gold cost of a full talent respec, which also clears and refunds every
+#        ability.
+#        Default: 50
+ClasslessWildcard.Classless.RespecCostGold = 50
+
+########################################################################
+# 7  Wildcard path: rolls, rerolls and scrolls
+########################################################################
+#
+#    The schedule: StartingAbilities random abilities at creation, then from
+#    RollStartLevel one random talent every TalentEveryLevels and one random
+#    ability every AbilityEveryLevels.
+#
+#    SYNERGY, PITY AND REROLL COOLDOWNS
+#
+#      Every ability and talent in the pool carries the class mask it came from.
+#      A Hero's own mask is the union of the masks of everything it owns. On a
+#      SYNERGY ROLL the candidate pool is narrowed to entries sharing at least
+#      one class with that mask before the weighted pick, so the result
+#      complements the build. If nothing matches, the roll proceeds normally
+#      and does not count as a synergy.
+#
+#      The chance that a roll is a synergy roll is
+#          SynergyBaseChance + (pity * SynergyIncrement), capped at 100
+#
+#      PITY COUNTS REROLLS, not rolls. Only a reroll increments it, so a Hero
+#      who never rerolls sits at a flat SynergyBaseChance all game, and a Hero
+#      who has rerolled nine times without a synergy hit rolls the tenth at
+#      100%. A synergy roll resets pity to 0, and so does Rebirth.
+#
+#      The owned mask only ever grows. Wildcard deals StartingAbilities
+#      abilities at level 1, usually from that many different classes, so
+#      within a few levels the mask covers most of the game and the filter
+#      excludes very little. Treat these as early-game controls. Set
+#      SynergyBaseChance to 0 to turn synergy rolls off.
+#
+#      SynergyBanRolls is a separate mechanic despite the shared prefix, and
+#      the name is misleading: it is a REROLL COOLDOWN, nothing to do with
+#      moderation. A rerolled entry is held out of that character's pool for a
+#      while so the reroll cannot hand straight back what was just rerolled. It
+#      applies whether or not the reroll cost anything, is per character, is
+#      stored in `cw_char_bans`, and survives logout.
+#
+#      The cooldown is counted in ROLLS, not time, and the replacement roll
+#      counts as the first. Every roll of either kind ticks every cooldown the
+#      character has running, so on the default cadence a Hero receives about
+#      one roll per level and 24 rolls is roughly 24 levels. Reroll something at
+#      12 and it cannot return until about 36. Pick the value for the behaviour
+#      you want:
+#          0   an entry can come straight back from its own replacement roll
+#          3   stops an immediate repeat, back within a couple of levels
+#         25   (default) gone for most of a levelling stretch
+#
+#      A cooldown never costs a Hero a level-appropriate roll. If everything the
+#      Hero could use is owned or on cooldown, the cooldowns of that kind are
+#      released and the pool rebuilt before the roll reaches above their level.
+#      That matters most below FreeRerollBelowLevel, where rerolls are free and
+#      the legal pool is at its smallest.
+#
+#      This is NOT how to ban a problem ability realm-wide. For that set
+#      `enabled` = 0 on its row in `cw_ability_override` or
+#      `cw_talent_override`.
+
+#    ClasslessWildcard.Wildcard.StartingAbilities
+#        Abilities dealt at creation. 4 is the maximum; anything higher is
+#        clamped at load with a line in the worldserver log.
+#        Default: 4
 ClasslessWildcard.Wildcard.StartingAbilities = 4
+
+#    ClasslessWildcard.Wildcard.RollStartLevel
+#        Level the roll schedule begins.
+#        Default: 10
 ClasslessWildcard.Wildcard.RollStartLevel = 10
-# The roll schedule. TalentRollOffset is a phase: with both cadences at 2 and
-# the offset at 1, ability rolls land on the even levels from RollStartLevel and
-# talent rolls on the odd ones, so a Hero gets exactly one roll every level and
-# no level is empty. Set the offset to 0 and they stack on the same levels.
-#
-# Talents are deliberately no more frequent than abilities: a talent roll rolls
-# its RANK too, and can hand over rank 5 outright, which is worth five ranks a
-# Classless Hero would buy one at a time. One a level made talent power arrive
-# far faster than ability power.
-ClasslessWildcard.Wildcard.TalentEveryLevels = 2
-ClasslessWildcard.Wildcard.TalentRollOffset = 1
+
+#    ClasslessWildcard.Wildcard.AbilityEveryLevels
+#        Levels between ability rolls.
+#        Default: 2
 ClasslessWildcard.Wildcard.AbilityEveryLevels = 2
-ClasslessWildcard.Wildcard.FreeRerollBelowLevel = 10
-ClasslessWildcard.Wildcard.RarityWeights = "100,95,90,85,80"
+
+#    ClasslessWildcard.Wildcard.TalentEveryLevels
+#        Levels between talent rolls. Talents are no more frequent than
+#        abilities because a talent roll rolls its RANK too and can hand over
+#        rank 5 outright, which is worth five ranks a Classless Hero would buy
+#        one at a time.
+#        Default: 2
+ClasslessWildcard.Wildcard.TalentEveryLevels = 2
+
+#    ClasslessWildcard.Wildcard.TalentRollOffset
+#        Phase for the talent roll. With both cadences at 2 and the offset at
+#        1, ability rolls land on the even levels from RollStartLevel and
+#        talent rolls on the odd ones, so a Hero gets one roll every level and
+#        no level is empty. Set it to 0 and they stack on the same levels.
+#        Default: 1
+ClasslessWildcard.Wildcard.TalentRollOffset = 1
+
+#    ClasslessWildcard.Wildcard.RarityWeights
+#        Roll weight per rarity: common, uncommon, rare, epic, legendary. This
+#        decides WHICH entry a roll lands on. The rank a rolled talent lands on
+#        is TalentRankWeights, below.
 #
-#    TalentRankWeights: how likely a talent roll is to land on each rank, rank 1
-#    first. Separate from the rarity ladder above: rarity decides which talent
-#    turns up, rank decides how many ranks one roll hands over. The default
-#    "100,75,50,25,10" makes rank 5 roughly a twentieth as likely as rank 1.
+#        On the default a legendary rolls at a quarter the rate of a common.
+#        Against the shipped pool that is roughly 65% of rolls common, 15%
+#        uncommon, 13% rare, 5% epic and 2% legendary, so a little over half of
+#        characters see a legendary ability by 80. Equal weights make every
+#        entry exactly as likely; a steeper ladder such as "100,75,50,25,10"
+#        puts a legendary in one character out of three.
+#        Default: "100,85,65,45,25"
+ClasslessWildcard.Wildcard.RarityWeights = "100,85,65,45,25"
+
+#    ClasslessWildcard.Wildcard.TalentRankWeights
+#        How likely a talent roll is to land on each rank, rank 1 first.
+#        Separate from RarityWeights: rarity decides which talent turns up,
+#        rank decides how many ranks one roll hands over. The default makes
+#        rank 5 roughly a twentieth as likely as rank 1.
+#        Default: "100,75,50,25,10"
 ClasslessWildcard.Wildcard.TalentRankWeights = "100,75,50,25,10"
+
+#    ClasslessWildcard.Wildcard.SynergyBaseChance
+#        Percent chance a roll is a synergy roll, before pity. 0 turns synergy
+#        rolls off.
+#        Default: 10
 ClasslessWildcard.Wildcard.SynergyBaseChance = 10
+
+#    ClasslessWildcard.Wildcard.SynergyIncrement
+#        Percentage points added per pity point.
+#        Default: 10
 ClasslessWildcard.Wildcard.SynergyIncrement = 10
+
+#    ClasslessWildcard.Wildcard.SynergyBanRolls
+#        Reroll cooldown, counted in rolls.
+#        Default: 25
 ClasslessWildcard.Wildcard.SynergyBanRolls = 25
-# Earned rerolls (the Ascension way): every level from RollStartLevel grants
-# this many reroll charges, so rerolls flow with leveling itself. Charges are
-# one pool spent on abilities and talents alike, and are spent before any scroll
-# is touched.
-#
-# The grant is per LEVEL, not per roll. The starting hand at level 1 grants
-# none: charges begin at RollStartLevel.
+
+#    ClasslessWildcard.Wildcard.FreeRerollBelowLevel
+#        Below this level rerolls cost nothing and the starting-hand screen is
+#        open. At this level the padlocks come off for good and rerolls are one
+#        ability at a time.
+#        Default: 10
+ClasslessWildcard.Wildcard.FreeRerollBelowLevel = 10
+
+#    ClasslessWildcard.Wildcard.RerollsPerLevel
+#        Reroll charges granted per level from RollStartLevel. Charges are one
+#        pool spent on abilities and talents alike, and are spent before any
+#        scroll is touched. The grant is per LEVEL, not per roll; the starting
+#        hand grants none.
+#        Default: 3
 ClasslessWildcard.Wildcard.RerollsPerLevel = 3
-# Reroll top-up items (cheap, sold by the Hero Advancement NPC; shipped in the
-# module's world SQL). Consumed only when earned charges run out.
+
+#    ClasslessWildcard.Wildcard.ScrollItemId
+#        The Reroll Scroll item, sold by the Hero Advancement NPC and shipped
+#        in the module's world SQL. Consumed only when earned charges run out.
+#        Default: 990101
 ClasslessWildcard.Wildcard.ScrollItemId = 990101
-# Optional extra faucet: also grant FreeScrollCount Reroll Scrolls every
-# FreeScrollEveryLevels levels (0 disables).
+
+#    ClasslessWildcard.Wildcard.FreeScrollEveryLevels
+#        Also grant FreeScrollCount scrolls every this many levels. 0 disables.
+#        Default: 0
 ClasslessWildcard.Wildcard.FreeScrollEveryLevels = 0
+
+#    ClasslessWildcard.Wildcard.FreeScrollCount
+#        Scrolls granted at each of those levels.
+#        Default: 1
 ClasslessWildcard.Wildcard.FreeScrollCount = 1
-# Buy Scroll button (Hero Advancement panel): players can buy a Reroll Scroll
-# straight from the addon, no NPC needed. Only available at or above the
-# FreeRerollBelowLevel level (rerolls are free before then, so scrolls are
-# pointless) -- the button hides and purchases are refused below it. Price is
-# in COPPER and scales with level, so it reads as silver in the early game and
-# only grows into gold near the cap: cost = ScrollBuyBaseCopper +
-# ScrollBuyPerLevelCopper * level (100 copper = 1 silver, 10000 copper = 1 gold;
-# the talent scroll is half). Defaults: ~55s at level 10, ~4g at level 80. Set
-# ScrollBuyEnable = 0 to hide the button and leave scrolls to the NPC vendor.
+
+#    ClasslessWildcard.Wildcard.ScrollBuyEnable
+#        Show the Buy Scroll button on the advancement panel, so a scroll can
+#        be bought without visiting the NPC. Available only at or above
+#        FreeRerollBelowLevel, since rerolls are free below it.
+#        Default: 1
 ClasslessWildcard.Wildcard.ScrollBuyEnable = 1
+
+#    ClasslessWildcard.Wildcard.ScrollBuyBaseCopper
+#    ClasslessWildcard.Wildcard.ScrollBuyPerLevelCopper
+#        Scroll price in COPPER: base + per-level * level. 100 copper is a
+#        silver and 10000 a gold, so the defaults read as about 55 silver at
+#        level 10 and 4 gold at 80.
+#        Default: 500 and 500
 ClasslessWildcard.Wildcard.ScrollBuyBaseCopper = 500
 ClasslessWildcard.Wildcard.ScrollBuyPerLevelCopper = 500
 
-########################################
-# Chassis
-########################################
-#
-#    Every Hero runs on ONE class, whatever was picked on the creation screen.
-#    That is what makes this classless rather than "classless with a class
-#    underneath": while characters keep different classes, the core's own
-#    per-class math differs between them -- base stats, base health and mana,
-#    which stat feeds attack power, the crit and dodge conversion ratios --
-#    and the class a character happens to run on quietly becomes a build
-#    decision again.
-#
-#    With one chassis that math is identical for everyone by construction, so
-#    the class chosen at creation is nothing but the model and the name (and
-#    the name reads "Hero" once the client patch is installed). Every stat
-#    matters to every Hero, and no build is better served by one class than
-#    another.
-#
-#    Characters are converted at creation, and existing characters convert on
-#    their next login. Accounts matched by ExemptAccountPrefixes are left on
-#    their real class.
-#
-#    ClasslessWildcard.Chassis.Enable
-#        Force every character onto Chassis.Class. Turning this OFF returns
-#        the module to per-class chassis behaviour, where a character's class
-#        still affects its stats and resources.
+########################################################################
+# 8  Character creation: strip, starter kit, proficiencies, riding
+########################################################################
+
+#    ClasslessWildcard.StripStartingSpells
+#        Remove the chassis class's default abilities at first login, so a Hero
+#        gets everything through essence or rolls. Racials, languages and
+#        Attack are untouched.
 #        Default: 1
-#
-#    ClasslessWildcard.Chassis.Class
-#        The class id every Hero runs on. It MUST be a class with a real mana
-#        pool. The supported set is therefore:
-#          2 Paladin   5 Priest   7 Shaman   8 Mage   9 Warlock   11 Druid
-#        Anything else -- Warrior, Rogue, Hunter, Death Knight -- is refused at
-#        startup with an error in the log and replaced with Paladin. A Hero
-#        casts whatever it learns, and a great many of those spells cost mana
-#        or a percentage of base mana; on a rage or energy chassis the
-#        character has neither pool, so those abilities would simply never
-#        fire.
-#
-#        Paladin is the default and the one this module is built around: a real
-#        base mana (so percentage-of-base-mana spell costs come out right),
-#        spirit regen, plate base armour, and no forms, stances or runes to
-#        suppress. Rage and energy are layered on top by the universal-resource
-#        system below, so a Paladin-chassis Hero still pays rage for Bloodthirst
-#        and energy for Sinister Strike.
-#        Default: 2
-#
-#        Changing this on a live realm re-converts every character on their
-#        next login and shifts their base stats. Decide before launch.
+ClasslessWildcard.StripStartingSpells = 1
 
-ClasslessWildcard.Chassis.Enable = 1
-ClasslessWildcard.Chassis.Class = 2
+#    ClasslessWildcard.StarterKit.Enable
+#        Give the neutral Hero kit at creation.
+#        Default: 1
+ClasslessWildcard.StarterKit.Enable = 1
 
-########################################
-# Universal resources
-########################################
+#    ClasslessWildcard.StarterKit.StripEquipped
+#        Destroy every piece of gear the shell class was created wearing, so
+#        the Hero starts bare. Without this the shell's own shirt, pants and
+#        boots stay on and the kit armour below falls through to the bags.
+#        Default: 1
+ClasslessWildcard.StarterKit.StripEquipped = 1
+
+#    ClasslessWildcard.StarterKit.Bag
+#        An 8-slot bag equipped at creation so the kit fits. 0 for no bag.
+#        Default: 5573 (Green Leather Bag)
+ClasslessWildcard.StarterKit.Bag = 5573
+
+#    ClasslessWildcard.StarterKit.Equip
+#        Comma-separated item:count, auto-equipped after the strip: Recruit's
+#        shirt, pants and boots, a Worn Shortsword and a Worn Wooden Shield.
+#        Default: "38:1,39:1,40:1,25:1,2362:1"
+ClasslessWildcard.StarterKit.Equip = "38:1,39:1,40:1,25:1,2362:1"
+
+#    ClasslessWildcard.StarterKit.Items
+#        Comma-separated item:count, placed in the BAGS unequipped: one of each
+#        basic weapon type so a Hero can use whatever it rolls, a bow with 200
+#        Rough Arrows, a gun with 200 Light Shot, throwing axes, and 20 each of
+#        Tough Hunk of Bread and Refreshing Spring Water.
 #
-#    Every Hero maintains mana, rage AND energy pools simultaneously
-#    (druid-style: the client tracks all pools; the chassis picks which bar
-#    the default UI displays, and the addon shows the others as mini-bars
-#    docked under the player frame). Players can change which pool the MAIN
-#    bar shows with ".classless bar mana|rage|energy|default" or by clicking
-#    a mini-bar; the choice persists per character.
-#    Spells always draw from their native pool, energy/mana regenerate through
-#    the core's normal regeneration, rage decays normally, and rage GAIN
-#    mirrors the warrior formulas when the chassis is not natively rage
-#    (scalable below). A spell whose power type is not the chassis's own is
-#    always castable -- it pays out of the pool it actually uses.
+#        No wand: 3.3.5a has nothing below a green a level 1 can equip, and a
+#        green does not belong in a kit of worn starter weapons.
+#        Default: "2092:2,36:1,1194:1,2361:1,12282:1,35:1,2504:1,2512:200,2508:1,2516:200,25861:200,4540:20,159:20"
+ClasslessWildcard.StarterKit.Items = "2092:2,36:1,1194:1,2361:1,12282:1,35:1,2504:1,2512:200,2508:1,2516:200,25861:200,4540:20,159:20"
+
+#    ClasslessWildcard.TeachProficiencies
+#        Teach every armour and weapon proficiency at login, so a Hero can use
+#        whatever gear it finds.
+#        Default: 1
+ClasslessWildcard.TeachProficiencies = 1
+
+#    ClasslessWildcard.ProficiencySpells
+#        The proficiency spells taught, plus the ranged use-abilities: Shoot
+#        5019 fires WANDS only, bows/guns/crossbows need Shoot 3018 and thrown
+#        weapons need Throw 2764. Those two are also taught automatically
+#        whenever the matching proficiency is in this list.
+#        Default: cloth, leather, mail, plate, shield, every weapon type,
+#                 wands, both Shoots, Throw and dual wield
+ClasslessWildcard.ProficiencySpells = "9078,9077,8737,750,9116,201,202,196,197,198,199,200,227,1180,15590,264,266,5011,2567,5009,5019,3018,2764,674"
+
+#    ClasslessWildcard.SuppressTalentPoints
+#        Zero out native talent points, since talents flow through the module.
+#        Default: 1
+ClasslessWildcard.SuppressTalentPoints = 1
+
+#    ClasslessWildcard.Riding.Enable
+#        Train the riding skill for every Hero, free, as they reach the level
+#        for it. Riding is not class power: it is not in the library, it never
+#        rolls and it cannot be bought with essence. Set to 0 to leave riding
+#        to the trainers.
+#        Default: 1
+ClasslessWildcard.Riding.Enable = 1
+
+#    ClasslessWildcard.Riding.Grants
+#        Comma-separated spell:level pairs. The default gives each rank at the
+#        level its trainer sells it: Apprentice 20, Journeyman 40, Expert
+#        (flying) 60, Cold Weather Flying 68, Artisan (epic flying) 70.
+#
+#        Set every level to 1 to grant them all at creation. The riding spells
+#        carry no level of their own, so this list and each mount item's
+#        RequiredLevel are the only gates.
+#
+#        Cold Weather Flying (54197) grants no skill. It is the permission to
+#        fly in Northrend, sold by the same trainer, so it is listed with the
+#        ranks.
+#        Default: "33388:20,33391:40,34090:60,54197:68,34091:70"
+ClasslessWildcard.Riding.Grants = "33388:20,33391:40,34090:60,54197:68,34091:70"
+
+########################################################################
+# 9  Class rules the module answers for a Hero
+########################################################################
+
+#    ClasslessWildcard.BlockOutsideSpellSources
+#        Class trainers, and the odd quest or item reward, would let a player
+#        learn class spells for gold and bypass the essence and roll economy.
+#        With this on, any library spell learned outside the module is reverted
+#        with a hint pointing at the Hero Advancement system, and gold taken in
+#        the same tick is refunded. Profession and secondary trainers are
+#        unaffected.
+#        Default: 1
+ClasslessWildcard.BlockOutsideSpellSources = 1
+
+#    ClasslessWildcard.ClasslessClassChecks
+#        The core asks "is this player a <class>?" wherever behaviour is
+#        class-specific, and by default the chassis answers, so a Hero inherits
+#        the chassis's restrictions. With this on the module answers YES where
+#        classless should mean every class at once:
+#
+#          * equipping ANY relic. Libram, Idol, Totem, Sigil and the warlock
+#            relic share slot 17, but the core gives that slot to one class
+#            each. On the Paladin chassis a Hero could wear a Libram and
+#            nothing else, however much druid or shaman its build had bought.
+#          * shields, which the core limits to Paladin, Warrior and Shaman.
+#          * the reactive-ability aura states behind Overpower, Revenge,
+#            Riposte and Counterattack, which the core sets only for the class
+#            each belongs to.
+#          * pets. Pet::Create types a pet from its owner's class, so on one
+#            chassis every summoned pet came out untyped. The module types it
+#            from the pet instead, and answers the warlock pet question so a
+#            demon counts as permanent.
+#
+#        The Death Knight pet question is left alone on purpose: LoadPetFromDB
+#        refuses to load a pet for a Death Knight without the Master of Ghouls
+#        flag, so answering it would stop pets loading at all. Everything else
+#        keeps answering with the real chassis class, because Death Knight rune
+#        handling and the stat and talent math break if a character claims to
+#        be every class at once.
+#        Default: 1
+ClasslessWildcard.ClasslessClassChecks = 1
+
+#    ClasslessWildcard.SpellbookTabs
+#        Which spellbook tab a spell lands under is decided by the CLIENT, from
+#        SkillLineAbility.dbc, and is handled by the client patch and the
+#        addon. This setting is the SERVER half: it keeps a Hero's class skill
+#        lines in step with what they know. The core re-adds the chassis
+#        class's lines every login and auto-teaches their starter spells with
+#        them, so a line the Hero has nothing in is taken away, and lines they
+#        do have something in are added so the core's skill bookkeeping stays
+#        consistent.
+#          0 = off, the chassis lines stay and their starter spells return
+#          1 = keep lines in step with what the Hero owns
+#          2 = every class line present from the start
+#        Default: 1
+ClasslessWildcard.SpellbookTabs = 1
+
+#    ClasslessWildcard.FormStarterKits
+#        A form or stance does nothing on its own. With this on, gaining one
+#        hands over the basic spells that go with it, free and immediately:
+#        Cat Form brings Claw and Prowl, Bear Form brings Maul and Demoralizing
+#        Roar, Battle Stance brings Charge, Defensive Stance Taunt, Berserker
+#        Stance Pummel. Neither side has to be a form: Tame Beast brings Call
+#        Pet, Revive Pet, Feed Pet and Dismiss Pet. The pairs are data, in the
+#        `cw_form_kits` world table.
+#
+#        The same flag covers the reverse, which needs no table: an ability
+#        that can ONLY be used in a stance or form hands over that form when
+#        you gain it. Charge brings Battle Stance, Shred brings Cat Form. This
+#        is read from each spell's own shapeshift mask, so it covers every
+#        stance-locked ability in the game.
+#
+#        Anything handed over this way is a free extra, not one of your rolls:
+#        it is not a card in the starting hand, it cannot be rerolled or
+#        unlearned on its own, and it leaves when nothing you own still needs
+#        it.
+#        Default: 1
+ClasslessWildcard.FormStarterKits = 1
+
+#    ClasslessWildcard.IgnoreSpellTools
+#        Some spells demand a class tool before they may be cast: Stoneskin
+#        Totem needs an Earth Totem, Runeforging a runeforge. Those tools are
+#        given to one class each, so the spell arrives with a red "Tools:" line
+#        and refuses to cast however it was earned. With this on the tool
+#        requirement is cleared from every spell in the library. Reagents are
+#        untouched, because those are vendor goods anyone can buy.
+#
+#        The client keeps its own copy of the requirement, so the client patch
+#        clears the same two columns. Without it the tooltip keeps the red line
+#        and the client refuses the cast before the server sees it.
+#        [RESTART REQUIRED]
+#        Default: 1
+ClasslessWildcard.IgnoreSpellTools = 1
+
+#    ClasslessWildcard.CallPetSpell
+#        The spell a hunter pet needs in order to be out. Used only as a
+#        fallback for a beast that records no summoning spell of its own, such
+#        as one from imported data or a GM spawn: when a Hero loses the ability
+#        that summons a pet, the pet is put away rather than left standing
+#        there permanently.
+#        Default: 883
+ClasslessWildcard.CallPetSpell = 883
+
+########################################################################
+# 10  Universal resources
+########################################################################
+#
+#    Every Hero maintains mana, rage AND energy at once, druid-style: the
+#    client tracks all pools, the chassis picks which the default UI displays,
+#    and the addon shows the others as mini-bars. Players can change which pool
+#    the main bar shows with `.classless bar mana|rage|energy|default` or by
+#    clicking a mini-bar, and the choice persists per character.
+#
+#    Spells always draw from their native pool, so a spell whose power type is
+#    not the chassis's own is still castable. Energy and mana regenerate
+#    through the core's normal regeneration and rage decays normally.
 #
 #    Mana is left entirely alone. The chassis is required to be a real mana
-#    class (see Chassis.Class above), so the pool, its base mana, its intellect
-#    scaling and its Spirit regeneration all come from the core exactly as they
-#    would for that class -- five-second rule included. Only rage and energy are
-#    layered on, since the chassis has at most one of them natively. MaxRage is
-#    in internal units (1000 = 100 displayed rage).
+#    class, so the pool, its base mana, its intellect scaling and its Spirit
+#    regeneration all come from the core, five-second rule included. Only rage
+#    and energy are layered on.
 #
-#    Spirit therefore behaves the way it does in the base game: it pays between
-#    fights, and pauses for five seconds after a cast. A Hero who wants it to
-#    pay DURING a fight buys a talent that lifts the rule -- Meditation, Arcane
-#    Meditation or Intensity. Every Hero can buy any of the three, so that is a
-#    build decision rather than a class one, and the module does not pre-empt
-#    it.
+#    Spirit therefore behaves as it does in the base game: it pays between
+#    fights and pauses for five seconds after a cast. A Hero who wants it to
+#    pay during a fight buys Meditation, Arcane Meditation or Intensity, and
+#    every Hero can buy any of the three.
+#
+#    The pools themselves are always on: a Hero owns abilities from every
+#    class, so without them most of a build would be uncastable. Only the
+#    numbers below are tunable.
 
-# Universal resources are always on: a Hero owns abilities from every class, so
-# without the off-chassis pools most of a build would be uncastable. Only the
-# numbers are tunable.
+#    ClasslessWildcard.UniversalResources.MaxRage
+#        Maximum rage in internal units. 1000 is 100 displayed rage.
+#        Default: 1000
 ClasslessWildcard.UniversalResources.MaxRage = 1000
+
+#    ClasslessWildcard.UniversalResources.MaxEnergy
+#        Maximum energy.
+#        Default: 100
 ClasslessWildcard.UniversalResources.MaxEnergy = 100
+
+#    ClasslessWildcard.UniversalResources.RageFromDealtPct
+#    ClasslessWildcard.UniversalResources.RageFromTakenPct
+#        Percentage of the warrior rage-gain formulas applied when the chassis
+#        is not natively a rage class, for damage dealt and damage taken.
+#        Default: 100 and 100
 ClasslessWildcard.UniversalResources.RageFromDealtPct = 100
 ClasslessWildcard.UniversalResources.RageFromTakenPct = 100
 
-########################################
-# Universal stats: every stat matters for every Hero
-########################################
+########################################################################
+# 11  Universal stats
+########################################################################
 #
-#    The shared chassis already applies its math uniformly (STR -> attack
-#    power/block, STA -> health, AGI -> crit/dodge, INT -> mana/spell crit).
-#    This layer fills the chassis's classless gaps so no allocated point is
-#    ever wasted:
-#      AGI  -> +MeleeAPPerAgility melee AP and +RangedAPPerAgility ranged AP
-#              per point (rogue/hunter-style)
-#      INT  -> +SpellPowerPerIntellect spell power per point above 10
-#    Spirit and Stamina are untouched: the chassis already converts both, and
-#    they behave exactly as the base game defines them.
-#    Applies to all non-exempt players; bots keep vanilla stat rules.
+#    The chassis already applies its math uniformly: Strength to attack power
+#    and block, Stamina to health, Agility to crit and dodge, Intellect to mana
+#    and spell crit. This layer fills the classless gaps so no allocated point
+#    is ever wasted:
+#      Agility    -> melee and ranged attack power per point
+#      Intellect  -> spell power per point above 10
+#    Spirit and Stamina are untouched. Applies to every non-exempt player.
 #
-#    Why SpellPowerPerIntellect is 0.5 and not 1.0: a point of spell power is
-#    worth roughly four times a point of attack power (1 SP ~ 0.29 DPS on a 3s
-#    full-coefficient nuke; 1 AP ~ 0.07 DPS), and the chassis already hands
-#    melee 2 AP per point of Strength for free. At 1.0 a Hero's Intellect was
-#    the best offensive stat in the game by a wide margin -- at endgame it
-#    roughly DOUBLED a caster's spell power, where Agility adds well under half
-#    that to a melee's attack power. At 0.5 one point of Intellect is worth
-#    about one point of Strength for damage, and Intellect still carries mana
-#    and spell crit on top, which is the caster's edge for paying a resource
-#    cost per cast. Raise it if you want casters ahead on purpose.
+#    The layer is always on, because the stat screen invites a Hero to spend
+#    points on Agility and Intellect and on one chassis those do almost nothing
+#    without it. Only the rates are tunable.
 
-# The universal stat layer is always on: the stat screen invites a Hero to spend
-# points on Agility and Intellect, and on one chassis those do almost nothing
-# without it. Only the rates are tunable.
+#    ClasslessWildcard.UniversalStats.MeleeAPPerAgility
+#    ClasslessWildcard.UniversalStats.RangedAPPerAgility
+#        Attack power per point of Agility, on top of what the chassis gives.
+#        Default: 1 and 1
 ClasslessWildcard.UniversalStats.MeleeAPPerAgility = 1
 ClasslessWildcard.UniversalStats.RangedAPPerAgility = 1
+
+#    ClasslessWildcard.UniversalStats.SpellPowerPerIntellect
+#        Spell power per point of Intellect above 10.
+#
+#        0.5 rather than 1.0 because a point of spell power is worth roughly
+#        four times a point of attack power, and the chassis already hands
+#        melee 2 attack power per point of Strength for free. At 1.0 Intellect
+#        was the best offensive stat in the game by a wide margin. At 0.5 a
+#        point of Intellect is worth about a point of Strength for damage, and
+#        still carries mana and spell crit on top. Raise it to put casters
+#        ahead on purpose.
+#        Default: 0.5
 ClasslessWildcard.UniversalStats.SpellPowerPerIntellect = 0.5
 
-########################################
-# Primary stat allocation
-########################################
+########################################################################
+# 12  Primary stat allocation
+########################################################################
 #
-#    Ascension's "choose your primary stat allocation, reallocate at will".
-#    Budget = StartingPoints + PointsPerLevel * (level - 1); each point grants
-#    ValuePerPoint of the chosen stat. Reallocation is free, via the addon's
-#    Stats tab or .classless stat str|agi|sta|int|spi <points>.
+#    Budget = StartingPoints + PointsPerLevel * (level - 1), and each point
+#    grants ValuePerPoint of the chosen stat. Reallocation is free, from the
+#    addon's Stats panel or `.classless stat str|agi|sta|int|spi <points>`.
 
+#    ClasslessWildcard.Stats.Enable
+#        Offer primary stat allocation.
+#        Default: 1
 ClasslessWildcard.Stats.Enable = 1
+
+#    ClasslessWildcard.Stats.StartingPoints
+#        Points a level 1 Hero has.
+#        Default: 4
 ClasslessWildcard.Stats.StartingPoints = 4
+
+#    ClasslessWildcard.Stats.PointsPerLevel
+#        Points granted per level.
+#        Default: 2
 ClasslessWildcard.Stats.PointsPerLevel = 2
+
+#    ClasslessWildcard.Stats.ValuePerPoint
+#        Stat value each point grants.
+#        Default: 1
 ClasslessWildcard.Stats.ValuePerPoint = 1
 
-########################################
-# Rebirth (late exit / mode switch)
-########################################
+########################################################################
+# 13  World drops
+########################################################################
 #
-#    ClasslessWildcard.Rebirth.Enable
-#        Allow a full reset that wipes all abilities/talents and lets the
-#        character switch path (classless <-> wildcard) after the mode-choice
-#        deadline, for gold. Wildcard rebirths replay the whole roll schedule
-#        for the character's level.
+#    Classless gear as world drops, so the Hero Advancement NPC is not the only
+#    answer to "where does gear come from". Nothing here touches
+#    creature_loot_template: drops are added to the kill's loot in C++, so
+#    there is no world data to revert.
+
+#    ClasslessWildcard.WorldDrops.Enable
+#        Let any mob drop a piece of the classless catalogue. The piece is
+#        banded to the MOB's level, not the killer's, so a level 20 zone yields
+#        level 20 gear whoever kills there. Critters, totems, pets and summons
+#        never drop.
 #        Default: 1
-#
+ClasslessWildcard.WorldDrops.Enable = 1
+
+#    ClasslessWildcard.WorldDrops.Chance
+#        Percent chance per qualifying kill, so roughly one piece per hundred
+#        mobs at the default.
+#        Default: 1.0
+ClasslessWildcard.WorldDrops.Chance = 1.0
+
+#    ClasslessWildcard.WorldDrops.RareMultiplier
+#        Chance is multiplied by this for rares, rare elites and world bosses.
+#        Default: 5.0
+ClasslessWildcard.WorldDrops.RareMultiplier = 5.0
+
+#    ClasslessWildcard.WorldDrops.HeirloomChance
+#        Percent chance of a scaling heirloom, rolled ONLY on rares, rare
+#        elites and world bosses, and rolled before the ordinary drop as the
+#        better prize. Heirlooms scale to 80, so this is the one that matters
+#        most. Set it to 0 to keep them vendor-only.
+#        Default: 2.0
+ClasslessWildcard.WorldDrops.HeirloomChance = 2.0
+
+########################################################################
+# 14  Rebirth
+########################################################################
+
+#    ClasslessWildcard.Rebirth.Enable
+#        Allow a full reset that wipes every ability and talent and lets a
+#        character switch path after the mode-choice deadline, for gold. A
+#        Wildcard rebirth replays the whole roll schedule for the character's
+#        level.
+#        Default: 1
+ClasslessWildcard.Rebirth.Enable = 1
+
 #    ClasslessWildcard.Rebirth.CostGold
 #        Gold cost of a Rebirth.
 #        Default: 100
-
-ClasslessWildcard.Rebirth.Enable = 1
 ClasslessWildcard.Rebirth.CostGold = 100
 
-########################################
-# Misc
-########################################
-#
+########################################################################
+# 15  Hero Advancement NPC
+########################################################################
+
 #    ClasslessWildcard.NpcEntry
 #        creature_template entry of the Hero Advancement NPC.
 #        Default: 990100
-
 ClasslessWildcard.NpcEntry = 990100

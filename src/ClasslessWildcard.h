@@ -348,7 +348,7 @@ namespace ClasslessWildcard
         std::array<uint32, 4> rarityTalentRow = { 2, 4, 6, 8 };
         std::array<uint32, 2> rarityLevel = { 25, 50 };   // uncommon, rare. no higher
 
-        std::array<uint32, 5> wcRarityWeights = { 100, 95, 90, 85, 80 };
+        std::array<uint32, 5> wcRarityWeights = { 100, 85, 65, 45, 25 };
         // Weight per talent RANK, rank 1 first. Separate from the rarity
         // weights above because the two do different jobs: rarity decides
         // which talent, rank decides how much of it you get in one roll, and

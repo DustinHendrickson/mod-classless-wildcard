@@ -261,11 +261,11 @@ void ClasslessMgr::LoadConfig(bool /*reload*/)
     cfg.wcFreeRerollLevel = sConfigMgr->GetOption<uint8>("ClasslessWildcard.Wildcard.FreeRerollBelowLevel", 10);
 
     {
-        // Season 9 default: equal weights = pure random ("no weighting, no hidden
-        // rules"). Set descending weights (e.g. 100,60,30,10,3) for Season-10-style
-        // rarity-weighted rolls.
+        // Roll weight per rarity. Equal weights make every entry in the pool
+        // exactly as likely; the default ladder makes a legendary roll at a
+        // quarter the rate of a common.
         std::vector<uint32> weights = ParseUintList(sConfigMgr->GetOption<std::string>(
-            "ClasslessWildcard.Wildcard.RarityWeights", "100,95,90,85,80"));
+            "ClasslessWildcard.Wildcard.RarityWeights", "100,85,65,45,25"));
         for (size_t i = 0; i < weights.size() && i < 5; ++i)
             cfg.wcRarityWeights[i] = weights[i];
     }
@@ -1769,10 +1769,9 @@ uint8 ClasslessMgr::RollTalentRank(TalentPoolEntry const& t, uint8 fromRank) con
     if (fromRank >= t.maxRank)
         return 0;
 
-    // Weighted by RANK, not by the rank's rarity. The rarity ladder is a
-    // gentle slope by design (a legendary rolls at 80% the rate of a common),
-    // and using it here made rank 5 nearly as likely as rank 1 -- one roll
-    // handing over five ranks about as often as one.
+    // Weighted by RANK on its own ladder, not by the rank's rarity. A rank is
+    // a whole talent point where a rarity is only which entry came up, so the
+    // two are tuned separately.
     auto rankWeight = [&](uint8 r) -> uint32
     {
         return cfg.wcTalentRankWeights[std::min<uint8>(uint8(r - 1), 4)];

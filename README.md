@@ -361,7 +361,7 @@ and are documented inline. The ones most likely to need changing:
 | `Wildcard.StartingAbilities`                        | `4`          | Abilities rolled at level 1. 4 is the maximum, and is clamped   |
 | `Wildcard.RollStartLevel`                           | `10`         | Level the roll schedule begins                                 |
 | `Wildcard.TalentEveryLevels` / `AbilityEveryLevels` | `1` / `2`    | Roll cadence                                                   |
-| `Wildcard.RarityWeights`                            | `100,95,90,85,80` | Roll weights per rarity tier. Also picks talent rank        |
+| `Wildcard.RarityWeights`                            | `100,85,65,45,25` | Roll weight per rarity tier: which entry a roll lands on    |
 | `Wildcard.FreeRerollBelowLevel`                     | `10`         | Rerolls are free under this level                              |
 | `Wildcard.ScrollBuyEnable`                          | `1`          | Buy Scroll button on the addon panel                           |
 | `Wildcard.ScrollBuyBaseCopper` / `...PerLevelCopper`  | `500` / `500`| Scroll price in copper: base + per-level x level               |

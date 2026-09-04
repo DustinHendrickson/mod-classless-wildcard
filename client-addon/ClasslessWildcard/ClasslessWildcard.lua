@@ -1097,7 +1097,7 @@ local function BuildHelpText()
 "The server rolls abilities and talents for you on a fixed schedule:",
 "   |cff00ff00Level 1:|r  4 random abilities to begin.",
 "   |cff00ff00From level 10:|r  one roll every level, alternating -- an ability on the even levels, a talent on the odd ones. Talents come no more often than abilities because a talent roll can land on rank 5 outright.",
-"Rolls are rarity-weighted: a legendary turns up a little less often than a common.",
+"Rolls are rarity-weighted: a legendary turns up about a quarter as often as a common, so most of what you are dealt is common and a legendary is a real find.",
 "A talent roll also rolls the |cffffd100rank|r you land on, and the rank IS its rarity: rank 1 common, rank 2 uncommon, rank 3 rare, rank 4 epic, |cffff8000rank 5 legendary|r. The rank is drawn from anything above what you already have, not one step up, so a talent you hold at rank 2 can jump straight to rank 5 -- and a talent you have never seen can arrive at its top rank. A high rank is the jackpot: rolls cost you nothing, so landing on rank 5 hands you the full-strength talent for free, where a Classless Hero pays for every rank up to it. Rolling into a talent you already own upgrades it, and only ever to a rank above the one you hold. One roll gives you one thing: it never chains.",
 "You steer your luck:",
 "   |cffffd100Rerolls|r -- every level from 10 grants you 3 reroll charges, and rerolls are free below level 10. One pool, spent on abilities or talents alike. Reroll straight from the popup, or later from |cffffd100My Build|r using the circular arrow next to anything you own.",
