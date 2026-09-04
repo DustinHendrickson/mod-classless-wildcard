@@ -88,6 +88,30 @@ the module's auto-applied `cw_world_hero_races.sql` adds the missing
 Troll); stats derive from `player_race_stats` x `player_class_stats`, so only the
 start position and action bar need adding.
 
+### `Spell.dbc` — the class tool requirement
+
+234 `uint32` per record. Four columns are cleared, and only for spells that
+appear on a category-7 (class) `SkillLineAbility` row:
+
+```
+50, 51     Totem[2]                  a named item the caster must hold
+222, 223   RequiredTotemCategoryID   a tool category: Earth Totem, Runeforge
+```
+
+A Hero draws spells from every class and is handed no class's tools, so
+Stoneskin Totem arrives with a red `Tools: Earth Totem` line and will not cast.
+The server clears the same two fields on its own `SpellInfo`
+(`ClasslessWildcard.IgnoreSpellTools`); the client copy is what removes the
+tooltip line and stops the client refusing the cast before it is ever sent, so
+both halves are needed. Profession recipes keep their hammer and their skinning
+knife — around 2190 rows still require a tool after the pass. Reagents are a
+different mechanism and are untouched.
+
+`lib/dbc.py: clear_spell_tools()` does the work and `class_spell_ids()` builds
+the set it is scoped to. `build_data_patch` runs it, then `elemental.apply`
+appends the variant rows to the *patched* table rather than re-reading the
+archive copy.
+
 ### `GlueStrings.lua` — the creation screen copy
 
 The keys the 3.3.5a creation screen reads, per class token:

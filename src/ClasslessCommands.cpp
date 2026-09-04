@@ -231,7 +231,7 @@ public:
             spent, budget, budget > spent ? budget - spent : 0, v);
         handler->PSendSysMessage("STR {} | AGI {} | STA {} | INT {} | SPI {} (points)",
             st.statAlloc[0], st.statAlloc[1], st.statAlloc[2], st.statAlloc[3], st.statAlloc[4]);
-        handler->SendSysMessage("Set one with: .classless stat str|agi|sta|int|spi <points> — reallocation is free.");
+        handler->SendSysMessage("Set one with: .classless stat str|agi|sta|int|spi <points>. Reallocation is free.");
         return true;
     }
 

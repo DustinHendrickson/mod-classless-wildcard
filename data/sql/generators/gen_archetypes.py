@@ -54,8 +54,15 @@ CLASS_BITS = {"Warrior": 1, "Paladin": 2, "Hunter": 4, "Rogue": 8, "Priest": 16,
               "Death Knight": 32, "Shaman": 64, "Mage": 128, "Warlock": 256, "Druid": 1024}
 SKILL_CATEGORY_CLASS = 7
 ATTR0_PASSIVE = 0x40
+ATTR2_AUTO_REPEAT = 0x20
+F_ATTRIBUTES_EX2 = 6
+F_ACQUIRE_METHOD = 9      # SkillLineAbility.dbc column
 UTILITY_EFFECTS = {25, 60, 40, 39, 47, 118, 78}   # weapon, proficiency, dual wield, language, trade skill, skill, attack
 E_LEARN_SPELL = 36
+# Kept out of the pool by cw_ability_override in cw_world_base.sql: they arrive
+# with Tame Beast through cw_form_kits and are useless without it, so a build
+# must not try to buy one.
+POOL_DISABLED = {883, 982, 6991, 2641}
 MAX_TALENT_RANK = 5
 RARITY_NAMES = ["common", "uncommon", "rare", "epic", "legendary"]
 
@@ -524,9 +531,11 @@ class Pool:
         self.talent = Dbc(os.path.join(dbc_dir, "Talent.dbc"))
         self.tab = Dbc(os.path.join(dbc_dir, "TalentTab.dbc"))
         base = os.path.join(core_dir, "data", "sql", "base", "db_world")
+        # _talents first: _trainer_levels needs to know which spells belong to a
+        # talent before it decides what a class learns
+        self._talents()
         self.learn_levels = self._trainer_levels(os.path.join(base, "trainer_spell.sql"))
         self.first_of, self.chain_of = self._ranks(os.path.join(base, "spell_ranks.sql"))
-        self._talents()
         self._abilities()
         self._variants(manifest)
         self._replaced_talents()
@@ -560,6 +569,47 @@ class Pool:
                     wrapper = True
             if not wrapper:
                 levels[sid] = min(levels.get(sid, 255), req_lvl)
+
+        # Trainers are not the only way a class gets a spell, and the module
+        # counts the other two as well (see ClasslessMgr::BuildLibrary). Keep
+        # these in step with it or the generator plans builds out of a library
+        # the server does not have.
+        class_spells = set()
+        class_lines = {self.skill.u(r, 0) for r in range(self.skill.rows)
+                       if self.skill.u(r, 1) == SKILL_CATEGORY_CLASS}
+        for r in range(self.sla.rows):
+            line, sp, cls = self.sla.u(r, 1), self.sla.u(r, 2), self.sla.u(r, 4)
+            if not cls or line not in class_lines:
+                continue
+            class_spells.add(sp)
+            # learned with the class itself (AcquireMethod 1 or 2)
+            if self.sla.u(r, F_ACQUIRE_METHOD) not in (1, 2):
+                continue
+            row = self.spell.row_of(sp)
+            if row is None or self.spell.u(row, F["Attributes"]) & ATTR0_PASSIVE:
+                continue
+            lvl = self.spell.u(row, F["SpellLevel"]) or self.spell.u(row, F["BaseLevel"])
+            if lvl and sp not in levels:
+                levels[sp] = min(lvl, 255)
+
+        # taught by a class quest's reward spell ("Path of Defense" and friends).
+        # A TALENT that teaches a spell does not count: the spell belongs to the
+        # talent, and making it an ability line would take the talent off the
+        # tree and strand whatever depends on it.
+        for r in range(self.spell.rows):
+            if self.spell.u(r, 0) in self.talent_spells:
+                continue
+            for e in range(3):
+                if self.spell.u(r, F["Effect"] + e) != E_LEARN_SPELL:
+                    continue
+                taught = self.spell.u(r, F["EffectTriggerSpell"] + e)
+                if not taught or taught in levels or taught not in class_spells:
+                    continue
+                trow = self.spell.row_of(taught)
+                if trow is None:
+                    continue
+                lvl = self.spell.u(trow, F["SpellLevel"]) or self.spell.u(trow, F["BaseLevel"]) or 1
+                levels[taught] = min(lvl, 255)
         return levels
 
     def _ranks(self, path):
@@ -639,7 +689,12 @@ class Pool:
                 continue
             if any(self.spell.u(row, F["Effect"] + e) in UTILITY_EFFECTS for e in range(3)):
                 continue
+            # ranged auto-attacks are not abilities to roll or buy
+            if self.spell.u(row, F_ATTRIBUTES_EX2) & ATTR2_AUTO_REPEAT:
+                continue
             first = self.first_of.get(sp, sp)
+            if first in POOL_DISABLED:
+                continue
             entry = lines.setdefault(first, dict(first=first, class_mask=0))
             entry["class_mask"] |= cls
 

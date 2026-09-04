@@ -136,13 +136,29 @@ Keep it, or spend a reroll.</em>
 - **All proficiencies taught.** Armor, weapons and dual wield, each configurable.
 - **The base class never restricts a build.** Any relic equips, shields work, and Overpower,
   Revenge, Riposte and Counterattack fire regardless of base class.
-- **Forms and stances arrive usable.** Gaining a form also grants its basic abilities, so Cat
-  Form brings Claw and Prowl, Bear Form brings Maul, Defensive Stance brings Taunt, and so on.
-  The pairs are rows in `cw_form_kits`.
+- **Every item is open to every Hero.** Class armour sets, all 353 glyphs, rogue poisons, soul
+  bags, quivers and the relics that carry a class mask of their own are usable by anyone. The
+  core checks the item's class mask before any script can answer, so this is done in the world
+  database and is reversible with `data/sql/manual/cw_item_classes_revert.sql`.
+- **Abilities that need each other arrive together.** Gaining a form also grants its basic
+  abilities, so Cat Form brings Claw and Prowl, Bear Form brings Maul, Defensive Stance brings
+  Taunt. Tame Beast brings Call Pet, Revive Pet, Feed Pet and Dismiss Pet, which are otherwise
+  out of the pool because none of them does anything without it. The pairs are rows in
+  `cw_form_kits` and neither side has to be a form. It works the other way too: an ability that
+  can only be used in a stance or a form brings that form with it, so Rend and Charge bring
+  Battle Stance and Shred brings Cat Form. Anything that arrives this way is free and is not one
+  of your rolls. It is not a card in the starting hand, it cannot be rerolled or unlearned on
+  its own, and it leaves when nothing you own still needs it.
+- **No spell asks for a class tool.** Stoneskin Totem wants an Earth Totem and Runeforging wants
+  a runeforge, tools handed to one class each. Every spell in the library drops that requirement,
+  on the server and in the client patch, so it casts whoever earned it. Reagents are unchanged.
+- **A summon leaves with its spell.** Reroll Summon Imp away and the imp is dismissed instead of
+  standing there permanently. Tamed beasts are not affected.
 - **Class quests are open to everyone.** Every class quest chain is reachable by every Hero.
   Applied by the module SQL and reversible with `data/sql/manual/cw_class_quests_revert.sql`.
   A quest reward that would teach a class ability grants nothing for that part. Item, XP, gold
-  and reputation rewards are unchanged.
+  and reputation rewards are unchanged. The same goes for an item that teaches one: a class
+  trainer's gold is returned, and a book is spent.
 
 ### Gear
 
@@ -216,17 +232,23 @@ It installs:
 The creation-screen text lives in a signed game file, so the installer also applies the standard
 "allow custom interface" patch to `Wow.exe`. It backs the file up first.
 
-### Optional: unlock every item for every class
+### Every item is unlocked for every class
 
-`data/sql/manual/cw_classless_items.sql` removes the class restriction from every item in the
-game. It is not applied by the updater and must be run by hand.
+`data/sql/db-world/cw_world_item_classes.sql` clears `item_template`.`AllowableClass` on the
+6,509 items that carry a class restriction, and is applied by the updater like the rest of the
+module SQL. The core tests that mask in `Player::CanUseItem` and returns before any script hook
+can answer, so the world database is the only place it can be done.
 
-> **This script is destructive.** It overwrites `item_template`.`AllowableClass` with `-1` for
-> every item and keeps no backup. Back up `item_template` first. Players should clear their
-> client `Cache` folder afterwards.
->
-> If you installed this module before September 2026, an earlier version applied this script
-> automatically. Check with
+Without it a Hero is limited to the base class's items: no class armour set, no glyph but the
+base class's, no rogue poison, no soul bag, and six relics that carry a class mask of their own
+stay unusable however many druid or shaman spells the build has bought.
+
+The original masks are copied into `cw_item_class_backup` first, so
+`data/sql/manual/cw_item_classes_revert.sql` and the world uninstall script both put them back.
+Players should clear their client `Cache` folder after the first apply.
+
+> If you installed this module before September 2026, an earlier version shipped this as an
+> opt-in script that kept no backup. Check with
 > `SELECT * FROM acore_world.updates WHERE name = 'cw_classless_items.sql';`. If a row comes
 > back, your `item_template` was already overwritten and only a backup will restore it.
 
@@ -317,7 +339,7 @@ and are documented inline. The ones most likely to need changing:
 | `Classless.TalentEssencePerLevel`                   | `1`          | TE per level                                                   |
 | `Classless.TalentFlatCost`                          | `0`          | Charge only rank 1, so a talent costs 1 point total            |
 | `Classless.RespecCostGold`                          | `50`         | Gold cost of a full respec                                     |
-| `Wildcard.StartingAbilities`                        | `4`          | Abilities rolled at level 1                                    |
+| `Wildcard.StartingAbilities`                        | `4`          | Abilities rolled at level 1. 4 is the maximum, and is clamped   |
 | `Wildcard.RollStartLevel`                           | `10`         | Level the roll schedule begins                                 |
 | `Wildcard.TalentEveryLevels` / `AbilityEveryLevels` | `1` / `2`    | Roll cadence                                                   |
 | `Wildcard.RarityWeights`                            | `100,95,90,85,80` | Roll weights per rarity tier. Also picks talent rank        |
@@ -330,6 +352,7 @@ and are documented inline. The ones most likely to need changing:
 | `UniversalStats.RangedAPPerAgility`                 | `1`          | Ranged attack power per Agility, on top of the chassis's own 1 |
 | `ClasslessWildcard.ClasslessClassChecks`            | `1`          | Any relic equips; shields and reactive abilities work          |
 | `ClasslessWildcard.FormStarterKits`                 | `1`          | Forms and stances hand over their basic spells free            |
+| `ClasslessWildcard.IgnoreSpellTools`                | `1`          | Spells no longer need a class tool such as an Earth Totem      |
 | `ClasslessWildcard.Elemental.Enable`                | `1`          | Elemental variants of physical strikes in the pool           |
 | `ClasslessWildcard.Elemental.RarityBump`            | `1`          | Rarity tiers a variant sits above its base attack            |
 | `ClasslessWildcard.Elemental.RollWeightPct`         | `15`         | How often a variant rolls, as a percent of its base's weight |
@@ -466,8 +489,10 @@ Do this with the worldserver stopped:
 
 **What does not revert automatically:**
 
-- **`manual/cw_classless_items.sql`**, if you ran it. It kept no backup. Restore `item_template`
-  from your pre-install backup, or re-import it from the AzerothCore base SQL for your revision.
+- **Item class masks cleared by the OLD opt-in `manual/cw_classless_items.sql`**, if you ran that
+  version. It kept no backup, so `cw_item_class_backup` has nothing to restore for those rows:
+  re-import `item_template` from the AzerothCore base SQL for your revision. Masks cleared by the
+  current `cw_world_item_classes.sql` are restored automatically.
 - **Same-class spells.** Abilities that are legal for the base class survive validation. They are
   harmless, and a GM can `.unlearn` them.
 - **Characters created while the module was active** received the Hero starter kit instead of

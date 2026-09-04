@@ -353,11 +353,17 @@ def apply(files, payload: dict, manifest: dict, report: list, want_icons: bool =
                 payload[ICON_DIR + icon_file_stem(icon) + ".blp"] = out
     retarget_unpainted(variants, painted)
 
-    raw, source = files.find(SPELL)
+    # build on the patched table when there is one: build_data_patch has
+    # already cleared the class tool columns, and reading the archive copy
+    # again would throw that away
+    if SPELL in payload:
+        raw, source = payload[SPELL], "patched table"
+    else:
+        raw, source = files.find(SPELL)
     patched, added, missing = append_spells(raw, variants)
     payload[SPELL] = patched
     report.append("  Spell.dbc        %d elemental variant rows appended (from %s)"
-                  % (added, os.path.basename(source)))
+                  % (added, source if source == "patched table" else os.path.basename(source)))
     if missing:
         report.append("  Spell.dbc        %d variant(s) skipped, base spell not in this client: %s"
                       % (len(missing), ", ".join(str(m) for m in sorted(set(missing))[:8])))

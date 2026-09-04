@@ -88,7 +88,12 @@ namespace
         Config const& cfg = sClasslessMgr->cfg;
         uint32 chance = std::min<uint32>(cfg.wcSynergyBaseChance + st.pity * cfg.wcSynergyIncrement, 100);
         uint32 scrolls = player->GetItemCount(cfg.wcScrollItemId);
-        SendAddon(player, Acore::StringFormat("S|{}|{}|{}|{}|{}|{}|{}|{}|{}|{}|{}|{}|{}|{}",
+        // Field 16 is the level free rerolls stop at. The addon used to hard-code
+        // 10 for the starting-hand window and the "Reroll (free)" label, so a
+        // realm that tuned Wildcard.FreeRerollLevel got an addon that disagreed
+        // with its own server. Fields are read by position now, and anything the
+        // addon does not know about is ignored, so the packet can simply grow.
+        SendAddon(player, Acore::StringFormat("S|{}|{}|{}|{}|{}|{}|{}|{}|{}|{}|{}|{}|{}|{}|{}",
             uint32(st.mode), st.abilityEssence, st.talentEssence, st.pity, chance,
             scrolls, player->GetLevel(), cfg.modeChoiceDeadline,
             cfg.rebirthEnable ? 1 : 0, cfg.rebirthCostGold,
@@ -99,7 +104,8 @@ namespace
             // whether to show them.
             st.rerolls, (cfg.universalResources && !sClasslessMgr->IsExempt(player)) ? 1 : 0,
             sClasslessMgr->ScrollBuyCost(player->GetLevel()),
-            (cfg.wcScrollBuyEnable && player->GetLevel() >= cfg.wcFreeRerollLevel) ? 1 : 0));
+            (cfg.wcScrollBuyEnable && player->GetLevel() >= cfg.wcFreeRerollLevel) ? 1 : 0,
+            uint32(cfg.wcFreeRerollLevel)));
 
         // Talent pricing, so the browser can label what a talent actually
         // costs instead of assuming. Sent as its own message rather than more
@@ -478,7 +484,7 @@ namespace
             if (n)
                 SendOk(player, "RRALL");
             else
-                SendErr(player, err.empty() ? "Nothing to reroll — everything is locked." : err);
+                SendErr(player, err.empty() ? "Nothing to reroll: everything is locked." : err);
         }
         else if (cmd == "RRT")
             sClasslessMgr->Reroll(player, true, argNum(1), &err) ? SendOk(player, "RRT") : SendErr(player, err);

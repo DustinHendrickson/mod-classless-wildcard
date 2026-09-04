@@ -20,6 +20,7 @@
 #include "DatabaseEnv.h"
 #include "Log.h"
 #include "ObjectMgr.h"
+#include "Pet.h"
 #include "Player.h"
 #include "Random.h"
 #include "SharedDefines.h"
@@ -206,6 +207,7 @@ void ClasslessMgr::LoadConfig(bool /*reload*/)
     cfg.classlessClassChecks = sConfigMgr->GetOption<bool>("ClasslessWildcard.ClasslessClassChecks", true);
     cfg.spellbookTabs = uint8(sConfigMgr->GetOption<uint32>("ClasslessWildcard.SpellbookTabs", 1));
     cfg.formKitsEnable = sConfigMgr->GetOption<bool>("ClasslessWildcard.FormStarterKits", true);
+    cfg.ignoreSpellTools = sConfigMgr->GetOption<bool>("ClasslessWildcard.IgnoreSpellTools", true);
     cfg.elementalEnable = sConfigMgr->GetOption<bool>("ClasslessWildcard.Elemental.Enable", true);
     cfg.elementalRarityBump = sConfigMgr->GetOption<uint32>("ClasslessWildcard.Elemental.RarityBump", 1);
     cfg.elementalRollWeightPct = sConfigMgr->GetOption<uint32>("ClasslessWildcard.Elemental.RollWeightPct", 15);
@@ -240,7 +242,18 @@ void ClasslessMgr::LoadConfig(bool /*reload*/)
             cfg.abilityCostByRarity[i] = costs[i];
     }
 
+    // The starting hand is FOUR cards. The screen is built around four and the
+    // number is the mechanic, not a display limit, so a larger setting is
+    // clamped rather than half-dealt.
     cfg.wcStartingAbilities = sConfigMgr->GetOption<uint32>("ClasslessWildcard.Wildcard.StartingAbilities", 4);
+    if (cfg.wcStartingAbilities > ClasslessWildcard::MAX_STARTING_HAND)
+    {
+        LOG_ERROR("module.classless",
+                  "mod-classless-wildcard: ClasslessWildcard.Wildcard.StartingAbilities = {} is above the "
+                  "maximum starting hand of {}; using {}",
+                  cfg.wcStartingAbilities, ClasslessWildcard::MAX_STARTING_HAND, ClasslessWildcard::MAX_STARTING_HAND);
+        cfg.wcStartingAbilities = ClasslessWildcard::MAX_STARTING_HAND;
+    }
     cfg.wcRollStartLevel = sConfigMgr->GetOption<uint8>("ClasslessWildcard.Wildcard.RollStartLevel", 10);
     cfg.wcAbilityEveryLevels = std::max<uint32>(1, sConfigMgr->GetOption<uint32>("ClasslessWildcard.Wildcard.AbilityEveryLevels", 2));
     cfg.wcFreeRerollLevel = sConfigMgr->GetOption<uint8>("ClasslessWildcard.Wildcard.FreeRerollBelowLevel", 10);
@@ -333,6 +346,9 @@ void ClasslessMgr::BuildLibrary()
     // variants ("Demonic Immolate") and tiers every rank by the level a real
     // class would learn it.
     std::unordered_map<uint32, uint8> learnLevels; // spellId -> req level
+    // Spells that reached learnLevels ONLY because another spell teaches them.
+    // The dedupe below needs to tell those apart: see the comment there.
+    std::unordered_set<uint32> taughtOnly;
     bool useTrainerFilter = cfg.trainerTaughtOnly;
     if (useTrainerFilter)
     {
@@ -388,6 +404,86 @@ void ClasslessMgr::BuildLibrary()
                         learnLevels.emplace(res->Fetch()[0].Get<uint32>(), uint8(1));
                     while (res->NextRow());
 
+            // Trainers are not the only way a class gets a spell, and the two
+            // gaps mattered: a spell learned automatically with the class
+            // (every starting ability, and Battle Stance) and a spell handed
+            // over by a class quest (Defensive Stance, Berserker Stance,
+            // Taunt, Bear Form, Maul, the warlock's demons, the shaman's
+            // totems). Neither is on a trainer list, so the filter dropped
+            // every one of them -- which is why Rend could be rolled while
+            // Battle Stance, the stance Rend cannot be used outside of, was
+            // not in the library at all and could never be handed over.
+            //
+            // Both are read from the client's own data rather than a list of
+            // ids, so they follow whatever a realm's DBCs actually say.
+            uint32 autoLearned = 0, questTaught = 0;
+            {
+                std::unordered_set<uint32> classSpells;
+                for (uint32 i = 0; i < sSkillLineAbilityStore.GetNumRows(); ++i)
+                {
+                    SkillLineAbilityEntry const* sla = sSkillLineAbilityStore.LookupEntry(i);
+                    if (!sla || !sla->ClassMask)
+                        continue;
+                    SkillLineEntry const* line = sSkillLineStore.LookupEntry(sla->SkillLine);
+                    if (!line || line->categoryId != SKILL_CATEGORY_CLASS)
+                        continue;
+                    classSpells.insert(sla->Spell);
+
+                    // AcquireMethod 1/2: learned with the skill line itself
+                    if (sla->AcquireMethod != SKILL_LINE_ABILITY_LEARNED_ON_SKILL_VALUE
+                        && sla->AcquireMethod != SKILL_LINE_ABILITY_LEARNED_ON_SKILL_LEARN)
+                        continue;
+                    SpellInfo const* si = sSpellMgr->GetSpellInfo(sla->Spell);
+                    if (!si)
+                        continue;
+                    // hidden state and proc passives ride in the same way and
+                    // are not abilities: they carry no level of their own
+                    if (si->IsPassive())
+                        continue;
+                    uint32 lvl = si->SpellLevel ? si->SpellLevel : si->BaseLevel;
+                    if (!lvl)
+                        continue;
+                    if (learnLevels.emplace(sla->Spell, uint8(std::min<uint32>(lvl, 255))).second)
+                        ++autoLearned;
+                }
+
+                // Taught by another spell. Class quests reward a wrapper --
+                // "Path of Defense", "Path of the Berserker", "Bear Form",
+                // "Teach Summon Voidwalker" -- whose only effect is to teach
+                // the real ability, so the ability itself appears on no list.
+                for (uint32 sid = 1; sid < sSpellMgr->GetSpellInfoStoreSize(); ++sid)
+                {
+                    SpellInfo const* teacher = sSpellMgr->GetSpellInfo(sid);
+                    if (!teacher)
+                        continue;
+                    // A TALENT that teaches a spell is not a quest: the spell
+                    // is part of the talent and belongs to the talent tree.
+                    // Admitting Primal Fury, Spirit Weapons and Tree of Life
+                    // here would make each of them an ability line, which
+                    // takes the talent off the tree (ReplaceAbilityTalents)
+                    // and strands everything that depends on it.
+                    if (GetTalentSpellCost(sid))
+                        continue;
+                    for (uint8 ei = 0; ei < MAX_SPELL_EFFECTS; ++ei)
+                    {
+                        if (teacher->Effects[ei].Effect != SPELL_EFFECT_LEARN_SPELL)
+                            continue;
+                        uint32 taught = uint32(teacher->Effects[ei].TriggerSpell);
+                        if (!taught || !classSpells.count(taught))
+                            continue;
+                        SpellInfo const* si = sSpellMgr->GetSpellInfo(taught);
+                        if (!si)
+                            continue;
+                        uint32 lvl = si->SpellLevel ? si->SpellLevel : si->BaseLevel;
+                        if (learnLevels.emplace(taught, uint8(std::min<uint32>(lvl ? lvl : 1, 255))).second)
+                        {
+                            taughtOnly.insert(taught);
+                            ++questTaught;
+                        }
+                    }
+                }
+            }
+
             if (learnLevels.empty())
             {
                 LOG_ERROR("module.classless", "mod-classless-wildcard: trainer tables yielded no class spells — "
@@ -395,7 +491,9 @@ void ClasslessMgr::BuildLibrary()
                 useTrainerFilter = false;
             }
             else
-                LOG_INFO("module.classless", "mod-classless-wildcard: {} trainer/starter spells collected", learnLevels.size());
+                LOG_INFO("module.classless", "mod-classless-wildcard: {} spells classes actually learn collected "
+                         "({} learned with the class, {} from class quests)",
+                         learnLevels.size(), autoLearned, questTaught);
         }
     }
 
@@ -428,6 +526,13 @@ void ClasslessMgr::BuildLibrary()
         if (GetTalentSpellCost(sla->Spell)) // talent spells live in the talent pool
             continue;
         if (info->IsPassive() && !cfg.includePassives)
+            continue;
+        // Ranged auto-attacks (Auto Shot, Shoot, Throw) are not abilities to
+        // roll for: they fire on their own once a ranged weapon is equipped,
+        // and the module already teaches the ones a Hero needs as
+        // proficiencies. Auto Shot is learned with the Hunter class rather
+        // than from a trainer, so nothing else keeps it out.
+        if (info->HasAttribute(SPELL_ATTR2_AUTO_REPEAT))
             continue;
         if (cfg.excludedSpells.count(sla->Spell))
             continue;
@@ -532,11 +637,15 @@ void ClasslessMgr::BuildLibrary()
     }
 
     // Dedupe by NAME: the DBC holds multiple spell ids with identical names
-    // (unchained copies, NPC variants). Keep the best line per name — most
-    // ranks, then lowest id — and disable the rest, merging class masks so
-    // browsing still finds the survivor under every class.
+    // (unchained copies, NPC variants, Polymorph: Pig against Polymorph). Keep
+    // the best line per name -- most ranks, then lowest id -- and take the rest
+    // out of play, merging class masks so browsing still finds the survivor
+    // under every class. A loser the module could still grant under the
+    // surviving name is disabled; one that only ever came from a quest or an
+    // item is dropped outright, so that source keeps working.
     {
         std::unordered_map<std::string, AbilityEntry*> byName;
+        std::vector<uint32> dropped;
         uint32 disabled = 0;
         for (auto& [first, e] : _abilities)
         {
@@ -548,20 +657,49 @@ void ClasslessMgr::BuildLibrary()
             AbilityEntry* keep = itr2->second;
             bool newBetter = e.ranks.size() > keep->ranks.size()
                 || (e.ranks.size() == keep->ranks.size() && e.firstSpellId < keep->firstSpellId);
+            AbilityEntry* loser = newBetter ? keep : &e;
             if (newBetter)
             {
                 e.classMask |= keep->classMask;
-                keep->enabled = false;
                 itr2->second = &e;
             }
             else
-            {
                 keep->classMask |= e.classMask;
-                e.enabled = false;
+
+            // A duplicate that is in the library ONLY because something teaches
+            // it -- Polymorph: Pig, from its mage quest -- leaves the library
+            // altogether rather than sitting here disabled. Disabled is the
+            // worst of both: the Hero can never roll or buy it, AND
+            // BlockOutsideSpellSources takes it back off them when the quest
+            // hands it over, so the reward silently does nothing. Dropping the
+            // line puts it back outside the module, where the quest teaches it
+            // like it does on any realm. Lines that a trainer or the class
+            // itself also teaches stay, disabled: those the module can grant
+            // under their surviving name.
+            bool taughtDuplicate = !loser->ranks.empty();
+            for (uint32 rankSpell : loser->ranks)
+                if (!taughtOnly.count(rankSpell))
+                    taughtDuplicate = false;
+            if (taughtDuplicate)
+                dropped.push_back(loser->firstSpellId);
+            else
+            {
+                loser->enabled = false;
+                ++disabled;
             }
-            ++disabled;
         }
-        LOG_INFO("module.classless", "mod-classless-wildcard: disabled {} duplicate-name ability lines", disabled);
+        for (uint32 first : dropped)
+        {
+            if (auto itr2 = _abilities.find(first); itr2 != _abilities.end())
+            {
+                for (uint32 rankSpell : itr2->second.ranks)
+                    _spellToFirst.erase(rankSpell);
+                _abilities.erase(itr2);
+            }
+        }
+        LOG_INFO("module.classless",
+                 "mod-classless-wildcard: disabled {} duplicate-name ability lines, dropped {} taught-only duplicates",
+                 disabled, uint32(dropped.size()));
     }
 
     // ---- talents from Talent.dbc / TalentTab.dbc ----
@@ -657,6 +795,7 @@ void ClasslessMgr::BuildLibrary()
     BuildFormSpellMap();
     LoadFormKits();
     LoadArchetypes();
+    StripSpellTools();
     _libraryBuilt = true;
 
     LOG_INFO("module", "mod-classless-wildcard: library built — {} ability lines, {} talents.",
@@ -708,23 +847,33 @@ void ClasslessMgr::LoadOverrides()
 // aura is SPELL_AURA_MOD_SHAPESHIFT, and the form it grants is that effect's
 // MiscValue. Only library entries are considered, so the map can never point at
 // something a Hero has no way to obtain.
+//
+// EVERY rank is scanned, not just the first, and the map stores the rank spell
+// that grants the form. Higher ranks change form: Dire Bear Form is rank 2 of
+// Bear Form and puts you in form 8 rather than 5, and Swift Flight Form is rank
+// 2 of Flight Form. Reading rank 1 alone left those two forms unmapped, so an
+// ability locked to Dire Bear -- Mangle (Bear) -- could be rolled with no way
+// to use it and nothing the module could hand over. Storing the rank rather
+// than the line also keeps "can the Hero already use this?" honest: owning Bear
+// Form at rank 1 is not owning Dire Bear.
 void ClasslessMgr::BuildFormSpellMap()
 {
     _formSpells.clear();
     for (auto const& [firstSpell, e] : _abilities)
-    {
-        SpellInfo const* info = sSpellMgr->GetSpellInfo(firstSpell);
-        if (!info)
-            continue;
-        for (uint8 ei = 0; ei < MAX_SPELL_EFFECTS; ++ei)
+        for (uint32 rankSpell : e.ranks)
         {
-            if (info->Effects[ei].ApplyAuraName != SPELL_AURA_MOD_SHAPESHIFT)
+            SpellInfo const* info = sSpellMgr->GetSpellInfo(rankSpell);
+            if (!info)
                 continue;
-            uint32 form = uint32(info->Effects[ei].MiscValue);
-            if (form && !_formSpells.count(form))
-                _formSpells[form] = firstSpell;
+            for (uint8 ei = 0; ei < MAX_SPELL_EFFECTS; ++ei)
+            {
+                if (info->Effects[ei].ApplyAuraName != SPELL_AURA_MOD_SHAPESHIFT)
+                    continue;
+                uint32 form = uint32(info->Effects[ei].MiscValue);
+                if (form && !_formSpells.count(form))
+                    _formSpells[form] = rankSpell;
+            }
         }
-    }
     LOG_INFO("module.classless", "mod-classless-wildcard: {} shapeshift forms mapped to abilities",
              _formSpells.size());
 }
@@ -738,7 +887,7 @@ void ClasslessMgr::BuildFormSpellMap()
 // SpellInfo::Stances is a mask of the forms a spell may be cast in, so this is
 // general: it covers every stance- or form-locked ability in the game without
 // naming any of them.
-void ClasslessMgr::GrantRequiredForm(Player* player, AbilityEntry const& e, GrantSource source)
+void ClasslessMgr::GrantRequiredForm(Player* player, AbilityEntry const& e)
 {
     if (!cfg.formKitsEnable || _grantingKit)
         return;
@@ -747,17 +896,30 @@ void ClasslessMgr::GrantRequiredForm(Player* player, AbilityEntry const& e, Gran
     if (!info || !info->Stances)
         return;
 
+    // A non-empty Stances mask does NOT mean the spell needs a form. Half the
+    // priest and druid book lists one -- Shadow Word: Pain names Shadowform,
+    // Nature's Grasp names Cat, Bear and Moonkin -- and carries
+    // SPELL_ATTR2_ALLOW_WHILE_NOT_SHAPESHIFTED, which is exactly what
+    // SpellInfo::CheckShapeshift reads to allow the cast outside any form. The
+    // mask is there to permit the form, not to require it, so handing one over
+    // would be a free ability for an entry that needs nothing.
+    if (info->HasAttribute(SPELL_ATTR2_ALLOW_WHILE_NOT_SHAPESHIFTED))
+        return;
+
+    // Stances is a 64-bit mask, so the bit has to be built as one: a 32-bit
+    // shift is undefined past form 32 and quietly matches nothing.
+    //
     // Already able to use it? Any one of the allowed forms is enough, so a
     // Hero who owns Berserker Stance is not handed Battle Stance as well.
     for (auto const& [form, formSpell] : _formSpells)
-        if ((info->Stances & (1u << (form - 1))) && player->HasSpell(formSpell))
+        if ((info->Stances & (uint64(1) << (form - 1))) && player->HasSpell(formSpell))
             return;
 
     // Otherwise hand over the lowest-numbered form that would unlock it, which
     // keeps the choice stable rather than depending on map order.
     uint32 best = 0, bestForm = 0;
     for (auto const& [form, formSpell] : _formSpells)
-        if ((info->Stances & (1u << (form - 1))) && (!bestForm || form < bestForm))
+        if ((info->Stances & (uint64(1) << (form - 1))) && (!bestForm || form < bestForm))
         {
             bestForm = form;
             best = formSpell;
@@ -765,14 +927,23 @@ void ClasslessMgr::GrantRequiredForm(Player* player, AbilityEntry const& e, Gran
     if (!best)
         return;
 
-    AbilityEntry const* formEntry = GetAbility(best);
+    // _formSpells stores the RANK that grants the form (Dire Bear Form, not
+    // Bear Form), so resolve it back to the line that has to be owned.
+    AbilityEntry const* formEntry = FindAbilityBySpell(best);
     if (!formEntry)
+        return;
+    // Already owned, just not at the rank that grants this form yet: the rank
+    // arrives with level on its own. Re-granting here would rewrite the entry
+    // and stamp a line the Hero BOUGHT as a free companion, which the prune
+    // would then be entitled to take away.
+    if (GetState(player).abilities.count(formEntry->firstSpellId))
         return;
 
     GrantGuard guard(_grantingKit);
-    GrantAbilityInternal(player, *formEntry, source, true, false);
-    Msg(player, Acore::StringFormat("{} can only be used in {} -- so that comes with it.",
-        SpellName(e.firstSpellId), SpellName(best)));
+    GrantAbilityInternal(player, *formEntry, GrantSource::Companion, true, false);
+    if (!_revealSuppress)
+        Msg(player, Acore::StringFormat("{} can only be used in {}, so that comes with it.",
+            SpellName(e.firstSpellId), SpellName(best)));
 }
 
 // Elemental variants: the same strike dealt as an element, generated into
@@ -1142,14 +1313,20 @@ bool ClasslessMgr::ApplyArchetype(Player* player, uint32 archetypeId, std::strin
     }
     else
     {
-        std::vector<uint32> owned;
+        std::vector<std::pair<uint32, GrantSource>> owned;
         for (auto const& [firstSpell, o] : st.abilities)
-            owned.push_back(firstSpell);
-        for (uint32 firstSpell : owned)
+            owned.emplace_back(firstSpell, o.source);
+        for (auto const& [firstSpell, source] : owned)
             if (AbilityEntry const* e = GetAbility(firstSpell))
             {
                 RemoveAbilityInternal(player, *e);
-                st.abilityEssence += AbilityCost(*e);
+                // Refund only what was BOUGHT. An ability that came with a
+                // talent or free with another ability cost no essence, so
+                // paying it back here minted it: buy Bear Form, take Maul and
+                // Demoralizing Roar for free, then switch archetype and be
+                // refunded for all three.
+                if (source == GrantSource::Picked)
+                    st.abilityEssence += AbilityCost(*e);
             }
     }
 
@@ -1320,7 +1497,7 @@ bool ClasslessMgr::Rebirth(Player* player, Mode target, std::string* err)
         st.abilityEssence = cfg.startingAbilityEssence + LevelsEarned(level, cfg.essenceStartLevel) * cfg.abilityEssencePerLevel;
         st.talentEssence = LevelsEarned(level, cfg.talentEssenceStartLevel) * cfg.talentEssencePerLevel;
         SaveState(player);
-        Msg(player, Acore::StringFormat("|cffff8800Rebirth complete.|r You walk the Classless path anew — "
+        Msg(player, Acore::StringFormat("|cffff8800Rebirth complete.|r You walk the Classless path anew. "
             "AE: |cff00ff00{}|r, TE: |cff00ff00{}|r.", st.abilityEssence, st.talentEssence));
     }
     else
@@ -1328,7 +1505,7 @@ bool ClasslessMgr::Rebirth(Player* player, Mode target, std::string* err)
         st.abilityEssence = 0;
         st.talentEssence = 0;
         SaveState(player);
-        Msg(player, "|cffff8800Rebirth complete.|r The Wildcard takes your fate — rolling your Hero...");
+        Msg(player, "|cffff8800Rebirth complete.|r The Wildcard takes your fate. Rolling your Hero...");
 
         GrantGuard noReveal(_revealSuppress); // bulk regrant: no popup spam
         for (uint32 i = 0; i < cfg.wcStartingAbilities; ++i)
@@ -1842,8 +2019,8 @@ void ClasslessMgr::HandleFirstLogin(Player* player)
     {
         if (st.mode == Mode::Unchosen)
         {
-            Msg(player, "Welcome, Hero! You have no class — there was none to pick. Every Hero shares the "
-                        "same |cffffff00chassis|r, and it grants nothing (your race keeps its own racial traits) — you "
+            Msg(player, "Welcome, Hero! You have no class, and there was none to pick. Every Hero shares the "
+                        "same |cffffff00chassis|r, and it grants nothing (your race keeps its own racial traits). You "
                         "carry mana, rage and energy at once, every stat is worth having, and every spell, talent, "
                         "weapon and armor type in the game is open to you.");
             Msg(player, "Speak to the |cffffff00Hero Advancement|r NPC (or use |cffffff00.classless mode|r / the "
@@ -1852,6 +2029,31 @@ void ClasslessMgr::HandleFirstLogin(Player* player)
         else
             AnnounceState(player);
     }
+}
+
+// The choice window has closed with nothing chosen, so the realm default takes
+// over. This has to happen on LEVEL-UP as well as at login: SetMode refuses
+// once the Hero is at the deadline level, so a player who reached it during a
+// session was left with no mode at all -- no essence income, no rolls, and the
+// NPC answering "your path is locked in" to both buttons -- until they relogged.
+bool ClasslessMgr::ApplyDefaultMode(Player* player)
+{
+    CharState& st = GetState(player);
+    if (st.exempt || st.mode != Mode::Unchosen || player->GetLevel() < cfg.modeChoiceDeadline)
+        return false;
+
+    st.mode = Mode(cfg.defaultMode);
+    if (st.mode == Mode::Wildcard)
+    {
+        GrantGuard noReveal(_revealSuppress); // the starting hand shows these
+        for (uint32 i = 0; i < cfg.wcStartingAbilities; ++i)
+            RollAbility(player);
+    }
+    if (cfg.announce)
+        Msg(player, st.mode == Mode::Wildcard
+            ? "You did not choose a path in time, so the Wildcard chose for you. Your starting abilities have been dealt."
+            : "You did not choose a path in time, so you walk the Classless path. Spend your Ability Essence at the Hero Advancement NPC.");
+    return true;
 }
 
 void ClasslessMgr::HandleLogin(Player* player)
@@ -1870,17 +2072,7 @@ void ClasslessMgr::HandleLogin(Player* player)
         st.lastProcessedLevel = 1;
     }
 
-    // mode fallback once the choice window has passed
-    if (st.mode == Mode::Unchosen && player->GetLevel() >= cfg.modeChoiceDeadline)
-    {
-        st.mode = Mode(cfg.defaultMode);
-        if (st.mode == Mode::Wildcard)
-        {
-            GrantGuard noReveal(_revealSuppress);
-            for (uint32 i = 0; i < cfg.wcStartingAbilities; ++i)
-                RollAbility(player);
-        }
-    }
+    ApplyDefaultMode(player);
 
     TeachProficiencies(player);
     ApplyStatMods(player);
@@ -1949,6 +2141,12 @@ void ClasslessMgr::HandleLogin(Player* player)
                       "mod-classless-wildcard: removed {} unearned spell(s) from {} at login",
                       removed, player->GetName());
 
+    // Hand over any stance or form the build needs and does not have, then
+    // take back the free extras nothing needs any more.
+    SyncRequiredForms(player);
+    PruneCompanions(player);
+    DismissOrphanedSummons(player);
+
     // catch up levels gained while the module was off / before install
     if (st.lastProcessedLevel < player->GetLevel())
         HandleLevelUp(player, st.lastProcessedLevel);
@@ -1969,11 +2167,21 @@ void ClasslessMgr::HandleLevelUp(Player* player, uint8 oldLevel)
     CharState& st = GetState(player);
     if (st.exempt)
         return;
+
+    // Reaching the deadline level is itself the moment the default takes over.
+    ApplyDefaultMode(player);
+
     uint8 newLevel = player->GetLevel();
     if (newLevel <= oldLevel && st.lastProcessedLevel >= newLevel)
         return;
 
-    for (uint8 lvl = oldLevel + 1; lvl <= newLevel; ++lvl)
+    // Never pay for a level twice. A character that goes DOWN a level (a GM
+    // command, a de-levelling script) used to have lastProcessedLevel dragged
+    // down with it, so levelling back up handed out the same essence, rolls and
+    // reroll charges all over again. Start above the highest level already
+    // settled, whichever of the two that is.
+    uint8 const from = std::max(oldLevel, st.lastProcessedLevel);
+    for (uint8 lvl = from + 1; lvl <= newLevel; ++lvl)
     {
         if (st.mode == Mode::Classless && lvl >= cfg.essenceStartLevel)
             st.abilityEssence += cfg.abilityEssencePerLevel;
@@ -2000,7 +2208,7 @@ void ClasslessMgr::HandleLevelUp(Player* player, uint8 oldLevel)
         }
     }
 
-    st.lastProcessedLevel = newLevel;
+    st.lastProcessedLevel = std::max(st.lastProcessedLevel, newLevel);
     UpdateAbilityRanks(player);
 
     if (st.mode == Mode::Classless && st.archetype)
@@ -2052,7 +2260,7 @@ bool ClasslessMgr::SetMode(Player* player, Mode mode, std::string* err)
         GrantGuard noReveal(_revealSuppress); // the starting hand UI shows these
         for (uint32 i = 0; i < cfg.wcStartingAbilities; ++i)
             RollAbility(player);
-        Msg(player, "The Wildcard has been drawn! You received random starting abilities — reroll them freely at the "
+        Msg(player, "The Wildcard has been drawn! You received random starting abilities. Reroll them freely at the "
                     "Hero Advancement NPC until level 10.");
     }
     else
@@ -2067,11 +2275,11 @@ void ClasslessMgr::AnnounceState(Player* player)
     CharState& st = GetState(player);
     if (st.mode == Mode::Classless)
         Msg(player, Acore::StringFormat(
-            "Classless Hero — abilities: {}, talents: {}, AE: |cff00ff00{}|r, TE: |cff00ff00{}|r.",
+            "Classless Hero. Abilities: {}, talents: {}, AE: |cff00ff00{}|r, TE: |cff00ff00{}|r.",
             st.abilities.size(), st.talents.size(), st.abilityEssence, st.talentEssence));
     else if (st.mode == Mode::Wildcard)
         Msg(player, Acore::StringFormat(
-            "Wildcard Hero — abilities: {}, talents: {}. Rerolls: |cff00ff00{}|r (earned as you level, spend on either).",
+            "Wildcard Hero. Abilities: {}, talents: {}. Rerolls: |cff00ff00{}|r (earned as you level, spend on either).",
             st.abilities.size(), st.talents.size(), st.rerolls));
 }
 
@@ -2105,18 +2313,22 @@ void ClasslessMgr::GrantAbilityInternal(Player* player, AbilityEntry const& e, G
         Msg(player, Acore::StringFormat("You gained the ability {}{}|r ({}).",
             RarityColor(e.rarity), SpellName(e.firstSpellId), RarityName(e.rarity)));
 
-    GrantFormKit(player, e, source);
-    GrantRequiredForm(player, e, source);
+    GrantFormKit(player, e);
+    GrantRequiredForm(player, e);
     // a newly gained spell needs its tab straight away, not at next login
     SyncSpellbookTabs(player);
 }
 
-// A form or stance on its own does nothing: a Hero who draws Bear Form without
-// Maul has shapeshifted into a creature that cannot attack, and one who draws
-// Defensive Stance without Taunt has a stance with no reason to use it. Where
-// the class system hands these out together, so does this -- free, and the
-// moment the form lands.
-void ClasslessMgr::GrantFormKit(Player* player, AbilityEntry const& form, GrantSource source)
+// Some abilities do nothing on their own: a Hero who draws Bear Form without
+// Maul has shapeshifted into a creature that cannot attack, one who draws
+// Defensive Stance without Taunt has a stance with no reason to use it, and one
+// who draws Tame Beast without Call Pet has a pet they cannot summon. Where the
+// class system hands these out together, so does this -- free, and the moment
+// the first one lands.
+//
+// Nothing here is form-specific; cw_form_kits is a plain table of spell pairs
+// and either side can be any spell.
+void ClasslessMgr::GrantFormKit(Player* player, AbilityEntry const& form)
 {
     if (!cfg.formKitsEnable || _formKits.empty() || _grantingKit)
         return;
@@ -2150,7 +2362,7 @@ void ClasslessMgr::GrantFormKit(Player* player, AbilityEntry const& form, GrantS
             // re-read the state each time: the grant below writes to it
             if (GetState(player).abilities.count(companion->firstSpellId))
                 continue;
-            GrantAbilityInternal(player, *companion, source, true, false);
+            GrantAbilityInternal(player, *companion, GrantSource::Companion, true, false);
             gained.push_back(SpellName(companion->firstSpellId));
         }
         else if (!player->HasSpell(spellId))
@@ -2163,11 +2375,155 @@ void ClasslessMgr::GrantFormKit(Player* player, AbilityEntry const& form, GrantS
     if (gained.empty())
         return;
 
+    if (_revealSuppress)
+        return;   // a whole hand is being dealt; the hand screen speaks for it
+
     std::string list = gained[0];
     for (size_t i = 1; i < gained.size(); ++i)
         list += (i + 1 == gained.size() ? " and " : ", ") + gained[i];
-    Msg(player, Acore::StringFormat("{} comes with {} -- yours to use straight away.",
+    Msg(player, Acore::StringFormat("{} comes with {}, yours to use straight away.",
         SpellName(form.firstSpellId), list));
+}
+
+// Is this free extra still earning its place?
+//
+// Only abilities the Hero EARNED count as a reason to keep one, never another
+// companion. Otherwise a stance and the ability that came with it would vouch
+// for each other and neither could ever leave.
+bool ClasslessMgr::IsCompanionJustified(CharState const& st, AbilityEntry const& e) const
+{
+    // Which forms does this ability put the Hero into? A line can grant more
+    // than one -- Bear Form is form 5 and its rank 2, Dire Bear Form, is form
+    // 8 -- so collect them all rather than stopping at the first.
+    uint64 grantsForms = 0;
+    for (auto const& [form, formSpell] : _formSpells)
+        if (std::find(e.ranks.begin(), e.ranks.end(), formSpell) != e.ranks.end())
+            grantsForms |= uint64(1) << (form - 1);
+
+    for (auto const& [ownedFirst, owned] : st.abilities)
+    {
+        if (owned.source == GrantSource::Companion || ownedFirst == e.firstSpellId)
+            continue;
+        AbilityEntry const* owner = GetAbility(ownedFirst);
+        if (!owner)
+            continue;
+
+        // the form it grants is one something owned cannot be used outside of
+        if (grantsForms)
+            if (SpellInfo const* info = sSpellMgr->GetSpellInfo(owner->firstSpellId))
+                if ((info->Stances & grantsForms)
+                    && !info->HasAttribute(SPELL_ATTR2_ALLOW_WHILE_NOT_SHAPESHIFTED))
+                    return true;
+
+        // or it is part of the starter kit of an ability still owned
+        for (uint32 rankSpell : owner->ranks)
+        {
+            auto itr = _formKits.find(rankSpell);
+            if (itr == _formKits.end())
+                continue;
+            for (uint32 kitSpell : itr->second)
+                if (std::find(e.ranks.begin(), e.ranks.end(), kitSpell) != e.ranks.end())
+                    return true;
+        }
+    }
+    return false;
+}
+
+uint32 ClasslessMgr::PruneCompanions(Player* player)
+{
+    CharState& st = GetState(player);
+
+    std::vector<uint32> drop;
+    for (auto const& [firstSpell, owned] : st.abilities)
+        if (owned.source == GrantSource::Companion)
+            if (AbilityEntry const* e = GetAbility(firstSpell))
+                if (!IsCompanionJustified(st, *e))
+                    drop.push_back(firstSpell);
+
+    for (uint32 firstSpell : drop)
+        if (AbilityEntry const* e = GetAbility(firstSpell))
+        {
+            RemoveAbilityInternal(player, *e);
+            Msg(player, Acore::StringFormat("{} came free with an ability you no longer have, so it goes too.",
+                SpellName(firstSpell)));
+        }
+    return uint32(drop.size());
+}
+
+// Repair a build whose stance the library could not offer, and any build made
+// before that was fixed. GrantRequiredForm does nothing when the Hero can
+// already use the ability, so this is safe to run at every login.
+void ClasslessMgr::SyncRequiredForms(Player* player)
+{
+    if (!cfg.formKitsEnable)
+        return;
+
+    CharState& st = GetState(player);
+    std::vector<uint32> earned;
+    for (auto const& [firstSpell, owned] : st.abilities)
+        if (owned.source != GrantSource::Companion)
+            earned.push_back(firstSpell);
+
+    for (uint32 firstSpell : earned)
+        if (AbilityEntry const* e = GetAbility(firstSpell))
+            GrantRequiredForm(player, *e);
+}
+
+// A pet is a creature standing in the world, not an aura, so losing Summon Imp
+// left the imp out for good, following a Hero who could never call it back.
+// Anything summoned by a spell the Hero no longer knows is sent home. A tamed
+// beast records no summoning spell, so hunter pets are left alone.
+void ClasslessMgr::DismissOrphanedSummons(Player* player)
+{
+    Pet* pet = player->GetPet();
+    if (!pet)
+        return;
+
+    uint32 summonedBy = pet->GetUInt32Value(UNIT_CREATED_BY_SPELL);
+    if (!summonedBy || player->HasSpell(summonedBy))
+        return;
+
+    Msg(player, Acore::StringFormat("{} is dismissed: you no longer know {}.",
+        pet->GetName(), SpellName(summonedBy)));
+    pet->Remove(PET_SAVE_NOT_IN_SLOT);
+}
+
+// A class tool is the one requirement a Hero can never meet. Stoneskin Totem
+// asks for an Earth Totem, which is handed to shamans and to nobody else, so
+// the spell arrives permanently unusable however it was earned. The tool is
+// class identity rather than balance, so it comes off every spell in the
+// library, in both columns the game reads: a named item (Totem) and a tool
+// category (TotemCategory). Reagents stay, because those are vendor goods
+// anyone can buy. The client patch clears the same two columns so the tooltip
+// agrees with the server.
+void ClasslessMgr::StripSpellTools()
+{
+    if (!cfg.ignoreSpellTools)
+        return;
+
+    uint32 cleared = 0;
+    auto strip = [&cleared](uint32 spellId)
+    {
+        SpellInfo const* info = sSpellMgr->GetSpellInfo(spellId);
+        if (!info)
+            return;
+        if (!info->Totem[0] && !info->Totem[1] && !info->TotemCategory[0] && !info->TotemCategory[1])
+            return;
+        SpellInfo* editable = const_cast<SpellInfo*>(info);
+        editable->Totem.fill(0);
+        editable->TotemCategory.fill(0);
+        ++cleared;
+    };
+
+    for (auto const& [firstSpell, e] : _abilities)
+        for (uint32 rankSpell : e.ranks)
+            strip(rankSpell);
+    for (auto const& [talentId, t] : _talents)
+        for (uint8 r = 0; r < t.maxRank; ++r)
+            if (t.rankSpells[r])
+                strip(t.rankSpells[r]);
+
+    LOG_INFO("module.classless", "mod-classless-wildcard: tool requirement cleared from {} spells", cleared);
 }
 
 void ClasslessMgr::RemoveAbilityInternal(Player* player, AbilityEntry const& e, bool persist)
@@ -2183,6 +2539,8 @@ void ClasslessMgr::RemoveAbilityInternal(Player* player, AbilityEntry const& e, 
         CharacterDatabase.Execute(
             "DELETE FROM cw_char_abilities WHERE guid = {} AND first_spell = {}",
             player->GetGUID().GetCounter(), e.firstSpellId);
+
+    DismissOrphanedSummons(player);
 }
 
 void ClasslessMgr::GrantTalentRankInternal(Player* player, TalentPoolEntry const& t, uint8 newRank, bool persist)
@@ -2399,7 +2757,7 @@ bool ClasslessMgr::BuyAbility(Player* player, uint32 firstSpellId, std::string* 
     if (st.mode != Mode::Classless)
     {
         if (err) *err = st.mode == Mode::Wildcard
-            ? "Wildcard Heroes cannot pick abilities — the Wildcard picks for you (reroll what you dislike)."
+            ? "Wildcard Heroes cannot pick abilities. The Wildcard picks for you, and you reroll what you dislike."
             : "Choose your path first (Hero Advancement NPC or .classless mode).";
         return false;
     }
@@ -2445,7 +2803,7 @@ bool ClasslessMgr::UnlearnAbility(Player* player, uint32 firstSpellId, std::stri
     CharState& st = GetState(player);
     if (st.mode != Mode::Classless)
     {
-        if (err) *err = "Unlearning is a Classless-path feature — Wildcard Heroes reroll instead.";
+        if (err) *err = "Unlearning is a Classless-path feature. Wildcard Heroes reroll instead.";
         return false;
     }
     AbilityEntry const* e = GetAbility(firstSpellId);
@@ -2462,10 +2820,18 @@ bool ClasslessMgr::UnlearnAbility(Player* player, uint32 firstSpellId, std::stri
         if (err) *err = "That ability came with a talent and leaves with it. Respec to give it up.";
         return false;
     }
+    // A companion cost nothing, so there is nothing to refund and nothing to
+    // decide: it goes when the ability that brought it in goes.
+    if (st.abilities[e->firstSpellId].source == GrantSource::Companion)
+    {
+        if (err) *err = "That came free with another ability. Unlearn the one it came with instead.";
+        return false;
+    }
 
     RemoveAbilityInternal(player, *e);
     if (cfg.refundOnUnlearn)
         st.abilityEssence += AbilityCost(*e);
+    PruneCompanions(player);
     SaveState(player);
     Msg(player, Acore::StringFormat("Unlearned {}.", SpellName(e->firstSpellId)));
     return true;
@@ -2491,7 +2857,7 @@ bool ClasslessMgr::BuyTalentRank(Player* player, uint32 talentId, std::string* e
     if (st.mode != Mode::Classless)
     {
         if (err) *err = st.mode == Mode::Wildcard
-            ? "Wildcard Heroes cannot pick talents — the Wildcard picks for you."
+            ? "Wildcard Heroes cannot pick talents. The Wildcard picks for you."
             : "Choose your path first (Hero Advancement NPC or .classless mode).";
         return false;
     }
@@ -2668,7 +3034,7 @@ bool ClasslessMgr::SetStatAllocation(Player* player, std::array<uint32, 5> const
     SaveState(player);
 
     Msg(player, Acore::StringFormat(
-        "Stats allocated — STR +{}, AGI +{}, STA +{}, INT +{}, SPI +{} ({} of {} points).",
+        "Stats allocated. STR +{}, AGI +{}, STA +{}, INT +{}, SPI +{} ({} of {} points).",
         alloc[0] * cfg.statValuePerPoint, alloc[1] * cfg.statValuePerPoint, alloc[2] * cfg.statValuePerPoint,
         alloc[3] * cfg.statValuePerPoint, alloc[4] * cfg.statValuePerPoint, total, budget));
     return true;
@@ -2851,8 +3217,14 @@ uint32 ClasslessMgr::RollAbility(Player* player, GrantSource source)
 
     GrantAbilityInternal(player, *chosen, source);
     SaveState(player);
-    PushAddon(player, Acore::StringFormat("RV|A|{}|{}|{}",
-        chosen->firstSpellId, uint32(chosen->rarity), synergy ? 1 : 0));
+    // _revealSuppress is on while a whole hand is being dealt at once (the
+    // starting hand, a Rebirth): the client shows those in bulk on its own
+    // screen, so a die-roll popup per ability is noise. It used to be set in
+    // four places and read in none, which left Rebirth firing a popup per
+    // ability and the starting hand relying on the addon to throw them away.
+    if (!_revealSuppress)
+        PushAddon(player, Acore::StringFormat("RV|A|{}|{}|{}",
+            chosen->firstSpellId, uint32(chosen->rarity), synergy ? 1 : 0));
     return chosen->firstSpellId;
 }
 
@@ -2966,15 +3338,16 @@ uint32 ClasslessMgr::RollTalent(Player* player)
 
         GrantTalentRankInternal(player, *chosen, newRank);
         lastGranted = chosen->talentId;
-        PushAddon(player, Acore::StringFormat("RV|T|{}|{}|{}|{}|{}",
-            chosen->talentId, chosen->rankSpells[newRank - 1], uint32(shown),
-            uint32(newRank), synergy ? 1 : 0));
+        if (!_revealSuppress)
+            PushAddon(player, Acore::StringFormat("RV|T|{}|{}|{}|{}|{}",
+                chosen->talentId, chosen->rankSpells[newRank - 1], uint32(shown),
+                uint32(newRank), synergy ? 1 : 0));
 
         if (ownedRank == 0)
             break; // fresh talent — done
 
         // it was an upgrade: Ascension rules say the roll fires again
-        Msg(player, "The talent upgraded — the Wildcard rolls again!");
+        Msg(player, "The talent upgraded. The Wildcard rolls again!");
     }
 
     SaveState(player);
@@ -3010,7 +3383,7 @@ bool ClasslessMgr::Reroll(Player* player, bool isTalent, uint32 entry, std::stri
                 player->DestroyItemCount(cfg.wcScrollItemId, 1, true);
             else
             {
-                if (err) *err = "No rerolls left — you earn one with every roll the Wildcard deals you (or buy a Reroll Scroll).";
+                if (err) *err = "No rerolls left. You earn one with every roll the Wildcard deals you, or buy a Reroll Scroll.";
                 return false;
             }
         }
@@ -3046,6 +3419,11 @@ bool ClasslessMgr::Reroll(Player* player, bool isTalent, uint32 entry, std::stri
             if (err) *err = "That ability came with a talent. Reroll the talent instead.";
             return false;
         }
+        if (st.abilities[e->firstSpellId].source == GrantSource::Companion)
+        {
+            if (err) *err = "That came free with another ability. Reroll the one it came with instead.";
+            return false;
+        }
 
         if (!free)
         {
@@ -3055,7 +3433,7 @@ bool ClasslessMgr::Reroll(Player* player, bool isTalent, uint32 entry, std::stri
                 player->DestroyItemCount(cfg.wcScrollItemId, 1, true);
             else
             {
-                if (err) *err = "No rerolls left — you earn one with every roll the Wildcard deals you (or buy a Reroll Scroll).";
+                if (err) *err = "No rerolls left. You earn one with every roll the Wildcard deals you, or buy a Reroll Scroll.";
                 return false;
             }
         }
@@ -3068,6 +3446,12 @@ bool ClasslessMgr::Reroll(Player* player, bool isTalent, uint32 entry, std::stri
 
         RollAbility(player);
     }
+
+    // Whichever branch ran, the replacement may already need the stance the old
+    // entry brought in, so the sweep goes last. A talent reroll matters here
+    // too: RemoveTalentInternal takes away the ability lines the talent handed
+    // over, and those can have companions of their own.
+    PruneCompanions(player);
 
     SaveState(player);
     return true;
@@ -3087,7 +3471,8 @@ uint32 ClasslessMgr::RerollUnlockedAbilities(Player* player, std::string* err)
     // back, so nothing in the list can be invalidated by an earlier reroll
     std::vector<uint32> targets;
     for (auto const& [firstSpell, owned] : st.abilities)
-        if (!owned.locked)
+        if (!owned.locked && owned.source != GrantSource::Talent
+            && owned.source != GrantSource::Companion)
             targets.push_back(firstSpell);
 
     uint32 done = 0;
@@ -3118,6 +3503,19 @@ bool ClasslessMgr::ToggleLock(Player* player, uint32 firstSpellId, std::string* 
     if (!e || !st.abilities.count(e->firstSpellId))
     {
         if (err) *err = "You do not own that ability.";
+        return false;
+    }
+
+    // A lock only protects an ability from a reroll, and neither of these can
+    // be rerolled in the first place: they come and go with whatever granted
+    // them. Refusing here keeps the chat command in step with the addon and the
+    // NPC, which show no padlock on either.
+    if (GrantSource const source = st.abilities[e->firstSpellId].source;
+        source == GrantSource::Companion || source == GrantSource::Talent)
+    {
+        if (err) *err = source == GrantSource::Companion
+            ? "That came free with another ability. It cannot be rerolled, so there is nothing to lock."
+            : "That came with a talent. It cannot be rerolled, so there is nothing to lock.";
         return false;
     }
 

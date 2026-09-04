@@ -22,8 +22,27 @@ DELIMITER ;
 CALL cw_uninstall_quests();
 DROP PROCEDURE IF EXISTS cw_uninstall_quests;
 
+-- Class requirements on items, put back the same way. The module clears
+-- item_template.AllowableClass so any Hero can use any class's armour, glyphs,
+-- poisons, bags and relics; these are the masks it recorded on the way in.
+DROP PROCEDURE IF EXISTS cw_uninstall_item_classes;
+DELIMITER //
+CREATE PROCEDURE cw_uninstall_item_classes()
+BEGIN
+    IF EXISTS (SELECT 1 FROM information_schema.TABLES
+               WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'cw_item_class_backup') THEN
+        UPDATE `item_template` `it`
+          JOIN `cw_item_class_backup` `b` ON `b`.`entry` = `it`.`entry`
+          SET `it`.`AllowableClass` = `b`.`AllowableClass`;
+    END IF;
+END//
+DELIMITER ;
+CALL cw_uninstall_item_classes();
+DROP PROCEDURE IF EXISTS cw_uninstall_item_classes;
+
 -- module tables
 DROP TABLE IF EXISTS `cw_quest_class_backup`;
+DROP TABLE IF EXISTS `cw_item_class_backup`;
 DROP TABLE IF EXISTS `cw_form_kits`;
 DROP TABLE IF EXISTS `cw_ability_override`;
 DROP TABLE IF EXISTS `cw_talent_override`;
@@ -83,10 +102,12 @@ DELETE FROM `charstartoutfit_dbc` WHERE `ID` >= 900000;
 DELETE FROM `updates` WHERE `name` LIKE 'cw_%';
 
 -- NOT handled here (no safe automatic revert):
---  * manual/cw_classless_items.sql overwrote item_template.AllowableClass
---    with -1 for ALL items. Restore item_template from your pre-install
---    backup, or re-import item_template from the AzerothCore base SQL that
---    matches your core revision.
+--  * the OLD opt-in manual/cw_classless_items.sql overwrote
+--    item_template.AllowableClass with -1 for ALL items and kept no backup, so
+--    cw_item_class_backup has nothing to restore for those rows. Re-import
+--    item_template from the AzerothCore base SQL that matches your core
+--    revision. Masks cleared by the current cw_world_item_classes.sql are put
+--    back above.
 --  * leftover playercreateinfo* INSERTs from older versions are harmless to
 --    keep (the client no longer offers those combos); restore from backup if
 --    you want them gone.

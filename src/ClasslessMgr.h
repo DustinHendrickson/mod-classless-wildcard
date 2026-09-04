@@ -138,6 +138,12 @@ public:
     // true while the module itself is teaching spells (lets the learn-spell
     // hook distinguish module grants from trainers/quests)
     bool IsApplyingGrant() const { return _applyingGrant; }
+    // A summoned pet outlives the spell that summoned it: losing Summon Imp
+    // left the imp standing there for good. Send home anything whose summoning
+    // spell the Hero no longer knows. Public because the maintenance tick calls
+    // it too: a pet that was temporarily unsummoned (mounted) when its ability
+    // went is not standing there to be caught at removal time.
+    void DismissOrphanedSummons(Player* player);
     void SaveState(Player* player);          // persist scalar state row
     void AnnounceState(Player* player);      // login summary line
     uint32 AbilityCost(ClasslessWildcard::AbilityEntry const& e) const;
@@ -166,13 +172,29 @@ private:
     // form id -> the library ability that puts you in it, built from spell data
     void BuildFormSpellMap();
     // Give a Hero the stance or form an ability cannot be used without.
-    void GrantRequiredForm(Player* player, ClasslessWildcard::AbilityEntry const& e,
-                           ClasslessWildcard::GrantSource source);
+    void GrantRequiredForm(Player* player, ClasslessWildcard::AbilityEntry const& e);
     // Hand over the basic spells that make a freshly gained form or stance
     // usable. Called for every ability grant; does nothing for the vast
     // majority that are not forms.
-    void GrantFormKit(Player* player, ClasslessWildcard::AbilityEntry const& form,
-                      ClasslessWildcard::GrantSource source);
+    void GrantFormKit(Player* player, ClasslessWildcard::AbilityEntry const& form);
+    // Is this companion still needed -- a form something owned has to be in,
+    // or part of the kit of a form still owned? Only abilities the Hero
+    // EARNED count, so two companions can never keep each other alive.
+    bool IsCompanionJustified(ClasslessWildcard::CharState const& st,
+                              ClasslessWildcard::AbilityEntry const& e) const;
+    // Take away the free extras nothing needs any more. Returns how many went.
+    uint32 PruneCompanions(Player* player);
+    // Hand out any stance or form the Hero's earned abilities require but do
+    // not have. Runs at login so a build that predates the form rules is
+    // repaired in place.
+    void SyncRequiredForms(Player* player);
+    // Clear the class tool (totem/relic item) requirement from every library
+    // spell -- see Config::ignoreSpellTools.
+    void StripSpellTools();
+    // The deadline has passed with no path chosen: put the Hero on the realm
+    // default and deal a starting hand if that is Wildcard. Returns true if it
+    // did anything. Runs at login AND on level-up -- see the comment there.
+    bool ApplyDefaultMode(Player* player);
     void LoadCharacter(Player* player, ClasslessWildcard::CharState& st);
     size_t ArchetypeCursor(ClasslessWildcard::CharState const& st, ClasslessWildcard::Archetype const& arch) const;
     void GrantAbilityInternal(Player* player, ClasslessWildcard::AbilityEntry const& e,
@@ -200,7 +222,9 @@ private:
     std::unordered_map<uint32, uint32> _spellToFirst;                  // any rank -> firstSpellId
     // form/stance spell (any rank) -> the basic spells that come with it
     std::unordered_map<uint32, std::vector<uint32>> _formKits;
-    // shapeshift form id -> the first-rank spell that grants that form
+    // shapeshift form id -> the RANK spell that grants that form. Not the
+    // first rank: Dire Bear Form is rank 2 of Bear Form and grants a
+    // different form id, so the line alone cannot answer which is which.
     std::unordered_map<uint32, uint32> _formSpells;
     // spell (any rank) -> the class skill line it is filed under, and the set of
     // every class skill line the library touches

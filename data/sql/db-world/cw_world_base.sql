@@ -31,6 +31,18 @@ INSERT IGNORE INTO `cw_ability_override` (`first_spell`, `rarity`, `cost`, `weig
 (17, 1, 0, 0, 1),        -- Power Word: Shield
 (100, 0, 0, 0, 1);       -- Charge
 
+-- Pet handling belongs to Tame Beast, not to the deck. Call Pet, Revive Pet,
+-- Feed Pet and Dismiss Pet do nothing at all for a Hero with no pet, and Tame
+-- Beast is the only way to get one -- so rolling one of them on its own was a
+-- wasted card. They leave the pool here and arrive with Tame Beast instead,
+-- through the `cw_form_kits` rows in cw_world_form_kits.sql. Set `enabled` back
+-- to 1 to make them rollable and buyable again.
+INSERT IGNORE INTO `cw_ability_override` (`first_spell`, `rarity`, `cost`, `weight`, `enabled`) VALUES
+(883,  255, 0, 0, 0),    -- Call Pet: comes with Tame Beast
+(982,  255, 0, 0, 0),    -- Revive Pet: comes with Tame Beast
+(6991, 255, 0, 0, 0),    -- Feed Pet: comes with Tame Beast
+(2641, 255, 0, 0, 0);    -- Dismiss Pet: comes with Tame Beast
+
 -- ---------------------------------------------------------------------------
 -- Cleanup: an early version of this module auto-applied playercreateinfo_item
 -- rows (tagged 'cw kit: ...') that duplicated the starter kit at character

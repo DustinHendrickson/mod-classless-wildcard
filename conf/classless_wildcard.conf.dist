@@ -51,6 +51,10 @@ ClasslessWildcard.ModeChoiceDeadline = 5
 # Spell library
 ########################################
 #
+# Everything in this section is read when the world builds its ability library,
+# which happens once at startup. A `.reload config` will not rebuild it, so
+# changes here need a worldserver restart.
+#
 #    ClasslessWildcard.IncludeDeathKnight
 #        Include Death Knight spells/talents in the library.
 #
@@ -71,6 +75,12 @@ ClasslessWildcard.ModeChoiceDeadline = 5
 #        Hero has the Death Knight talents and passives those abilities were
 #        balanced around, so expect the numbers to feel odd before they feel
 #        broken.
+#
+#        Turning this OFF once Heroes have bought Death Knight abilities leaves
+#        those abilities on the characters that own them, and they cost nothing
+#        to cast: the rune check is skipped for anyone the module no longer
+#        answers "Death Knight" for. Add the spells to ExcludedSpells, or have
+#        the affected characters Rebirth, before switching it off.
 #        Default: 0
 
 #
@@ -87,11 +97,17 @@ ClasslessWildcard.ModeChoiceDeadline = 5
 #        Default: ""
 #
 #    ClasslessWildcard.TrainerTaughtOnly
-#        Only spells that classes ACTUALLY learn enter the library: starter
-#        spells plus everything on class trainer lists (npc_trainer). This
-#        removes NPC/pet spell variants (e.g. "Demonic Immolate") and gives
-#        every rank its true trainer learn level, which tiering and rarity
-#        are based on.
+#        Only spells that classes ACTUALLY learn enter the library. A class
+#        learns a spell in three ways, and all three count:
+#          * from a class trainer, which also gives every rank its true learn
+#            level, and that is what tiering and rarity are based on
+#          * with the class itself, at level 1 or at the level the spell says
+#            (Fireball, Sinister Strike, Battle Stance)
+#          * from a class quest, which rewards a spell whose only job is to
+#            teach the real one (Defensive Stance, Berserker Stance, Taunt,
+#            Bear Form, Maul, the warlock demons, the shaman totems)
+#        This removes NPC and pet spell variants such as "Demonic Immolate",
+#        which no class learns any of those three ways.
 #        Default: 1
 #
 #    ClasslessWildcard.RespectLevelRequirements
@@ -224,6 +240,9 @@ ClasslessWildcard.RespectLevelRequirements = 1
 #        and counting as owned abilities like anything else: Cat Form brings
 #        Claw and Prowl, Bear Form brings Maul and Demoralizing Roar, Battle
 #        Stance brings Charge, Defensive Stance Taunt, Berserker Stance Pummel.
+#        Neither side has to be a form: Tame Beast brings Call Pet, Revive Pet,
+#        Feed Pet and Dismiss Pet, which are otherwise out of the pool because
+#        none of them does anything without it.
 #        The pairs are data, in the `cw_form_kits` world table -- add your own
 #        rows, or set a row's `enabled` to 0 to drop just that one.
 #
@@ -233,6 +252,29 @@ ClasslessWildcard.RespectLevelRequirements = 1
 #        Stance, Whirlwind Berserker Stance, Shred Cat Form. Read from each
 #        spell's own shapeshift mask, so it covers every stance-locked ability
 #        in the game without naming any of them.
+#
+#        Anything handed over this way is a free extra, not one of your rolls:
+#        it is not a card in the starting hand, it cannot be rerolled or
+#        unlearned on its own, and it leaves when nothing you own still needs
+#        it. Reroll the ability it came with instead.
+#        Default: 1
+
+#
+#    ClasslessWildcard.IgnoreSpellTools
+#        Some spells demand a class tool before they may be cast: Stoneskin
+#        Totem needs an Earth Totem, Runeforging needs a runeforge. Those tools
+#        are handed to one class each, and a Hero belongs to none, so the spell
+#        arrives with a red "Tools:" line and refuses to cast however it was
+#        earned. With this on, the tool requirement is cleared from every spell
+#        in the library. Reagents are untouched, because those are vendor goods
+#        anyone can buy.
+#
+#        The client keeps its own copy of the requirement, so the client patch
+#        clears the same two columns. Without it the tooltip keeps the red line
+#        and the client refuses the cast before the server sees it.
+#
+#        Read at worldserver start. The requirement is cleared from the loaded
+#        spell data once, so turning this off needs a restart, not a reload.
 #        Default: 1
 
 #
@@ -309,6 +351,7 @@ ClasslessWildcard.BlockOutsideSpellSources = 1
 ClasslessWildcard.ClasslessClassChecks = 1
 ClasslessWildcard.SpellbookTabs = 1
 ClasslessWildcard.FormStarterKits = 1
+ClasslessWildcard.IgnoreSpellTools = 1
 # Elemental ability variants: every physical strike in the pool also exists as
 # Fiery, Frozen, Earthen, Venomous, Arcane, Shadow and Holy versions that deal
 # their damage as that element, keep a little less of the weapon damage, add an
@@ -464,6 +507,8 @@ ClasslessWildcard.Classless.RespecCostGold = 50
 #    `enabled` = 0 on its row in cw_ability_override or cw_talent_override,
 #    which removes it from the pool for every Hero permanently.
 
+# The starting hand is 4 cards. Anything higher is clamped to 4 at load, with a
+# line in the worldserver log.
 ClasslessWildcard.Wildcard.StartingAbilities = 4
 ClasslessWildcard.Wildcard.RollStartLevel = 10
 # The roll schedule. TalentRollOffset is a phase: with both cadences at 2 and

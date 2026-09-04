@@ -36,6 +36,10 @@ namespace ClasslessWildcard
     // (used e.g. for "RV|..." roll-reveal notifications)
     void PushAddon(Player* player, std::string const& body);
 
+    // The starting hand is four cards. The client addon draws exactly four and
+    // the config is clamped to it, so the two can never disagree.
+    constexpr uint32 MAX_STARTING_HAND = 4;
+
     enum class Mode : uint8
     {
         Classless = 0,  // free-pick with essences
@@ -55,9 +59,15 @@ namespace ClasslessWildcard
 
     enum class GrantSource : uint8
     {
-        Picked = 0,   // bought with essence (classless mode)
-        Rolled = 1,   // wildcard random roll
-        Talent = 2    // handed over by an ability talent; leaves with it
+        Picked    = 0,   // bought with essence (classless mode)
+        Rolled    = 1,   // wildcard random roll
+        Talent    = 2,   // handed over by an ability talent; leaves with it
+        // came free with another ability: the stance an ability cannot be used
+        // without, or the starter kit an ability arrives with (a form's basic
+        // attacks, Tame Beast's pet handling). It is not part of the starting
+        // hand, it cannot be rerolled on its own, and it leaves when nothing
+        // the Hero earned needs it any more.
+        Companion = 3
     };
 
     // What an ability is for, from its rank-1 spell: the browser sorts and
@@ -266,6 +276,12 @@ namespace ClasslessWildcard
         uint8  spellbookTabs = 1;
 
         bool   formKitsEnable = true;
+
+        // Some spells ask for a class tool: Stoneskin Totem needs an Earth
+        // Totem, Runeforging needs a runeforge. A Hero owns spells from every
+        // class and is handed no class's tools, so the requirement comes off
+        // every spell in the library. Reagents are untouched.
+        bool   ignoreSpellTools = true;
 
         // elemental ability variants (cw_ability_variants, generated): a
         // variant is registered one rarity tier above its base

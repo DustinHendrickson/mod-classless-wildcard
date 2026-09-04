@@ -169,9 +169,10 @@ MAX_SKILLLINE_TABS = 8
 
 # A current-server state packet: mode, AE, TE, pity, chance, scrolls, level,
 # deadline, rebirth on, rebirth cost, rerolls, universal resources, scroll
-# cost, scroll buy allowed.
-def state(mode, ae=12, te=3, level=20, rerolls=0, scroll_buy=0):
-    return "S|%d|%d|%d|0|10|0|%d|5|1|50|%d|1|5000|%d" % (mode, ae, te, level, rerolls, scroll_buy)
+# cost, scroll buy allowed, free-reroll level.
+def state(mode, ae=12, te=3, level=20, rerolls=0, scroll_buy=0, free_reroll=10):
+    return "S|%d|%d|%d|0|10|0|%d|5|1|50|%d|1|5000|%d|%d" % (
+        mode, ae, te, level, rerolls, scroll_buy, free_reroll)
 
 
 class Harness:
@@ -409,6 +410,92 @@ def test_browser(h):
     h.check(str(CW.StatContribution(2, 20)) == "+20 ranged attack power", "with the universal layer off only the chassis ranged AP remains")
 
 
+def test_state_packet(h):
+    print("--- state packet: read by position, extra fields ignored")
+    CW = h.CW
+    h.recv(state(0, ae=7, te=2, level=22, rerolls=4, scroll_buy=1))
+    s = CW.state
+    h.check(s.ae == 7 and s.te == 2, "essences read")
+    h.check(s.rerolls == 4, "rerolls read from field 12 (%s)" % s.rerolls)
+    h.check(s.universalResources == 1, "universal resources read from field 13")
+    h.check(s.scrollCost == 5000, "scroll cost read from field 14 (%s)" % s.scrollCost)
+    h.check(s.scrollBuy == 1, "scroll buy read from field 15")
+
+    h.check(s.freeReroll == 10, "free-reroll level read from field 16 (%s)" % s.freeReroll)
+
+    # a server that grows the packet must not shift anything already parsed:
+    # this is the case the old 16-field back-compat branch got wrong
+    h.recv(state(0, ae=7, te=2, level=22, rerolls=4, scroll_buy=1) + "|99|123")
+    s = CW.state
+    h.check(s.rerolls == 4 and s.universalResources == 1 and s.scrollCost == 5000
+            and s.scrollBuy == 1, "two extra fields change nothing")
+
+    # a realm that moved the free-reroll level: the hand window follows the
+    # server, it is not hard-coded at 10 any more
+    h.recv(state(1, level=12, free_reroll=15))
+    h.check(CW.CanShowHand() is True, "hand window follows Wildcard.FreeRerollLevel (level 12 of 15)")
+    h.recv(state(1, level=12, free_reroll=10))
+    h.check(CW.CanShowHand() is False, "and closes when the server says it is over")
+
+
+def test_auto_hand(h):
+    print("--- starting hand opens for a Hero the server put on Wildcard")
+    CW, g = h.CW, h.g
+    hand = CW.handFrame
+    hand["__shown"] = False
+    h.rt.execute("ClasslessWildcardCharDB = {}")   # a character that has never seen it
+
+    # no MODE was ever sent: this is AllowModeChoice = 0, or the level deadline
+    h.recv(state(1, level=4))
+    h.check(hand["__shown"] is True, "hand opens with no MODE round trip")
+
+    hand["__shown"] = False
+    h.recv(state(1, level=4))
+    h.check(hand["__shown"] is False, "and does not reopen once the character has seen it")
+
+    h.rt.execute("ClasslessWildcardCharDB = {}")
+    h.recv(state(0, level=4))
+    h.check(hand["__shown"] is False, "a Classless Hero is never shown the hand")
+
+    h.rt.execute("ClasslessWildcardCharDB = {}")
+    h.recv(state(1, level=30))
+    h.check(hand["__shown"] is False, "nor a Wildcard Hero past the free-reroll level")
+
+
+def test_starting_hand(h):
+    print("--- starting hand: only the cards the Wildcard dealt")
+    CW, g = h.CW, h.g
+    hand, frame = CW.handFrame, g.ClasslessWildcardFrame
+
+    h.recv(state(1, level=3))          # Wildcard hero, below the level 10 cut-off
+    hand["__shown"] = True
+    h.clear_sent()
+    hand["__scripts"]["OnShow"](hand)
+    h.check("OWN" in h.sent(), "opening the hand asks the server for the build")
+    h.check(frame["__shown"] is False, "the panel steps aside while the hand is up")
+
+    # four dealt abilities, plus Battle Stance (source 3) which came free with
+    # one of them and a talent-granted line (source 2)
+    h.recv("OA|133:0:0:1;772:0:0:1;1752:0:0:1;686:0:1:1;2457:0:0:3;11366:0:0:2;")
+    h.recv("OAE|")
+    order = [int(v) for v in CW.handOrder.values()]
+    h.check(len(order) == 4, "four cards for four rolls, not six (%d)" % len(order))
+    h.check(2457 not in order, "the free stance is not a card")
+    h.check(11366 not in order, "a talent's ability is not a card")
+
+    # rolling again brings in another companion: the hand must stay four wide
+    h.recv("OA|133:0:0:1;772:0:0:1;1752:0:0:1;686:0:1:1;2457:0:0:3;768:0:0:3;1082:0:0:3;")
+    h.recv("OAE|")
+    order = [int(v) for v in CW.handOrder.values()]
+    h.check(len(order) == 4, "more companions do not widen the hand (%d)" % len(order))
+    h.check(686 in order, "a locked card keeps its place")
+
+    frame["__shown"] = False
+    h.click(CW.handKeep)
+    h.check(hand["__shown"] is False, "Keep Abilities closes the hand")
+    h.check(frame["__shown"] is False, "Keep Abilities does not open the advancement panel")
+
+
 def main():
     try:
         h = Harness()
@@ -419,6 +506,9 @@ def main():
     test_archetypes(h)
     test_wizard(h)
     test_browser(h)
+    test_state_packet(h)
+    test_auto_hand(h)
+    test_starting_hand(h)
     if h.failures:
         print("\n%d check(s) FAILED" % h.failures)
         return 1

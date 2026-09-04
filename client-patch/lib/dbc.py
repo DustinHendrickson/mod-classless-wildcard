@@ -7,6 +7,7 @@ SkillRaceClassInfo.dbc - which class skill lines the client accepts for the
                          character.
 SkillLineAbility.dbc   - which class each class spell belongs to, which is
                          what actually decides the spellbook's tab set.
+Spell.dbc              - the class tool a spell demands before it may be cast.
 
 Both are rewritten from the copy already winning in the client's archive stack,
 so a community patch's version is preserved rather than reverted.
@@ -77,6 +78,15 @@ CLASS_SKILL_LINES_FIRST_ID = 990000
 #   13 CharacterPoints2
 SKILLLINEABILITY_FIELDS = 14
 SKILL_CATEGORY_CLASS = 7
+
+# Spell.dbc, 3.3.5a build 12340: 234 uint32 fields per record. Only the tool
+# columns are touched, and they are the two the tooltip's "Tools:" line and the
+# client's own cast check are built from:
+#   50-51    Totem[2]                 a named item the caster must hold
+#   222-223  RequiredTotemCategoryID  a tool category (Earth Totem, Skinning
+#                                     Knife, Runeforge) the caster must hold
+SPELL_FIELDS = 234
+SPELL_TOTEM_COLUMNS = (50, 51, 222, 223)
 
 # How the CLIENT spells "everyone". The server's GetSkillRaceClassInfo treats a
 # mask of 0 as a wildcard, and the server SQL uses 0/0 -- but that is the
@@ -326,6 +336,69 @@ def open_class_abilities(data: bytes, skill_categories: dict):
     header = WDBC_MAGIC + struct.pack("<4I", record_count, field_count,
                                       record_size, string_size)
     return header + bytes(records) + data[strings_off:], changed, already
+
+
+def clear_spell_tools(data: bytes, class_spells):
+    """Drop the class tool requirement from every class spell in Spell.dbc.
+
+    Stoneskin Totem asks for an Earth Totem, Runeforging for a runeforge:
+    tools handed to one class and to nobody else. A Hero draws spells from
+    every class and is handed no class's tools, so those spells arrive with a
+    red "Tools:" line and refuse to cast. The server clears the same two
+    columns on its own copy (ClasslessWildcard.IgnoreSpellTools); clearing them
+    here is what takes the line out of the tooltip and stops the client
+    refusing the cast before the server ever sees it.
+
+    Reagents are left alone: those are vendor goods anyone can buy.
+
+    `class_spells` is the set of spell ids that appear on a category-7
+    SkillLineAbility row, so profession and item spells keep their tools.
+
+    Returns (new_dbc_bytes, rows_cleared).
+    """
+    record_count, field_count, record_size, string_size = parse_header(data)
+    if field_count != SPELL_FIELDS or record_size != SPELL_FIELDS * 4:
+        raise DbcError(
+            "Spell.dbc has %d fields of %d bytes, expected %d of %d. "
+            "This client build is not the 3.3.5a layout this patch understands."
+            % (field_count, record_size, SPELL_FIELDS, SPELL_FIELDS * 4))
+
+    records_off = 20
+    strings_off = records_off + record_count * record_size
+    records = bytearray(data[records_off:strings_off])
+
+    cleared = 0
+    for index in range(record_count):
+        base = index * record_size
+        spell_id = struct.unpack_from("<I", records, base)[0]
+        if spell_id not in class_spells:
+            continue
+        touched = False
+        for column in SPELL_TOTEM_COLUMNS:
+            if struct.unpack_from("<I", records, base + column * 4)[0]:
+                struct.pack_into("<I", records, base + column * 4, 0)
+                touched = True
+        if touched:
+            cleared += 1
+
+    header = WDBC_MAGIC + struct.pack("<4I", record_count, field_count,
+                                      record_size, string_size)
+    return header + bytes(records) + data[strings_off:], cleared
+
+
+def class_spell_ids(sla_data: bytes, skill_categories: dict) -> set:
+    """Every spell id on a class (category 7) SkillLineAbility row."""
+    record_count, field_count, record_size, _string_size = parse_header(sla_data)
+    if field_count != SKILLLINEABILITY_FIELDS:
+        raise DbcError("SkillLineAbility.dbc has %d fields, expected %d"
+                       % (field_count, SKILLLINEABILITY_FIELDS))
+    out = set()
+    for index in range(record_count):
+        base = 20 + index * record_size
+        line, spell = struct.unpack_from("<2I", sla_data, base + 1 * 4)
+        if skill_categories.get(line) == SKILL_CATEGORY_CLASS:
+            out.add(spell)
+    return out
 
 
 def skill_line_categories(data: bytes) -> dict:

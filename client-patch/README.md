@@ -14,6 +14,10 @@ Required for every player on a Classless Wildcard realm. The
 - the **elemental ability variants**: the spell rows, tooltips and badged icons
   for the Fiery, Frozen, Earthen, Venomous, Arcane, Shadow and Holy versions of
   the physical strikes that have them (`--no-elemental` leaves them out)
+- class spells no longer ask for a **class tool** such as an Earth Totem, so the
+  tooltip drops the red `Tools:` line and the spell casts. The server clears the
+  same requirement; both halves are needed or the client refuses the cast on its
+  own. Reagents are untouched
 - the **ClasslessWildcard** addon is installed
 
 The creation-screen text is a *signed* interface file, so the installer also applies
@@ -102,6 +106,7 @@ Install to this client? [Y/n] y
   CharBaseInfo.dbc all 10 races, one cosmetic class (shown as Hero)
   SkillRaceClassInfo.dbc  86 class skill lines opened to every class
   SkillLineAbility.dbc  3143 class spells now belong to every class (spellbook tabs for cross-class spells)
+  Spell.dbc        class tool requirement cleared from 102 spells (totems, relics; reagents untouched)
   CharStartOutfit.dbc  armored Hero look on 18 races +Blood Elf
   -> Data/patch-Z.MPQ
   GlueStrings.lua  76 class strings rewritten

@@ -179,13 +179,15 @@ titleBtn:SetScript("OnEnter", function(self)
     if s.mode ~= 1 then
         GameTooltip:SetText("Wildcard rolls")
         GameTooltip:AddLine("Only Wildcard Heroes roll the dice for abilities.", 0.8, 0.8, 0.8, true)
-    elseif (s.level or 1) < 10 then
+    elseif (s.level or 1) < (s.freeReroll or 10) then
         GameTooltip:SetText("|cffffd100Roll your Starting Hand|r")
         GameTooltip:AddLine("Click to reroll your starter abilities.", 0.3, 1, 0.3, true)
-        GameTooltip:AddLine("Free before level 10 -- lock the ones you like.", 0.6, 0.9, 0.6, true)
+        GameTooltip:AddLine("Free before level " .. (s.freeReroll or 10)
+            .. " -- lock the ones you like.", 0.6, 0.9, 0.6, true)
     else
         GameTooltip:SetText("Starting Hand (closed)")
-        GameTooltip:AddLine("Free starter rolls end at level 10.", 0.8, 0.8, 0.8, true)
+        GameTooltip:AddLine("Free starter rolls end at level " .. (s.freeReroll or 10) .. ".",
+            0.8, 0.8, 0.8, true)
         GameTooltip:AddLine("Reroll anything you own one at a time from |cffffd100My Build|r, using the circular arrow beside it.", 0.6, 0.9, 0.6, true)
     end
     GameTooltip:Show()
@@ -202,7 +204,7 @@ titleBtn:SetScript("OnMouseUp", function() titleGlow:SetAlpha(0.9); titleIcon:Se
 -- charge and are made one at a time from My Build -- so nothing may reopen it.
 function CW.CanShowHand()
     local s = CW.state
-    return s.mode == 1 and (s.level or 1) < 10
+    return s.mode == 1 and (s.level or 1) < (s.freeReroll or 10)
 end
 
 titleBtn:SetScript("OnClick", function()
@@ -1006,6 +1008,8 @@ local function BuildHelpText()
 "      |cffffd100Spirit|r -- increases " .. StatPerPoint(5) .. ". Mana regeneration pauses for 5 seconds after you cast. Talents such as Meditation, Arcane Meditation and Intensity let it continue while casting, and any Hero can learn them.",
 "   Every stat does something for every Hero, so spend toward the build you are playing.",
 "   |cffffd100Proficiencies|r -- every armor and weapon type, dual wield included, is trained for you automatically.",
+"   |cffffd100Abilities that come as a set|r -- an ability that can only be used in a stance or a form brings that form with it, and an ability that needs others to be any use brings those: Rend and Charge bring Battle Stance, Cat Form brings Claw and Prowl, Tame Beast brings Call Pet, Revive Pet, Feed Pet and Dismiss Pet. These extras are free, they are not one of your rolls, and they leave when nothing you own still needs them. To be rid of one, reroll or unlearn the ability it came with.",
+"   |cffffd100No class tools|r -- spells that ask for a class item, such as Stoneskin Totem asking for an Earth Totem, cast without it. Reagents still apply.",
 "   |cffffd100Rebirth|r -- after your path locks in, Rebirth wipes everything and lets you start fresh on either path for gold.",
 "",
 "|cffaaaaaaEverything here can also be done at the Hero Advancement NPC, found in every major city beside the guild master. Open this panel any time with |r|cffffff00N|r|cffaaaaaa (the old Talents key -- talents live here now), |r|cffffff00/cw|r|cffaaaaaa, or the dice button on your minimap. Rebind the key under Key Bindings > ClasslessWildcard.|r",
@@ -1222,8 +1226,20 @@ local function RenderBuild()
             r.spellId = it.spell
             r.icon:SetTexture(SpellIcon(it.spell))
             local suffix = it.kind == "T" and ("  |cffaaaaaa" .. it.rank .. "/" .. it.max .. "|r") or ""
+            -- source 2 came with a talent, source 3 came free with another
+            -- ability. Neither was a roll and neither cost essence, so there is
+            -- nothing to reroll, unlearn or lock: each leaves with whatever
+            -- brought it in. No buttons, and a note saying where it came from.
+            local freebie = it.kind == "A" and (it.source == 2 or it.source == 3)
+            if freebie then
+                suffix = suffix .. (it.source == 3 and "  |cffaaaaaacame free|r"
+                                                    or "  |cffaaaaaawith a talent|r")
+            end
             r.name:SetText(SpellLabel(it.spell, it.rarity) .. suffix)
-            if s.mode == 1 then
+            if freebie then
+                r.lockBtn:Hide()
+                r.actBtn:Hide()
+            elseif s.mode == 1 then
                 -- lock toggle (abilities only) + die reroll
                 if it.kind == "A" then
                     r.lockBtn:Show()
@@ -2173,12 +2189,12 @@ local function ShowResult()
     rvDie:SetTexture(REVEAL_ATLAS)
     rvDie:SetTexCoord(col / 4, (col + 1) / 4, rowi / 2, (rowi + 1) / 2)
     -- The artwork's window is a circle 32% across the frame, so the die is
-    -- drawn large (280px) to make that opening a usable 90px. The icon is
-    -- sized just past it: it fills the window with no seam and the frame masks
-    -- the square corners, which land well inside the opaque face.
+    -- drawn large (280px) to make that opening a usable 90px. The icon sits
+    -- just inside it, so the window's own rim stays visible all the way round
+    -- instead of being covered edge to edge.
     rvDie:SetWidth(280); rvDie:SetHeight(280)
     rvDie:Show()
-    rvIcon:SetWidth(96); rvIcon:SetHeight(96)
+    rvIcon:SetWidth(82); rvIcon:SetHeight(82)
     rvIcon:SetTexture(SpellIcon(d.spell))
     rvIcon:SetTexCoord(0.08, 0.92, 0.08, 0.92)   -- trim the icon's own dark border
     rvIcon:Show()
@@ -2205,7 +2221,7 @@ local function ShowResult()
     -- reroll button shows what the player can actually spend
     local s = CW.state
     local charges = (s.rerolls or 0) + (s.scrolls or 0)
-    if (s.level or 1) < 10 then
+    if (s.level or 1) < (s.freeReroll or 10) then
         rvReroll:SetText("Reroll (free)")
         rvReroll:Enable()
     elseif charges > 0 then
@@ -2394,7 +2410,10 @@ handHint:SetPoint("TOP", 0, -40)
 handHint:SetText("Click an ability to lock it in: |cffffd100gold ring + closed padlock = kept|r." ..
     " Roll Abilities rerolls only the unlocked ones. Free until level 10!")
 
-local HAND_SLOTS = 8
+-- Four cards. Not a layout budget that happens to fit four -- four is the size
+-- of the starting hand, full stop. The server clamps StartingAbilities to the
+-- same number so it can never deal a card this screen would not draw.
+local HAND_SLOTS = 4
 local HAND_SPACING = 56
 local handSlots = {}
 -- spinning die shown while the hand rolls in (same atlas as the reveal)
@@ -2463,9 +2482,20 @@ handKeep:SetText("Keep Abilities")
 
 -- keep every surviving (e.g. locked) card in its exact slot across rerolls;
 -- replacements drop into the slots that were vacated
+--
+-- Only the abilities the Wildcard DEALT are cards. An ability that arrives
+-- free alongside one of them -- the stance it cannot be used without, or a
+-- form's starter kit -- is owned, but it was never rolled and cannot be
+-- rerolled, so it takes no slot. Drawing the whole owned list added a card to
+-- the hand every time a roll brought a companion in with it.
 local function OrderedHand()
-    local byId = {}
-    for _, e in ipairs(CW.owned) do byId[e.id] = e end
+    local byId, dealt = {}, {}
+    for _, e in ipairs(CW.owned) do
+        if e.source == 1 then   -- 1 = rolled; 0 picked, 2 talent, 3 companion
+            byId[e.id] = e
+            tinsert(dealt, e)
+        end
+    end
 
     local slots, used = {}, {}
     for i, id in ipairs(CW.handOrder or {}) do
@@ -2475,7 +2505,7 @@ local function OrderedHand()
         end
     end
     local fresh = {}
-    for _, e in ipairs(CW.owned) do
+    for _, e in ipairs(dealt) do
         if not used[e.id] then tinsert(fresh, e.id) end
     end
     local order, k = {}, 1
@@ -2590,11 +2620,20 @@ handRoll:SetScript("OnClick", function()
     Send("OWN")
 end)
 handKeep:SetScript("OnClick", function()
+    -- just close it: the hand is the whole point of this screen, and dropping
+    -- the Character Advancement panel on top of a player who has finished with
+    -- it is one modal too many. The panel is a click away on the minimap
+    -- button whenever they want it.
     hand:Hide()
-    frame:Show() -- now show the full Character Advancement screen
 end)
 
 hand:SetScript("OnShow", function()
+    ClasslessWildcardCharDB = ClasslessWildcardCharDB or {}
+    ClasslessWildcardCharDB.handSeen = true   -- opened by any route: don't auto-open again
+    -- the level free rolls end at is the server's to decide, so say what it says
+    handHint:SetText("Click an ability to lock it in: |cffffd100gold ring + closed padlock = kept|r." ..
+        " Roll Abilities rerolls only the unlocked ones. Free until level "
+        .. (CW.state.freeReroll or 10) .. "!")
     CW.suppressReveals = true -- the hand shows results directly, no popups
     -- kill any reveal that slipped in before the hand opened
     CW.revealQueue = {}
@@ -2656,31 +2695,38 @@ local function HandleMessage(msg)
         s.mode, s.ae, s.te, s.pity, s.chance = tonumber(p[2]) or 255, tonumber(p[3]) or 0, tonumber(p[4]) or 0, tonumber(p[5]) or 0, tonumber(p[6]) or 0
         s.scrolls, s.level, s.deadline = tonumber(p[7]) or 0, tonumber(p[8]) or 1, tonumber(p[9]) or 5
         s.rebirth, s.rebirthCost = tonumber(p[10]) or 0, tonumber(p[11]) or 0
-        -- Count fields, don't probe for nil: the current packet is 15 fields
-        -- and the pre-merge one was 16 (it carried ability and talent rerolls
-        -- separately). Probing p[16] matched BOTH, because SplitPipes used to
-        -- append a trailing empty string -- so every field after it was read
-        -- one place out, and universalResources picked up the scroll price,
-        -- which is why the resource bars vanished.
-        if #p >= 16 then
-            -- older server, still sending the two reroll fields: fold them so
-            -- the addon keeps working until the core is rebuilt
-            s.rerolls = (tonumber(p[12]) or 0) + (tonumber(p[13]) or 0)
-            s.universalResources = tonumber(p[14]) or 0
-            s.scrollCost = tonumber(p[15]) or 0
-            s.scrollBuy = tonumber(p[16]) or 0
-        else
-            s.rerolls = tonumber(p[12]) or 0
-            s.universalResources = tonumber(p[13]) or 0
-            s.scrollCost = tonumber(p[14]) or 0
-            s.scrollBuy = tonumber(p[15]) or 0
-        end
+        -- Read every field by position, unconditionally. There used to be a
+        -- branch here that treated a 16-field packet as a pre-merge server
+        -- (one that sent ability and talent rerolls as two numbers) and folded
+        -- them. That made the field count part of the protocol: adding a 16th
+        -- field to the CURRENT packet would have been read as the old format
+        -- and shifted every field after it by one, which is exactly the bug
+        -- that once made the resource bars vanish. The addon ships inside the
+        -- module and is installed from the same checkout as the server, so a
+        -- mismatched pair is not a thing to support. Fields past the last one
+        -- named here are ignored, so the server can grow the packet freely.
+        s.rerolls = tonumber(p[12]) or 0
+        s.universalResources = tonumber(p[13]) or 0
+        s.scrollCost = tonumber(p[14]) or 0
+        s.scrollBuy = tonumber(p[15]) or 0
+        s.freeReroll = tonumber(p[16]) or 10   -- Wildcard.FreeRerollLevel
         CW.UpdateBarsVisibility()
         UpdateStatus()
         -- fresh Wildcard hero: lock & roll your starting hand
         if CW.pendingHand then
             CW.pendingHand = nil
             if CW.CanShowHand() then hand:Show() end
+        end
+        -- The server can put a Hero on Wildcard without the addon asking: a
+        -- realm with AllowModeChoice = 0 deals the hand at first login, and the
+        -- level deadline deals it to anyone who never chose. Neither goes
+        -- through MODE, so nothing set pendingHand and the starting hand never
+        -- appeared. Open it once per character, and only while the free-reroll
+        -- window is still open; the dice crest reopens it after that.
+        ClasslessWildcardCharDB = ClasslessWildcardCharDB or {}
+        if not ClasslessWildcardCharDB.handSeen and CW.CanShowHand() then
+            ClasslessWildcardCharDB.handSeen = true
+            hand:Show()
         end
         -- level 10 can arrive while the hand is open: close it out rather than
         -- leaving a "free until level 10" screen up

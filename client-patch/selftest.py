@@ -26,6 +26,7 @@ CHARBASEINFO = "DBFilesClient\\CharBaseInfo.dbc"
 SKILLRACECLASSINFO = "DBFilesClient\\SkillRaceClassInfo.dbc"
 SKILLLINEABILITY = "DBFilesClient\\SkillLineAbility.dbc"
 SKILLLINE = "DBFilesClient\\SkillLine.dbc"
+SPELL = elemental.SPELL
 CHARSTARTOUTFIT = "DBFilesClient\\CharStartOutfit.dbc"
 GLUESTRINGS = "Interface\\GlueXML\\GlueStrings.lua"
 CHARCREATE_LUA = "Interface\\GlueXML\\CharacterCreate.lua"
@@ -227,6 +228,53 @@ def main(argv):
             check("SkillLineAbility patch idempotent", not changed_again,
                   "%d changed on second pass" % changed_again)
 
+            # --- Spell.dbc class tools ---------------------------------------
+            # A Hero is handed no class's tools, so a spell that demands one
+            # (Stoneskin Totem wants an Earth Totem) can never be cast. The
+            # requirement comes off class spells only; profession recipes keep
+            # their hammer and their skinning knife.
+            class_spells = dbc.class_spell_ids(sla_dbc, categories)
+            raw_spell, spell_source = files.find(SPELL)
+            spell_dbc, tools_cleared = dbc.clear_spell_tools(raw_spell, class_spells)
+            check("Spell.dbc resolved", bool(raw_spell), os.path.basename(spell_source))
+
+            sc, sf, sr, _sss = dbc.parse_header(raw_spell)
+
+            def spell_tools(blob, spell_id):
+                for index in range(sc):
+                    row = struct.unpack_from("<%dI" % sf, blob, 20 + index * sr)
+                    if row[0] == spell_id:
+                        return (row[50], row[51], row[222], row[223])
+                return None
+
+            before_tools = spell_tools(raw_spell, 8071)
+            after_tools = spell_tools(spell_dbc, 8071)
+            check("Stoneskin Totem asked for a tool before",
+                  before_tools is not None and any(before_tools), "%s" % (before_tools,))
+            check("Stoneskin Totem asks for none after",
+                  after_tools is not None and not any(after_tools),
+                  "%d class spell(s) cleared" % tools_cleared)
+
+            kept = 0
+            out_of_column = 0
+            for index in range(sc):
+                before = struct.unpack_from("<%dI" % sf, raw_spell, 20 + index * sr)
+                after = struct.unpack_from("<%dI" % sf, spell_dbc, 20 + index * sr)
+                if after[50] or after[51] or after[222] or after[223]:
+                    kept += 1
+                if before != after:
+                    for column in range(sf):
+                        if before[column] != after[column] and column not in (50, 51, 222, 223):
+                            out_of_column += 1
+            check("only the two tool columns changed", not out_of_column,
+                  "%d stray edit(s)" % out_of_column)
+            check("professions keep their tools", kept > 100,
+                  "%d rows still require one" % kept)
+
+            _again_spell, cleared_again = dbc.clear_spell_tools(spell_dbc, class_spells)
+            check("Spell.dbc tool patch idempotent", not cleared_again,
+                  "%d cleared on second pass" % cleared_again)
+
             # --- elemental variants ------------------------------------------
             # The generated spell rows must land in THIS client's Spell.dbc,
             # with the base's swing kit and an element impact, and the painted
@@ -235,7 +283,7 @@ def main(argv):
             if os.path.exists(manifest_file):
                 manifest = elemental.load_manifest(manifest_file)
                 variants = manifest["variants"]
-                payload = {SKILLLINEABILITY: sla_dbc}
+                payload = {SKILLLINEABILITY: sla_dbc, SPELL: spell_dbc}
                 notes = []
                 elemental.apply(files, payload, manifest, notes, want_icons=True)
                 check("elemental: Spell.dbc produced", elemental.SPELL in payload,

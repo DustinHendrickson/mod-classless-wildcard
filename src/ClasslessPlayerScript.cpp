@@ -16,14 +16,15 @@
 #include "Chat.h"
 #include "ClasslessMgr.h"
 #include "DBCStores.h"
+#include "DatabaseEnv.h"
 #include "Duration.h"
+#include "GameTime.h"
 #include "Optional.h"
 #include "Pet.h"
 #include "Player.h"
 #include "ScriptMgr.h"
-#include "Spell.h"
-#include "SpellInfo.h"
 #include "StringFormat.h"
+#include "World.h"
 
 using namespace ClasslessWildcard;
 
@@ -50,21 +51,41 @@ class ClasslessPlayerScript : public PlayerScript
 {
     std::unordered_map<uint64, uint32> _tickAcc; // guid low -> ms accumulator
 
+    // The last money a character SPENT, and the world tick it happened on.
+    // A class trainer takes the gold and then teaches the spell, and the
+    // module takes the spell straight back -- so without this the Hero pays
+    // for nothing. Keyed on the tick because the two happen inside one
+    // opcode: a debit from any other source is a different tick.
+    struct Spend { uint32 copper = 0; uint32 tick = 0; };
+    std::unordered_map<uint64, Spend> _lastSpend;
+
 public:
     ClasslessPlayerScript() : PlayerScript("ClasslessPlayerScript", {
         PLAYERHOOK_ON_CREATE,
         PLAYERHOOK_ON_FIRST_LOGIN,
         PLAYERHOOK_ON_LOGIN,
         PLAYERHOOK_ON_LOGOUT,
+        PLAYERHOOK_ON_DELETE_FROM_DB,
         PLAYERHOOK_ON_LEVEL_CHANGED,
         PLAYERHOOK_ON_CALCULATE_TALENTS_POINTS,
         PLAYERHOOK_CAN_LEARN_TALENT,
         PLAYERHOOK_ON_LEARN_SPELL,
+        PLAYERHOOK_ON_MONEY_CHANGED,
         PLAYERHOOK_ON_AFTER_UPDATE_MAX_POWER,
         PLAYERHOOK_ON_PLAYER_IS_CLASS,
         PLAYERHOOK_ON_BEFORE_GUARDIAN_INIT_STATS_FOR_LEVEL,
         PLAYERHOOK_ON_UPDATE
     }) { }
+
+    // Runs before the money actually moves, with the signed delta.
+    void OnPlayerMoneyChanged(Player* player, int32& amount) override
+    {
+        if (!sClasslessMgr->cfg.enabled || amount >= 0)
+            return;
+        Spend& spend = _lastSpend[player->GetGUID().GetCounter()];
+        spend.copper = uint32(-amount);
+        spend.tick = uint32(GameTime::GetGameTimeMS().count());
+    }
 
     // "Does this Hero count as a <class> for the purposes of X?"
     //
@@ -293,9 +314,31 @@ public:
             }, 2s);
     }
 
+    // A deleted character has to take its module rows with it.
+    //
+    // ObjectMgr::SetHighestGuids sets the player GUID counter to MAX(guid) + 1
+    // at EVERY startup, so deleting the highest character and restarting hands
+    // that same GUID to the next character created. Without this, that new
+    // character would load the deleted Hero's abilities, talents, essence,
+    // stat allocation, chosen path and reroll cooldowns -- a fresh level 1 with
+    // somebody else's level 80 build. Even where the GUID is not reused the
+    // rows would simply accumulate forever.
+    //
+    // Appended to the core's own delete transaction, so the rows go with the
+    // character or not at all.
+    void OnPlayerDeleteFromDB(CharacterDatabaseTransaction trans, uint32 guid) override
+    {
+        trans->Append("DELETE FROM cw_char_state WHERE guid = {}", guid);
+        trans->Append("DELETE FROM cw_char_abilities WHERE guid = {}", guid);
+        trans->Append("DELETE FROM cw_char_talents WHERE guid = {}", guid);
+        trans->Append("DELETE FROM cw_char_bans WHERE guid = {}", guid);
+        sClasslessMgr->UnloadState(ObjectGuid::Create<HighGuid::Player>(guid));
+    }
+
     void OnPlayerLogout(Player* player) override
     {
         _tickAcc.erase(player->GetGUID().GetCounter());
+        _lastSpend.erase(player->GetGUID().GetCounter());
         sClasslessMgr->UnloadState(player->GetGUID());
     }
 
@@ -397,6 +440,34 @@ public:
 
         CharState& st = sClasslessMgr->GetState(player);
 
+        // A pet that was away when its spell went is not caught by the sweep in
+        // RemoveAbilityInternal: mounting temporarily unsummons it, so a Hero
+        // who rerolls Summon Imp while mounted has no pet to send home at that
+        // moment and gets the imp back on dismounting. Costs a map lookup and a
+        // known-spell check every two seconds.
+        sClasslessMgr->DismissOrphanedSummons(player);
+
+        // Player::InitDataForForm resets the displayed power to the CLASS's own
+        // whenever a shapeshift starts or ends, and a warrior stance counts --
+        // so a Hero who picked the rage bar was put back on mana the first time
+        // they used Battle Stance. Cat, Ghoul, Bear and Dire Bear are the forms
+        // the core gives a power type of their own; in anything else, including
+        // no form at all, the Hero's own choice stands.
+        if (cfg.universalResources && st.displayPower != 255)
+        {
+            switch (player->GetShapeshiftForm())
+            {
+                case FORM_CAT:
+                case FORM_GHOUL:
+                case FORM_BEAR:
+                case FORM_DIREBEAR:
+                    break;
+                default:
+                    sClasslessMgr->ApplyDisplayPower(player);
+                    break;
+            }
+        }
+
         if (cfg.universalStats)
         {
             int32 agi = int32(player->GetStat(STAT_AGILITY));
@@ -478,9 +549,22 @@ public:
         if (st.mode == Mode::Unchosen || st.abilities.count(e->firstSpellId))
             return; // no mode yet, or a rank of a line the Hero legitimately owns
 
+        // A class trainer takes the gold in Trainer::TeachSpell and teaches the
+        // spell immediately afterwards, so by the time this fires the Hero has
+        // already paid for something they are about to lose. Give it back.
+        // Only a debit from this same world tick counts, which is the one the
+        // trainer just took: the two happen inside a single opcode.
+        uint32 refund = 0;
+        if (auto itr = _lastSpend.find(player->GetGUID().GetCounter()); itr != _lastSpend.end())
+            if (itr->second.tick == uint32(GameTime::GetGameTimeMS().count()))
+            {
+                refund = itr->second.copper;
+                itr->second.copper = 0;   // never refund the same payment twice
+            }
+
         // revert after the learn completes (safe outside the learn call stack)
         uint32 firstSpell = e->firstSpellId;
-        player->m_Events.AddEventAtOffset([player, firstSpell]()
+        player->m_Events.AddEventAtOffset([player, firstSpell, refund]()
         {
             AbilityEntry const* entry = sClasslessMgr->GetAbility(firstSpell);
             if (!entry)
@@ -488,51 +572,31 @@ public:
             for (uint32 rankSpell : entry->ranks)
                 if (player->HasSpell(rankSpell))
                     player->removeSpell(rankSpell, SPEC_MASK_ALL, false);
+            if (refund)
+                player->ModifyMoney(int32(refund));
             ChatHandler(player->GetSession()).SendSysMessage(
-                "|cff00ccff[Classless]|r That spell is managed by the classless system — learn it through the "
-                "Hero Advancement NPC (or /cw) instead of a class trainer.");
+                refund
+                ? "|cff00ccff[Classless]|r That spell is managed by the classless system. Your money has been "
+                  "returned. Learn it through the Hero Advancement NPC (or /cw) instead of a class trainer."
+                : "|cff00ccff[Classless]|r That spell is managed by the classless system. Learn it through the "
+                  "Hero Advancement NPC (or /cw) instead of a class trainer.");
         }, 1ms);
     }
 };
 
-// Every Hero runs one chassis, so exactly one power type is the "displayed" one
-// and every spell drawing on a different pool would otherwise be uncastable.
-// That is not an edge case here, it is the normal state of a classless build:
-// the same character casts mana spells, rage abilities and energy abilities.
+// There was a spell script here that waived SPELL_FAILED_NO_POWER for any
+// ability drawing on a pool other than the displayed one. It did nothing, and
+// it must not be brought back:
 //
-// So the core's power check is waived whenever the spell's power type differs
-// from the chassis's. The cost is still paid, out of the pool the spell
-// actually uses -- universal resources keeps all three pools alive, so there
-// is something there to spend. This is unconditional by design; there is no
-// build in which a Hero should be told a spell is unusable because of the
-// chassis it happens to run on.
-class ClasslessSpellScript : public AllSpellScript
-{
-public:
-    ClasslessSpellScript() : AllSpellScript("ClasslessSpellScript", {
-        ALLSPELLHOOK_ON_SPELL_CHECK_CAST
-    }) { }
-
-    void OnSpellCheckCast(Spell* spell, bool /*strict*/, SpellCastResult& res) override
-    {
-        if (!sClasslessMgr->cfg.enabled || !sClasslessMgr->cfg.universalResources)
-            return;
-        if (res != SPELL_FAILED_NO_POWER)
-            return;
-
-        Unit* caster = spell->GetCaster();
-        if (!caster || !caster->IsPlayer())
-            return;
-
-        SpellInfo const* info = spell->GetSpellInfo();
-        if (!info)
-            return;
-
-        // only waive the check when the spell's power type differs from the caster's
-        if (info->PowerType != POWER_HEALTH && Powers(info->PowerType) != caster->getPowerType())
-            res = SPELL_CAST_OK;
-    }
-};
+//   * Spell::CheckCast calls the OnSpellCheckCast hook as its FIRST statement,
+//     with the result still SPELL_CAST_OK, so no check has run yet and the
+//     failure it was looking for can never be seen.
+//   * Nothing is missing. Spell::CheckPower reads the pool the SPELL uses, not
+//     the one on the unit frame, and RegenerateAll refills energy and mana for
+//     every class while the module keeps rage flowing. A Hero with rage casts
+//     rage abilities; a Hero without rage should not.
+//   * Had it worked it would have been a hole: every off-chassis ability would
+//     have been castable on an empty pool, which is most of a classless build.
 
 // Rage generation for non-rage chassis: the core only rewards rage when the
 // DISPLAYED power type is rage, so a Mage chassis swinging a sword would never
@@ -565,6 +629,14 @@ public:
     }
 
     // rage from dealing melee damage (fires per swing, melee only)
+    //
+    // Player::RewardRage is
+    //   (damage / rageconversion * 7.5 + weaponSpeedHitFactor) / 2
+    // and the halving is not optional: without it a Hero earned roughly twice
+    // the rage a warrior does for the same swing, which is not what
+    // "% of warrior-formula rage" says on the tin. The weapon-speed term needs
+    // the attack type the core has and this hook does not, so it is left out
+    // and the small amount it adds is simply not granted.
     void ModifyMeleeDamage(Unit* /*target*/, Unit* attacker, uint32& damage) override
     {
         if (!damage || !WantsCustomRage(attacker))
@@ -572,7 +644,8 @@ public:
         Config const& cfg = sClasslessMgr->cfg;
         if (!cfg.urRageDealtPct)
             return;
-        float addRage = float(damage) / RageConversion(attacker->GetLevel()) * 7.5f;
+        float addRage = float(damage) / RageConversion(attacker->GetLevel()) * 7.5f / 2.0f;
+        addRage *= sWorld->getRate(RATE_POWER_RAGE_INCOME);
         addRage = addRage * float(cfg.urRageDealtPct) / 100.0f;
         attacker->ModifyPower(POWER_RAGE, int32(addRage * 10.0f));
     }
@@ -586,6 +659,7 @@ public:
         if (!cfg.urRageTakenPct)
             return;
         float addRage = float(damage) / RageConversion(victim->GetLevel()) * 2.5f;
+        addRage *= sWorld->getRate(RATE_POWER_RAGE_INCOME);
         addRage = addRage * float(cfg.urRageTakenPct) / 100.0f;
         victim->ModifyPower(POWER_RAGE, int32(addRage * 10.0f));
     }
@@ -595,6 +669,5 @@ void AddClasslessPlayerScripts()
 {
     new ClasslessWorldScript();
     new ClasslessPlayerScript();
-    new ClasslessSpellScript();
     new ClasslessUnitScript();
 }

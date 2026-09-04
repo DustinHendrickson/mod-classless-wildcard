@@ -45,6 +45,8 @@ CHARSTARTOUTFIT = "DBFilesClient\\CharStartOutfit.dbc"
 SKILLRACECLASSINFO = "DBFilesClient\\SkillRaceClassInfo.dbc"
 SKILLLINEABILITY = "DBFilesClient\\SkillLineAbility.dbc"
 SKILLLINE = "DBFilesClient\\SkillLine.dbc"
+# the same path elemental.py uses, kept in one place so the two never diverge
+SPELL = elemental.SPELL
 GLUESTRINGS = "Interface\\GlueXML\\GlueStrings.lua"
 CHARCREATE_LUA = "Interface\\GlueXML\\CharacterCreate.lua"
 CLASSICONS_INGAME = "Interface\\TargetingFrame\\UI-Classes-Circles.blp"
@@ -217,6 +219,19 @@ def build_data_patch(files, name, report, theme=False):
     report.append("  SkillLineAbility.dbc  %d class spells now belong to every class "
                   "(spellbook tabs for cross-class spells; from %s)"
                   % (changed, os.path.basename(source)))
+
+    # A class tool is the one requirement a Hero can never meet: Stoneskin
+    # Totem wants an Earth Totem, which is handed to shamans alone. The server
+    # clears the requirement on its side; the client has to agree, or the
+    # tooltip keeps the red "Tools:" line and the cast is refused before it is
+    # ever sent.
+    class_spells = dbc.class_spell_ids(raw, categories)
+    raw, source = files.find(SPELL)
+    patched, cleared = dbc.clear_spell_tools(raw, class_spells)
+    payload[SPELL] = patched
+    report.append("  Spell.dbc        class tool requirement cleared from %d spells "
+                  "(totems, relics; reagents untouched; from %s)"
+                  % (cleared, os.path.basename(source)))
 
     if theme:
         try:

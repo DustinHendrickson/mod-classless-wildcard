@@ -135,7 +135,7 @@ namespace
 
         if (st.mode != Mode::Unchosen && cfg.rebirthEnable)
             AddGossipItemFor(player, GOSSIP_ICON_BATTLE,
-                Acore::StringFormat("|cffff4444Rebirth|r — full reset / switch path ({} gold)", cfg.rebirthCostGold),
+                Acore::StringFormat("|cffff4444Rebirth|r: full reset or switch path ({} gold)", cfg.rebirthCostGold),
                 GOSSIP_SENDER_MAIN, ACT_REBIRTH);
 
         SendGossipMenuFor(player, DEFAULT_GOSSIP_MESSAGE, creature->GetGUID());
@@ -187,11 +187,11 @@ namespace
         ClearGossipMenuFor(player);
         for (uint8 c = 0; c < uint8(std::size(VENDOR_CATEGORIES)); ++c)
             AddGossipItemFor(player, GOSSIP_ICON_VENDOR,
-                Acore::StringFormat("{}  |cff888888— {} ({} items)|r",
+                Acore::StringFormat("{}  |cff888888{} ({} items)|r",
                     VENDOR_CATEGORIES[c].name, VENDOR_CATEGORIES[c].blurb, CategoryTotal(c)),
                 GOSSIP_SENDER_MAIN, BASE_VENDOR_CATEGORY + c);
 
-        AddGossipItemFor(player, GOSSIP_ICON_MONEY_BAG, "Supplies  |cff888888— Reroll Scrolls|r",
+        AddGossipItemFor(player, GOSSIP_ICON_MONEY_BAG, "Supplies  |cff888888Reroll Scrolls|r",
                          GOSSIP_SENDER_MAIN, ACT_VENDOR_SUPPLIES);
         AddGossipItemFor(player, GOSSIP_ICON_TALK, "<- Back", GOSSIP_SENDER_MAIN, ACT_MAIN);
         SendGossipMenuFor(player, DEFAULT_GOSSIP_MESSAGE, creature->GetGUID());
@@ -269,9 +269,14 @@ namespace
         for (uint32 i = start; i < list.size() && i < start + PAGE_SIZE; ++i)
         {
             AbilityEntry const* e = list[i];
+            // The unlock level is part of the price: without it the only way to
+            // find out an ability is out of reach was to click it and be told.
+            uint32 unlock = e->rankLevels.empty() ? 1u : uint32(e->rankLevels[0]);
+            bool tooHigh = sClasslessMgr->cfg.respectLevelReqs && unlock > player->GetLevel();
             AddGossipItemFor(player, GOSSIP_ICON_TRAINER,
-                Acore::StringFormat("{}{}|r  [{} AE]{}", RarityColor(e->rarity), SpellNameOf(e->firstSpellId),
-                    sClasslessMgr->AbilityCost(*e), e->passive ? " (passive)" : ""),
+                Acore::StringFormat("{}{}|r  [{} AE]  {}Lv {}|r{}", RarityColor(e->rarity), SpellNameOf(e->firstSpellId),
+                    sClasslessMgr->AbilityCost(*e), tooHigh ? "|cffff4444" : "|cff888888", unlock,
+                    e->passive ? " (passive)" : ""),
                 GOSSIP_SENDER_MAIN, BASE_LEARN_ABILITY + e->firstSpellId);
         }
 
@@ -358,9 +363,24 @@ namespace
         {
             uint32 firstSpell = owned[i];
             AbilityEntry const* e = sClasslessMgr->GetAbility(firstSpell);
-            bool locked = st.abilities[firstSpell].locked;
+            OwnedAbility const& o = st.abilities[firstSpell];
+            bool locked = o.locked;
             std::string label = Acore::StringFormat("{}{}|r{}", e ? RarityColor(e->rarity) : "|cffffffff",
                 SpellNameOf(firstSpell), locked ? " |cffffff00[locked]|r" : "");
+
+            // Free extras have nothing to offer here: they cost nothing, so
+            // there is no essence to refund, and they cannot be rerolled or
+            // locked on their own. Listed so the build is complete, with no
+            // action attached and a note saying where they came from.
+            if (o.source == GrantSource::Companion || o.source == GrantSource::Talent)
+            {
+                AddGossipItemFor(player, GOSSIP_ICON_CHAT,
+                    Acore::StringFormat("{}  |cff888888({})|r", label,
+                        o.source == GrantSource::Companion ? "came free with another ability"
+                                                           : "came with a talent"),
+                    GOSSIP_SENDER_MAIN, BASE_MY_ABILITIES_PG + page);
+                continue;
+            }
 
             if (wildcard)
             {
