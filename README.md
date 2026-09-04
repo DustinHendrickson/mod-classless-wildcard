@@ -78,7 +78,7 @@ tells you what every character gets: all armour and weapons, every resource, and
 
 <br><br>
 
-<img src="docs/advancement_addon.webp" alt="The Character Advancement panel: an ability browser, talent trees for every class, and the current build side by side" width="92%">
+<img src="docs/advancement_panel.webp" alt="The Character Advancement panel: an ability browser, talent trees for every class, and the current build side by side" width="92%">
 
 <em>The <b>Character Advancement</b> panel. Browse every class's abilities and talent trees,<br>
 with your build on the right. Lock or reroll anything you own from the same window.</em>
@@ -514,7 +514,7 @@ logging out.
 
 <div align="center">
 
-<img src="docs/elemental_variants_icons.webp" alt="Six base attack icons, each followed by its seven elemental variants, badged along the bottom edge for Fire, Frost, Earth, Poison, Arcane, Shadow and Holy" width="92%">
+<img src="docs/elemental_variants.webp" alt="Backstab's icon followed by its seven elemental variants, each badged along the bottom edge for Fire, Frost, Earth, Poison, Arcane, Shadow and Holy" width="72%">
 
 <em>A variant keeps its base attack's icon and adds a badge for the element.<br>
 Left to right: the base attack, then Fire, Frost, Earth, Poison, Arcane, Shadow, Holy.</em>
