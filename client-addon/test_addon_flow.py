@@ -77,6 +77,7 @@ StubMT.__index = function(self, k)
     if k == "GetFrameLevel" then return function(s) return rawget(s, "__level") or 0 end end
     if k == "SetTexCoord" then return function(s, ...) rawset(s, "__coord", {...}) end end
     if k == "SetVertexColor" then return function(s, r, g, b) rawset(s, "__rgb", {r, g, b}) end end
+    if k == "SetShadowColor" or k == "SetShadowOffset" then return function() end end
     if k == "GetFont" then return function() return "Fonts\\FRIZQT__.TTF", 12, "" end end
     if k == "GetCenter" then return function() return 0, 0 end end
     if k == "GetPoint" then return function() return "CENTER", nil, "CENTER", 0, 0 end end
@@ -640,10 +641,18 @@ def test_reveal_tooltip(h):
     h.check(info[5].left["__shown"] is False and str(info[5].left["__text"]) == "",
             "unused rows are blanked, not just hidden")
 
+    fx = CW.revealFX
+    h.check(fx.panel["__shown"] is True, "the text sits on a solid plate, not on the world")
+    edge = [round(v, 2) for v in fx.edges[1]["__rgb"].values()]
+    h.check(fx.edges[1]["__shown"] is True and edge == [0.12, 1, 0],
+            "with a hairline border in the rarity's colour (%s)" % edge)
+
     # a fresh spin must not leave the last ability's text on screen
     h.rt.execute("ClasslessWildcard_API.revealFX.HideInfo()")
     h.check(info[1].left["__shown"] is False and str(info[1].left["__text"]) == "",
             "and cleared before the next roll")
+    h.check(fx.panel["__shown"] is False and fx.edges[1]["__shown"] is False,
+            "plate and border go with it")
 
 
 def test_reveal_tiers(h):
@@ -673,6 +682,29 @@ def test_reveal_tiers(h):
         return [str(x) for x in h.rt.globals().SOUNDS.values()]
 
     h.recv(state(1, level=20))
+
+    # the tumble has to stop upright BEFORE the die swells, not snap upright
+    # when the rarity art replaces it
+    h.rt.execute("""
+        local CW = ClasslessWildcard_API
+        CW.suppressReveals = false
+        CW.pendingHand = nil
+        CW.revealQueue = {}
+        CW.revealAnim.phase = "idle"
+        CW.revealAnim.awaiting = false
+        CW.revealFrame:Hide()
+        CW.EnqueueReveal({ isTalent = false, entry = 133, spell = 133, rarity = 3, flags = 0 })
+    """)
+    h.rt.execute("NOW = NOW + 1.7")
+    reveal["__scripts"]["OnUpdate"](reveal, 1.7)
+    coord = [round(v, 4) for v in CW.revealDie["__coord"].values()]
+    h.check(str(CW.revealAnim.phase) == "burst", "the spin hands over to the burst")
+    h.check(coord == [0.0, 0.125, 0.0, 0.5],
+            "and the die is on its upright frame as it starts to swell (%s)" % coord)
+    h.rt.execute("NOW = NOW + 0.1")
+    reveal["__scripts"]["OnUpdate"](reveal, 0.1)
+    h.check([round(v, 4) for v in CW.revealDie["__coord"].values()] == coord,
+            "and stays upright while it grows")
 
     snd = run(0)
     h.check(fx.rays["__shown"] is False, "common: no starburst")

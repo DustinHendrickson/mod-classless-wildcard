@@ -2195,14 +2195,45 @@ rvSub:SetPoint("CENTER", 0, -170)
 do
     local face = rvTitle:GetFont()
     if face then
-        rvName:SetFont(face, 22)
-        rvSub:SetFont(face, 13)
+        rvName:SetFont(face, 24)
+        rvSub:SetFont(face, 15)
     end
     for _, fs in ipairs({ rvTitle, rvName, rvSub }) do
         fs:SetShadowColor(0, 0, 0, 1)
         fs:SetShadowOffset(1, -1)
     end
 end
+
+-- A real panel behind the text. The reveal floats over the world, and a shadow
+-- alone is not a background: small text on grass is unreadable however hard its
+-- shadow is. This is the tooltip treatment -- near-black plate, hairline border
+-- in the rarity's colour -- drawn on BACKGROUND/BORDER so the OVERLAY font
+-- strings of this same frame stay on top of it without any reparenting.
+rvFX.panel = reveal:CreateTexture(nil, "BACKGROUND", nil, 5)
+rvFX.panel:SetTexture(0, 0, 0)
+rvFX.panel:SetAlpha(0.86)
+rvFX.panel:SetWidth(344)
+rvFX.panel:Hide()
+
+rvFX.edges = {}
+for i = 1, 4 do
+    local e = reveal:CreateTexture(nil, "BORDER")
+    e:SetTexture(1, 1, 1)
+    e:Hide()
+    rvFX.edges[i] = e
+end
+rvFX.edges[1]:SetPoint("TOPLEFT", rvFX.panel, "TOPLEFT", 0, 0)
+rvFX.edges[1]:SetPoint("TOPRIGHT", rvFX.panel, "TOPRIGHT", 0, 0)
+rvFX.edges[1]:SetHeight(1)
+rvFX.edges[2]:SetPoint("BOTTOMLEFT", rvFX.panel, "BOTTOMLEFT", 0, 0)
+rvFX.edges[2]:SetPoint("BOTTOMRIGHT", rvFX.panel, "BOTTOMRIGHT", 0, 0)
+rvFX.edges[2]:SetHeight(1)
+rvFX.edges[3]:SetPoint("TOPLEFT", rvFX.panel, "TOPLEFT", 0, 0)
+rvFX.edges[3]:SetPoint("BOTTOMLEFT", rvFX.panel, "BOTTOMLEFT", 0, 0)
+rvFX.edges[3]:SetWidth(1)
+rvFX.edges[4]:SetPoint("TOPRIGHT", rvFX.panel, "TOPRIGHT", 0, 0)
+rvFX.edges[4]:SetPoint("BOTTOMRIGHT", rvFX.panel, "BOTTOMRIGHT", 0, 0)
+rvFX.edges[4]:SetWidth(1)
 
 -- One row per tooltip line, laid out like the tooltip itself: a left-justified
 -- string and a right-justified one sharing the same box, so "10 Rage" and
@@ -2214,24 +2245,35 @@ end
 rvFX.info = {}
 for i = 1, rvFX.INFO_LINES do
     local row = {}
-    row.left = reveal:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
-    row.left:SetWidth(300)
+    row.left = reveal:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
+    row.left:SetWidth(304)
     row.left:SetJustifyH("LEFT")
     row.left:SetJustifyV("TOP")
+    row.left:SetShadowColor(0, 0, 0, 1)
+    row.left:SetShadowOffset(1, -1)
     if i == 1 then
         row.left:SetPoint("TOP", rvSub, "BOTTOM", 0, -10)
     else
         row.left:SetPoint("TOP", rvFX.info[i - 1].left, "BOTTOM", 0, -2)
     end
-    row.right = reveal:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+    row.right = reveal:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
     row.right:SetAllPoints(row.left)
     row.right:SetJustifyH("RIGHT")
     row.right:SetJustifyV("TOP")
+    row.right:SetShadowColor(0, 0, 0, 1)
+    row.right:SetShadowOffset(1, -1)
+    local face = row.left:GetFont()
+    if face then
+        row.left:SetFont(face, 14)
+        row.right:SetFont(face, 14)
+    end
     row.left:Hide(); row.right:Hide()
     rvFX.info[i] = row
 end
 
 function rvFX.HideInfo()
+    rvFX.panel:Hide()
+    for _, e in ipairs(rvFX.edges) do e:Hide() end
     for i = 1, rvFX.INFO_LINES do
         rvFX.info[i].left:SetText(""); rvFX.info[i].right:SetText("")
         rvFX.info[i].left:Hide(); rvFX.info[i].right:Hide()
@@ -2446,12 +2488,25 @@ local function ShowResult()
     local anchor = lastRow or rvSub
     rvKeep:ClearAllPoints()
     rvReroll:ClearAllPoints()
-    rvKeep:SetPoint("TOPRIGHT", anchor, "BOTTOM", -6, -14)
-    rvReroll:SetPoint("TOPLEFT", anchor, "BOTTOM", 6, -14)
-    -- and the scrim behind the text stretches to cover what is now there
-    rvTextScrim:SetHeight(150 + infoH)
+    rvKeep:SetPoint("TOPRIGHT", anchor, "BOTTOM", -6, -18)
+    rvReroll:SetPoint("TOPLEFT", anchor, "BOTTOM", 6, -18)
+
+    -- The plate wraps the name, the tier line and everything read off the
+    -- tooltip, from a little above the name to a little below the last row.
+    -- Anchoring top and bottom rather than setting a height means a one-line
+    -- passive and a six-line spell both come out tight.
+    rvFX.panel:ClearAllPoints()
+    rvFX.panel:SetPoint("TOP", rvName, "TOP", 0, 12)
+    rvFX.panel:SetPoint("BOTTOM", anchor, "BOTTOM", 0, -12)
+    rvFX.panel:Show()
+    for _, e in ipairs(rvFX.edges) do
+        e:SetVertexColor(rgb[1], rgb[2], rgb[3], 0.85)
+        e:Show()
+    end
+    -- the soft scrim still sits under the plate and blends its edges out
+    rvTextScrim:SetHeight(170 + infoH)
     rvTextScrim:ClearAllPoints()
-    rvTextScrim:SetPoint("CENTER", 0, -162 - infoH / 2)
+    rvTextScrim:SetPoint("CENTER", 0, -168 - infoH / 2)
     -- reroll button shows what the player can actually spend
     local s = CW.state
     local charges = (s.rerolls or 0) + (s.scrolls or 0)
@@ -2582,6 +2637,13 @@ reveal:SetScript("OnUpdate", function(self, elapsed)
             end
             rvAnim.phase = "burst"
             rvAnim.t0 = GetTime()
+            -- Land the tumble UPRIGHT before it swells. Nothing set the resting
+            -- frame, so the die froze on whichever one the last OnUpdate
+            -- happened to compute -- floor(e * 40) put that at frame 8, which
+            -- measures as the worst silhouette match to the die at rest of all
+            -- sixteen. It then grew at that angle and snapped upright only when
+            -- the rarity art replaced it. Frame 0 is the one drawn upright.
+            SetDieFrame(0)
             rvGlow:SetAlpha(1)
             -- THE moment: the tier lands here, not when the text appears.
             -- Colour, starburst and sound all arrive together.
@@ -2604,8 +2666,11 @@ reveal:SetScript("OnUpdate", function(self, elapsed)
             end
             return
         end
+        -- 48 and not 40: three whole turns of the 16-frame atlas, so the last
+        -- frame before the burst is 15 and the upright 0 set above is the very
+        -- next one. At 40 it ended on 7 and jumping to 0 skipped half a turn.
         local e = 1 - (1 - p) * (1 - p)      -- ease-out: fast spin, slows down
-        SetDieFrame(math.floor(e * 40))
+        SetDieFrame(math.floor(e * 48))
         rvGlow:SetAlpha(p * 0.9)
     elseif rvAnim.phase == "burst" then
         local p = (GetTime() - rvAnim.t0) / BURST_TIME
@@ -3084,6 +3149,7 @@ hand:SetScript("OnHide", function() CW.suppressReveals = false end)
 
 -- exposed for tests / third-party extensions
 CW.revealFrame, CW.revealKeep, CW.revealReroll = reveal, rvKeep, rvReroll
+CW.revealDie = rvDie   -- exposed for tests
 CW.handFrame, CW.handRoll, CW.handKeep = hand, handRoll, handKeep
 CW.handSlots, CW.handDie = handSlots, handDie
 
