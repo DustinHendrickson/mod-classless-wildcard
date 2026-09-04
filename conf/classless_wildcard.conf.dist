@@ -397,9 +397,8 @@ ClasslessWildcard.SuppressTalentPoints = 1
 #    ClasslessWildcard.Riding.Enable
 #        Train the riding skill for every Hero, free, as they reach the level
 #        for it. Riding is not class power: it is not in the classless library,
-#        it never rolls and it cannot be bought with essence. A Hero who ROLLS
-#        a class mount still needs the skill to sit on it, and paying a trainer
-#        for it is a tax nothing else in the module charges.
+#        it never rolls and it cannot be bought with essence. Set to 0 to
+#        leave riding to the trainers.
 #        Default: 1
 #
 #    ClasslessWildcard.Riding.Grants
@@ -407,17 +406,13 @@ ClasslessWildcard.SuppressTalentPoints = 1
 #        sells it: Apprentice 20, Journeyman 40, Expert (flying) 60, Cold
 #        Weather Flying 68, Artisan (epic flying) 70.
 #
-#        Following the trainer levels is deliberate. The riding spells carry no
-#        level of their own -- all five read SpellLevel 0 -- so the gate lives
-#        entirely in npc_trainer and in each mount item's RequiredLevel.
-#        Granting them all at level 1 would lean completely on mount items
-#        being level-gated, which is a realm-by-realm question; following the
-#        trainer levels cannot outrun anything, because it is what the trainers
-#        already do. To hand them all over at once anyway, set every level to 1.
+#        Set every level to 1 to grant them all at character creation. The
+#        riding spells carry no level of their own (all five read SpellLevel 0),
+#        so this list and each mount item's RequiredLevel are the only gates.
 #
-#        Cold Weather Flying (54197) grants no skill. It is the permission the
-#        server checks before letting anyone fly in Northrend, bought from the
-#        same trainer, so it is listed alongside the ranks.
+#        Cold Weather Flying (54197) grants no skill. It is the permission to
+#        fly in Northrend, sold by the same trainer, so it is listed with the
+#        ranks.
 ClasslessWildcard.Riding.Enable = 1
 ClasslessWildcard.Riding.Grants = "33388:20,33391:40,34090:60,54197:68,34091:70"
 
@@ -449,27 +444,20 @@ ClasslessWildcard.Classless.RespecCostGold = 50
 # Ability rarity
 ########################################
 #
-#    Rarity decides how often an ability rolls, what it costs a Classless Hero
-#    and what colour it is shown in, so it has to mean "how much of a prize is
-#    this". It is worked out from what the ability DOES, taking the strongest
-#    of three signals:
+#    Rarity sets how often an ability rolls, what it costs a Classless Hero and
+#    what colour it is shown in. It is taken from the strongest of three
+#    signals:
 #
-#      CooldownSeconds  the wait the game itself puts on the ability, which is
-#                       its own statement of size. Four thresholds, for
-#                       uncommon, rare, epic and legendary.
-#      TalentRows       a spell taught from talent row R costs 5R points to
-#                       reach, so the row is the tier. Four thresholds, same
-#                       order.
-#      LevelFloors      the level the first rank is learned at, as a FLOOR
-#                       only: two thresholds, for uncommon and rare, and never
-#                       anything higher. Level is when you may learn something,
-#                       not how strong it is.
+#      CooldownSeconds  the longest wait on any rank of the line, spell or
+#                       category cooldown. Four thresholds, for uncommon, rare,
+#                       epic and legendary.
+#      TalentRows       the deepest talent row that teaches the line, where row
+#                       R costs 5R points to reach. Four thresholds, same order.
+#      LevelFloors      the level the first rank is learned at, as a FLOOR only:
+#                       two thresholds, for uncommon and rare, and never higher.
 #
-#    Rating by level alone (what this did before) called Bloodlust legendary
-#    for being level 70, and Pain Suppression common because its SpellLevel is
-#    0. Set any threshold to 0 to switch that signal off.
-#
-#    A row in cw_ability_override still wins over all of it.
+#    Set any threshold to 0 to switch that signal off. A row in
+#    cw_ability_override replaces the result outright.
 ClasslessWildcard.Rarity.CooldownSeconds = "30,60,180,600"
 ClasslessWildcard.Rarity.TalentRows = "2,4,6,8"
 ClasslessWildcard.Rarity.LevelFloors = "25,50"
@@ -582,13 +570,10 @@ ClasslessWildcard.Wildcard.AbilityEveryLevels = 2
 ClasslessWildcard.Wildcard.FreeRerollBelowLevel = 10
 ClasslessWildcard.Wildcard.RarityWeights = "100,95,90,85,80"
 #
-#    TalentRankWeights: how likely a talent roll is to land on each rank,
-#    rank 1 first. This is NOT the rarity ladder above: rarity decides which
-#    talent turns up, rank decides how much of it one roll hands over, and a
-#    rank is a whole point where a rarity is only flavour. The default
+#    TalentRankWeights: how likely a talent roll is to land on each rank, rank 1
+#    first. Separate from the rarity ladder above: rarity decides which talent
+#    turns up, rank decides how many ranks one roll hands over. The default
 #    "100,75,50,25,10" makes rank 5 roughly a twentieth as likely as rank 1.
-#    Reusing the gentle rarity slope here made a five-rank haul nearly as
-#    common as a single rank.
 ClasslessWildcard.Wildcard.TalentRankWeights = "100,75,50,25,10"
 ClasslessWildcard.Wildcard.SynergyBaseChance = 10
 ClasslessWildcard.Wildcard.SynergyIncrement = 10

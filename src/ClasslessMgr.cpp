@@ -191,6 +191,7 @@ void ClasslessMgr::LoadConfig(bool /*reload*/)
     // skill, it is the permission the server checks before letting anyone fly
     // in Northrend -- but it is bought from the same trainer, so it belongs in
     // the same list.
+    cfg.callPetSpell = sConfigMgr->GetOption<uint32>("ClasslessWildcard.CallPetSpell", 883);
     cfg.ridingEnable = sConfigMgr->GetOption<bool>("ClasslessWildcard.Riding.Enable", true);
     parseKit(sConfigMgr->GetOption<std::string>("ClasslessWildcard.Riding.Grants",
         "33388:20,33391:40,34090:60,54197:68,34091:70"), cfg.ridingGrants);
@@ -2676,20 +2677,33 @@ void ClasslessMgr::SyncRequiredForms(Player* player)
 
 // A pet is a creature standing in the world, not an aura, so losing Summon Imp
 // left the imp out for good, following a Hero who could never call it back.
-// Anything summoned by a spell the Hero no longer knows is sent home. A tamed
-// beast records no summoning spell, so hunter pets are left alone.
+// Anything out that the Hero can no longer summon is sent home.
+//
+// That includes tamed beasts, which an earlier comment here claimed it did
+// not. A beast DOES record the spell that produced it: Unit::InitTamedPet
+// writes Tame Beast into UNIT_CREATED_BY_SPELL when it is tamed, and
+// EffectSummonPet overwrites it with Call Pet once it has been put away and
+// called back. Both of those leave with Tame Beast (Call Pet is its
+// companion), so a rerolled Tame Beast already took the beast with it. Only a
+// pet carrying a zero -- older data, a GM spawn -- was ever missed, and the
+// fallback below covers that.
+//
+// PET_SAVE_NOT_IN_SLOT is what Dismiss Pet uses: the beast is put away, not
+// destroyed, so rolling Tame Beast again calls the same one back.
 void ClasslessMgr::DismissOrphanedSummons(Player* player)
 {
     Pet* pet = player->GetPet();
     if (!pet)
         return;
 
-    uint32 summonedBy = pet->GetUInt32Value(UNIT_CREATED_BY_SPELL);
-    if (!summonedBy || player->HasSpell(summonedBy))
+    uint32 needed = pet->GetUInt32Value(UNIT_CREATED_BY_SPELL);
+    if (!needed && pet->getPetType() == HUNTER_PET)
+        needed = cfg.callPetSpell;   // nothing recorded: a beast still needs Call Pet
+    if (!needed || player->HasSpell(needed))
         return;
 
     Msg(player, Acore::StringFormat("{} is dismissed: you no longer know {}.",
-        pet->GetName(), SpellName(summonedBy)));
+        pet->GetName(), SpellName(needed)));
     pet->Remove(PET_SAVE_NOT_IN_SLOT);
 }
 

@@ -248,6 +248,11 @@ namespace ClasslessWildcard
         // it arrives at, which by default is the level its trainer would sell
         // it. The spells themselves carry NO level of their own (all five read
         // SpellLevel 0), so this list is the only gate there is.
+        // What a hunter pet needs in order to be out. Only used as a fallback
+        // for a beast whose UNIT_CREATED_BY_SPELL is zero (older data, a GM
+        // spawn); a normally tamed one records the spell itself.
+        uint32 callPetSpell = 883;
+
         bool ridingEnable = true;
         std::vector<std::pair<uint32, uint32>> ridingGrants;
 

@@ -153,7 +153,8 @@ Keep it, or spend a reroll.</em>
   a runeforge, tools handed to one class each. Every spell in the library drops that requirement,
   on the server and in the client patch, so it casts whoever earned it. Reagents are unchanged.
 - **A summon leaves with its spell.** Reroll Summon Imp away and the imp is dismissed instead of
-  standing there permanently. Tamed beasts are not affected.
+  standing there permanently. Rerolling Tame Beast away puts the tamed beast away too. The beast
+  is kept, not destroyed, so rolling Tame Beast again calls the same one back.
 - **Class quests are open to everyone.** Every class quest chain is reachable by every Hero.
   Applied by the module SQL and reversible with `data/sql/manual/cw_class_quests_revert.sql`.
   A quest reward that would teach a class ability grants nothing for that part. Item, XP, gold
@@ -314,9 +315,9 @@ Everything the NPC and the addon do is also available as a chat command.
 **Padlocks.** A padlock holds an ability back from the starting hand's "Roll Abilities" pass,
 which rerolls everything unlocked at once. That pass only exists below `FreeRerollBelowLevel`,
 so at that level every remaining padlock is dropped, the button stops being offered, and rerolls
-are one ability at a time and always the one you picked. The addon sends the state it wants
-(`LOCK <id> 0|1`) rather than asking the server to flip whatever it has, so a padlock on screen
-can never disagree with the one the server is enforcing.
+are one ability at a time and always the one you picked. A padlock can be set from the starting
+hand, from **My Build**, from the Hero Advancement NPC or with `.wildcard lock`, and all four show
+the same state.
 
 The addon binds the advancement panel to **`N`**, the stock Talents key, unless the player has
 already rebound it, in which case it uses the first free key among `J`, `Y`, `G` and `K`. The
@@ -329,9 +330,7 @@ actually has those, so nothing empty is left on screen.
 
 The **Settings** button on the advancement panel has a checkbox per row -- mana, rage, energy,
 runes, runic power, combo points -- plus the frame's own show and lock switches and a position
-reset. A row is stored only when it is switched off, so an existing `ClasslessWildcard.lua`
-saved-variables file opens with everything on. Switching every row off puts the frame away
-entirely rather than leaving an empty box on screen.
+reset. Every row is on by default. Switching all of them off puts the frame away entirely.
 
 ---
 
@@ -410,65 +409,67 @@ share a class with that mask. The chance is `SynergyBaseChance + (pity x Synergy
 capped at 100, which on the defaults is 10% rising 10 points per pity point. Pity counts rerolls
 only, never scheduled rolls, and a synergy roll or Rebirth resets it.
 
-**Riding and mounts.** Riding is not class power, so it is not in the classless library: it never
-rolls, it cannot be bought with essence, and nothing in the module strips it or reverts it if you
-train it yourself. Every Hero is simply given it, free, at the level its trainer would sell it
-(`Riding.Grants`, default Apprentice 20, Journeyman 40, Expert 60, Cold Weather Flying 68, Artisan
-70). The trainer schedule is deliberate: the riding spells carry no level of their own -- all five
-read `SpellLevel` 0 -- so the only gate is `npc_trainer` and each mount item's `RequiredLevel`.
-Set every level in `Riding.Grants` to 1 to hand them all over at character creation instead.
+**Riding.** Riding is not in the classless library. It never rolls, it cannot be bought with
+essence, and the module neither strips it nor reverts it if a Hero trains it at a trainer. Every
+Hero is given it free as they reach the level for it:
 
-**Class** mounts are a different matter. Warhorse, Charger, Felsteed, Dreadsteed and the Acherus
-Deathcharger all sit on class skill lines with a class mask, so they **are** ordinary library
-abilities: rolled or bought like anything else, gated at their trainer levels, and not learnable
-from the class trainer (`BlockOutsideSpellSources` reverts them like any other class spell). Every
-other mount -- vendor mounts, drops, reputation and quest mounts -- carries no class mask, is not
-in the library, and works exactly as it does on any realm. The riding grant above is what makes a
-rolled class mount usable the moment it lands.
+| level | granted |
+| --- | --- |
+| 20 | Apprentice Riding |
+| 40 | Journeyman Riding |
+| 60 | Expert Riding |
+| 68 | Cold Weather Flying |
+| 70 | Artisan Riding |
 
-**Ability rarity.** Rarity decides how often an ability rolls, what a Classless Hero pays for it
-and what colour it is shown in, so it has to mean *how much of a prize is this*. With no row in
-`cw_ability_override` it is worked out from what the ability **does**, taking the strongest of
+The schedule is `Riding.Grants`, a list of `spell:level` pairs; set every level to 1 to grant them
+all at character creation. `Riding.Enable = 0` turns the grant off and leaves riding to the
+trainers. Cold Weather Flying is the permission to fly in Northrend rather than a skill rank.
+
+**Mounts.** Vendor mounts, drops, reputation mounts and quest mounts carry no class mask, are not
+in the library, and behave as they do on any realm.
+
+The five class mounts are library abilities: **Warhorse**, **Charger**, **Felsteed**,
+**Dreadsteed** and the **Acherus Deathcharger** sit on class skill lines with a class mask. They
+are rolled or bought with Ability Essence like any other ability, gated at their learn level (20
+for the basic pair, 40 for the epic pair, 55 for the Deathcharger), and cannot be learned from a
+class trainer: `BlockOutsideSpellSources` reverts them and refunds the gold.
+
+Companion and vanity pets carry no class mask either, and are untouched.
+
+**Ability rarity.** Rarity sets how often an ability rolls, what a Classless Hero pays for it and
+what colour it is shown in. With no row in `cw_ability_override` it is taken from the strongest of
 three signals:
 
-| signal | why | default thresholds |
+| signal | measured from | default thresholds |
 | --- | --- | --- |
-| cooldown | the game's own statement of size: a 20 minute Lay on Hands and a no-cooldown Fireball are not the same kind of thing | `Rarity.CooldownSeconds` = 30 / 60 / 180 / 600 |
-| talent row | a spell taught from row R costs 5R points to reach, so the row **is** the tier | `Rarity.TalentRows` = 2 / 4 / 6 / 8 |
-| learn level | a **floor** only, capped at rare | `Rarity.LevelFloors` = 25 / 50 |
+| cooldown | the longest wait on any rank of the line, spell or category cooldown | `Rarity.CooldownSeconds` = 30 / 60 / 180 / 600 |
+| talent row | the deepest talent row that teaches the line, where row R costs 5R points | `Rarity.TalentRows` = 2 / 4 / 6 / 8 |
+| learn level | the level of the first rank, as a floor only and capped at rare | `Rarity.LevelFloors` = 25 / 50 |
 
-Level used to be the only signal, and it was measuring the wrong thing: it called Bloodlust
-legendary for being learned at 70, Pain Suppression common because its `SpellLevel` is 0, and
-Mortal Strike rare rather than reading the 31-point talent that teaches it. Under the three
-signals the pool comes out roughly 53% common, 14% uncommon, 16% rare, 10% epic, 7% legendary,
-with Fireball, Backstab, Kick and Polymorph common, Divine Shield, Ice Block, Mortal Strike and
-Bloodlust epic, and Lay on Hands, Rebirth and the 41-point capstones legendary.
+The pool comes out around 53% common, 14% uncommon, 16% rare, 10% epic and 7% legendary. Fireball,
+Backstab, Kick and Polymorph are common; Divine Shield, Ice Block, Mortal Strike and Bloodlust
+epic; Lay on Hands, Rebirth and the 41-point capstones legendary.
 
-A row in `cw_ability_override` still replaces all of it outright (`rarity` 255 means "keep the
-heuristic"). Nothing is overridden by default.
+A row in `cw_ability_override` replaces all of it (`rarity` 255 keeps the heuristic). Nothing is
+overridden by default.
 
-An elemental variant is registered at its base's rarity plus `Elemental.RarityBump` (1 by
-default), capped at legendary, and rolls at `Elemental.RollWeightPct` of that rarity's weight.
-The variants are built before the override table is read, so that a realm can tune a variant row
-like any other ability -- which means they are re-derived from their bases afterwards, once the
-bases are final. Before that second pass, Backstab's copies sat at uncommon: one tier above the
-common Backstab was *before* the override made it epic. A variant with its own row in
-`cw_ability_override` is left exactly as the realm wrote it, and a base switched off by an
-override takes its copies with it.
+An elemental variant takes its base's rarity plus `Elemental.RarityBump` (1 by default), capped at
+legendary, and rolls at `Elemental.RollWeightPct` of that rarity's weight. A variant follows its
+base's final rarity, including one set by an override, and a base switched off by an override
+takes its variants with it. A variant with its own row in `cw_ability_override` keeps exactly what
+that row says.
 
 **Talent rolls.** A talent roll picks a talent, then rolls the rank from every rank above the one
 you hold up to the maximum. It is not a step of one: a talent you hold at rank 2 can land on
 rank 5 directly, and a fresh talent can arrive at its top rank. The rank has its own weight
-ladder, `TalentRankWeights`, defaulting to `100,75,50,25,10` -- rank 5 is roughly a twentieth as
-likely as rank 1. It used to borrow the rarity ladder, which is a gentle slope by design, and a
-five-rank haul came up about as often as a single rank. The rank sets the rarity shown, unless
-the talent's own rarity in `cw_talent_override` is higher.
+ladder, `TalentRankWeights`, defaulting to `100,75,50,25,10`, which makes rank 5 roughly a
+twentieth as likely as rank 1. The rank sets the rarity shown, unless the talent's own rarity in
+`cw_talent_override` is higher.
 
-Rolling a talent you already own is allowed only when the roll can land **above** the rank you
-hold, and then it upgrades that talent. Talents at maximum rank are excluded, and an ability you
-already own is never rolled at all. **One roll grants exactly one thing.** It used to chain --
-an upgrade rolled again, up to four times -- and a talent reroll ran the whole thing once per
-rank given up, so rerolling a rank 5 talent could deal twenty grants for one charge.
+A talent you already own is rolled only when the roll can land **above** the rank you hold, and
+then it upgrades that talent. Talents at maximum rank are excluded, and an ability you already own
+is never rolled. **One roll grants exactly one thing**, and a reroll spends one charge for one new
+talent whatever rank was given up.
 
 **Reroll cooldowns.** Rerolling something puts it on a cooldown, counted in rolls, so the reroll
 cannot hand it straight back. The default `SynergyBanRolls` of 25 excludes a pick from the next

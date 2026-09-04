@@ -27,15 +27,10 @@ CREATE TABLE IF NOT EXISTS `cw_talent_override` (
 -- the cooldown the game puts on it, the talent row that teaches it, and the
 -- level it is learned at as a floor only. See README, "Ability rarity".
 --
--- Nothing is overridden by default any more. There used to be six rows here as
--- a demonstration, and one of them -- Backstab at epic -- was doing real
--- damage: Backstab is a level 4 filler with no cooldown, the heuristic calls it
--- common, and the row made it epic and dragged its seven elemental copies up
--- with it. The other five set the rarity the heuristic already gives.
---
--- The DELETE undoes the demonstration on realms that installed it. It is
--- narrowed to the exact values that shipped, so a rarity you chose yourself is
--- never touched.
+-- Nothing is overridden by default. The DELETE below clears the six sample rows
+-- that earlier versions of this file inserted, so a realm that installed one of
+-- those gets the heuristic value instead. It matches on the exact values those
+-- rows carried, so a rarity set deliberately is never touched.
 DELETE FROM `cw_ability_override` WHERE (`first_spell`, `rarity`, `cost`, `weight`, `enabled`) IN
     ((53, 3, 0, 0, 1), (5185, 1, 0, 0, 1), (133, 0, 0, 0, 1),
      (686, 0, 0, 0, 1), (17, 1, 0, 0, 1), (100, 0, 0, 0, 1));
