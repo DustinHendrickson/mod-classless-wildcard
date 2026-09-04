@@ -684,7 +684,11 @@ CW.archBtn = archBtn
 -- stats flyout -------------------------------------------------------------------
 local statFly = CreateFrame("Frame", "ClasslessWildcardStats", frame)
 CW.statFly = statFly
-statFly:SetWidth(260); statFly:SetHeight(250)
+-- Wider and taller than it was: each row now carries the character's TOTAL for
+-- that stat and everything the stat is doing at that total, not just how many
+-- points were spent on it. "Intellect 30 pts = +30" said nothing about the 28
+-- Intellect the character actually had, nor about the mana and crit it gave.
+statFly:SetWidth(372); statFly:SetHeight(286)
 statFly:SetPoint("BOTTOMRIGHT", frame, "BOTTOMRIGHT", -20, 56)
 statFly:SetFrameStrata("DIALOG")
 statFly:SetBackdrop({
@@ -702,30 +706,45 @@ statTitle:SetPoint("TOP", 0, -12)
 local statRows = {}
 for i = 1, 5 do
     local r = CreateFrame("Frame", nil, statFly)
-    r:SetWidth(230); r:SetHeight(26)
-    r:SetPoint("TOPLEFT", 14, -34 - (i - 1) * 28)
-    r.label = r:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
-    r.label:SetPoint("LEFT", 0, 0)
+    r:SetWidth(344); r:SetHeight(36)
+    r:SetPoint("TOPLEFT", 14, -36 - (i - 1) * 38)
+    -- a faint band per row, so five two-line entries do not run together
+    r.bg = r:CreateTexture(nil, "BACKGROUND")
+    r.bg:SetAllPoints(r)
+    r.bg:SetTexture(1, 1, 1, 0.03)
+
+    -- line 1: the stat, its total, and what Apply would make it
+    r.label = r:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+    r.label:SetPoint("TOPLEFT", 4, -3)
     r.label:SetJustifyH("LEFT")
-    r.label:SetWidth(140)
+    r.label:SetWidth(276)
+    -- line 2: everything that total is worth, from the server's own rates
+    -- the full row width: at level 80 the effects line is long ("+8550 mana,
+    -- +142 spell power, +2.31% spell critical strike"), so the buttons sit on
+    -- the line above it rather than stealing 70px from it
+    r.sub = r:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+    r.sub:SetPoint("TOPLEFT", 4, -20)
+    r.sub:SetJustifyH("LEFT")
+    r.sub:SetWidth(336)
+
     r.minus = CreateFrame("Button", nil, r, "UIPanelButtonTemplate")
-    r.minus:SetWidth(22); r.minus:SetHeight(20)
-    r.minus:SetPoint("RIGHT", -28, 0)
+    r.minus:SetWidth(24); r.minus:SetHeight(20)
+    r.minus:SetPoint("TOPRIGHT", -28, -1)
     r.minus:SetText("-")
     r.plus = CreateFrame("Button", nil, r, "UIPanelButtonTemplate")
-    r.plus:SetWidth(22); r.plus:SetHeight(20)
-    r.plus:SetPoint("RIGHT", 0, 0)
+    r.plus:SetWidth(24); r.plus:SetHeight(20)
+    r.plus:SetPoint("TOPRIGHT", 0, -1)
     r.plus:SetText("+")
     statRows[i] = r
 end
 
 local statApply = CreateFrame("Button", nil, statFly, "UIPanelButtonTemplate")
-statApply:SetWidth(100); statApply:SetHeight(22)
+statApply:SetWidth(140); statApply:SetHeight(24)
 statApply:SetPoint("BOTTOMLEFT", 14, 12)
 statApply:SetText("Apply")
 
 local statReset = CreateFrame("Button", nil, statFly, "UIPanelButtonTemplate")
-statReset:SetWidth(100); statReset:SetHeight(22)
+statReset:SetWidth(140); statReset:SetHeight(24)
 statReset:SetPoint("BOTTOMRIGHT", -14, 12)
 statReset:SetText("Reset edits")
 
@@ -981,6 +1000,84 @@ local function StatPerPoint(i)
     return "mana and health regeneration, scaling with your level and Intellect"
 end
 
+-- The core gives the first 20 points of Stamina and Intellect one point of
+-- health or mana each, and every point after that the full rate. Every tooltip
+-- in the addon quotes that rule, so the arithmetic behind it lives in one
+-- place rather than being re-derived per caller.
+-- On CW rather than as locals: this chunk is close to Lua 5.1's ceiling of 200
+-- locals in one function, and these are read from two places.
+CW.POOL = { SOFT = 20, HP_PER_STA = 10, MP_PER_INT = 15 }
+function CW.Pooled(value, perPoint)
+    if value <= CW.POOL.SOFT then return math.floor(value) end
+    return CW.POOL.SOFT + math.floor((value - CW.POOL.SOFT) * perPoint)
+end
+
+-- EVERYTHING a stat is worth at `value`, as a list of short phrases, from the
+-- server's own rates. This used to be StatContribution, which answered for
+-- Strength, Agility and (spell power only) Intellect and nil for the other
+-- two -- so three of the five rows on the stat panel had nothing to say about
+-- themselves and Intellect under-reported what it was doing by two thirds.
+function CW.StatEffects(i, value, short)
+    local s = CW.stats
+    local uni = s.uniStats
+    local out = {}
+    value = math.max(0, math.floor(value or 0))
+    -- `short` uses the game's own abbreviations. At level 80 the spelled-out
+    -- Agility line is 369px and the stat row has 312, so the row asks for the
+    -- short form and the tooltip, which has all the space it wants, does not.
+    local AP = short and " AP" or " attack power"
+    local SP = short and " SP" or " spell power"
+    local CRIT = short and "%% crit" or "%% critical strike"
+    local SCRIT = short and "%% spell crit" or "%% spell critical strike"
+    local PER5 = short and "/5s" or " per 5 sec"
+
+    if i == 1 then
+        out[#out + 1] = "+" .. math.floor(value * (s.strMeleeAP or 2)) .. " melee" .. AP
+        out[#out + 1] = "+" .. math.floor(value * 0.5) .. " block value"
+    elseif i == 2 then
+        local melee = (s.agiMeleeAP or 0) + (uni and (s.apPerAgi or 0) or 0)
+        local ranged = (s.agiRangedAP or 1) + (uni and (s.rapPerAgi or 0) or 0)
+        if melee > 0 then
+            out[#out + 1] = "+" .. math.floor(value * melee) .. " melee" .. AP
+        end
+        if ranged > 0 then
+            out[#out + 1] = "+" .. math.floor(value * ranged) .. " ranged" .. AP
+        end
+        if (s.critPerAgi or 0) > 0 then
+            out[#out + 1] = string.format("+%.2f" .. CRIT, value * s.critPerAgi)
+        end
+        out[#out + 1] = "dodge"
+    elseif i == 3 then
+        out[#out + 1] = "+" .. CW.Pooled(value, CW.POOL.HP_PER_STA) .. " health"
+    elseif i == 4 then
+        out[#out + 1] = "+" .. CW.Pooled(value, CW.POOL.MP_PER_INT) .. " mana"
+        local sp = uni and (s.spPerInt or 0) or 0
+        if sp > 0 then
+            -- the first 10 Intellect buy no spell power, the same shape the
+            -- per-point line quotes
+            out[#out + 1] = "+" .. math.floor(math.max(0, value - 10) * sp) .. SP
+        end
+        if (s.spellCritPerInt or 0) > 0 then
+            out[#out + 1] = string.format("+%.2f" .. SCRIT, value * s.spellCritPerInt)
+        end
+    elseif i == 5 then
+        if (s.mp5PerSpi or 0) > 0 then
+            out[#out + 1] = string.format("+%.1f mana" .. PER5, value * s.mp5PerSpi)
+            out[#out + 1] = string.format("+%.1f health" .. PER5, value * (s.hp5PerSpi or 0))
+        else
+            out[#out + 1] = "mana and health regeneration"
+        end
+    end
+    return out
+end
+
+-- One line of the above, for anywhere that wants a sentence rather than a list.
+function CW.StatContribution(i, value)
+    local out = CW.StatEffects(i, value)
+    if #out == 0 then return nil end
+    return table.concat(out, ", ")
+end
+
 local function BuildHelpText()
     return table.concat({
 "|cffffd100You are a Hero.|r |cffffffffThere is no class to pick|r -- character creation offers races only, and every character becomes a Hero. Every Hero runs on the same hidden base class, which grants no special abilities and locks nothing away. Your |cffffffffrace|r is the choice that carries anything: its racial traits are yours to keep. Everything else -- every ability and talent -- you earn yourself, and you can take it from |cffffffffany class in the game|r.",
@@ -1001,10 +1098,10 @@ local function BuildHelpText()
 "   |cff00ff00Level 1:|r  4 random abilities to begin.",
 "   |cff00ff00From level 10:|r  one roll every level, alternating -- an ability on the even levels, a talent on the odd ones. Talents come no more often than abilities because a talent roll can land on rank 5 outright.",
 "Rolls are rarity-weighted: a legendary turns up a little less often than a common.",
-"A talent roll also rolls the |cffffd100rank|r you land on, and the rank IS its rarity: rank 1 common, rank 2 uncommon, rank 3 rare, rank 4 epic, |cffff8000rank 5 legendary|r. The rank is drawn from anything above what you already have, not one step up, so a talent you hold at rank 2 can jump straight to rank 5 -- and a talent you have never seen can arrive at its top rank. A high rank is the jackpot: rolls cost you nothing, so landing on rank 5 hands you the full-strength talent for free, where a Classless Hero pays for every rank up to it. Rolling into a talent you already own upgrades it and rolls again, up to four times in one go.",
+"A talent roll also rolls the |cffffd100rank|r you land on, and the rank IS its rarity: rank 1 common, rank 2 uncommon, rank 3 rare, rank 4 epic, |cffff8000rank 5 legendary|r. The rank is drawn from anything above what you already have, not one step up, so a talent you hold at rank 2 can jump straight to rank 5 -- and a talent you have never seen can arrive at its top rank. A high rank is the jackpot: rolls cost you nothing, so landing on rank 5 hands you the full-strength talent for free, where a Classless Hero pays for every rank up to it. Rolling into a talent you already own upgrades it, and only ever to a rank above the one you hold. One roll gives you one thing: it never chains.",
 "You steer your luck:",
 "   |cffffd100Rerolls|r -- every level from 10 grants you 3 reroll charges, and rerolls are free below level 10. One pool, spent on abilities or talents alike. Reroll straight from the popup, or later from |cffffd100My Build|r using the circular arrow next to anything you own.",
-"   |cffffd100Lock|r -- protect an ability so a later roll can't overwrite it.",
+"   |cffffd100Lock|r -- while the starting hand is open, the padlock holds an ability back from |cffffd100Roll Abilities|r, which rerolls everything unlocked at once. Once free rolls end the padlocks come off for good: from then on you reroll one ability at a time, and only the one you choose.",
 "   |cffffd100Synergy & pity|r -- some rolls are narrowed to abilities that fit the classes you already own. The chance of that starts at 10% and climbs by 10 points every time you reroll, so a cold streak keeps improving your odds until it pays off, then resets. Anything you reroll also goes on a cooldown, so the reroll can never hand you straight back what you just got rid of. That cooldown lasts 24 rolls, which is around 16 levels, so rerolling something is closer to a lasting decision than a do-over. If you reroll through everything available at your level, the cooldowns lift so you always get something you can actually use.",
 "   |cffffd100Reroll Scrolls|r -- one scroll, good for an ability OR a talent, for when your charges run dry. Earn them, buy them from the Hero Advancement NPC, or use the |cffffd100Buy Scroll|r button on this panel (the price scales with level -- silver early, gold near the cap).",
 "Open the roll screen any time with the |cffffd100dice crest|r at the top-left of this window.",
@@ -1019,6 +1116,7 @@ local function BuildHelpText()
 "      |cffffd100Spirit|r -- increases " .. StatPerPoint(5) .. ". Mana regeneration pauses for 5 seconds after you cast. Talents such as Meditation, Arcane Meditation and Intensity let it continue while casting, and any Hero can learn them.",
 "   Every stat does something for every Hero, so spend toward the build you are playing.",
 "   |cffffd100Proficiencies|r -- every armor and weapon type, dual wield included, is trained for you automatically.",
+"   |cffffd100Riding|r -- trained for you too, free, at the levels a trainer would sell it: Apprentice at 20, Journeyman at 40, flying at 60, Northrend flying at 68 and epic flying at 70. Mounts themselves are bought and earned as they always were. The class mounts (Warhorse, Charger, Felsteed, Dreadsteed, Deathcharger) are the exception: those are abilities, so they come from a roll or from Ability Essence like anything else.",
 "   |cffffd100Abilities that come as a set|r -- an ability that can only be used in a stance or a form brings that form with it, and an ability that needs others to be any use brings those: Rend and Charge bring Battle Stance, Cat Form brings Claw and Prowl, Tame Beast brings Call Pet, Revive Pet, Feed Pet and Dismiss Pet. These extras are free, they are not one of your rolls, and they leave when nothing you own still needs them. To be rid of one, reroll or unlearn the ability it came with.",
 "   |cffffd100No class tools|r -- spells that ask for a class item, such as Stoneskin Totem asking for an Earth Totem, cast without it. Reagents still apply.",
 "   |cffffd100Rebirth|r -- after your path locks in, Rebirth wipes everything and lets you start fresh on either path for gold.",
@@ -1212,6 +1310,17 @@ local function RenderTalPane()
     end
 end
 
+-- A padlock holds a card back from the starting hand's roll-everything pass,
+-- and nothing else. Once free rolls are over there is no such pass: every
+-- reroll is one ability the player picked off this list, so a padlock has
+-- nothing left to protect and would only refuse a reroll they asked for. The
+-- server drops them all at that level; this is the same window, so the button
+-- goes at the same moment.
+function CW.LocksMatter()
+    local s = CW.state
+    return s.mode == 1 and (s.level or 1) < (s.freeReroll or 10)
+end
+
 local function BuildList()
     local merged = {}
     for _, e in ipairs(CW.owned) do
@@ -1222,6 +1331,8 @@ local function BuildList()
     end
     return merged
 end
+
+CW.buildRows = buildRows
 
 local function RenderBuild()
     local s = CW.state
@@ -1251,34 +1362,54 @@ local function RenderBuild()
                 r.lockBtn:Hide()
                 r.actBtn:Hide()
             elseif s.mode == 1 then
-                -- lock toggle (abilities only) + die reroll
-                if it.kind == "A" then
+                -- lock toggle (abilities only, and only while it does anything)
+                -- + die reroll
+                if it.kind == "A" and CW.LocksMatter() then
                     r.lockBtn:Show()
                     r.lockBtn.tex:SetTexture(it.locked == 1
                         and "Interface\\AddOns\\ClasslessWildcard\\lock_closed"
                         or  "Interface\\AddOns\\ClasslessWildcard\\lock_open")
                     r.lockBtn.tex:SetVertexColor(1, 1, 1, it.locked == 1 and 1 or 0.7)
-                    local id = it.id
-                    r.lockBtn:SetScript("OnClick", function() Send("LOCK " .. id) end)
+                    -- the state we want, not a flip: see the hand's padlock
+                    local id, want = it.id, (it.locked == 1) and 0 or 1
+                    r.lockBtn:SetScript("OnClick", function()
+                        Send("LOCK " .. id .. " " .. want)
+                    end)
+                    r.lockBtn:SetScript("OnEnter", function(self)
+                        GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
+                        GameTooltip:SetText(want == 1 and "Lock this ability" or "Unlock this ability")
+                        GameTooltip:AddLine(want == 1
+                            and "A locked ability is never taken by a reroll."
+                            or "An unlocked ability can be rerolled away.", 1, 1, 1, true)
+                        GameTooltip:Show()
+                    end)
+                    r.lockBtn:SetScript("OnLeave", function() GameTooltip:Hide() end)
                 else
                     r.lockBtn:Hide()
                 end
-                r.actBtn:Show()
-                r.actBtn.tex:SetTexture("Interface\\Buttons\\UI-RotationRight-Button-Up")
-                r.actBtn.tex:SetVertexColor(1, 0.85, 0.3)
-                local id, kind = it.id, it.kind
-                r.actBtn:SetScript("OnClick", function()
-                    Send((kind == "T" and "RRT " or "RR ") .. id)
-                end)
-                r.actBtn:SetScript("OnEnter", function(self)
-                    GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
-                    GameTooltip:SetText("Reroll this " .. (kind == "T" and "talent" or "ability"))
-                    local left = (CW.state.rerolls or 0) + (CW.state.scrolls or 0)
-                    GameTooltip:AddLine("You have |cff00ff00" .. left .. "|r reroll" .. (left == 1 and "" or "s")
-                        .. " (charges + scrolls).", 1, 1, 1)
-                    GameTooltip:Show()
-                end)
-                r.actBtn:SetScript("OnLeave", function() GameTooltip:Hide() end)
+                -- A locked ability cannot be rerolled, so it gets no die.
+                -- Offering one put an action on screen the server was always
+                -- going to refuse, which reads as the lock being ignored.
+                if it.kind == "A" and it.locked == 1 and CW.LocksMatter() then
+                    r.actBtn:Hide()
+                else
+                    r.actBtn:Show()
+                    r.actBtn.tex:SetTexture("Interface\\Buttons\\UI-RotationRight-Button-Up")
+                    r.actBtn.tex:SetVertexColor(1, 0.85, 0.3)
+                    local id, kind = it.id, it.kind
+                    r.actBtn:SetScript("OnClick", function()
+                        Send((kind == "T" and "RRT " or "RR ") .. id)
+                    end)
+                    r.actBtn:SetScript("OnEnter", function(self)
+                        GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
+                        GameTooltip:SetText("Reroll this " .. (kind == "T" and "talent" or "ability"))
+                        local left = (CW.state.rerolls or 0) + (CW.state.scrolls or 0)
+                        GameTooltip:AddLine("You have |cff00ff00" .. left .. "|r reroll" .. (left == 1 and "" or "s")
+                            .. " (charges + scrolls).", 1, 1, 1)
+                        GameTooltip:Show()
+                    end)
+                    r.actBtn:SetScript("OnLeave", function() GameTooltip:Hide() end)
+                end
             else
                 r.lockBtn:Hide()
                 if it.kind == "A" then
@@ -1319,71 +1450,53 @@ local STAT_DESC = {
     [5] = "Mana and health regeneration. Mana regeneration pauses for 5 seconds after you cast.",
 }
 
--- What a stat is contributing right now, chassis and module together, with
--- the same per-point rates the line above it quotes. It used to show only
--- the module's share, which made Agility's melee and ranged attack power
--- read as equal while the character sheet showed them apart.
-local function StatContribution(i, value)
-    local s = CW.stats
-    local uni = s.uniStats
-    if i == 1 then
-        local ap = math.floor(value * (s.strMeleeAP or 2))
-        return "+" .. ap .. " melee attack power, +" .. math.floor(value * 0.5) .. " block value"
-    elseif i == 2 then
-        local melee = (s.agiMeleeAP or 0) + (uni and (s.apPerAgi or 0) or 0)
-        local ranged = (s.agiRangedAP or 1) + (uni and (s.rapPerAgi or 0) or 0)
-        local ap, rap = math.floor(value * melee), math.floor(value * ranged)
-        if ap <= 0 and rap <= 0 then return nil end
-        if ap > 0 then
-            return "+" .. ap .. " melee and +" .. rap .. " ranged attack power"
-        end
-        return "+" .. rap .. " ranged attack power"
-    elseif i == 4 then
-        if not uni then return nil end
-        local sp = math.floor(math.max(0, value - 10) * (s.spPerInt or 0))
-        if sp <= 0 then return nil end
-        return "+" .. sp .. " spell power"
-    end
-    return nil
-end
-CW.StatContribution = StatContribution
-
+-- The same numbers the row shows, itemised. Both read CW.StatEffects, so the
+-- row and its tooltip can never quote different figures.
 local function ShowStatTooltip(row, i)
-    local total = 0
-    if UnitStat then
-        local _, stat = UnitStat("player", i)
-        total = stat or 0
-    end
+    local total, after, delta = CW.StatTotals(i)
+    local s = CW.stats
+
     GameTooltip:SetOwner(row, "ANCHOR_RIGHT")
     GameTooltip:AddLine(STAT_NAMES[i], 1, 0.82, 0)
     GameTooltip:AddLine(STAT_DESC[i], 1, 1, 1, true)
     GameTooltip:AddLine(" ")
     GameTooltip:AddLine("Each point: " .. StatPerPoint(i), 1, 0.82, 0, true)
+
     GameTooltip:AddLine(" ")
-    GameTooltip:AddDoubleLine("Current total", tostring(total), 0.8, 0.8, 0.8, 1, 1, 1)
-
-    local contrib = StatContribution(i, total)
-    if contrib then
-        GameTooltip:AddLine("From your " .. total .. " " .. STAT_NAMES[i] .. ": " .. contrib, 0.4, 1, 0.4, true)
-    end
-
-    -- what the points you have allocated (applied or not) are worth
-    local s = CW.stats
-    local pending = PendingAlloc()
+    GameTooltip:AddDoubleLine("Total " .. STAT_NAMES[i], tostring(total), 0.8, 0.8, 0.8, 1, 1, 1)
     local applied = (s.alloc[i] or 0) * (s.perPoint or 1)
     if applied > 0 then
-        GameTooltip:AddDoubleLine("Allocated by you", "+" .. applied, 0.8, 0.8, 0.8, 0.4, 1, 0.4)
+        GameTooltip:AddDoubleLine("   of which you allocated", "+" .. applied,
+            0.6, 0.6, 0.6, 0.4, 1, 0.4)
     end
-    local unapplied = ((pending[i] or 0) - (s.alloc[i] or 0)) * (s.perPoint or 1)
-    if unapplied ~= 0 then
-        local sign = unapplied > 0 and "+" or ""
-        GameTooltip:AddDoubleLine("Pending (press Apply)", sign .. unapplied, 0.8, 0.8, 0.8, 1, 0.82, 0)
-        local after = StatContribution(i, total + unapplied)
-        if after then
-            GameTooltip:AddLine("After applying: " .. after, 1, 0.82, 0, true)
+    for _, line in ipairs(CW.StatEffects(i, total)) do
+        GameTooltip:AddDoubleLine(" ", line, 1, 1, 1, 0.4, 1, 0.4)
+    end
+
+    if delta ~= 0 then
+        GameTooltip:AddLine(" ")
+        GameTooltip:AddDoubleLine("Pending (press Apply)",
+            (delta > 0 and "+" or "") .. delta .. "  ->  " .. after,
+            0.8, 0.8, 0.8, 1, 0.82, 0)
+        for _, line in ipairs(CW.StatEffects(i, after)) do
+            GameTooltip:AddDoubleLine(" ", line, 1, 1, 1, 1, 0.82, 0)
         end
     end
     GameTooltip:Show()
+end
+
+-- The character's live total for a stat, and what it becomes if the pending
+-- edits are applied. UnitStat's second return is the total the character sheet
+-- shows, buffs and gear included.
+function CW.StatTotals(i)
+    local total = 0
+    if UnitStat then
+        local _, stat = UnitStat("player", i)
+        total = tonumber(stat) or 0
+    end
+    local s = CW.stats
+    local delta = ((PendingAlloc()[i] or 0) - (s.alloc[i] or 0)) * (s.perPoint or 1)
+    return total, total + delta, delta
 end
 
 local function RenderStats()
@@ -1393,7 +1506,22 @@ local function RenderStats()
     statTitle:SetText("Primary Stats: |cff00ff00" .. unspent .. "|r of " .. CW.stats.budget .. " unspent")
     for i = 1, 5 do
         local r = statRows[i]
-        r.label:SetText("|cffffd100" .. STAT_NAMES[i] .. "|r  " .. pending[i] .. " pts = +" .. (pending[i] * CW.stats.perPoint))
+        local total, after, delta = CW.StatTotals(i)
+        -- the total is the number the player cares about; the points they put
+        -- in are the smaller half of the story and read as such
+        local head = "|cffffd100" .. STAT_NAMES[i] .. "|r  |cffffffff" .. total .. "|r"
+        if delta ~= 0 then
+            head = head .. "  |cffffd100> " .. after .. "|r"
+        end
+        if pending[i] > 0 then
+            head = head .. "  |cff888888(" .. pending[i] .. " pt"
+                .. (pending[i] == 1 and "" or "s") .. ")|r"
+        end
+        r.label:SetText(head)
+        -- and what that total is worth, projected to the pending value so the
+        -- numbers move while you are spending
+        local effects = table.concat(CW.StatEffects(i, after, true), ", ")
+        r.sub:SetText((delta ~= 0 and "|cffffd100" or "|cffaaaaaa") .. effects .. "|r")
         r.plus:SetScript("OnClick", function()
             if PendingSpent() < CW.stats.budget then
                 PendingAlloc()[i] = PendingAlloc()[i] + 1
@@ -2685,9 +2813,14 @@ rvHover:SetScript("OnLeave", function() GameTooltip:Hide() end)
 
 local rvName = reveal:CreateFontString(nil, "OVERLAY", "GameFontNormalLarge")
 rvName:SetPoint("CENTER", 0, -138)
+-- given a width by ShowResult, so it needs to know how to use one
+rvName:SetJustifyH("CENTER")
 
+-- Hung off the name rather than pinned to its own centre offset: the two were
+-- 32px apart by coincidence of two hardcoded numbers, and the name got bigger.
 local rvSub = reveal:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
-rvSub:SetPoint("CENTER", 0, -170)
+rvSub:SetPoint("TOP", rvName, "BOTTOM", 0, -6)
+rvSub:SetJustifyH("CENTER")
 
 -- The reveal floats over the world with no dialog behind it, so every line
 -- gets a hard shadow or it reads differently on grass than it does on stone.
@@ -2704,6 +2837,23 @@ do
         fs:SetShadowOffset(1, -1)
     end
 end
+
+-- The text block, measured rather than anchored from both ends. The panel used
+-- to be pinned TOP-to-the-name and BOTTOM-to-the-last-row and left to work its
+-- own height out, which put its edge straight through the name whenever the two
+-- anchors disagreed. Now the block is measured here and the panel is given a
+-- position and a height, so there is one answer and it is the same every time.
+rvFX.PAD = 14        -- clear space inside the panel, above the name and below the last row
+rvFX.NAME_GAP = 6    -- name to tier line
+rvFX.INFO_GAP = 10   -- tier line to the first tooltip row
+rvFX.NAME_Y = -138   -- the name's centre, as an offset from the reveal's centre
+rvFX.SIDE = 22       -- and clear space inside its left and right edges
+-- The plate was a fixed 344 wide and the name was never given a width, so a
+-- long one ("Improved Concussive Shot  Rank 1") ran straight out of both
+-- sides of it. The plate is measured off its widest line now, and every line
+-- in it is held to the plate, so a name past even the maximum wraps instead of
+-- escaping.
+rvFX.PANEL_MIN, rvFX.PANEL_MAX = 344, 480
 
 -- A real panel behind the text. The reveal floats over the world, and a shadow
 -- alone is not a background: small text on grass is unreadable however hard its
@@ -2772,6 +2922,14 @@ for i = 1, rvFX.INFO_LINES do
     rvFX.info[i] = row
 end
 
+-- Every tooltip row is held to the plate's inner width, so a long description
+-- wraps inside it rather than running past the edge.
+function rvFX.SetRowWidth(w)
+    for i = 1, rvFX.INFO_LINES do
+        rvFX.info[i].left:SetWidth(w)
+    end
+end
+
 function rvFX.HideInfo()
     rvFX.panel:Hide()
     for _, e in ipairs(rvFX.edges) do e:Hide() end
@@ -2805,15 +2963,25 @@ function rvFX.ShowInfo(spellId)
     return height, last
 end
 
+-- These are the only two things on the reveal you can act on, and they were
+-- smaller than the buttons on the panel behind it.
 local rvKeep = CreateFrame("Button", nil, reveal, "UIPanelButtonTemplate")
-rvKeep:SetWidth(110); rvKeep:SetHeight(24)
-rvKeep:SetPoint("BOTTOM", -60, 4)
+rvKeep:SetWidth(150); rvKeep:SetHeight(32)
+rvKeep:SetPoint("BOTTOM", -82, 4)
 rvKeep:SetText("Keep")
 
 local rvReroll = CreateFrame("Button", nil, reveal, "UIPanelButtonTemplate")
-rvReroll:SetWidth(110); rvReroll:SetHeight(24)
-rvReroll:SetPoint("BOTTOM", 60, 4)
+rvReroll:SetWidth(150); rvReroll:SetHeight(32)
+rvReroll:SetPoint("BOTTOM", 82, 4)
 rvReroll:SetText("Reroll")
+
+for _, b in ipairs({ rvKeep, rvReroll }) do
+    if b.SetNormalFontObject then
+        b:SetNormalFontObject("GameFontNormalLarge")
+        b:SetDisabledFontObject("GameFontDisableLarge")
+        b:SetHighlightFontObject("GameFontHighlightLarge")
+    end
+end
 
 local rvAnim = { phase = "idle", t0 = 0, data = nil }
 CW.revealQueue = {}
@@ -2843,14 +3011,25 @@ end
 --   rays  peak brightness of the starburst   spin  turns per second
 --   pulse how hard it breathes               pop   extra px the die overshoots
 --   shake px the whole reveal kicks          snd   the hit, snd2 layers over it
+--
+-- Turns per second is not what the eye reads: the starburst has 24 beams, so
+-- one turn is 24 beams going past. The old legendary rate of 0.62 put fifteen
+-- of them past a second, which is a strobe rather than a glow. A quarter of
+-- that is a beam every third of a second, still clearly turning and still
+-- faster the better the roll.
 rvFX.tiers = {
     [0] = { rays = 0,    spin = 0,    pulse = 0,    pop = 0,  shake = 0,   snd = "igMainMenuOptionCheckBoxOn" },
-    [1] = { rays = 0.22, spin = 0.16, pulse = 0.05, pop = 4,  shake = 0,   snd = "LOOTWINDOWCOINSOUND" },
-    [2] = { rays = 0.38, spin = 0.26, pulse = 0.10, pop = 9,  shake = 0,   snd = "QUESTCOMPLETED" },
-    [3] = { rays = 0.54, spin = 0.42, pulse = 0.16, pop = 15, shake = 3,   snd = "LEVELUPSOUND" },
-    [4] = { rays = 0.74, spin = 0.62, pulse = 0.24, pop = 24, shake = 6,   snd = "PVPTHROUGHQUEUE",
+    [1] = { rays = 0.22, spin = 0.04, pulse = 0.05, pop = 4,  shake = 0,   snd = "LOOTWINDOWCOINSOUND" },
+    [2] = { rays = 0.38, spin = 0.07, pulse = 0.10, pop = 9,  shake = 0,   snd = "QUESTCOMPLETED" },
+    [3] = { rays = 0.54, spin = 0.11, pulse = 0.16, pop = 15, shake = 3,   snd = "LEVELUPSOUND" },
+    [4] = { rays = 0.74, spin = 0.16, pulse = 0.24, pop = 24, shake = 6,   snd = "PVPTHROUGHQUEUE",
             snd2 = "LEVELUPSOUND" },
 }
+
+-- The second layer turns against the first. It used to run 1.45x FASTER, which
+-- put the two sets of beams through each other quicker than either one alone;
+-- slower than the first reads as depth instead of churn.
+rvFX.COUNTER_SPIN = -0.6
 function rvFX.Tier(rarity) return rvFX.tiers[math.min(rarity or 0, 4)] or rvFX.tiers[0] end
 
 -- RARITY_NAMES carries its own colour codes, which cannot be concatenated into
@@ -2985,29 +3164,52 @@ local function ShowResult()
     -- it costs, its range, cast time, cooldown, any stance it needs, and what
     -- it actually does. The block grows downward and the buttons follow it, so
     -- a one-line passive and a six-line spell both sit right.
-    local infoH, lastRow = rvFX.ShowInfo(d.spell)
-    local anchor = lastRow or rvSub
-    rvKeep:ClearAllPoints()
-    rvReroll:ClearAllPoints()
-    rvKeep:SetPoint("TOPRIGHT", anchor, "BOTTOM", -6, -18)
-    rvReroll:SetPoint("TOPLEFT", anchor, "BOTTOM", 6, -18)
+    -- Width first, because a wrapped line is taller and the height depends on
+    -- it. GetStringWidth reports what the text WANTS, not what it was given,
+    -- so it still answers honestly for a line that is already wrapping.
+    local wide = math.max(tonumber(rvName:GetStringWidth()) or 0,
+                          tonumber(rvSub:GetStringWidth()) or 0)
+    local panelW = math.max(rvFX.PANEL_MIN,
+        math.min(rvFX.PANEL_MAX, wide + rvFX.SIDE * 2))
+    local inner = panelW - rvFX.SIDE * 2
+    rvFX.panel:SetWidth(panelW)
+    rvName:SetWidth(inner)
+    rvSub:SetWidth(inner)
+    rvFX.SetRowWidth(inner)
 
-    -- The plate wraps the name, the tier line and everything read off the
-    -- tooltip, from a little above the name to a little below the last row.
-    -- Anchoring top and bottom rather than setting a height means a one-line
-    -- passive and a six-line spell both come out tight.
+    local infoH = rvFX.ShowInfo(d.spell)
+
+    -- Measure the block, then place the plate on it. Everything in the column
+    -- hangs off the name, so its height is the sum of the pieces plus the
+    -- padding either end -- no second anchor to disagree with the first.
+    local nameH = tonumber(rvName:GetStringHeight()) or 20
+    local subH = tonumber(rvSub:GetStringHeight()) or 14
+    local blockH = rvFX.PAD + nameH + rvFX.NAME_GAP + subH
+        + (infoH > 0 and (rvFX.INFO_GAP + infoH) or 0) + rvFX.PAD
+    -- top edge of the plate: the name's centre, up half its height, up the pad
+    local blockTop = rvFX.NAME_Y + nameH / 2 + rvFX.PAD
+
     rvFX.panel:ClearAllPoints()
-    rvFX.panel:SetPoint("TOP", rvName, "TOP", 0, 12)
-    rvFX.panel:SetPoint("BOTTOM", anchor, "BOTTOM", 0, -12)
+    rvFX.panel:SetPoint("TOP", reveal, "CENTER", 0, blockTop)
+    rvFX.panel:SetHeight(blockH)
     rvFX.panel:Show()
     for _, e in ipairs(rvFX.edges) do
         e:SetVertexColor(rgb[1], rgb[2], rgb[3], 0.85)
         e:Show()
     end
+
+    -- and the buttons sit under the plate, not under whichever text row
+    -- happened to be last
+    rvKeep:ClearAllPoints()
+    rvReroll:ClearAllPoints()
+    rvKeep:SetPoint("TOPRIGHT", rvFX.panel, "BOTTOM", -8, -14)
+    rvReroll:SetPoint("TOPLEFT", rvFX.panel, "BOTTOM", 8, -14)
+
     -- the soft scrim still sits under the plate and blends its edges out
-    rvTextScrim:SetHeight(170 + infoH)
+    rvTextScrim:SetWidth(panelW + 140)
+    rvTextScrim:SetHeight(blockH + 96)
     rvTextScrim:ClearAllPoints()
-    rvTextScrim:SetPoint("CENTER", 0, -168 - infoH / 2)
+    rvTextScrim:SetPoint("CENTER", 0, blockTop - blockH / 2 - 24)
     -- reroll button shows what the player can actually spend
     local s = CW.state
     local charges = (s.rerolls or 0) + (s.scrolls or 0)
@@ -3114,7 +3316,7 @@ reveal:SetScript("OnUpdate", function(self, elapsed)
     if rvFX.hit and fx.rays > 0 then
         rvFX.rot = rvFX.rot + (elapsed or 0) * fx.spin * math.pi * 2
         rvFX.Spin(rvFX.rays, rvFX.rot)
-        rvFX.Spin(rvFX.rays2, -rvFX.rot * 1.45)
+        rvFX.Spin(rvFX.rays2, rvFX.rot * rvFX.COUNTER_SPIN)
         -- a slow breath on top, deeper the higher the tier
         local breathe = 1 + math.sin(GetTime() * 3) * fx.pulse
         local up = math.min(1, (GetTime() - rvFX.hit) / 0.35)
@@ -3347,11 +3549,18 @@ for i = 1, HAND_SLOTS do
     slot.lock:SetTexture("Interface\\AddOns\\ClasslessWildcard\\lock_open")
     slot:SetScript("OnClick", function(self)
         if self.abilityId then
-            Send("LOCK " .. self.abilityId)
+            -- Say which state we want, never "flip whatever you have". A flip
+            -- inverts the two ends for good the moment one of them is out of
+            -- step, and from then on the padlock on screen is a lie: the card
+            -- looks kept and the next Roll Abilities takes it anyway.
+            local want = (self.entryRef and self.entryRef.locked == 1) and 0 or 1
+            Send("LOCK " .. self.abilityId .. " " .. want)
             if PlaySound then pcall(PlaySound, "igMainMenuOptionCheckBoxOn") end
-            -- instant feedback; the server's OWN refresh confirms it
+            -- Shown straight away so the click feels answered, but the server
+            -- pushes the owned list back after every lock and that is what the
+            -- padlock is finally drawn from.
             if self.entryRef then
-                self.entryRef.locked = self.entryRef.locked == 1 and 0 or 1
+                self.entryRef.locked = want
                 CW.RenderHand()
             end
         end
@@ -3526,7 +3735,7 @@ hand:SetScript("OnUpdate", function(self, elapsed)
     for i = 1, HAND_SLOTS do
         local slot = handSlots[i]
         if slot.rays:IsShown() then
-            rvFX.Spin(slot.rays, rvFX.handRot * (slot.spinRate or 0.2) * math.pi * 2)
+            rvFX.Spin(slot.rays, rvFX.handRot * (slot.spinRate or 0.04) * math.pi * 2)
         end
     end
 
@@ -3894,12 +4103,18 @@ local function HandleMessage(msg)
         end
         -- refresh whatever list is open after a successful operation
         if frame:IsShown() then CW.SetTab(CW.tab) end
-        if hand:IsShown() then Send("OWN") end
+        -- LOCK is the exception: the server pushes the owned list itself, so
+        -- asking for it again here would only be a second copy of the answer
+        if hand:IsShown() and p[2] ~= "LOCK" then Send("OWN") end
 
     elseif kind == "ERR" then
         Print("|cffff4444" .. (p[2] or "Error") .. "|r")
         -- a refused reroll must not leave the die spinning forever
         if CW.CancelReroll then CW.CancelReroll() end
+        -- A refusal means this client and the server disagreed about
+        -- something. Whatever was drawn from a guess -- a padlock, above all
+        -- -- goes back to being drawn from the server's answer.
+        Send("OWN")
     end
 end
 

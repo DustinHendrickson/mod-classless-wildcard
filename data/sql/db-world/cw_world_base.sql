@@ -22,14 +22,23 @@ CREATE TABLE IF NOT EXISTS `cw_talent_override` (
   PRIMARY KEY (`talent_id`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='Classless talent tuning';
 
--- A few sensible starter overrides (build-defining abilities cost more / roll less)
-INSERT IGNORE INTO `cw_ability_override` (`first_spell`, `rarity`, `cost`, `weight`, `enabled`) VALUES
-(53, 3, 0, 0, 1),        -- Backstab: epic example
-(5185, 1, 0, 0, 1),      -- Healing Touch
-(133, 0, 0, 0, 1),       -- Fireball
-(686, 0, 0, 0, 1),       -- Shadow Bolt
-(17, 1, 0, 0, 1),        -- Power Word: Shield
-(100, 0, 0, 0, 1);       -- Charge
+-- This table is the last word on an ability's rarity, cost and roll weight.
+-- With no row here the module works the rarity out from what the ability DOES:
+-- the cooldown the game puts on it, the talent row that teaches it, and the
+-- level it is learned at as a floor only. See README, "Ability rarity".
+--
+-- Nothing is overridden by default any more. There used to be six rows here as
+-- a demonstration, and one of them -- Backstab at epic -- was doing real
+-- damage: Backstab is a level 4 filler with no cooldown, the heuristic calls it
+-- common, and the row made it epic and dragged its seven elemental copies up
+-- with it. The other five set the rarity the heuristic already gives.
+--
+-- The DELETE undoes the demonstration on realms that installed it. It is
+-- narrowed to the exact values that shipped, so a rarity you chose yourself is
+-- never touched.
+DELETE FROM `cw_ability_override` WHERE (`first_spell`, `rarity`, `cost`, `weight`, `enabled`) IN
+    ((53, 3, 0, 0, 1), (5185, 1, 0, 0, 1), (133, 0, 0, 0, 1),
+     (686, 0, 0, 0, 1), (17, 1, 0, 0, 1), (100, 0, 0, 0, 1));
 
 -- Pet handling belongs to Tame Beast, not to the deck. Call Pet, Revive Pet,
 -- Feed Pet and Dismiss Pet do nothing at all for a Hero with no pet, and Tame

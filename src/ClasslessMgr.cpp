@@ -93,14 +93,6 @@ namespace
         }
     }
 
-    Rarity RarityFromSpellLevel(uint32 level)
-    {
-        if (level < 10) return Rarity::Common;
-        if (level < 25) return Rarity::Uncommon;
-        if (level < 45) return Rarity::Rare;
-        if (level < 60) return Rarity::Epic;
-        return Rarity::Legendary;
-    }
 }
 
 char const* ClasslessWildcard::RarityName(Rarity r)
@@ -194,6 +186,15 @@ void ClasslessMgr::LoadConfig(bool /*reload*/)
                 cfg.exemptAccountPrefixes.emplace_back(tok);
     }
 
+    // Riding: the four ranks plus Cold Weather Flying, each at the level its
+    // trainer sells it. Cold Weather Flying is the odd one out -- it grants no
+    // skill, it is the permission the server checks before letting anyone fly
+    // in Northrend -- but it is bought from the same trainer, so it belongs in
+    // the same list.
+    cfg.ridingEnable = sConfigMgr->GetOption<bool>("ClasslessWildcard.Riding.Enable", true);
+    parseKit(sConfigMgr->GetOption<std::string>("ClasslessWildcard.Riding.Grants",
+        "33388:20,33391:40,34090:60,54197:68,34091:70"), cfg.ridingGrants);
+
     cfg.teachProficiencies = sConfigMgr->GetOption<bool>("ClasslessWildcard.TeachProficiencies", true);
     cfg.proficiencySpells = ParseUintList(sConfigMgr->GetOption<std::string>(
         "ClasslessWildcard.ProficiencySpells",
@@ -266,6 +267,30 @@ void ClasslessMgr::LoadConfig(bool /*reload*/)
             "ClasslessWildcard.Wildcard.RarityWeights", "100,95,90,85,80"));
         for (size_t i = 0; i < weights.size() && i < 5; ++i)
             cfg.wcRarityWeights[i] = weights[i];
+    }
+
+    {
+        std::vector<uint32> secs = ParseUintList(sConfigMgr->GetOption<std::string>(
+            "ClasslessWildcard.Rarity.CooldownSeconds", "30,60,180,600"));
+        for (size_t i = 0; i < secs.size() && i < 4; ++i)
+            cfg.rarityCooldownMs[i] = secs[i] * 1000;
+        std::vector<uint32> tr = ParseUintList(sConfigMgr->GetOption<std::string>(
+            "ClasslessWildcard.Rarity.TalentRows", "2,4,6,8"));
+        for (size_t i = 0; i < tr.size() && i < 4; ++i)
+            cfg.rarityTalentRow[i] = tr[i];
+        std::vector<uint32> lv = ParseUintList(sConfigMgr->GetOption<std::string>(
+            "ClasslessWildcard.Rarity.LevelFloors", "25,50"));
+        for (size_t i = 0; i < lv.size() && i < 2; ++i)
+            cfg.rarityLevel[i] = lv[i];
+    }
+
+    {
+        // Rank is the steepest thing a single roll can hand over, so it gets
+        // its own ladder rather than borrowing the rarity one.
+        std::vector<uint32> weights = ParseUintList(sConfigMgr->GetOption<std::string>(
+            "ClasslessWildcard.Wildcard.TalentRankWeights", "100,75,50,25,10"));
+        for (size_t i = 0; i < weights.size() && i < 5; ++i)
+            cfg.wcTalentRankWeights[i] = weights[i];
     }
 
     cfg.wcSynergyBaseChance = sConfigMgr->GetOption<uint32>("ClasslessWildcard.Wildcard.SynergyBaseChance", 10);
@@ -628,7 +653,9 @@ void ClasslessMgr::BuildLibrary()
             e.name = firstInfo->SpellName[0];
         e.type = ClassifyAbility(firstInfo, e.passive);
 
-        e.rarity = RarityFromSpellLevel(e.rankLevels[0]);
+        // no talent row yet -- talents load later, and the re-gate pass below
+        // rates every talent-taught line again once they have
+        e.rarity = RarityFromPower(LineCooldown(e), 0, e.rankLevels.empty() ? 0 : e.rankLevels[0]);
         e.cost = cfg.abilityCostByRarity[uint8(e.rarity)];
         e.weight = 0; // 0 = use rarity weight
         ++itr;
@@ -768,15 +795,19 @@ void ClasslessMgr::BuildLibrary()
                 continue;
 
             uint8 need = uint8(std::min<uint32>(255, 10 + row * 5));
-            if (e.rankLevels[0] >= need)
-                continue;
-
-            uint8 shift = need - e.rankLevels[0];
-            for (uint8& lv : e.rankLevels)
-                lv = uint8(std::min<uint32>(255, uint32(lv) + shift));
-            e.rarity = RarityFromSpellLevel(e.rankLevels[0]);
+            if (e.rankLevels[0] < need)
+            {
+                uint8 shift = need - e.rankLevels[0];
+                for (uint8& lv : e.rankLevels)
+                    lv = uint8(std::min<uint32>(255, uint32(lv) + shift));
+                ++regated;
+            }
+            // The row is a rarity signal whether or not the level needed
+            // moving: a capstone is a capstone at any level. This used to sit
+            // behind the `continue` above, so a talent line already gated
+            // correctly never had its row counted at all.
+            e.rarity = RarityFromPower(LineCooldown(e), row, e.rankLevels[0]);
             e.cost = cfg.abilityCostByRarity[uint8(e.rarity)];
-            ++regated;
         }
         if (regated)
             LOG_INFO("module.classless",
@@ -789,7 +820,10 @@ void ClasslessMgr::BuildLibrary()
     LoadVariants();
     ResolveTalentAbilityLines();
 
-    LoadOverrides();
+    std::unordered_set<uint32> overridden;
+    LoadOverrides(&overridden);
+    // now the bases are final, and the variants can be told what they vary
+    ResyncVariants(overridden);
     BuildFormSpellMap();
     LoadFormKits();
     LoadArchetypes();
@@ -800,13 +834,15 @@ void ClasslessMgr::BuildLibrary()
              _abilities.size(), _talents.size());
 }
 
-void ClasslessMgr::LoadOverrides()
+void ClasslessMgr::LoadOverrides(std::unordered_set<uint32>* overridden)
 {
     if (QueryResult result = WorldDatabase.Query("SELECT first_spell, rarity, cost, weight, enabled FROM cw_ability_override"))
     {
         do
         {
             Field* f = result->Fetch();
+            if (overridden)
+                overridden->insert(f[0].Get<uint32>());
             auto itr = _abilities.find(f[0].Get<uint32>());
             if (itr == _abilities.end())
                 continue;
@@ -837,6 +873,56 @@ void ClasslessMgr::LoadOverrides()
             t.enabled = f[3].Get<bool>();
         } while (result->NextRow());
     }
+}
+
+// A variant is registered one rarity tier above the line it varies, and that
+// sum was worked out in LoadVariants -- which runs BEFORE LoadOverrides, on
+// purpose, so a realm can tune a variant row in cw_ability_override like any
+// other ability. The cost of that order is that every variant was derived from
+// its base's heuristic rarity rather than its final one: the shipped example
+// row makes Backstab epic, and its elemental copies stayed uncommon, one tier
+// above the common Backstab used to be.
+//
+// So do the sum again now the bases are settled. A variant with a row of its
+// own in cw_ability_override is left exactly as the realm wrote it.
+uint32 ClasslessMgr::ResyncVariants(std::unordered_set<uint32> const& overridden)
+{
+    if (!cfg.elementalEnable)
+        return 0;
+
+    uint32 changed = 0;
+    for (auto& [firstSpell, e] : _abilities)
+    {
+        if (!e.variant || !e.variantBase || overridden.count(firstSpell))
+            continue;
+        auto baseItr = _abilities.find(e.variantBase);
+        if (baseItr == _abilities.end())
+            continue;
+        AbilityEntry const& base = baseItr->second;
+
+        // a base switched off by an override takes its copies with it, the
+        // same way LoadVariants refuses to build one from a disabled base
+        if (!base.enabled && e.enabled)
+        {
+            e.enabled = false;
+            ++changed;
+        }
+
+        uint8 const bumped = uint8(std::min<uint32>(uint32(base.rarity) + cfg.elementalRarityBump,
+                                                    uint32(Rarity::Legendary)));
+        if (uint8(e.rarity) == bumped)
+            continue;
+
+        e.rarity = static_cast<Rarity>(bumped);
+        e.cost = cfg.abilityCostByRarity[bumped];
+        e.weight = std::max<uint32>(1, cfg.wcRarityWeights[bumped] * cfg.elementalRollWeightPct / 100);
+        ++changed;
+    }
+
+    if (changed)
+        LOG_INFO("module.classless",
+                 "mod-classless-wildcard: re-derived {} elemental variant(s) from their final base rarity", changed);
+    return changed;
 }
 
 // Which ability puts a Hero into each shapeshift form?
@@ -1036,6 +1122,7 @@ void ClasslessMgr::LoadVariants()
         e.type = ClassifyAbility(firstInfo, false);
 
         e.classMask = base.classMask;
+        e.variantBase = baseFirst;
         uint8 const bumped = uint8(std::min<uint32>(uint32(base.rarity) + cfg.elementalRarityBump,
                                                     uint32(Rarity::Legendary)));
         e.rarity = static_cast<Rarity>(bumped);
@@ -1630,6 +1717,49 @@ Rarity ClasslessMgr::RankRarity(TalentPoolEntry const& t, uint8 rank) const
     return Rarity(std::max<uint8>(byRank, uint8(t.rarity)));
 }
 
+// The longest wait on any rank of a line. Some spells carry it as their own
+// cooldown and some as their category's -- Ice Block uses RecoveryTime, Divine
+// Shield the category it shares with the other bubbles -- so both are read and
+// the larger wins.
+uint32 ClasslessMgr::LineCooldown(AbilityEntry const& e) const
+{
+    uint32 worst = 0;
+    for (uint32 sp : e.ranks)
+        if (SpellInfo const* info = sSpellMgr->GetSpellInfo(sp))
+            worst = std::max({ worst, info->RecoveryTime, info->CategoryRecoveryTime });
+    return worst;
+}
+
+// How much of a prize is this ability? Rarity drives the roll weight, the
+// essence price and the colour, so it has to mean "how good is this", and the
+// level an ability is learned at does not say that. Rating by level alone
+// called Bloodlust legendary for being level 70, Backstab common and Pain
+// Suppression common as well because its SpellLevel is 0.
+//
+// Three signals, strongest wins:
+//
+//   cooldown    the game's own statement of size. A twenty-minute Lay on Hands
+//               and a no-cooldown Fireball are not the same kind of thing.
+//   talent row  a spell taught from row R costs 5R points to reach, so the row
+//               IS the tier: forty points in is a capstone by construction.
+//   level       a floor only, capped at rare. It is when you MAY learn
+//               something, not how strong it is, so it can lift a late
+//               no-cooldown spell off the bottom but never make it epic.
+Rarity ClasslessMgr::RarityFromPower(uint32 cooldownMs, uint32 talentRow, uint8 level) const
+{
+    uint8 tier = 0;
+    for (uint8 i = 0; i < 4; ++i)
+        if (cfg.rarityCooldownMs[i] && cooldownMs >= cfg.rarityCooldownMs[i])
+            tier = std::max<uint8>(tier, uint8(i + 1));
+    for (uint8 i = 0; i < 4; ++i)
+        if (cfg.rarityTalentRow[i] && talentRow >= cfg.rarityTalentRow[i])
+            tier = std::max<uint8>(tier, uint8(i + 1));
+    for (uint8 i = 0; i < 2; ++i)
+        if (cfg.rarityLevel[i] && level >= cfg.rarityLevel[i])
+            tier = std::max<uint8>(tier, uint8(i + 1));
+    return Rarity(std::min<uint8>(tier, uint8(Rarity::Legendary)));
+}
+
 // Pick which rank a roll lands on, weighted by that rank's rarity -- so rank 5
 // shows up as rarely as any other legendary. Returns 0 when the talent is
 // already maxed.
@@ -1638,9 +1768,18 @@ uint8 ClasslessMgr::RollTalentRank(TalentPoolEntry const& t, uint8 fromRank) con
     if (fromRank >= t.maxRank)
         return 0;
 
+    // Weighted by RANK, not by the rank's rarity. The rarity ladder is a
+    // gentle slope by design (a legendary rolls at 80% the rate of a common),
+    // and using it here made rank 5 nearly as likely as rank 1 -- one roll
+    // handing over five ranks about as often as one.
+    auto rankWeight = [&](uint8 r) -> uint32
+    {
+        return cfg.wcTalentRankWeights[std::min<uint8>(uint8(r - 1), 4)];
+    };
+
     uint32 total = 0;
     for (uint8 r = fromRank + 1; r <= t.maxRank; ++r)
-        total += RollWeight(RankRarity(t, r), 0);
+        total += rankWeight(r);
 
     if (!total)
         return fromRank + 1; // every weight configured to zero: lowest rank
@@ -1648,7 +1787,7 @@ uint8 ClasslessMgr::RollTalentRank(TalentPoolEntry const& t, uint8 fromRank) con
     uint32 pick = urand(0, total - 1);
     for (uint8 r = fromRank + 1; r <= t.maxRank; ++r)
     {
-        uint32 w = RollWeight(RankRarity(t, r), 0);
+        uint32 w = rankWeight(r);
         if (pick < w)
             return r;
         pick -= w;
@@ -1811,6 +1950,48 @@ void ClasslessMgr::SaveBans(ObjectGuid guid, CharState const& st)
 // -------------------------------------------------------------------------
 // Lifecycle
 // -------------------------------------------------------------------------
+
+// Riding comes with being a Hero.
+//
+// It is not class power and it is not in the classless library, so it never
+// rolls and cannot be bought with essence -- but a Hero who ROLLS a class mount
+// still needs the skill to sit on it, and paying a trainer for something the
+// module hands out to everyone else is just a tax. So it is given, on the
+// schedule the trainers use.
+//
+// That schedule matters. The riding spells carry no level of their own (every
+// one of them reads SpellLevel 0 in Spell.dbc); the gate lives entirely in
+// npc_trainer and in each mount item's own RequiredLevel. Handing all four out
+// at level 1 would therefore lean completely on mount items being level-gated,
+// which is a realm-by-realm question. Following the trainer levels cannot
+// outrun anything, because it IS what the trainers do. A realm that wants them
+// all at once only has to set every level in Riding.Grants to 1.
+uint32 ClasslessMgr::GrantRidingSkill(Player* player)
+{
+    if (!cfg.ridingEnable || cfg.ridingGrants.empty())
+        return 0;
+    if (GetState(player).exempt)
+        return 0;   // bots ride by the normal rules
+
+    GrantGuard guard(_applyingGrant);
+    uint32 const level = player->GetLevel();
+    uint32 taught = 0;
+    for (auto const& [spellId, atLevel] : cfg.ridingGrants)
+    {
+        if (level < atLevel || player->HasSpell(spellId))
+            continue;
+        if (!sSpellMgr->GetSpellInfo(spellId))
+        {
+            LOG_WARN("module.classless", "Riding.Grants lists spell {}, which does not exist", spellId);
+            continue;
+        }
+        player->learnSpell(spellId);
+        ++taught;
+        Msg(player, Acore::StringFormat("You have learned {}. Riding is trained for every Hero.",
+            SpellName(spellId)));
+    }
+    return taught;
+}
 
 void ClasslessMgr::TeachProficiencies(Player* player)
 {
@@ -2068,7 +2249,11 @@ void ClasslessMgr::HandleLogin(Player* player)
     ApplyDefaultMode(player);
 
     TeachProficiencies(player);
+    GrantRidingSkill(player);
     ApplyStatMods(player);
+    // characters who passed the line before this rule existed, or while
+    // logged out
+    ClearStaleLocks(player);
 
     // A talent that has since left the list (ReplaceAbilityTalents) turns
     // into the ability it stood for: the line is granted at no cost, the
@@ -2203,6 +2388,13 @@ void ClasslessMgr::HandleLevelUp(Player* player, uint8 oldLevel)
 
     st.lastProcessedLevel = std::max(st.lastProcessedLevel, newLevel);
     UpdateAbilityRanks(player);
+    GrantRidingSkill(player);
+
+    if (uint32 freed = ClearStaleLocks(player))
+        Msg(player, Acore::StringFormat(
+            "Your starting hand is over, so {} padlock{} come off. From here you reroll one "
+            "ability at a time, and only the one you choose.",
+            freed, freed == 1 ? " comes" : "s"));
 
     if (st.mode == Mode::Classless && st.archetype)
     {
@@ -2420,6 +2612,26 @@ bool ClasslessMgr::IsCompanionJustified(CharState const& st, AbilityEntry const&
         }
     }
     return false;
+}
+
+uint32 ClasslessMgr::ClearStaleLocks(Player* player)
+{
+    if (player->GetLevel() < cfg.wcFreeRerollLevel)
+        return 0;
+
+    CharState& st = GetState(player);
+    uint32 cleared = 0;
+    for (auto& [firstSpell, owned] : st.abilities)
+        if (owned.locked)
+        {
+            owned.locked = false;
+            ++cleared;
+        }
+
+    if (cleared)
+        CharacterDatabase.Execute("UPDATE cw_char_abilities SET locked = 0 WHERE guid = {}",
+                                  player->GetGUID().GetCounter());
+    return cleared;
 }
 
 uint32 ClasslessMgr::PruneCompanions(Player* player)
@@ -3208,6 +3420,16 @@ uint32 ClasslessMgr::RollAbility(Player* player, GrantSource source)
         Msg(player, "|cff00ff88Synergy roll!|r This ability complements your Hero.");
     }
 
+    // The pool is built to exclude everything owned, so this can only fire if
+    // the library changed underneath the roll. Say so rather than re-granting
+    // a line, which would stamp over its source and clear its padlock.
+    if (st.abilities.count(chosen->firstSpellId))
+    {
+        LOG_WARN("module.classless", "Roll picked ability {} ({}) which guid {} already owns; skipped",
+                 chosen->firstSpellId, SpellName(chosen->firstSpellId), player->GetGUID().GetCounter());
+        return 0;
+    }
+
     GrantAbilityInternal(player, *chosen, source);
     SaveState(player);
     // _revealSuppress is on while a whole hand is being dealt at once (the
@@ -3230,8 +3452,10 @@ uint32 ClasslessMgr::RollTalent(Player* player)
     uint32 ownedMask = OwnedClassMask(st);
     uint32 lastGranted = 0;
 
-    // Ascension's upgrade rule: rolling into an owned talent upgrades it and rolls again.
-    for (uint8 chain = 0; chain < 4; ++chain)
+    // ONE roll, ONE talent. This used to chain: landing on a talent already
+    // owned upgraded it and rolled again, up to four times, and a talent
+    // reroll ran the whole thing once per rank refunded. A single reroll of a
+    // rank 5 talent could therefore hand over twenty grants.
     {
         // tiered: a talent in tree row R unlocks at level 10 + R*5 (the level a
         // vanilla character could first reach that row); fall back to the full
@@ -3247,9 +3471,12 @@ uint32 ClasslessMgr::RollTalent(Player* player)
             {
                 if (!t.enabled || IsBanned(st, true, talentId))
                     continue;
+                // A talent already owned is only worth rolling when the roll
+                // can land ABOVE the rank held: anything else would be a roll
+                // spent handing back what the Hero already has.
                 auto itr = st.talents.find(talentId);
                 if (itr != st.talents.end() && itr->second >= t.maxRank)
-                    continue; // maxed out
+                    continue; // maxed out: nothing left to win
                 anyLevel.push_back(&t);
                 if (!cfg.respectLevelReqs || player->GetLevel() >= 10 + t.row * 5)
                     candidates.push_back(&t);
@@ -3322,11 +3549,11 @@ uint32 ClasslessMgr::RollTalent(Player* player)
         if (auto itr = st.talents.find(chosen->talentId); itr != st.talents.end())
             ownedRank = itr->second;
 
-        // the roll decides the RANK too, not just the talent: a rank 5 is as
-        // rare a result as any legendary, and costs the same one point
+        // the roll decides the RANK too, not just the talent, on its own
+        // weight ladder: rank 5 is roughly a twentieth as likely as rank 1
         uint8 newRank = RollTalentRank(*chosen, ownedRank);
         if (!newRank)
-            break; // already maxed (shouldn't happen: maxed talents are filtered out)
+            return lastGranted; // maxed (shouldn't happen: those are filtered out)
         Rarity shown = RankRarity(*chosen, newRank);
 
         GrantTalentRankInternal(player, *chosen, newRank);
@@ -3336,11 +3563,9 @@ uint32 ClasslessMgr::RollTalent(Player* player)
                 chosen->talentId, chosen->rankSpells[newRank - 1], uint32(shown),
                 uint32(newRank), synergy ? 1 : 0));
 
-        if (ownedRank == 0)
-            break; // fresh talent — done
-
-        // it was an upgrade: Ascension rules say the roll fires again
-        Msg(player, "The talent upgraded. The Wildcard rolls again!");
+        if (ownedRank)
+            Msg(player, Acore::StringFormat("{} was already yours at rank {}. The roll takes it to {}.",
+                SpellName(chosen->rankSpells[0]), uint32(ownedRank), uint32(newRank)));
     }
 
     SaveState(player);
@@ -3381,15 +3606,16 @@ bool ClasslessMgr::Reroll(Player* player, bool isTalent, uint32 entry, std::stri
             }
         }
 
-        uint8 refundRanks = itr->second;
         RemoveTalentInternal(player, *t);
 
         st.bans.push_back({ entry, true, int32(cfg.wcSynergyBanRolls) });
         SaveBans(player->GetGUID(), st);
         ++st.pity;
 
-        for (uint8 i = 0; i < refundRanks; ++i)
-            RollTalent(player);
+        // One charge, one roll -- the same deal an ability reroll offers. This
+        // used to roll once per rank given up, so rerolling a rank 5 talent
+        // dealt five new talents, each of which could chain into more.
+        RollTalent(player);
     }
     else
     {
@@ -3404,7 +3630,14 @@ bool ClasslessMgr::Reroll(Player* player, bool isTalent, uint32 entry, std::stri
         }
         if (st.abilities[e->firstSpellId].locked)
         {
-            if (err) *err = "That ability is locked. Unlock it first (.wildcard lock).";
+            // Nothing should ever ask for this: every caller filters locked
+            // lines out first. Reaching it means the client's padlock and the
+            // server's disagreed, which is worth a line in the log naming both,
+            // because the player will report it as a lock that did not hold.
+            LOG_WARN("module.classless",
+                     "Reroll refused: guid {} asked to reroll LOCKED ability {} ({})",
+                     player->GetGUID().GetCounter(), e->firstSpellId, SpellName(e->firstSpellId));
+            if (err) *err = "That ability is locked. Unlock it first.";
             return false;
         }
         if (st.abilities[e->firstSpellId].source == GrantSource::Talent)
@@ -3463,10 +3696,24 @@ uint32 ClasslessMgr::RerollUnlockedAbilities(Player* player, std::string* err)
     // owned right now, and rerolled entries are banned from coming straight
     // back, so nothing in the list can be invalidated by an earlier reroll
     std::vector<uint32> targets;
+    uint32 kept = 0;
     for (auto const& [firstSpell, owned] : st.abilities)
-        if (!owned.locked && owned.source != GrantSource::Talent
-            && owned.source != GrantSource::Companion)
-            targets.push_back(firstSpell);
+    {
+        if (owned.source == GrantSource::Talent || owned.source == GrantSource::Companion)
+            continue;
+        if (owned.locked)
+        {
+            ++kept;
+            continue;
+        }
+        targets.push_back(firstSpell);
+    }
+
+    // What the server believed the padlocks were, at the moment it acted on
+    // them. "It rerolled one I had locked" is otherwise impossible to tell
+    // apart from "the lock never reached the server".
+    LOG_INFO("module.classless", "Reroll all: guid {} rerolling {} line(s), keeping {} locked",
+             player->GetGUID().GetCounter(), uint32(targets.size()), kept);
 
     uint32 done = 0;
     for (uint32 firstSpell : targets)
@@ -3486,7 +3733,7 @@ uint32 ClasslessMgr::RerollUnlockedAbilities(Player* player, std::string* err)
     return done;
 }
 
-bool ClasslessMgr::ToggleLock(Player* player, uint32 firstSpellId, std::string* err)
+bool ClasslessMgr::SetLock(Player* player, uint32 firstSpellId, bool locked, std::string* err)
 {
     CharState& st = GetState(player);
     AbilityEntry const* e = GetAbility(firstSpellId);
@@ -3512,14 +3759,43 @@ bool ClasslessMgr::ToggleLock(Player* player, uint32 firstSpellId, std::string* 
         return false;
     }
 
+    if (locked && player->GetLevel() >= cfg.wcFreeRerollLevel)
+    {
+        if (err) *err = Acore::StringFormat(
+            "Padlocks only matter while the starting hand is open (below level {}). "
+            "From there you reroll one ability at a time, and only the one you pick.",
+            uint32(cfg.wcFreeRerollLevel));
+        return false;
+    }
+
     OwnedAbility& owned = st.abilities[e->firstSpellId];
-    owned.locked = !owned.locked;
+    bool const changed = owned.locked != locked;
+    owned.locked = locked;
+    // Written every time, not only when it changed. An explicit set is the one
+    // moment the row can be put right if it ever fell out of step with memory,
+    // and re-asking for a lock you already hold is exactly what a player does
+    // when the padlock looks wrong.
     CharacterDatabase.Execute(
         "UPDATE cw_char_abilities SET locked = {} WHERE guid = {} AND first_spell = {}",
         owned.locked ? 1 : 0, player->GetGUID().GetCounter(), e->firstSpellId);
 
-    Msg(player, Acore::StringFormat("{} is now {}.", SpellName(e->firstSpellId),
-        owned.locked ? "|cffffff00locked|r" : "unlocked"));
+    if (changed)
+        Msg(player, Acore::StringFormat("{} is now {}.", SpellName(e->firstSpellId),
+            owned.locked ? "|cffffff00locked|r" : "unlocked"));
     return true;
+}
+
+bool ClasslessMgr::ToggleLock(Player* player, uint32 firstSpellId, std::string* err)
+{
+    CharState& st = GetState(player);
+    AbilityEntry const* e = GetAbility(firstSpellId);
+    if (!e && sSpellMgr->GetSpellInfo(firstSpellId))
+        e = FindAbilityBySpell(sSpellMgr->GetFirstSpellInChain(firstSpellId));
+
+    bool want = true;
+    if (e)
+        if (auto o = st.abilities.find(e->firstSpellId); o != st.abilities.end())
+            want = !o->second.locked;
+    return SetLock(player, firstSpellId, want, err);
 }
 

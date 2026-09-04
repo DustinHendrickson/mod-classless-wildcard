@@ -71,7 +71,19 @@ public:
     // which went stale the moment the first one landed. Returns how many were
     // rerolled.
     uint32 RerollUnlockedAbilities(Player* player, std::string* err);
+    // Set the padlock outright. A lock is the only promise the Wildcard makes
+    // about a roll, so the client says which state it wants rather than asking
+    // for a flip: a toggle inverts the two ends for good the moment one of them
+    // is out of step, and then the padlock on screen is a lie. Idempotent, and
+    // it writes the row every time, so an explicit set also repairs a row that
+    // fell out of step with memory.
+    bool SetLock(Player* player, uint32 firstSpellId, bool locked, std::string* err);
     bool ToggleLock(Player* player, uint32 firstSpellId, std::string* err);
+    // Padlocks exist to hold a card back from the starting hand's "reroll
+    // everything" pass. Once free rolls are over that pass is gone and every
+    // reroll is one ability the player picked, so a leftover lock protects
+    // nothing and only refuses what they asked for. Returns how many it freed.
+    uint32 ClearStaleLocks(Player* player);
 
     // ------- displayed resource bar (0 mana, 1 rage, 3 energy, 255 default) -------
     bool SetDisplayPower(Player* player, uint8 powerIdx, std::string* err);
@@ -124,6 +136,9 @@ public:
     // SaveToDB, so the caller must re-save for the change to persist.
     bool ApplyStarterGear(Player* player);
     void TeachProficiencies(Player* player);
+    // Riding ranks the Hero has reached the level for. Returns how many were
+    // newly taught, so the caller can stay quiet when there is nothing to say.
+    uint32 GrantRidingSkill(Player* player);
     // Give the Hero the skill lines their spells belong to, so the client files
     // each one under its own spellbook tab instead of dumping them in General.
     // `clearChassisLines` also takes away the class lines the Hero has nothing
@@ -151,6 +166,12 @@ public:
     // rare the find is -- rank 5 is a legendary result -- and since Wildcard
     // rolls cost nothing, a high rank is every one of those ranks for free.
     ClasslessWildcard::Rarity RankRarity(ClasslessWildcard::TalentPoolEntry const& t, uint8 rank) const;
+    // Rarity from what an ability DOES, not from when it is learned. See the
+    // definition for why each signal is there.
+    ClasslessWildcard::Rarity RarityFromPower(uint32 cooldownMs, uint32 talentRow, uint8 level) const;
+    // The longest wait on any rank of a line, spell cooldown or category
+    // cooldown, whichever the spell actually uses.
+    uint32 LineCooldown(ClasslessWildcard::AbilityEntry const& e) const;
     // Weighted pick of a rank above `fromRank`, rarer the higher it goes.
     uint8 RollTalentRank(ClasslessWildcard::TalentPoolEntry const& t, uint8 fromRank) const;
     uint32 RollWeight(ClasslessWildcard::Rarity rarity, uint32 overrideWeight) const;
@@ -159,7 +180,14 @@ public:
 private:
     ClasslessMgr() = default;
 
-    void LoadOverrides();
+    // `overridden` collects every first_spell that had a row in
+    // cw_ability_override, so later passes can leave a realm's own tuning alone.
+    void LoadOverrides(std::unordered_set<uint32>* overridden = nullptr);
+    // A variant's rarity is its base's, bumped. Variants are built before
+    // overrides are read (so a realm can tune a variant row like any other
+    // ability), which means every one of them was derived from its base's
+    // heuristic rarity rather than its final one. Put that right.
+    uint32 ResyncVariants(std::unordered_set<uint32> const& overridden);
     void LoadFormKits();
     // Elemental variants of pool abilities, from cw_ability_variants. They are
     // module-owned spells with no trainer, so they bypass TrainerTaughtOnly

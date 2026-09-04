@@ -304,8 +304,12 @@ namespace
             TalentPoolEntry const* t = sClasslessMgr->GetTalent(talentId);
             if (!t)
                 continue;
+            // The rank IS the rarity for a talent, and the reveal popup already
+            // says so ("Divine Strength 4/5 (Epic)"). Sending the talent's own
+            // base rarity instead left My Build showing every talent in the
+            // colour of its tree row, so a rank 5 read as common.
             std::string piece = Acore::StringFormat("{}:{}:{}:{}:{};", talentId,
-                t->rankSpells[0], uint32(t->rarity), rank, t->maxRank);
+                t->rankSpells[0], uint32(sClasslessMgr->RankRarity(*t, rank)), rank, t->maxRank);
             if (body.size() + piece.size() > MAX_BODY)
             {
                 SendAddon(player, body);
@@ -489,7 +493,24 @@ namespace
         else if (cmd == "RRT")
             sClasslessMgr->Reroll(player, true, argNum(1), &err) ? SendOk(player, "RRT") : SendErr(player, err);
         else if (cmd == "LOCK")
-            sClasslessMgr->ToggleLock(player, argNum(1), &err) ? SendOk(player, "LOCK") : SendErr(player, err);
+        {
+            // "LOCK <id> <0|1>" sets the padlock outright; "LOCK <id>" still
+            // flips it, for the chat command, the NPC and any addon built
+            // before the state was part of the message. A flip is only safe
+            // while both ends already agree on where the padlock is.
+            bool const ok = args.size() > 2
+                ? sClasslessMgr->SetLock(player, argNum(1), argNum(2) != 0, &err)
+                : sClasslessMgr->ToggleLock(player, argNum(1), &err);
+            if (ok)
+            {
+                SendOk(player, "LOCK");
+                // and the padlock the player ends up looking at comes back
+                // from here, rather than from what the client assumed
+                SendOwnedAbilities(player);
+            }
+            else
+                SendErr(player, err);
+        }
         else if (cmd == "ARCHAPPLY")
             sClasslessMgr->ApplyArchetype(player, argNum(1), &err) ? SendOk(player, "ARCH") : SendErr(player, err);
         else if (cmd == "REBIRTH")

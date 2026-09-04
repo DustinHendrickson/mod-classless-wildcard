@@ -97,6 +97,8 @@ namespace ClasslessWildcard
         bool   enabled = true;
         bool   passive = false;
         bool   variant = false;         // an elemental variant (cw_ability_variants)
+        uint32 variantBase = 0;         // and the line it varies, so its rarity can be
+                                        // re-derived once overrides have touched the base
         AbilityType type = AbilityType::Utility;
     };
 
@@ -241,6 +243,14 @@ namespace ClasslessWildcard
         // kit armour fell through to the bags)
         bool   starterKitStripEquipped = true;
         uint32 starterKitBag = 5573;   // an 8-slot bag equipped at creation (0 = none)
+        // Riding is not class power, so it is not in the classless library and
+        // never rolls: it is simply given. Each pair is a spell and the level
+        // it arrives at, which by default is the level its trainer would sell
+        // it. The spells themselves carry NO level of their own (all five read
+        // SpellLevel 0), so this list is the only gate there is.
+        bool ridingEnable = true;
+        std::vector<std::pair<uint32, uint32>> ridingGrants;
+
         std::vector<std::pair<uint32, uint32>> starterKitItems;  // into bags
         std::vector<std::pair<uint32, uint32>> starterKitEquip;  // auto-equipped (armour)
 
@@ -324,7 +334,21 @@ namespace ClasslessWildcard
         uint32 wcTalentEveryLevels = 2;
         uint32 wcAbilityEveryLevels = 2;
         uint8  wcFreeRerollLevel = 10;   // below this, rerolls are free
+        // How an ability's rarity is worked out when nothing overrides it.
+        // Rarity is what a roll is WORTH, so the strongest of three signals
+        // wins: the wait the game puts on it, the talent row that teaches it,
+        // and -- only as a floor, and never past rare -- the level it is
+        // learned at. Thresholds for uncommon, rare, epic, legendary in order.
+        std::array<uint32, 4> rarityCooldownMs = { 30000, 60000, 180000, 600000 };
+        std::array<uint32, 4> rarityTalentRow = { 2, 4, 6, 8 };
+        std::array<uint32, 2> rarityLevel = { 25, 50 };   // uncommon, rare. no higher
+
         std::array<uint32, 5> wcRarityWeights = { 100, 95, 90, 85, 80 };
+        // Weight per talent RANK, rank 1 first. Separate from the rarity
+        // weights above because the two do different jobs: rarity decides
+        // which talent, rank decides how much of it you get in one roll, and
+        // a rank is worth a whole point where a rarity is only flavour.
+        std::array<uint32, 5> wcTalentRankWeights = { 100, 75, 50, 25, 10 };
         uint32 wcSynergyBaseChance = 10;   // percent
         uint32 wcSynergyIncrement = 10;    // percent per pity point
         uint32 wcSynergyBanRolls = 25;

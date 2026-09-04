@@ -415,13 +415,35 @@ def test_browser(h):
     h.recv(state(0))
     h.check(callable(CW.RefreshPanelArt), "panel art refresh is wired")
 
-    # stat tooltip: chassis and module rates together, so melee and ranged differ
+    # Every stat says everything it is doing, from the server's own rates.
+    # Three of the five used to say nothing at all and Intellect reported only
+    # its spell power.
     h.recv("ST|10|4|1|0|0|0|0|0|1|1|1|1|0.5|2|0|1|0.0192|0.006|0.473|0.31")
-    agi = str(CW.StatContribution(2, 20))
-    h.check(agi == "+20 melee and +40 ranged attack power", "Agility tooltip counts the chassis ranged AP too: %r" % agi)
-    h.check(str(CW.StatContribution(1, 20)) == "+40 melee attack power, +10 block value", "Strength tooltip shows its attack power")
+
+    def eff(i, v):
+        return [str(x) for x in CW.StatEffects(i, v).values()]
+
+    h.check(eff(1, 20) == ["+40 melee attack power", "+10 block value"],
+            "Strength: attack power and block value (%s)" % eff(1, 20))
+    h.check(eff(2, 20) == ["+20 melee attack power", "+40 ranged attack power",
+                           "+0.38% critical strike", "dodge"],
+            "Agility: chassis AND module attack power, plus crit and dodge (%s)" % eff(2, 20))
+    h.check(eff(3, 20) == ["+20 health"], "Stamina: the first 20 points are 1 health each")
+    h.check(eff(3, 30) == ["+120 health"], "and every point past that is 10 (%s)" % eff(3, 30))
+    h.check(eff(4, 30) == ["+170 mana", "+10 spell power", "+0.18% spell critical strike"],
+            "Intellect: mana, spell power AND spell crit, not spell power alone (%s)" % eff(4, 30))
+    h.check(eff(5, 20) == ["+9.5 mana per 5 sec", "+6.2 health per 5 sec"],
+            "Spirit: both regeneration rates (%s)" % eff(5, 20))
+    h.check(len(eff(1, 0)) == 2 and eff(3, 0) == ["+0 health"],
+            "and a stat at zero still answers, rather than going blank")
+
+    # the universal layer off (an exempt character) drops only what it added
     h.recv("ST|10|4|1|0|0|0|0|0|1|0|1|1|0.5|2|0|1|0.0192|0.006|0.473|0.31")
-    h.check(str(CW.StatContribution(2, 20)) == "+20 ranged attack power", "with the universal layer off only the chassis ranged AP remains")
+    h.check(eff(2, 20) == ["+20 ranged attack power", "+0.38% critical strike", "dodge"],
+            "exempt: the chassis ranged AP and crit remain, the module's melee AP goes (%s)"
+            % eff(2, 20))
+    h.check(eff(4, 30) == ["+170 mana", "+0.18% spell critical strike"],
+            "and Intellect keeps its mana and crit but loses the spell power (%s)" % eff(4, 30))
 
 
 def test_state_packet(h):
@@ -736,6 +758,17 @@ def test_reveal_tiers(h):
     after = [round(v, 4) for v in fx.rays["__coord"].values()]
     after2 = [round(v, 4) for v in fx.rays2["__coord"].values()]
     h.check(len(after) == 8 and before != after, "the starburst rotates")
+
+    # A turn is 24 beams going past, so the rate that reads as "spinning" is
+    # much lower than it looks on paper.
+    spins = [h.CW.revealFX.tiers[i].spin for i in range(0, 5)]
+    h.check(all(spins[i] < spins[i + 1] for i in range(4)),
+            "each tier still turns faster than the one below (%s)" % spins)
+    h.check(spins[4] <= 0.2,
+            "and the best of them is a glow, not a strobe: %.2f turns/sec is a beam "
+            "every %.2fs" % (spins[4], 1.0 / (spins[4] * 24)))
+    h.check(h.CW.revealFX.COUNTER_SPIN < 0 and abs(h.CW.revealFX.COUNTER_SPIN) < 1,
+            "the second layer turns the other way and slower (%s)" % h.CW.revealFX.COUNTER_SPIN)
     h.check(before2 != after2 and after2 != after, "the second layer turns the other way")
 
     # brightness has to climb with the tier, not just be present
@@ -776,6 +809,205 @@ def test_starting_hand(h):
     h.click(CW.handKeep)
     h.check(hand["__shown"] is False, "Keep Abilities closes the hand")
     h.check(frame["__shown"] is False, "Keep Abilities does not open the advancement panel")
+
+
+def test_locks(h):
+    print("--- locks: the padlock says what the server has, never a guess")
+    CW, g = h.CW, h.g
+    hand, frame = CW.handFrame, g.ClasslessWildcardFrame
+
+    h.recv(state(1, level=3))          # Wildcard hero, below the level 10 cut-off
+    frame["__shown"] = False
+    hand["__shown"] = True
+    # 686 arrives already locked; the other three are open
+    h.recv("OA|133:0:0:1;772:0:0:1;1752:0:0:1;686:0:1:1;")
+    h.recv("OAE|")
+
+    order = [int(v) for v in CW.handOrder.values()]
+    slots = {}
+    for i in range(1, 5):
+        sl = CW.handSlots[i]
+        if sl.abilityId is not None:
+            slots[int(sl.abilityId)] = sl
+    h.check(len(order) == 4 and set(slots) == {133, 772, 1752, 686},
+            "four cards on the table (%s)" % sorted(slots))
+
+    # ---- a click asks for a STATE, so a lost or refused message cannot invert it
+    h.clear_sent()
+    h.click(slots[133])
+    h.check(h.sent() == ["LOCK 133 1"], "clicking an open card asks for locked (%s)" % h.sent())
+    h.clear_sent()
+    h.click(slots[133])
+    h.check(h.sent() == ["LOCK 133 0"], "clicking it again asks for unlocked (%s)" % h.sent())
+
+    h.clear_sent()
+    h.click(slots[686])
+    h.check(h.sent() == ["LOCK 686 0"],
+            "and a card that came down locked asks for unlocked (%s)" % h.sent())
+
+    # ---- the same message twice is the same result, which a flip never was
+    h.clear_sent()
+    h.click(slots[772])
+    first = h.sent()
+    h.recv("OA|133:0:0:1;772:0:1:1;1752:0:0:1;686:0:1:1;")
+    h.recv("OAE|")
+    h.clear_sent()
+    slots[772] = None
+    for i in range(1, 5):
+        sl = CW.handSlots[i]
+        if sl.abilityId is not None and int(sl.abilityId) == 772:
+            slots[772] = sl
+    h.click(slots[772])
+    h.check(first == ["LOCK 772 1"] and h.sent() == ["LOCK 772 0"],
+            "a card the server confirmed as locked is asked to unlock, not to flip (%s)" % h.sent())
+
+    # ---- the server pushes the list back after a lock, so the client must not
+    #      ask for it again; every other OK still refreshes the hand
+    h.clear_sent()
+    h.recv("OK|LOCK")
+    h.check(h.sent() == [], "OK for a lock asks for nothing: the server sent the list with it")
+    h.clear_sent()
+    h.recv("OK|RRALL")
+    h.check("OWN" in h.sent(), "any other OK still refreshes the hand (%s)" % h.sent())
+
+    # ---- a refusal puts the screen back on the server's truth
+    h.clear_sent()
+    h.recv("ERR|That ability is locked. Unlock it first.")
+    h.check("OWN" in h.sent(), "a refused action re-reads the build (%s)" % h.sent())
+
+    # ---- My Build offers no reroll on a locked ability
+    hand["__shown"] = False
+    frame["__shown"] = True
+    h.recv("OA|133:0:0:1;686:0:1:1;")
+    h.recv("OAE|")
+    rows = {}
+    for i in range(1, 12):
+        r = CW.buildRows[i]
+        if r is None:
+            break
+        if r["__shown"]:            # a hidden row keeps the text it last drew
+            rows[str(r.name["__text"])] = r
+    open_row = [r for k, r in rows.items() if "133" in k]
+    locked_row = [r for k, r in rows.items() if "686" in k]
+    h.check(len(open_row) == 1 and len(locked_row) == 1,
+            "both abilities are listed (%s)" % sorted(rows))
+    h.check(open_row[0].actBtn["__shown"] is True,
+            "an unlocked ability keeps its reroll die")
+    h.check(locked_row[0].actBtn["__shown"] is False,
+            "a locked one has none: the server would only refuse it")
+    h.check(locked_row[0].lockBtn["__shown"] is True, "but it keeps its padlock, to unlock")
+
+    frame["__shown"] = False
+
+
+def test_reveal_layout(h):
+    print("--- reveal: the plate wraps the whole block, buttons hang off the plate")
+    CW = h.CW
+    reveal = CW.revealFrame
+    fx = CW.revealFX
+
+    def run(lines):
+        h.rt.execute("""
+            local CW = ClasslessWildcard_API
+            local tip = ClasslessWildcardScanTip
+            local N = %d
+            tip.NumLines = function() return N end
+            tip.ClearLines = function() end
+            tip.SetHyperlink = function() end
+            for i = 1, N do
+                _G["ClasslessWildcardScanTipTextLeft" .. i] = {
+                    GetText = function() return "line " .. i end,
+                    GetTextColor = function() return 1, 0.82, 0 end,
+                }
+                _G["ClasslessWildcardScanTipTextRight" .. i] = { GetText = function() return nil end }
+            end
+            CW.suppressReveals = false
+            CW.pendingHand = nil
+            CW.revealQueue = {}
+            CW.revealAnim.phase = "idle"
+            CW.revealAnim.awaiting = false
+            CW.revealFrame:Hide()
+            CW.EnqueueReveal({ isTalent = false, entry = 133, spell = 133, rarity = 1, flags = 0 })
+        """ % lines)
+        for dt in (1.7, 0.05, 0.4):
+            h.rt.execute("NOW = NOW + %r" % dt)
+            reveal["__scripts"]["OnUpdate"](reveal, dt)
+
+    run(3)
+    p = [v for v in fx.panel["__point"].values()]
+    h.check(p[0] == "TOP" and p[2] == "CENTER",
+            "the plate is placed once, from the reveal's centre (%s)" % p[0])
+    top_short, h_short = p[4], fx.panel["__h"]
+    h.check(top_short > fx.NAME_Y,
+            "and its top edge is ABOVE the name, so the name is inside it (%s > %s)"
+            % (top_short, fx.NAME_Y))
+    h.check(h_short > fx.PAD * 2, "with real height behind it (%s)" % h_short)
+
+    run(7)
+    h.check(fx.panel["__h"] > h_short,
+            "a longer tooltip makes a taller plate, not an overflowing one (%s > %s)"
+            % (fx.panel["__h"], h_short))
+    h.check([v for v in fx.panel["__point"].values()][4] == top_short,
+            "the top edge does not move: the block only grows downwards")
+
+    # the buttons hang off the plate, not off whichever text row was last
+    h.rt.execute("""
+        local CW = ClasslessWildcard_API
+        KEEP_ON_PLATE = (CW.revealKeep.__point and CW.revealKeep.__point[2] == CW.revealFX.panel) and 1 or 0
+        ROLL_ON_PLATE = (CW.revealReroll.__point and CW.revealReroll.__point[2] == CW.revealFX.panel) and 1 or 0
+    """)
+    g = h.rt.globals()
+    h.check(g.KEEP_ON_PLATE == 1 and g.ROLL_ON_PLATE == 1,
+            "Keep and Reroll both anchor to the plate")
+    h.check(CW.revealKeep["__w"] == 150 and CW.revealKeep["__h"] == 32,
+            "and they are big enough to hit (%sx%s)"
+            % (CW.revealKeep["__w"], CW.revealKeep["__h"]))
+
+    h.rt.execute("ClasslessWildcard_API.revealFX.HideInfo()")
+
+
+def test_lock_window(h):
+    print("--- padlocks retire when the free rolls do")
+    CW = h.CW
+    frame = h.g.ClasslessWildcardFrame
+    frame["__shown"] = True
+
+    def rows():
+        out = {}
+        for i in range(1, 12):
+            r = CW.buildRows[i]
+            if r is None:
+                break
+            if r["__shown"]:
+                out[str(r.name["__text"])] = r
+        return out
+
+    # below the line: the hand can still take a card, so the padlock is there
+    h.recv(state(1, level=4, free_reroll=10))
+    h.recv("OA|133:0:0:1;686:0:1:1;")
+    h.recv("OAE|")
+    r = rows()
+    locked = [v for k, v in r.items() if "686" in k][0]
+    openab = [v for k, v in r.items() if "133" in k][0]
+    h.check(CW.LocksMatter() is True, "below the free-roll level the padlocks mean something")
+    h.check(openab.lockBtn["__shown"] is True and locked.lockBtn["__shown"] is True,
+            "so every ability shows one")
+    h.check(locked.actBtn["__shown"] is False, "and a locked one offers no reroll")
+
+    # past it: rerolls are one at a time and chosen, so there is nothing to hold back
+    h.recv(state(1, level=10, free_reroll=10))
+    h.recv("OA|133:0:0:1;686:0:1:1;")
+    h.recv("OAE|")
+    r = rows()
+    locked = [v for k, v in r.items() if "686" in k][0]
+    openab = [v for k, v in r.items() if "133" in k][0]
+    h.check(CW.LocksMatter() is False, "at the free-roll level they stop meaning anything")
+    h.check(openab.lockBtn["__shown"] is False and locked.lockBtn["__shown"] is False,
+            "so the padlock button goes")
+    h.check(locked.actBtn["__shown"] is True,
+            "and even a card the server has not caught up on can be rerolled")
+
+    frame["__shown"] = False
 
 
 def test_resource_bars(h):
@@ -1054,6 +1286,9 @@ def main():
     test_reveal_tooltip(h)
     test_reveal_tiers(h)
     test_starting_hand(h)
+    test_locks(h)
+    test_lock_window(h)
+    test_reveal_layout(h)
     test_resource_bars(h)
     test_settings(h)
     if h.failures:

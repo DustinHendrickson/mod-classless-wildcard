@@ -387,8 +387,11 @@ namespace
                 AddGossipItemFor(player, GOSSIP_ICON_BATTLE, Acore::StringFormat("Reroll: {}", label),
                     GOSSIP_SENDER_MAIN, BASE_ABILITY_ACTION + firstSpell,
                     "Reroll this ability? (Consumes a Reroll Scroll from level 10.)", 0, false);
-                AddGossipItemFor(player, GOSSIP_ICON_INTERACT_1, Acore::StringFormat("{}: {}", locked ? "Unlock" : "Lock", label),
-                    GOSSIP_SENDER_MAIN, BASE_LOCK_ABILITY + firstSpell);
+                // A padlock is only worth offering while the starting hand's
+                // reroll-everything pass can still take the card.
+                if (locked || player->GetLevel() < sClasslessMgr->cfg.wcFreeRerollLevel)
+                    AddGossipItemFor(player, GOSSIP_ICON_INTERACT_1, Acore::StringFormat("{}: {}", locked ? "Unlock" : "Lock", label),
+                        GOSSIP_SENDER_MAIN, BASE_LOCK_ABILITY + firstSpell);
             }
             else
                 AddGossipItemFor(player, GOSSIP_ICON_MONEY_BAG, Acore::StringFormat("Unlearn: {}", label),
@@ -422,7 +425,7 @@ namespace
             AddGossipItemFor(player, GOSSIP_ICON_BATTLE,
                 Acore::StringFormat("Reroll: {}{}|r [{}/{}]", RarityColor(t->rarity), SpellNameOf(t->rankSpells[0]), rank, t->maxRank),
                 GOSSIP_SENDER_MAIN, BASE_REROLL_TALENT + talentId,
-                "Reroll this talent? Its ranks are rolled into new random talents. (Consumes a Scroll from level 10.)", 0, false);
+                "Reroll this talent? It is replaced by one new random talent. (Consumes a Scroll from level 10.)", 0, false);
         }
 
         if (start + PAGE_SIZE < owned.size())
