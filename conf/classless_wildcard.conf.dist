@@ -639,7 +639,9 @@ ClasslessWildcard.Chassis.Class = 2
 #    build decision rather than a class one, and the module does not pre-empt
 #    it.
 
-ClasslessWildcard.UniversalResources.Enable = 1
+# Universal resources are always on: a Hero owns abilities from every class, so
+# without the off-chassis pools most of a build would be uncastable. Only the
+# numbers are tunable.
 ClasslessWildcard.UniversalResources.MaxRage = 1000
 ClasslessWildcard.UniversalResources.MaxEnergy = 100
 ClasslessWildcard.UniversalResources.RageFromDealtPct = 100
@@ -671,7 +673,9 @@ ClasslessWildcard.UniversalResources.RageFromTakenPct = 100
 #    and spell crit on top, which is the caster's edge for paying a resource
 #    cost per cast. Raise it if you want casters ahead on purpose.
 
-ClasslessWildcard.UniversalStats.Enable = 1
+# The universal stat layer is always on: the stat screen invites a Hero to spend
+# points on Agility and Intellect, and on one chassis those do almost nothing
+# without it. Only the rates are tunable.
 ClasslessWildcard.UniversalStats.MeleeAPPerAgility = 1
 ClasslessWildcard.UniversalStats.RangedAPPerAgility = 1
 ClasslessWildcard.UniversalStats.SpellPowerPerIntellect = 0.5

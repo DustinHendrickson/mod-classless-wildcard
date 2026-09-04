@@ -45,7 +45,9 @@ CASES = [
     ("Shaman chassis (Agility gives melee AP natively)",
      dict(uniStats=True, apPerAgi=1, rapPerAgi=1, spPerInt=0.5,
           strMeleeAP=1, agiMeleeAP=1, agiRangedAP=1)),
-    ("UniversalStats disabled",
+    # The universal layer is not switchable any more; an EXEMPT character
+    # (a playerbot) is the one case that still reports it off.
+    ("exempt character: chassis conversions only",
      dict(uniStats=False, apPerAgi=1, rapPerAgi=1, spPerInt=0.5,
           strMeleeAP=2, agiMeleeAP=0, agiRangedAP=1)),
 ]

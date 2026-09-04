@@ -284,7 +284,6 @@ void ClasslessMgr::LoadConfig(bool /*reload*/)
     cfg.wcScrollBuyBaseCopper = sConfigMgr->GetOption<uint32>("ClasslessWildcard.Wildcard.ScrollBuyBaseCopper", 500);
     cfg.wcScrollBuyPerLevelCopper = sConfigMgr->GetOption<uint32>("ClasslessWildcard.Wildcard.ScrollBuyPerLevelCopper", 500);
 
-    cfg.universalResources = sConfigMgr->GetOption<bool>("ClasslessWildcard.UniversalResources.Enable", true);
     cfg.urMaxRage = sConfigMgr->GetOption<uint32>("ClasslessWildcard.UniversalResources.MaxRage", 1000);
     cfg.urMaxEnergy = sConfigMgr->GetOption<uint32>("ClasslessWildcard.UniversalResources.MaxEnergy", 100);
     cfg.urRageDealtPct = sConfigMgr->GetOption<uint32>("ClasslessWildcard.UniversalResources.RageFromDealtPct", 100);
@@ -310,7 +309,6 @@ void ClasslessMgr::LoadConfig(bool /*reload*/)
         }
     }
 
-    cfg.universalStats = sConfigMgr->GetOption<bool>("ClasslessWildcard.UniversalStats.Enable", true);
     cfg.usMeleeAPPerAgi = sConfigMgr->GetOption<float>("ClasslessWildcard.UniversalStats.MeleeAPPerAgility", 1.0f);
     cfg.usRangedAPPerAgi = sConfigMgr->GetOption<float>("ClasslessWildcard.UniversalStats.RangedAPPerAgility", 1.0f);
     cfg.usSpellPowerPerInt = sConfigMgr->GetOption<float>("ClasslessWildcard.UniversalStats.SpellPowerPerIntellect", 0.5f);
@@ -1775,11 +1773,6 @@ void ClasslessMgr::SaveState(Player* player)
 
 bool ClasslessMgr::SetDisplayPower(Player* player, uint8 powerIdx, std::string* err)
 {
-    if (!cfg.universalResources)
-    {
-        if (err) *err = "Universal resources are disabled on this realm.";
-        return false;
-    }
     if (IsExempt(player))
         return false;
     if (powerIdx != POWER_MANA && powerIdx != POWER_RAGE && powerIdx != POWER_ENERGY && powerIdx != 255)

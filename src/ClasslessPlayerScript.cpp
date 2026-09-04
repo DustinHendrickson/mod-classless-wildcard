@@ -238,7 +238,7 @@ public:
     void OnPlayerAfterUpdateMaxPower(Player* player, Powers& power, float& value) override
     {
         Config const& cfg = sClasslessMgr->cfg;
-        if (!cfg.enabled || !cfg.universalResources)
+        if (!cfg.enabled)
             return;
         if (sClasslessMgr->IsExempt(player)) // bots/system accounts stay vanilla
             return;
@@ -307,7 +307,7 @@ public:
         // Restore the saved main-bar choice once the login stat pass has
         // settled. The chassis owns the mana pool itself -- it is a real class
         // with a real base mana, so there is nothing here to build.
-        if (cfg.universalResources && !sClasslessMgr->IsExempt(player))
+        if (!sClasslessMgr->IsExempt(player))
             player->m_Events.AddEventAtOffset([player]()
             {
                 sClasslessMgr->ApplyDisplayPower(player); // saved bar choice
@@ -351,7 +351,7 @@ public:
     void OnPlayerUpdate(Player* player, uint32 p_time) override
     {
         Config const& cfg = sClasslessMgr->cfg;
-        if (!cfg.enabled || (!cfg.universalResources && !cfg.universalStats))
+        if (!cfg.enabled)
             return;
         if (!player->IsInWorld() || !player->IsAlive())
             return;
@@ -453,7 +453,7 @@ public:
         // they used Battle Stance. Cat, Ghoul, Bear and Dire Bear are the forms
         // the core gives a power type of their own; in anything else, including
         // no form at all, the Hero's own choice stands.
-        if (cfg.universalResources && st.displayPower != 255)
+        if (st.displayPower != 255)
         {
             switch (player->GetShapeshiftForm())
             {
@@ -468,7 +468,9 @@ public:
             }
         }
 
-        if (cfg.universalStats)
+        // The universal stat layer. Not optional: on one chassis, Agility and
+        // Intellect do nothing for most builds without it, and a Hero who spent
+        // points there would have spent them on nothing.
         {
             int32 agi = int32(player->GetStat(STAT_AGILITY));
             int32 intel = int32(player->GetStat(STAT_INTELLECT));
@@ -617,7 +619,7 @@ public:
     static bool WantsCustomRage(Unit* unit)
     {
         Config const& cfg = sClasslessMgr->cfg;
-        if (!cfg.enabled || !cfg.universalResources)
+        if (!cfg.enabled)
             return false;
         if (!unit || !unit->IsPlayer() || !unit->IsAlive())
             return false;

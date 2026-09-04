@@ -356,23 +356,30 @@ namespace ClasslessWildcard
         bool   chassisEnable = true;
         uint8  chassisClass = 2;          // CLASS_PALADIN
 
-        // universal resources: every Hero maintains mana, rage AND energy
-        // pools simultaneously (druid-style — the client tracks all pools,
-        // only the chassis bar is displayed; the addon shows the others)
-        bool   universalResources = true;
+        // Universal resources: every Hero maintains mana, rage AND energy pools
+        // simultaneously (druid-style: the client tracks all pools, only the
+        // chassis bar is displayed and the addon shows the others).
+        //
+        // There is no switch for this and there must not be. A Hero rolls
+        // abilities from every class, so without the off-chassis pools every
+        // rage and energy ability they own is uncastable -- which is most of a
+        // classless build. Only the numbers below are tunable.
         uint32 urMaxRage = 1000;           // internal units (1000 = 100 rage)
         uint32 urMaxEnergy = 100;
         uint32 urRageDealtPct = 100;       // % of warrior-formula rage gained when dealing melee damage
         uint32 urRageTakenPct = 100;       // % of warrior-formula rage gained when taking damage
 
-        // universal stat layer: fills the gaps the chassis math leaves so
-        // EVERY stat is worth allocating on a classless Hero:
+        // Universal stat layer: fills the gaps the chassis math leaves so EVERY
+        // stat is worth allocating on a classless Hero:
         //   AGI -> melee + ranged attack power, INT -> spell power,
         //   SPI -> mana regen (above). STR/STA already work via the core.
         // Because every Hero shares one chassis, these apply identically to
         // everyone -- there is no class whose native conversions make it a
         // better caster or a better melee.
-        bool   universalStats = true;
+        //
+        // Also not switchable: the stat allocation screen invites a Hero to
+        // spend points on Agility and Intellect, and on the Paladin chassis
+        // those do almost nothing without this. Only the rates are tunable.
         float  usMeleeAPPerAgi = 1.0f;
         float  usRangedAPPerAgi = 1.0f;
         float  usSpellPowerPerInt = 0.5f;  // per Intellect point above 10

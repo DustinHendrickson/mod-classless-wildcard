@@ -97,12 +97,12 @@ namespace
             uint32(st.mode), st.abilityEssence, st.talentEssence, st.pity, chance,
             scrolls, player->GetLevel(), cfg.modeChoiceDeadline,
             cfg.rebirthEnable ? 1 : 0, cfg.rebirthCostGold,
-            // The EFFECTIVE value for this character, not just the realm
-            // setting: OnPlayerLogin skips the resource work for exempt
-            // accounts, so telling their client "1" would draw mini-bars for
-            // pools they do not have. The addon uses this field alone to decide
-            // whether to show them.
-            st.rerolls, (cfg.universalResources && !sClasslessMgr->IsExempt(player)) ? 1 : 0,
+            // Whether THIS character has the extra pools. Every Hero does;
+            // an exempt account (playerbots and friends) plays by vanilla class
+            // rules and has only its own, so telling its client "1" would draw
+            // mini-bars for pools that are not there. The addon uses this field
+            // alone to decide whether to show them.
+            st.rerolls, sClasslessMgr->IsExempt(player) ? 0 : 1,
             sClasslessMgr->ScrollBuyCost(player->GetLevel()),
             (cfg.wcScrollBuyEnable && player->GetLevel() >= cfg.wcFreeRerollLevel) ? 1 : 0,
             uint32(cfg.wcFreeRerollLevel)));
@@ -396,7 +396,7 @@ namespace
             budget, budget > spent ? budget - spent : 0, cfg.statValuePerPoint,
             st.statAlloc[0], st.statAlloc[1], st.statAlloc[2], st.statAlloc[3], st.statAlloc[4],
             cfg.statsEnable ? 1 : 0,
-            (cfg.universalStats && !sClasslessMgr->IsExempt(player)) ? 1 : 0,
+            sClasslessMgr->IsExempt(player) ? 0 : 1,
             cfg.usMeleeAPPerAgi, cfg.usRangedAPPerAgi, cfg.usSpellPowerPerInt,
             strMeleeAP, agiMeleeAP, agiRangedAP,
             critPerAgi, spellCritPerInt, mp5PerSpi, hp5PerSpi));

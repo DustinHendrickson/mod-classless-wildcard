@@ -346,7 +346,7 @@ and are documented inline. The ones most likely to need changing:
 | `Wildcard.FreeRerollBelowLevel`                     | `10`         | Rerolls are free under this level                              |
 | `Wildcard.ScrollBuyEnable`                          | `1`          | Buy Scroll button on the addon panel                           |
 | `Wildcard.ScrollBuyBaseCopper` / `...PerLevelCopper`  | `500` / `500`| Scroll price in copper: base + per-level x level               |
-| `UniversalResources.Enable`                         | `1`          | Mana, rage and energy on every character                       |
+| `UniversalResources.MaxRage` / `.MaxEnergy`         | `1000` / `100`| Off-chassis pool sizes. The pools themselves are not optional  |
 | `UniversalStats.SpellPowerPerIntellect`             | `0.5`        | Spell power per Intellect. 1 INT is worth about 1 STR          |
 | `UniversalStats.MeleeAPPerAgility`                  | `1`          | Melee attack power per Agility                                 |
 | `UniversalStats.RangedAPPerAgility`                 | `1`          | Ranged attack power per Agility, on top of the chassis's own 1 |
