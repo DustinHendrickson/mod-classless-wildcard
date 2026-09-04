@@ -2117,6 +2117,28 @@ rvTitle:SetPoint("TOP", 0, -8)
 
 local REVEAL_ATLAS = "Interface\\AddOns\\ClasslessWildcard\\die_reveal"
 
+-- Two counter-turning starbursts behind the die. glow.tga is a soft radial
+-- blob -- its alpha varies by 9 of 255 across angles -- so spinning THAT would
+-- read as nothing moving; rays.tga (client-addon/gen_rays.py) has beams, and
+-- beams show their rotation. The second layer only lights up for the top two
+-- tiers, where two speeds crossing is most of what makes it feel big.
+-- One table, not five file-level locals: the main chunk is close to Lua 5.1's
+-- 200-local ceiling and five more went over it.
+local rvFX = { rot = 0, INFO_LINES = 9 }   -- INFO_LINES here: the rows are built below, before the scanner
+rvFX.rays = reveal:CreateTexture(nil, "BACKGROUND", nil, 2)
+rvFX.rays:SetWidth(372); rvFX.rays:SetHeight(372)
+rvFX.rays:SetPoint("CENTER", 0, 26)
+rvFX.rays:SetTexture("Interface\\AddOns\\ClasslessWildcard\\rays")
+rvFX.rays:SetBlendMode("ADD")
+rvFX.rays:Hide()
+
+rvFX.rays2 = reveal:CreateTexture(nil, "BACKGROUND", nil, 3)
+rvFX.rays2:SetWidth(268); rvFX.rays2:SetHeight(268)
+rvFX.rays2:SetPoint("CENTER", 0, 26)
+rvFX.rays2:SetTexture("Interface\\AddOns\\ClasslessWildcard\\rays")
+rvFX.rays2:SetBlendMode("ADD")
+rvFX.rays2:Hide()
+
 local rvGlow = reveal:CreateTexture(nil, "BORDER")
 rvGlow:SetWidth(310); rvGlow:SetHeight(310)
 rvGlow:SetPoint("CENTER", 0, 26)
@@ -2124,11 +2146,20 @@ rvGlow:SetTexture("Interface\\AddOns\\ClasslessWildcard\\glow")
 rvGlow:SetBlendMode("ADD")
 
 -- The icon sits BEHIND the die so the frame's own octagonal window masks it --
--- a square icon drawn over the top covers the frame and looks pasted on. The
--- window is 34% of the frame (measured from the art), so the icon is sized just
--- over that: it fills the hole edge to edge and the frame trims its corners.
+-- a square icon drawn over the top covers the frame and looks pasted on.
+--
+-- The window is NOT in the middle of the art. Measured off die_reveal.tga (a
+-- 4x2 atlas of 256px frames; flood the transparent surround in from the border
+-- and whatever transparency is left is the enclosed hole), the window centre
+-- sits at (129.8, 123.3) of 256 on every one of the five rarity frames: 1.8px
+-- right of centre and 4.7px above it, with a diameter of 82.5px. The die is
+-- drawn at 280 for a 256px source, so on screen that is 2px right and 5px up,
+-- on a 90px window. Anchoring the icon at the die's own centre therefore left
+-- it low and left in the hole, with the rim eating one side of it.
+--
+-- The die is anchored CENTER (0, 26), so the window is CENTER (2, 31).
 local rvIcon = reveal:CreateTexture(nil, "ARTWORK")
-rvIcon:SetPoint("CENTER", 0, 26)
+rvIcon:SetPoint("CENTER", 2, 31)
 
 local rvDie = reveal:CreateTexture(nil, "OVERLAY")
 rvDie:SetWidth(205); rvDie:SetHeight(205)
@@ -2155,7 +2186,81 @@ local rvName = reveal:CreateFontString(nil, "OVERLAY", "GameFontNormalLarge")
 rvName:SetPoint("CENTER", 0, -138)
 
 local rvSub = reveal:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
-rvSub:SetPoint("CENTER", 0, -164)
+rvSub:SetPoint("CENTER", 0, -170)
+
+-- The reveal floats over the world with no dialog behind it, so every line
+-- gets a hard shadow or it reads differently on grass than it does on stone.
+-- The ability's NAME is the thing being announced and was set smaller than the
+-- headline above it; it is the larger of the two now.
+do
+    local face = rvTitle:GetFont()
+    if face then
+        rvName:SetFont(face, 22)
+        rvSub:SetFont(face, 13)
+    end
+    for _, fs in ipairs({ rvTitle, rvName, rvSub }) do
+        fs:SetShadowColor(0, 0, 0, 1)
+        fs:SetShadowOffset(1, -1)
+    end
+end
+
+-- One row per tooltip line, laid out like the tooltip itself: a left-justified
+-- string and a right-justified one sharing the same box, so "10 Rage" and
+-- "Melee Range" sit at opposite ends of the same line. Rows chain downward from
+-- the one above, so a wrapped description pushes what follows it. The reveal
+-- frame is NOT resized around them -- nothing clips children here, so the block
+-- simply extends below it and the buttons are re-anchored under whatever it
+-- came to.
+rvFX.info = {}
+for i = 1, rvFX.INFO_LINES do
+    local row = {}
+    row.left = reveal:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+    row.left:SetWidth(300)
+    row.left:SetJustifyH("LEFT")
+    row.left:SetJustifyV("TOP")
+    if i == 1 then
+        row.left:SetPoint("TOP", rvSub, "BOTTOM", 0, -10)
+    else
+        row.left:SetPoint("TOP", rvFX.info[i - 1].left, "BOTTOM", 0, -2)
+    end
+    row.right = reveal:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+    row.right:SetAllPoints(row.left)
+    row.right:SetJustifyH("RIGHT")
+    row.right:SetJustifyV("TOP")
+    row.left:Hide(); row.right:Hide()
+    rvFX.info[i] = row
+end
+
+function rvFX.HideInfo()
+    for i = 1, rvFX.INFO_LINES do
+        rvFX.info[i].left:SetText(""); rvFX.info[i].right:SetText("")
+        rvFX.info[i].left:Hide(); rvFX.info[i].right:Hide()
+    end
+end
+
+-- Fill the block from a spell's own tooltip and return how tall it came out.
+function rvFX.ShowInfo(spellId)
+    local lines = rvFX.ScanSpell(spellId)
+    local height, last = 0, nil
+    for i = 1, rvFX.INFO_LINES do
+        local row, line = rvFX.info[i], lines[i]
+        if line then
+            row.left:SetText(line.left or "")
+            row.right:SetText(line.right or "")
+            row.left:SetTextColor(line.r, line.g, line.b)
+            row.right:SetTextColor(line.r, line.g, line.b)
+            row.left:Show(); row.right:Show()
+            height = height + (tonumber(row.left:GetStringHeight()) or 12) + 2
+            last = row.left
+        else
+            -- blank as well as hidden: a hidden string keeps its old height and
+            -- would still push the row below it
+            row.left:SetText(""); row.right:SetText("")
+            row.left:Hide(); row.right:Hide()
+        end
+    end
+    return height, last
+end
 
 local rvKeep = CreateFrame("Button", nil, reveal, "UIPanelButtonTemplate")
 rvKeep:SetWidth(110); rvKeep:SetHeight(24)
@@ -2176,11 +2281,109 @@ local function SetDieFrame(idx)
     rvDie:SetTexCoord(col / 8, (col + 1) / 8, rowi / 2, (rowi + 1) / 2)
 end
 
+-- 3.3.5 has no Texture:SetRotation, so a rotation is a rotated QUAD handed to
+-- SetTexCoord. The corners sample outside 0..1 and clamp to the edge pixels,
+-- which is exactly why rays.tga is transparent all the way to its border:
+-- there is nothing out there to smear inward.
+function rvFX.Spin(tex, angle)
+    local c, s2 = math.cos(angle), math.sin(angle)
+    local function r(x, y) return 0.5 + x * c - y * s2, 0.5 + x * s2 + y * c end
+    local ax, ay = r(-0.5, -0.5)
+    local bx, by = r(-0.5,  0.5)
+    local cx, cy = r( 0.5, -0.5)
+    local dx, dy = r( 0.5,  0.5)
+    tex:SetTexCoord(ax, ay, bx, by, cx, cy, dx, dy)
+end
+
+-- How much of a show each tier puts on. A common roll stays quiet on purpose:
+-- if every result is a fanfare then none of them is one.
+--   rays  peak brightness of the starburst   spin  turns per second
+--   pulse how hard it breathes               pop   extra px the die overshoots
+--   shake px the whole reveal kicks          snd   the hit, snd2 layers over it
+rvFX.tiers = {
+    [0] = { rays = 0,    spin = 0,    pulse = 0,    pop = 0,  shake = 0,   snd = "igMainMenuOptionCheckBoxOn" },
+    [1] = { rays = 0.22, spin = 0.16, pulse = 0.05, pop = 4,  shake = 0,   snd = "LOOTWINDOWCOINSOUND" },
+    [2] = { rays = 0.38, spin = 0.26, pulse = 0.10, pop = 9,  shake = 0,   snd = "QUESTCOMPLETED" },
+    [3] = { rays = 0.54, spin = 0.42, pulse = 0.16, pop = 15, shake = 3,   snd = "LEVELUPSOUND" },
+    [4] = { rays = 0.74, spin = 0.62, pulse = 0.24, pop = 24, shake = 6,   snd = "PVPTHROUGHQUEUE",
+            snd2 = "LEVELUPSOUND" },
+}
+function rvFX.Tier(rarity) return rvFX.tiers[math.min(rarity or 0, 4)] or rvFX.tiers[0] end
+
+-- RARITY_NAMES carries its own colour codes, which cannot be concatenated into
+-- a longer coloured phrase. These are the bare words.
+rvFX.tierName = { [0] = "Common", [1] = "Uncommon", [2] = "Rare", [3] = "Epic", [4] = "Legendary" }
+
+-- Read the game's OWN tooltip for a spell without ever showing it: a tooltip
+-- parented to nothing, pointed at the spell, then its FontStrings read back.
+-- That is where cost, range, cast time, cooldown, stance requirements and the
+-- description all live already, correctly worded and correctly coloured, so
+-- the reveal reproduces those lines rather than inventing its own.
+rvFX.scan = CreateFrame("GameTooltip", "ClasslessWildcardScanTip", nil, "GameTooltipTemplate")
+rvFX.scan:SetOwner(UIParent, "ANCHOR_NONE")
+
+function rvFX.ScanSpell(spellId)
+    local out, tip = {}, rvFX.scan
+    if not tip or not spellId then return out end
+    if tip.ClearLines then tip:ClearLines() end
+    if not pcall(tip.SetHyperlink, tip, "spell:" .. spellId) then return out end
+    local n = tonumber(tip.NumLines and tip:NumLines()) or 0
+    -- line 1 is the spell's name, which the reveal already shows large
+    for i = 2, math.min(n, rvFX.INFO_LINES + 1) do
+        local lfs = _G["ClasslessWildcardScanTipTextLeft" .. i]
+        local rfs = _G["ClasslessWildcardScanTipTextRight" .. i]
+        local lt = lfs and lfs.GetText and lfs:GetText()
+        local rt = rfs and rfs.GetText and rfs:GetText()
+        if lt == "" then lt = nil end
+        if rt == "" then rt = nil end
+        local cr, cg, cb = 1, 1, 1
+        if lfs and lfs.GetTextColor then
+            local a, b, c = lfs:GetTextColor()
+            if type(a) == "number" then cr, cg, cb = a, b, c end
+        end
+        if lt or rt then
+            out[#out + 1] = { left = lt, right = rt, r = cr, g = cg, b = cb }
+        end
+    end
+    return out
+end
+
+rvFX.cardFlash = 0.55   -- seconds a dealt card flashes before settling
+
+-- A card in the starting hand wears its own tier the same way the reveal does:
+-- a pool of its colour behind it, and for the top two a starburst that keeps
+-- turning for as long as the hand is open. `boost` is the extra flash as the
+-- card lands, decaying to nothing; what is left after that is the resting
+-- state, so a legendary in your hand still reads as one while you decide.
+function rvFX.CardFX(slot, rarity, boost)
+    local fx = rvFX.Tier(rarity)
+    if fx.rays <= 0 and boost <= 0 then
+        slot.glow:Hide(); slot.rays:Hide()
+        return
+    end
+    local rgb = RARITY_RGB[math.min(rarity or 0, 4)] or RARITY_RGB[0]
+    slot.glow:SetVertexColor(rgb[1], rgb[2], rgb[3])
+    slot.glow:SetAlpha(fx.rays * 0.80 + boost * 0.9)
+    slot.glow:Show()
+    if fx.rays >= 0.5 then          -- epic and legendary
+        slot.rays:SetVertexColor(rgb[1], rgb[2], rgb[3])
+        slot.rays:SetAlpha(fx.rays * 0.55 + boost * 0.5)
+        slot.spinRate = fx.spin
+        slot.rays:Show()
+    else
+        slot.rays:Hide()
+    end
+end
+
+CW.revealFX = rvFX   -- exposed for tests
+
 local function ShowResult()
     local d = rvAnim.data
     rvAnim.phase = "shown"
     local rgb = RARITY_RGB[d.rarity or 0] or RARITY_RGB[0]
-    rvGlow:SetAlpha(0.7)
+    local fx = rvFX.Tier(d.rarity)
+    -- a legendary sits in a brighter pool of its own colour than a common does
+    rvGlow:SetAlpha(0.55 + fx.rays * 0.35)
     rvGlow:SetVertexColor(rgb[1], rgb[2], rgb[3])
     -- swap to the rarity die frame; the spell icon shows through its window
     -- (4x2 atlas of 256px frames — the client caps textures at 1024px)
@@ -2189,22 +2392,38 @@ local function ShowResult()
     rvDie:SetTexture(REVEAL_ATLAS)
     rvDie:SetTexCoord(col / 4, (col + 1) / 4, rowi / 2, (rowi + 1) / 2)
     -- The artwork's window is a circle 32% across the frame, so the die is
-    -- drawn large (280px) to make that opening a usable 90px. The icon sits
-    -- just inside it, so the window's own rim stays visible all the way round
-    -- instead of being covered edge to edge.
+    -- drawn large (280px) to make that opening a usable 90px across, and the
+    -- icon is drawn just under that so it fills the hole with the window rim
+    -- showing all the way round.
+    --
+    -- 96px against a 90px window: the icon is deliberately BIGGER than the
+    -- hole so it fills it corner to corner with no dark ring showing, and the
+    -- rim crops the outer ~3px of every edge -- which is where the icon's own
+    -- dark border lives, so that goes with it. Only 2% is trimmed, enough for
+    -- the last of the border without eating into the picture.
+    --
+    -- What sets the ceiling is the elemental badge, which sits 10% up from the
+    -- icon's bottom edge (client-patch/lib/elemental.py). Its bottom corners
+    -- land 43px from the icon's centre against the window's 45px radius, so
+    -- the whole element survives the crop. Raise the icon much past 96 and it
+    -- starts eating the badge again.
     rvDie:SetWidth(280); rvDie:SetHeight(280)
     rvDie:Show()
-    rvIcon:SetWidth(82); rvIcon:SetHeight(82)
+    rvIcon:SetWidth(96); rvIcon:SetHeight(96)
     rvIcon:SetTexture(SpellIcon(d.spell))
-    rvIcon:SetTexCoord(0.08, 0.92, 0.08, 0.92)   -- trim the icon's own dark border
+    rvIcon:SetTexCoord(0.02, 0.98, 0.02, 0.98)
     rvIcon:Show()
+    -- The headline says WHICH tier and wears its colour. "Ability Unlocked!"
+    -- said exactly the same thing for a common as for a legendary, which is the
+    -- one moment that should not read the same.
+    local hex = string.format("|cff%02x%02x%02x", rgb[1] * 255, rgb[2] * 255, rgb[3] * 255)
+    local kind = d.isTalent and "Talent" or "Ability"
+    rvTitle:SetText(r > 0 and (hex .. rvFX.tierName[r] .. " " .. kind .. "!|r")
+                           or (kind .. " Unlocked!"))
     if d.isTalent then
-        rvTitle:SetText("Talent Unlocked!")
         -- rank IS the rarity for talents, so it is colored and shown large
-        local rgbHex = string.format("|cff%02x%02x%02x", rgb[1] * 255, rgb[2] * 255, rgb[3] * 255)
-        rvName:SetText(SpellLabel(d.spell, d.rarity) .. "  " .. rgbHex .. "Rank " .. (d.rank or 1) .. "|r")
+        rvName:SetText(SpellLabel(d.spell, d.rarity) .. "  " .. hex .. "Rank " .. (d.rank or 1) .. "|r")
     else
-        rvTitle:SetText("Ability Unlocked!")
         rvName:SetText(SpellLabel(d.spell, d.rarity))
     end
     if d.test then
@@ -2218,6 +2437,21 @@ local function ShowResult()
         rvSub:SetText(RARITY_NAMES[d.rarity or 0] or "")
     end
     rvName:Show(); rvSub:Show()
+
+    -- Everything the tooltip would have said, without asking for a hover: what
+    -- it costs, its range, cast time, cooldown, any stance it needs, and what
+    -- it actually does. The block grows downward and the buttons follow it, so
+    -- a one-line passive and a six-line spell both sit right.
+    local infoH, lastRow = rvFX.ShowInfo(d.spell)
+    local anchor = lastRow or rvSub
+    rvKeep:ClearAllPoints()
+    rvReroll:ClearAllPoints()
+    rvKeep:SetPoint("TOPRIGHT", anchor, "BOTTOM", -6, -14)
+    rvReroll:SetPoint("TOPLEFT", anchor, "BOTTOM", 6, -14)
+    -- and the scrim behind the text stretches to cover what is now there
+    rvTextScrim:SetHeight(150 + infoH)
+    rvTextScrim:ClearAllPoints()
+    rvTextScrim:SetPoint("CENTER", 0, -162 - infoH / 2)
     -- reroll button shows what the player can actually spend
     local s = CW.state
     local charges = (s.rerolls or 0) + (s.scrolls or 0)
@@ -2232,7 +2466,9 @@ local function ShowResult()
         rvReroll:Disable()
     end
     rvKeep:Show(); rvReroll:Show()
-    if PlaySound then pcall(PlaySound, "LEVELUPSOUND") end
+    -- No sound here. The tier's own sound already played on the burst frame,
+    -- where the colour and the starburst land; a level-up fanfare on top of it
+    -- fired for every result and flattened the whole escalation back out.
 end
 
 local function StartReveal(d)
@@ -2248,15 +2484,23 @@ local function StartReveal(d)
     rvIcon:Hide()
     rvName:Hide(); rvSub:Hide()
     rvKeep:Hide(); rvReroll:Hide()
+    rvFX.HideInfo()
     rvDie:SetTexture(SPIN_ATLAS)
     SetDieFrame(0)
     rvDie:SetWidth(205); rvDie:SetHeight(205)
     rvDie:Show()
+    -- the rays are the payoff, so nothing about the tier shows while it spins
+    rvFX.rays:Hide(); rvFX.rays2:Hide()
+    rvFX.hit = nil
+    reveal:ClearAllPoints()
+    reveal:SetPoint("CENTER", 0, 170)
     reveal:Show()
 end
 
 local function NextReveal()
     reveal:Hide()
+    rvFX.rays:Hide(); rvFX.rays2:Hide()
+    rvFX.hit = nil
     rvAnim.phase = "idle"
     if #CW.revealQueue > 0 then
         StartReveal(table.remove(CW.revealQueue, 1))
@@ -2295,14 +2539,33 @@ local function AwaitReroll()
     rvIcon:Hide()
     rvName:Hide(); rvSub:Hide()
     rvKeep:Hide(); rvReroll:Hide()
+    rvFX.HideInfo()
     rvDie:SetTexture(SPIN_ATLAS)
     SetDieFrame(0)
     rvDie:SetWidth(205); rvDie:SetHeight(205)
     rvDie:Show()
+    rvFX.rays:Hide(); rvFX.rays2:Hide()
+    rvFX.hit = nil
 end
 CW.AwaitReroll = AwaitReroll
 
-reveal:SetScript("OnUpdate", function()
+reveal:SetScript("OnUpdate", function(self, elapsed)
+    local fx = rvFX.Tier(rvAnim.data and rvAnim.data.rarity)
+
+    -- The starburst turns for as long as the reveal is up, and the two layers
+    -- turn against each other. Driven off elapsed so the speed is the same at
+    -- 30fps and at 144.
+    if rvFX.hit and fx.rays > 0 then
+        rvFX.rot = rvFX.rot + (elapsed or 0) * fx.spin * math.pi * 2
+        rvFX.Spin(rvFX.rays, rvFX.rot)
+        rvFX.Spin(rvFX.rays2, -rvFX.rot * 1.45)
+        -- a slow breath on top, deeper the higher the tier
+        local breathe = 1 + math.sin(GetTime() * 3) * fx.pulse
+        local up = math.min(1, (GetTime() - rvFX.hit) / 0.35)
+        rvFX.rays:SetAlpha(fx.rays * breathe * up)
+        rvFX.rays2:SetAlpha(fx.rays * 0.5 * (2 - breathe) * up)
+    end
+
     if rvAnim.phase == "spin" then
         local p = (GetTime() - rvAnim.t0) / SPIN_TIME
         if p >= 1 then
@@ -2320,6 +2583,25 @@ reveal:SetScript("OnUpdate", function()
             rvAnim.phase = "burst"
             rvAnim.t0 = GetTime()
             rvGlow:SetAlpha(1)
+            -- THE moment: the tier lands here, not when the text appears.
+            -- Colour, starburst and sound all arrive together.
+            local rgb = RARITY_RGB[math.min((rvAnim.data and rvAnim.data.rarity) or 0, 4)]
+            rvGlow:SetVertexColor(rgb[1], rgb[2], rgb[3])
+            rvFX.hit = GetTime()
+            if fx.rays > 0 then
+                rvFX.rays:SetVertexColor(rgb[1], rgb[2], rgb[3])
+                rvFX.rays:SetAlpha(0)
+                rvFX.rays:Show()
+                if fx.rays >= 0.5 then          -- epic and legendary only
+                    rvFX.rays2:SetVertexColor(rgb[1], rgb[2], rgb[3])
+                    rvFX.rays2:SetAlpha(0)
+                    rvFX.rays2:Show()
+                end
+            end
+            if PlaySound then
+                pcall(PlaySound, fx.snd)
+                if fx.snd2 then pcall(PlaySound, fx.snd2) end
+            end
             return
         end
         local e = 1 - (1 - p) * (1 - p)      -- ease-out: fast spin, slows down
@@ -2328,12 +2610,24 @@ reveal:SetScript("OnUpdate", function()
     elseif rvAnim.phase == "burst" then
         local p = (GetTime() - rvAnim.t0) / BURST_TIME
         if p >= 1 then
+            reveal:ClearAllPoints()
+            reveal:SetPoint("CENTER", 0, 170)   -- put the kick back
+            rvDie:SetWidth(280); rvDie:SetHeight(280)
             ShowResult()
             return
         end
         rvGlow:SetAlpha(1 - p * 0.3)
-        local s = 205 + 75 * p               -- die "expands" into the light
+        -- The die expands into the light, overshooting past its resting 280 by
+        -- more the better the roll, then easing back onto it.
+        local over = math.sin(p * math.pi) * fx.pop
+        local s = 205 + 75 * p + over
         rvDie:SetWidth(s); rvDie:SetHeight(s)
+        -- and a decaying kick, epic and up
+        if fx.shake > 0 then
+            local k = fx.shake * (1 - p)
+            reveal:ClearAllPoints()
+            reveal:SetPoint("CENTER", (math.random() * 2 - 1) * k, 170 + (math.random() * 2 - 1) * k)
+        end
     end
 end)
 
@@ -2416,8 +2710,26 @@ handHint:SetText("Click an ability to lock it in: |cffffd100gold ring + closed p
 local HAND_SLOTS = 4
 local HAND_SPACING = 56
 local handSlots = {}
+
+-- Stacking, set out explicitly, because the defaults get both halves wrong.
+--
+-- A child frame draws above its parent's own textures whatever draw layer the
+-- texture is on, so a die living on `hand` could never roll in FRONT of the
+-- cards -- they are Buttons parented to `hand`. And sibling frames on the same
+-- level draw in creation order, so card 4's glow (140px wide, on a 56px pitch)
+-- landed on top of card 3's art.
+--
+-- So: every card's glow and starburst go on ONE frame beneath all the cards,
+-- the cards sit above that, and the die sits above the cards. The row is then
+-- revealed from behind the die as it rolls, and no card's light ever covers a
+-- neighbour.
+hand.fxLayer = CreateFrame("Frame", nil, hand)
+hand.fxLayer:SetAllPoints(hand)
+hand.dieLayer = CreateFrame("Frame", nil, hand)
+hand.dieLayer:SetAllPoints(hand)
+
 -- spinning die shown while the hand rolls in (same atlas as the reveal)
-local handDie = hand:CreateTexture(nil, "OVERLAY")
+local handDie = hand.dieLayer:CreateTexture(nil, "OVERLAY")
 handDie:SetWidth(72); handDie:SetHeight(72)
 handDie:SetPoint("CENTER", 0, 0)
 handDie:SetTexture("Interface\\AddOns\\ClasslessWildcard\\d20_spin")
@@ -2427,6 +2739,26 @@ for i = 1, HAND_SLOTS do
     local slot = CreateFrame("Button", nil, hand)
     slot:SetWidth(44); slot:SetHeight(44)
     slot:SetPoint("TOPLEFT", 40 + (i - 1) * HAND_SPACING, -96)
+    -- Tier dressing (see rvFX.CardFX). It lives on the shared layer under all
+    -- the cards, not on this card, but stays anchored to this one so it
+    -- follows the card as it rises into place.
+    slot.rays = hand.fxLayer:CreateTexture(nil, "ARTWORK", nil, 0)
+    slot.rays:SetWidth(132); slot.rays:SetHeight(132)
+    slot.rays:SetPoint("CENTER", slot, "CENTER", 0, 0)
+    slot.rays:SetTexture("Interface\\AddOns\\ClasslessWildcard\\rays")
+    slot.rays:SetBlendMode("ADD")
+    slot.rays:Hide()
+    slot.glow = hand.fxLayer:CreateTexture(nil, "ARTWORK", nil, 1)
+    -- 140 for a 44px card on purpose: glow.tga puts nearly all its brightness
+    -- inside the middle third, and at 92 the card sat on top of exactly that,
+    -- leaving a halo too faint to read. At 140 the bright shoulder lands just
+    -- outside the card's edge, which is where it needs to be seen. rays.tga is
+    -- hollow to 17% of its width, so 132 puts its beams at the same edge.
+    slot.glow:SetWidth(140); slot.glow:SetHeight(140)
+    slot.glow:SetPoint("CENTER", slot, "CENTER", 0, 0)
+    slot.glow:SetTexture("Interface\\AddOns\\ClasslessWildcard\\glow")
+    slot.glow:SetBlendMode("ADD")
+    slot.glow:Hide()
     slot.icon = slot:CreateTexture(nil, "ARTWORK")
     slot.icon:SetAllPoints(slot)
     slot.icon:SetTexCoord(0.07, 0.93, 0.07, 0.93)
@@ -2469,6 +2801,17 @@ for i = 1, HAND_SLOTS do
     slot:Hide()
     handSlots[i] = slot
 end
+
+-- dressing < cards < die. Set here and again in OnShow: a frame's level can be
+-- reassigned when its strata is applied, and the die being one level out is the
+-- difference between rolling over the row and rolling under it.
+function hand.ApplyLayers()
+    local base = hand:GetFrameLevel()
+    hand.fxLayer:SetFrameLevel(base)
+    for i = 1, HAND_SLOTS do handSlots[i]:SetFrameLevel(base + 3) end
+    hand.dieLayer:SetFrameLevel(base + 6)
+end
+hand.ApplyLayers()
 
 local handRoll = CreateFrame("Button", nil, hand, "UIPanelButtonTemplate")
 handRoll:SetWidth(150); handRoll:SetHeight(26)
@@ -2541,6 +2884,7 @@ local function RenderHand()
             slot.abilityId = e.id
             slot.spellId = e.id
             slot.entryRef = e
+            slot.rarity = e.rarity or 0
             slot.icon:SetTexture(SpellIcon(e.id))
             slot.lock:Show()
             if e.locked == 1 then
@@ -2561,6 +2905,7 @@ local function RenderHand()
             slot.abilityId = nil
             slot.spellId = nil
             slot.entryRef = nil
+            slot.glow:Hide(); slot.rays:Hide()
             slot:Hide()
         end
     end
@@ -2585,13 +2930,19 @@ local function RenderHand()
             }
             handDie:Show()
             handDie:SetAlpha(0)
-            for i = 1, HAND_SLOTS do handSlots[i]:SetAlpha(0) end
+            for i = 1, HAND_SLOTS do
+                handSlots[i]:SetAlpha(0)
+                handSlots[i].glow:Hide(); handSlots[i].rays:Hide()
+            end
         else
             CW.handAnim = nil
             handDie:Hide()
         end
     elseif not CW.handAnim then
-        for i = 1, HAND_SLOTS do handSlots[i]:SetAlpha(1) end
+        for i = 1, HAND_SLOTS do
+            handSlots[i]:SetAlpha(1)
+            if i <= n then rvFX.CardFX(handSlots[i], handSlots[i].rarity, 0) end
+        end
     end
 end
 CW.RenderHand = RenderHand
@@ -2603,6 +2954,16 @@ CW.RenderHand = RenderHand
 local HAND_IN_TIME, HAND_ROLL_TIME, HAND_OUT_TIME = 0.55, 0.95, 0.30
 local HAND_POP_TIME, HAND_LIFT, HAND_BOUNCE, HAND_SPIN_RATE = 0.24, 14, 30, 34
 hand:SetScript("OnUpdate", function(self, elapsed)
+    -- An epic or legendary card keeps its starburst turning for as long as the
+    -- hand is open, deal or no deal, so this runs before the animation check.
+    rvFX.handRot = (rvFX.handRot or 0) + (elapsed or 0)
+    for i = 1, HAND_SLOTS do
+        local slot = handSlots[i]
+        if slot.rays:IsShown() then
+            rvFX.Spin(slot.rays, rvFX.handRot * (slot.spinRate or 0.2) * math.pi * 2)
+        end
+    end
+
     local a = CW.handAnim
     if not a then return end
     local now = GetTime()
@@ -2651,22 +3012,35 @@ hand:SetScript("OnUpdate", function(self, elapsed)
         for i = 1, a.n do
             if not a.popped[i] and x >= a.xs[i] then
                 a.popped[i] = now
-                if PlaySound then pcall(PlaySound, "igMainMenuOptionCheckBoxOn") end
+                -- the card's OWN tier speaks, exactly as it would in the roll
+                -- reveal: a tick for a common, a horn for a legendary
+                local fx = rvFX.Tier(handSlots[i].rarity)
+                if PlaySound then
+                    pcall(PlaySound, fx.snd)
+                    if fx.snd2 then pcall(PlaySound, fx.snd2) end
+                end
             end
         end
     end
 
-    -- cards fade and rise into place from the moment the die reached them
+    -- Cards fade and rise into place from the moment the die reached them, and
+    -- flash in their own colour as they land. A better card rises from further
+    -- down and burns brighter on arrival before settling to its resting glow.
     local settled = (a.phase == "done")
     for i = 1, HAND_SLOTS do
         local slot = handSlots[i]
         if i <= a.n then
+            local fx = rvFX.Tier(slot.rarity)
             local since = a.popped[i]
             local q = since and math.min(1, (now - since) / HAND_POP_TIME) or 0
             local e = 1 - (1 - q) * (1 - q)
+            local lift = HAND_LIFT + fx.pop * 0.6
             slot:SetAlpha(e)
-            slot:SetPoint("TOPLEFT", a.slotX + (i - 1) * HAND_SPACING, -96 - (1 - e) * HAND_LIFT)
-            if q < 1 then settled = false end
+            slot:SetPoint("TOPLEFT", a.slotX + (i - 1) * HAND_SPACING, -96 - (1 - e) * lift)
+            local boost = since and math.max(0, 1 - (now - since) / rvFX.cardFlash) or 0
+            rvFX.CardFX(slot, slot.rarity, boost)
+            -- the deal is not over until the last flash has burned down
+            if q < 1 or boost > 0 then settled = false end
         end
     end
     if settled then CW.handAnim = nil end
@@ -2689,6 +3063,7 @@ handKeep:SetScript("OnClick", function()
 end)
 
 hand:SetScript("OnShow", function()
+    hand.ApplyLayers()
     ClasslessWildcardCharDB = ClasslessWildcardCharDB or {}
     ClasslessWildcardCharDB.handSeen = true   -- opened by any route: don't auto-open again
     -- the level free rolls end at is the server's to decide, so say what it says

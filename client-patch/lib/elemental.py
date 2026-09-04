@@ -225,7 +225,11 @@ def _shade(colour, factor):
 # an icon, so a badge flush with the corner loses its border there. A third
 # of the icon wide, so the symbol still reads at 36 pixels.
 BADGE_FRACTION = 0.32   # of the icon's width
-BADGE_INSET = 0.06      # of the icon's width, from the left and bottom edges
+BADGE_INSET = 0.10      # of the icon's width, up from the bottom edge
+                        # 10 and not 6: the roll reveal draws the icon large
+                        # enough to FILL its round window, which crops a few
+                        # pixels off every edge. At 6 the badge's bottom corners
+                        # were in that crop; at 10 they clear it by 2px.
 
 
 def _symbol(draw, kind, box, colour, background):
@@ -276,11 +280,18 @@ def render_icon(base_blp: bytes, icon) -> bytes | None:
     """Stamp an element badge on the base icon. Returns BLP2 bytes, or None without Pillow.
 
     The base icon is left exactly as drawn. A square plate of black tinted
-    toward the element's colour sits in the bottom-left corner, a third of the
-    icon wide and inset from the edges, bordered in the element's colour, with
-    a bold filled symbol of the element inside it. Drawn at four times the
+    toward the element's colour sits along the BOTTOM EDGE, centred, a third of
+    the icon wide and inset from the bottom, bordered in the element's colour,
+    with a bold filled symbol of the element inside it. Drawn at four times the
     size and scaled down, so the edges are clean at the 36 pixels the game
     shows icons at.
+
+    Centred rather than in a corner because the icon is not always shown as a
+    square. The roll reveal draws it behind a round window in the die, and a
+    corner badge is the first thing a circle cuts off: at the size that window
+    is, a bottom-left badge sat 51px from the icon's centre against a 45px
+    radius. Centred it sits at 43 and survives, and nothing about a square
+    action-bar icon is worse for it.
     """
     try:
         from PIL import Image, ImageDraw
@@ -307,7 +318,7 @@ def render_icon(base_blp: bytes, icon) -> bytes | None:
 
     out = img.copy()
     inset_px = int(round(width * BADGE_INSET))
-    out.alpha_composite(badge, (inset_px, height - size - inset_px))
+    out.alpha_composite(badge, ((width - size) // 2, height - size - inset_px))
     # The base icon already uses a full 256-colour palette, so the badge's
     # colours must be reserved in the output palette or they are mapped to the
     # nearest base colour and the badge comes out grey. Its own colours, most

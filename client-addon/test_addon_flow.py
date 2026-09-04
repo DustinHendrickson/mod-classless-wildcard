@@ -73,6 +73,10 @@ StubMT.__index = function(self, k)
     if k == "SetWidth" then return function(s, v) rawset(s, "__w", v) end end
     if k == "SetAlpha" then return function(s, v) rawset(s, "__alpha", v) end end
     if k == "GetAlpha" then return function(s) return rawget(s, "__alpha") or 1 end end
+    if k == "SetFrameLevel" then return function(s, v) rawset(s, "__level", v) end end
+    if k == "GetFrameLevel" then return function(s) return rawget(s, "__level") or 0 end end
+    if k == "SetTexCoord" then return function(s, ...) rawset(s, "__coord", {...}) end end
+    if k == "SetVertexColor" then return function(s, r, g, b) rawset(s, "__rgb", {r, g, b}) end end
     if k == "GetFont" then return function() return "Fonts\\FRIZQT__.TTF", 12, "" end end
     if k == "GetCenter" then return function() return 0, 0 end end
     if k == "GetPoint" then return function() return "CENTER", nil, "CENTER", 0, 0 end end
@@ -158,7 +162,8 @@ function GetScreenWidth() return 1024 end
 function GetScreenHeight() return 768 end
 function MicroButtonTooltipText(a) return tostring(a) end
 function hooksecurefunc() end
-function PlaySound() end
+SOUNDS = {}
+function PlaySound(name) table.insert(SOUNDS, name) end
 function StaticPopup_Show(which) LAST_POPUP = which end
 function GetItemInfo() return nil end
 function GetItemCount() return 0 end
@@ -516,6 +521,192 @@ def test_hand_animation(h):
             "and they were dealt strictly left to right (%s)" % (times,))
 
 
+def test_hand_tiers(h):
+    print("--- the hand deals each card in its own tier")
+    CW = h.CW
+    hand, slots = CW.handFrame, CW.handSlots
+
+    def step(dt):
+        h.rt.execute("NOW = NOW + %r" % dt)
+        hand["__scripts"]["OnUpdate"](hand, dt)
+
+    h.recv(state(1, level=4))
+    hand["__shown"] = True
+    h.rt.execute("SOUNDS = {}")
+    hand["__scripts"]["OnShow"](hand)
+    # common, rare, epic, legendary -- dealt in that order, left to right
+    h.recv("OA|133:0:0:1;772:2:0:1;1752:3:0:1;686:4:0:1;")
+    h.recv("OAE|")
+    for _ in range(12):
+        step(0.2)
+
+    h.check(CW.handAnim is None, "the deal finishes")
+    snd = [str(x) for x in h.rt.globals().SOUNDS.values()]
+    h.check(snd == ["igMainMenuOptionCheckBoxOn", "QUESTCOMPLETED", "LEVELUPSOUND",
+                    "PVPTHROUGHQUEUE", "LEVELUPSOUND"],
+            "each card played its own tier's sound (%s)" % snd)
+
+    h.check(slots[1].glow["__shown"] is False, "the common card settles plain")
+    h.check(slots[2].glow["__shown"] is True and slots[2].rays["__shown"] is False,
+            "the rare card keeps a glow but no starburst")
+    h.check(slots[4].glow["__shown"] is True and slots[4].rays["__shown"] is True,
+            "the legendary card keeps both")
+    rgb = [round(v, 2) for v in slots[4].glow["__rgb"].values()]
+    h.check(rgb == [1, 0.5, 0], "and wears the legendary colour (%s)" % rgb)
+    h.check(slots[4].glow["__alpha"] > slots[2].glow["__alpha"],
+            "brighter the better the card (%.2f vs %.2f)"
+            % (slots[4].glow["__alpha"], slots[2].glow["__alpha"]))
+
+    before = [round(v, 4) for v in slots[4].rays["__coord"].values()]
+    step(0.25)
+    after = [round(v, 4) for v in slots[4].rays["__coord"].values()]
+    h.check(CW.handAnim is None and before != after,
+            "the starburst keeps turning while the hand sits open")
+
+    # stacking: dressing under every card, cards under the die
+    h.rt.execute("""
+        local CW = ClasslessWildcard_API
+        local H = CW.handFrame
+        PARENTS_OK = CW.handDie:GetParent() == H.dieLayer
+                 and CW.handSlots[1].glow:GetParent() == H.fxLayer
+                 and CW.handSlots[1].rays:GetParent() == H.fxLayer
+                 and CW.handSlots[4].glow:GetParent() == H.fxLayer
+        FX_LVL, CARD_LVL, DIE_LVL =
+            H.fxLayer:GetFrameLevel(), CW.handSlots[1]:GetFrameLevel(), H.dieLayer:GetFrameLevel()
+    """)
+    g = h.rt.globals()
+    h.check(bool(g.PARENTS_OK), "every card's glow lives on the shared layer, the die on its own")
+    h.check(g.FX_LVL < g.CARD_LVL, "dressing draws under the cards (%d < %d)" % (g.FX_LVL, g.CARD_LVL))
+    h.check(g.CARD_LVL < g.DIE_LVL,
+            "and the die draws over them, so it reveals the row from in front (%d < %d)"
+            % (g.CARD_LVL, g.DIE_LVL))
+
+
+def test_reveal_tooltip(h):
+    print("--- the reveal says what the ability does, without a hover")
+    CW = h.CW
+    reveal = CW.revealFrame
+
+    # stand a real tooltip up for the scanner to read
+    h.rt.execute("""
+        local tip = ClasslessWildcardScanTip
+        tip.NumLines = function() return 5 end
+        tip.ClearLines = function() end
+        tip.SetHyperlink = function() end
+        local LEFT  = { "Battle Shout", "10 Rage", "Instant",
+                        "Requires Battle Stance",
+                        "The warrior shouts, increasing attack power." }
+        local RIGHT = { nil, "Melee Range", nil, nil, nil }
+        for i = 1, 5 do
+            _G["ClasslessWildcardScanTipTextLeft" .. i] = {
+                GetText = function() return LEFT[i] end,
+                GetTextColor = function() return 1, 0.82, 0 end,
+            }
+            _G["ClasslessWildcardScanTipTextRight" .. i] = {
+                GetText = function() return RIGHT[i] end,
+            }
+        end
+        SCANNED = ClasslessWildcard_API.revealFX.ScanSpell(6673)
+    """)
+    g = h.rt.globals()
+    lines = [dict(left=r["left"], right=r["right"]) for r in g.SCANNED.values()]
+    h.check(len(lines) == 4, "the name is skipped, the other four lines are read (%d)" % len(lines))
+    h.check(lines[0]["left"] == "10 Rage" and lines[0]["right"] == "Melee Range",
+            "cost and range land on the same row, opposite ends")
+    h.check(lines[2]["left"] == "Requires Battle Stance", "the stance requirement is kept")
+    h.check("increasing attack power" in lines[3]["left"], "and so is the description")
+
+    # now run a reveal and check the rows actually carry it
+    h.rt.execute("""
+        local CW = ClasslessWildcard_API
+        CW.suppressReveals = false
+        CW.pendingHand = nil
+        CW.revealQueue = {}
+        CW.revealAnim.phase = "idle"
+        CW.revealAnim.awaiting = false
+        CW.revealFrame:Hide()
+        CW.EnqueueReveal({ isTalent = false, entry = 6673, spell = 6673, rarity = 1, flags = 0 })
+    """)
+    for dt in (1.7, 0.05, 0.4):
+        h.rt.execute("NOW = NOW + %r" % dt)
+        reveal["__scripts"]["OnUpdate"](reveal, dt)
+
+    info = CW.revealFX.info
+    h.check(str(info[1].left["__text"]) == "10 Rage" and info[1].left["__shown"] is True,
+            "the block is filled in on the result (%s)" % info[1].left["__text"])
+    h.check(str(info[1].right["__text"]) == "Melee Range", "right column too")
+    h.check(str(info[4].left["__text"]).startswith("The warrior shouts"),
+            "description included")
+    h.check(info[5].left["__shown"] is False and str(info[5].left["__text"]) == "",
+            "unused rows are blanked, not just hidden")
+
+    # a fresh spin must not leave the last ability's text on screen
+    h.rt.execute("ClasslessWildcard_API.revealFX.HideInfo()")
+    h.check(info[1].left["__shown"] is False and str(info[1].left["__text"]) == "",
+            "and cleared before the next roll")
+
+
+def test_reveal_tiers(h):
+    print("--- a better roll puts on a bigger show")
+    CW, g = h.CW, h.g
+    reveal, fx = CW.revealFrame, CW.revealFX
+
+    def run(rarity):
+        # the hand test left reveals suppressed, and a queued reveal only
+        # starts when nothing is on screen
+        h.rt.execute("""
+            SOUNDS = {}
+            local CW = ClasslessWildcard_API
+            CW.suppressReveals = false
+            CW.pendingHand = nil
+            CW.revealQueue = {}
+            CW.revealAnim.phase = "idle"
+            CW.revealAnim.awaiting = false
+            CW.revealFrame:Hide()
+            CW.EnqueueReveal({ isTalent = false, entry = 133, spell = 133,
+                               rarity = %d, flags = 0 })
+        """ % rarity)
+        # spin, then the frame that lands the tier, then settle
+        for dt in (1.7, 0.05, 0.05, 0.4):
+            h.rt.execute("NOW = NOW + %r" % dt)
+            reveal["__scripts"]["OnUpdate"](reveal, dt)
+        return [str(x) for x in h.rt.globals().SOUNDS.values()]
+
+    h.recv(state(1, level=20))
+
+    snd = run(0)
+    h.check(fx.rays["__shown"] is False, "common: no starburst")
+    h.check(snd == ["igMainMenuOptionCheckBoxOn"], "common: one quiet tick (%s)" % snd)
+
+    snd = run(2)
+    h.check(fx.rays["__shown"] is True, "rare: starburst lights up")
+    h.check(fx.rays2["__shown"] is False, "rare: only the one layer")
+    h.check(snd == ["QUESTCOMPLETED"], "rare: its own sound (%s)" % snd)
+
+    snd = run(4)
+    h.check(fx.rays["__shown"] is True and fx.rays2["__shown"] is True,
+            "legendary: both layers turning")
+    h.check(len(snd) == 2, "legendary: two sounds layered (%s)" % snd)
+    h.check(fx.rays["__alpha"] > 0.4, "legendary: brightest starburst (%.2f)" % fx.rays["__alpha"])
+    rgb = [round(v, 2) for v in fx.rays["__rgb"].values()]
+    h.check(rgb == [1, 0.5, 0], "legendary: starburst wears the rarity colour (%s)" % rgb)
+
+    # the two layers must actually be turning, and against each other
+    before = [round(v, 4) for v in fx.rays["__coord"].values()]
+    before2 = [round(v, 4) for v in fx.rays2["__coord"].values()]
+    h.rt.execute("NOW = NOW + 0.2")
+    reveal["__scripts"]["OnUpdate"](reveal, 0.2)
+    after = [round(v, 4) for v in fx.rays["__coord"].values()]
+    after2 = [round(v, 4) for v in fx.rays2["__coord"].values()]
+    h.check(len(after) == 8 and before != after, "the starburst rotates")
+    h.check(before2 != after2 and after2 != after, "the second layer turns the other way")
+
+    # brightness has to climb with the tier, not just be present
+    peaks = [h.rt.eval("ClasslessWildcard_API.revealFX.Tier(%d).rays" % r) for r in range(5)]
+    h.check(peaks == sorted(peaks) and peaks[0] == 0 and peaks[4] > peaks[3],
+            "each tier is brighter than the one below (%s)" % peaks)
+
+
 def test_starting_hand(h):
     print("--- starting hand: only the cards the Wildcard dealt")
     CW, g = h.CW, h.g
@@ -563,6 +754,9 @@ def main():
     test_state_packet(h)
     test_auto_hand(h)
     test_hand_animation(h)
+    test_hand_tiers(h)
+    test_reveal_tooltip(h)
+    test_reveal_tiers(h)
     test_starting_hand(h)
     if h.failures:
         print("\n%d check(s) FAILED" % h.failures)
