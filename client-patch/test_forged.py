@@ -28,7 +28,26 @@ sys.path.insert(0, os.path.join(MODULE, "data", "sql", "generators"))
 from gen_forged_spells import (F, RECIPES, HERO_LINE, SPELL_BASE, BLOCK_END,
                                anchor, resolve, ALL_CLASSES)
 
+# columns the shared F map does not name
+F = dict(F, RangeIndex=46)
+
 FAILS = []
+
+def effects_for(recipe, key):
+    """Which effect list a row was built from."""
+    m = re.search(r"_pet(\d+)$", key)
+    if m:
+        return recipe["pet_spells"][int(m.group(1))]["effects"]
+    if key.endswith("_companion"):
+        return recipe["companion"]["effects"]
+    return recipe["effects"]
+
+
+def recipe_key(key):
+    """A row's key back to its recipe: hidden halves and pet abilities are
+    suffixed, and only the stem names a recipe."""
+    return re.sub(r"_(companion|pet\d+)$", "", key)
+
 
 
 def check(label, ok, detail=""):
@@ -45,7 +64,16 @@ def check_against_client(client_dir, doc):
 
     print("\n-- against the client at %s" % client_dir)
     data = os.path.join(client_dir, "Data")
-    with clientfs.ClientFiles(data, clientfs.detect_locales(data)[0]) as files:
+    locale = clientfs.detect_locales(data)[0]
+    # Read PRISTINE tables, the way install.py does. An installed patch archive
+    # already holds forged rows, and the appenders skip an id they already have,
+    # so reading our own output back as the source would test the last install
+    # rather than this one.
+    exclude = set()
+    for suffix in "ABCDEFGHIJKLMNOPQRSTUVWXYZ":
+        exclude.add("patch-%s.MPQ" % suffix)
+        exclude.add("patch-%s-%s.MPQ" % (locale, suffix))
+    with clientfs.ClientFiles(data, locale, exclude=exclude) as files:
         payload, report = {}, []
         forged.apply(files, payload, doc, report)
 
@@ -130,6 +158,36 @@ def check_against_client(client_dir, doc):
         check("SkillLineAbility.dbc: no hidden companion gained a tab row", not stray,
               "%d companion(s)" % len(hidden))
 
+        # The library dedupes abilities by NAME, so a forged spell sharing a name
+        # with a stock one makes one of the two vanish from the pool. "Gravity
+        # Well" was already two spells before this caught it.
+        # Compare the TEXT, not the string offset. Every appended row gets a
+        # fresh offset even when the name is identical, so an offset comparison
+        # can never see a clash -- which it did not, until this was fixed.
+        raw = payload[forged.SPELL]
+        scount, _f, srec, strsize = dbc.parse_header(raw)
+        sbody = raw[20:20 + scount * srec]
+        blob = raw[20 + scount * srec:20 + scount * srec + strsize]
+
+        def text_at(off):
+            end = blob.find(bytes([0]), off)
+            return blob[off:end].decode("utf-8", "replace") if end >= 0 else ""
+
+        names = {}
+        for i in range(scount):
+            sid = struct.unpack_from("<I", sbody, i * srec)[0]
+            off = struct.unpack_from("<I", sbody, i * srec + 136 * 4)[0]
+            if off:
+                names.setdefault(text_at(off).lower(), []).append(sid)
+        ours = {sp["id"] for sp in doc["spells"]}
+        clashes = []
+        for sp in doc["spells"]:
+            other = [i for i in names.get((sp["name"] or "").lower(), []) if i not in ours]
+            if other:
+                clashes.append("%s clashes with %s" % (sp["name"], other[:2]))
+        check("no forged spell shares a name with a stock one", not clashes,
+              "%s" % clashes[:3])
+
         # applying twice must not duplicate anything
         payload2 = dict(payload)
         forged.apply(files, payload2, doc, [])
@@ -179,7 +237,8 @@ def main():
     # ---- levels -------------------------------------------------------------
     lines = {}
     for s in spells:
-        if s["key"].endswith("_companion"):
+        # hidden halves and pet abilities are not lines of their own
+        if recipe_key(s["key"]) != s["key"]:
             continue
         lines.setdefault(s["key"], []).append(s)
     ok_first, ok_order, ok_cap = True, True, True
@@ -199,10 +258,9 @@ def main():
     # ---- the curve ----------------------------------------------------------
     off, checked = [], 0
     for s in spells:
-        key = s["key"].replace("_companion", "")
+        key = recipe_key(s["key"])
         recipe = by_key[key]
-        effects = recipe["companion"]["effects"] if s["key"].endswith("_companion") \
-            else recipe["effects"]
+        effects = effects_for(recipe, s["key"])
         for slot, e in enumerate(effects):
             base = e.get("base")
             if not isinstance(base, tuple):
@@ -214,6 +272,147 @@ def main():
                 off.append("%s r%d slot%d want %.0f got %d" % (s["key"], s["rank"], slot, want, got))
     check("every curve-priced value is within 20% of its anchor", not off,
           "%d value(s) checked; off: %s" % (checked, off[:3]))
+
+    # ---- pet abilities, and what must be true of them -----------------------
+    sql_pets = io.open(SQL, encoding="utf-8").read()
+    ranks_block = re.search(r"INSERT INTO `spell_ranks`[^;]*;", sql_pets, re.S)
+    stray = []
+    if ranks_block:
+        listed = {int(x) for x in re.findall(r"^\(\d+, (\d+), \d+\)",
+                                            ranks_block.group(0), re.M)}
+        hidden_ids = {sp["id"] for sp in spells if not sp["sla"]}
+        stray = sorted(listed & hidden_ids)
+    check("spell_ranks lists only real ranks", not stray,
+          "a hidden half or a pet ability there becomes an ability line of its own; "
+          "offenders %s" % stray[:4])
+
+    # SpellInfo::IsAutocastable refuses PASSIVE (0x40) and NO_AUTOCAST_AI
+    # (attr1 0x20000). Either one and the ability reaches the pet bar greyed out.
+    notcast = [sp["name"] for sp in spells
+               if "_pet" in sp["key"]
+               and (sp["values"][4] & 0x40 or sp["values"][5] & 0x20000)]
+    petcount = sum(1 for sp in spells if "_pet" in sp["key"])
+    check("every pet ability can be autocast", not notcast,
+          "%d pet ability row(s); %s" % (petcount, notcast[:3]))
+
+    percreature = {}
+    for m in re.finditer(r"^\((\d+), (\d+), (\d+), 12340\)", sql_pets, re.M):
+        percreature.setdefault(int(m.group(1)), set()).add(int(m.group(2)))
+    over = [c for c, idx in percreature.items() if len(idx) > 4 or max(idx) > 3]
+    check("no creature carries more spells than the pet bar holds", not over,
+          "MAX_SPELL_CHARM is 4; offenders %s" % over[:3])
+
+    # ---- every summon has a creature, and that creature has a model ---------
+    # Models live in creature_template_model, not creature_template. A creature
+    # with no row there spawns invisible: the spell works and nothing appears.
+    sql_all = io.open(SQL, encoding="utf-8").read()
+    missing = []
+    for sp in spells:
+        for i in range(3):
+            if sp["values"][F["Effect"] + i] != 28:
+                continue
+            entry = sp["values"][F["EffectMiscValue"] + i]
+            if re.search(r"INSERT INTO `creature_template`[^;]*\(%d," % entry, sql_all, re.S) is None:
+                missing.append("%s: no creature_template for %d" % (sp["name"], entry))
+            if re.search(r"INSERT INTO `creature_template_model`[^;]*\(%d, 0, \d+" % entry,
+                         sql_all, re.S) is None:
+                missing.append("%s: creature %d has no model" % (sp["name"], entry))
+    check("every summon has a creature and a model", not missing,
+          "%s" % sorted(set(missing))[:3])
+
+    # ---- what a donor must not bring with it --------------------------------
+    # Copying a row copies everything that made the donor a CLASS spell. None of
+    # these shows up as an error: SpellInfo::CheckShapeshift simply refuses the
+    # cast for anyone not in the donor's form, and a missing reagent simply
+    # fails. Charge brought Battle Stance and Psychic Scream brought Shadowform.
+    inherited = []
+    for sp in spells:
+        v = sp["values"]
+        who = "%s r%d" % (sp["name"], sp["rank"])
+        if v[12] or v[14]:
+            inherited.append("%s: form mask 0x%X/0x%X" % (who, v[12], v[14]))
+        if v[18]:
+            inherited.append("%s: spell focus %d" % (who, v[18]))
+        if any(v[52 + i] for i in range(8)) or v[50] or v[51]:
+            inherited.append("%s: needs an item" % who)
+        # Charge is out-of-combat only; NOT_SHAPESHIFTED would lock out any Hero
+        # who rolled a form. Values read from the core's SharedDefines.
+        for bit, why in ((0x10000000, "out-of-combat only"),
+                         (0x00010000, "not while shapeshifted"),
+                         (0x00004000, "indoors only"),
+                         (0x00008000, "outdoors only"),
+                         (0x00020000, "stealth only"),
+                         (0x00000040, "passive")):
+            if v[4] & bit:
+                inherited.append("%s: %s" % (who, why))
+    check("no forged spell inherits its donor's form, focus or reagent",
+          not inherited, "%d row(s) checked; %s" % (len(spells), inherited[:3]))
+
+    # ---- effect, target and duration have to agree --------------------------
+    # An area effect with a zero radius hits a point. An aura with no duration
+    # never expires. A heal aimed at an enemy heals nobody. None of the three
+    # errors anywhere: RADIUS_10YD was index 36 for a while, which is 0 yards.
+    from gen_forged_spells import Dbc as _Dbc
+    import os as _os
+    _dbc_dir = _os.environ.get("CW_DBC", r"B:\New folder\dbc")
+    coherence = []
+    try:
+        rad = _Dbc(_os.path.join(_dbc_dir, "SpellRadius.dbc"))
+    except Exception:
+        rad = None
+    AREA_TARGETS = {22, 28, 31, 45, 56, 33}
+    HEAL_EFFECTS = {10, 65}
+    DAMAGE_EFFECTS = {2, 31, 121, 58, 17}
+    for sp in spells:
+        v = sp["values"]
+        has_aura = False
+        for i in range(3):
+            eff = v[F["Effect"] + i]
+            if not eff:
+                continue
+            tgt = v[F["EffectImplicitTargetA"] + i]
+            if eff in (6, 27):
+                has_aura = True
+            if rad is not None and tgt in AREA_TARGETS:
+                row = rad.row_of(v[F["EffectRadiusIndex"] + i])
+                if row is None or not rad.f(row, 1):
+                    coherence.append("%s: effect %d is an area target with no radius"
+                                     % (sp["name"], i))
+            if eff in HEAL_EFFECTS and tgt == 6:
+                coherence.append("%s: effect %d heals an enemy" % (sp["name"], i))
+            if eff in DAMAGE_EFFECTS and tgt in (1, 21):
+                coherence.append("%s: effect %d damages the caster or an ally"
+                                 % (sp["name"], i))
+            if v[F["RangeIndex"]] == 1 and tgt == 6:
+                coherence.append("%s: effect %d targets an enemy at self range"
+                                 % (sp["name"], i))
+        if has_aura and not v[F["DurationIndex"]]:
+            coherence.append("%s: applies an aura with no duration" % sp["name"])
+    check("effects, targets and durations agree", not coherence,
+          "%d row(s) checked; %s" % (len(spells), coherence[:3]))
+
+    # ---- the tooltips -------------------------------------------------------
+    # $s3 on a spell with two effects renders as literal "$s3" in the client, and
+    # $d on a spell with no duration renders as nothing. Both are silent: the
+    # spell works and only its description is wrong.
+    bad_var = []
+    for sp in spells:
+        text = sp["description"] or ""
+        vals = sp["values"]
+        effects = [vals[F["Effect"] + i] for i in range(3)]
+        for m in re.finditer(r"\$([soa])(\d)", text):
+            kind, slot = m.group(1), int(m.group(2)) - 1
+            if slot < 0 or slot > 2 or not effects[slot]:
+                bad_var.append("%s: $%s%d has no effect" % (sp["name"], kind, slot + 1))
+                continue
+            if kind == "o" and not vals[F["EffectAmplitude"] + slot]:
+                bad_var.append("%s: $o%d is not periodic" % (sp["name"], slot + 1))
+            if kind == "a" and not vals[F["EffectRadiusIndex"] + slot]:
+                bad_var.append("%s: $a%d has no radius" % (sp["name"], slot + 1))
+        if "$d" in text and not vals[F["DurationIndex"]]:
+            bad_var.append("%s: $d but no duration" % sp["name"])
+    check("every tooltip variable points at something real", not bad_var,
+          "%d description(s) checked; %s" % (len(spells), bad_var[:4]))
 
     # ---- the SQL ------------------------------------------------------------
     sql = io.open(SQL, encoding="utf-8").read()

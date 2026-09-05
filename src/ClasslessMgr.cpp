@@ -1082,7 +1082,7 @@ void ClasslessMgr::LoadForgedSpells()
         return;
 
     QueryResult result = WorldDatabase.Query(
-        "SELECT first_spell, recipe, rarity FROM cw_forged_spells WHERE enabled = 1");
+        "SELECT first_spell, recipe, rarity, type FROM cw_forged_spells WHERE enabled = 1");
     if (!result)
     {
         LOG_INFO("module.classless", "mod-classless-wildcard: no forged spells configured");
@@ -1097,6 +1097,7 @@ void ClasslessMgr::LoadForgedSpells()
         uint32 const firstSpell = f[0].Get<uint32>();
         std::string const recipe = f[1].Get<std::string>();
         uint8 const rarityRow = f[2].Get<uint8>();
+        uint8 const typeRow = f[3].Get<uint8>();
 
         SpellInfo const* firstInfo = sSpellMgr->GetSpellInfo(firstSpell);
         if (!firstInfo)
@@ -1114,7 +1115,15 @@ void ClasslessMgr::LoadForgedSpells()
         e.firstSpellId = firstSpell;
         e.passive = firstInfo->IsPassive();
         e.name = firstInfo->SpellName[0] ? firstInfo->SpellName[0] : recipe;
-        e.type = ClassifyAbility(firstInfo, e.passive);
+        // ClassifyAbility reads DmgClass, which these inherit from a donor, and
+        // calls anything with a heal effect a Heal. Both are right for a class
+        // spell and wrong here: Emberfeed is a nuke that feeds you, and Hurl is
+        // a rock wearing Fireball's magic damage class. The row says how it is
+        // FILED; DmgClass is left alone because it decides whether a hit can be
+        // dodged or resisted, and the donor's value is the one known to work.
+        e.type = typeRow <= uint8(AbilityType::Passive)
+            ? static_cast<AbilityType>(typeRow)
+            : ClassifyAbility(firstInfo, e.passive);
         e.forged = true;
         // No class owns these, so every class can buy and roll them. The
         // browser reads the forged flag instead of the mask, or an all-classes
