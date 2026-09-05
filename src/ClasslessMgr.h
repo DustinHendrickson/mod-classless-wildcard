@@ -260,6 +260,10 @@ private:
     // spell (any rank) -> the class skill line it is filed under, and the set of
     // every class skill line the library touches
     std::unordered_map<uint32, uint16> _spellSkillLine;
+    // Class spells the core hands out WITH their skill line, which is what
+    // Player::learnSkillRewardedSpells teaches whenever a line is added.
+    // The strip needs these by id whether or not the library kept them.
+    std::unordered_set<uint32> _skillLearnedClassSpells;
     std::set<uint16> _classSkillLines;
     std::unordered_map<ObjectGuid::LowType, ClasslessWildcard::CharState> _states;
     bool _libraryBuilt = false;

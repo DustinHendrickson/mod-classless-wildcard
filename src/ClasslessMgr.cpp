@@ -212,7 +212,7 @@ void ClasslessMgr::LoadConfig(bool /*reload*/)
     cfg.ignoreSpellTools = sConfigMgr->GetOption<bool>("ClasslessWildcard.IgnoreSpellTools", true);
     cfg.elementalEnable = sConfigMgr->GetOption<bool>("ClasslessWildcard.Elemental.Enable", true);
     cfg.elementalRarityBump = sConfigMgr->GetOption<uint32>("ClasslessWildcard.Elemental.RarityBump", 1);
-    cfg.elementalRollWeightPct = sConfigMgr->GetOption<uint32>("ClasslessWildcard.Elemental.RollWeightPct", 15);
+    cfg.elementalRollWeightPct = sConfigMgr->GetOption<uint32>("ClasslessWildcard.Elemental.RollWeightPct", 8);
     cfg.elementalInPool = sConfigMgr->GetOption<bool>("ClasslessWildcard.Elemental.InPool", true);
     cfg.elementalShowInBrowser = sConfigMgr->GetOption<bool>("ClasslessWildcard.Elemental.ShowInBrowser", true);
     cfg.worldDropEnable = sConfigMgr->GetOption<bool>("ClasslessWildcard.WorldDrops.Enable", true);
@@ -367,6 +367,7 @@ void ClasslessMgr::BuildLibrary()
         return;
 
     _abilities.clear();
+    _skillLearnedClassSpells.clear();
     _talents.clear();
     _spellToFirst.clear();
 
@@ -550,6 +551,12 @@ void ClasslessMgr::BuildLibrary()
         // still lands in the right tab if a Hero gets it some other way.
         _spellSkillLine[sla->Spell] = uint16(sla->SkillLine);
         _classSkillLines.insert(uint16(sla->SkillLine));
+
+        // Spells the core hands out free with the line itself. 38 in the whole
+        // game, and the only ones a Hero can end up with by owning nothing.
+        if (sla->AcquireMethod == SKILL_LINE_ABILITY_LEARNED_ON_SKILL_VALUE
+            || sla->AcquireMethod == SKILL_LINE_ABILITY_LEARNED_ON_SKILL_LEARN)
+            _skillLearnedClassSpells.insert(sla->Spell);
 
         SpellInfo const* info = sSpellMgr->GetSpellInfo(sla->Spell);
         if (!info || !info->SpellName[0] || !*info->SpellName[0])
@@ -2832,12 +2839,28 @@ void ClasslessMgr::RemoveTalentInternal(Player* player, TalentPoolEntry const& t
             player->GetGUID().GetCounter(), t.talentId);
 }
 
-// Every class-library spell the Hero has NOT earned, removed.
+// Every CLASS spell the Hero has NOT earned, removed.
 //
 // "Earned" means a rank of an ability they own or a rank spell of a talent they
 // own -- so this cannot take away anything bought, rolled, or handed over with
-// a form. Everything else in the library is a spell the chassis class gave them
-// for free, which is the one thing the classless economy must not allow.
+// a form. Everything else is a spell the chassis class gave them for free,
+// which is the one thing the classless economy must not allow.
+//
+// The sweep walks the library AND the spells the core hands out with a class
+// skill line, not the library alone. The name dedupe DROPS a duplicate whose
+// every rank is class- or quest-taught, which is right for a quest reward but
+// leaves a chassis starter with nothing watching it: Seal of Righteousness is
+// two spell ids, 20154 and 21084, both auto-learned with the Paladin line, and
+// the one the dedupe threw out was never in _abilities to be found. It came
+// back free with that line every time the core re-added it, and a Hero who had
+// never rolled a paladin ability had it in their spellbook.
+//
+// _skillLearnedClassSpells is deliberately narrow: only AcquireMethod 1 or 2,
+// the same rows learnSkillRewardedSpells teaches, on a class-category line
+// with a class mask. 38 spells in the whole game. It holds no proficiency, no
+// racial, no riding rank, nothing off a non-class line such as Attack or Duel,
+// and no quest reward -- Polymorph: Pig has a SkillLineAbility row but
+// AcquireMethod 0, so the mage quest that teaches it keeps working.
 uint32 ClasslessMgr::StripUnearnedSpells(Player* player)
 {
     CharState& st = GetState(player);
@@ -2855,13 +2878,24 @@ uint32 ClasslessMgr::StripUnearnedSpells(Player* player)
 
     GrantGuard guard(_applyingGrant);
     uint32 removed = 0;
+    auto take = [&](uint32 spellId)
+    {
+        if (earned.count(spellId) || !player->HasSpell(spellId))
+            return;
+        player->removeSpell(spellId, SPEC_MASK_ALL, false);
+        ++removed;
+    };
+
+    // the library's own lines, including ranks that carry no SkillLineAbility
+    // row of their own
     for (auto const& [firstSpell, e] : _abilities)
         for (uint32 rank : e.ranks)
-            if (!earned.count(rank) && player->HasSpell(rank))
-            {
-                player->removeSpell(rank, SPEC_MASK_ALL, false);
-                ++removed;
-            }
+            take(rank);
+
+    // and the free-with-the-line spells, kept by the library or not
+    for (uint32 spellId : _skillLearnedClassSpells)
+        take(spellId);
+
     return removed;
 }
 

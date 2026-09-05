@@ -302,7 +302,7 @@ namespace ClasslessWildcard
         // variant is registered one rarity tier above its base
         bool   elementalEnable = true;
         uint32 elementalRarityBump = 1;
-        uint32 elementalRollWeightPct = 15;   // of the rarity weight, per variant
+        uint32 elementalRollWeightPct = 8;    // of the rarity weight, per variant
         bool   elementalInPool = true;        // rolled and buyable; off = owned ones keep working
         bool   elementalShowInBrowser = true; // listed in the addon's class menus and the NPC
 

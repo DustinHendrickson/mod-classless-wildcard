@@ -85,10 +85,10 @@ with your build on the right. Lock or reroll anything you own from the same wind
 
 <br><br>
 
-<img src="docs/wildcard_addon.webp" alt="A Wildcard roll revealing Healing Wave, showing its rarity with Keep and Reroll buttons" width="62%">
+<img src="docs/wildcard_roll.webp" alt="A Wildcard roll revealing Fireball: the die with the ability's icon in its window, the spell's cost, range, cast time and description below it, and Keep and Reroll buttons" width="42%">
 
-<em>A <b>Wildcard</b> roll. The die lands on a new ability and shows its rarity.<br>
-Keep it, or spend a reroll.</em>
+<em>A <b>Wildcard</b> roll. The die lands on a new ability and shows its rarity,<br>
+with everything its tooltip would say. Keep it, or spend a reroll.</em>
 
 <br><br>
 
@@ -389,7 +389,7 @@ and are documented inline. The ones most likely to need changing:
 | `ClasslessWildcard.IgnoreSpellTools`                | `1`          | Spells no longer need a class tool such as an Earth Totem      |
 | `ClasslessWildcard.Elemental.Enable`                | `1`          | Elemental variants of physical strikes in the pool           |
 | `ClasslessWildcard.Elemental.RarityBump`            | `1`          | Rarity tiers a variant sits above its base attack            |
-| `ClasslessWildcard.Elemental.RollWeightPct`         | `15`         | How often a variant rolls, as a percent of its base's weight |
+| `ClasslessWildcard.Elemental.RollWeightPct`         | `8`          | How often a variant rolls, as a percent of its base's weight |
 | `ClasslessWildcard.Elemental.InPool`                | `1`          | Variants can be rolled and bought; `0` stops new ones only   |
 | `ClasslessWildcard.Elemental.ShowInBrowser`         | `1`          | Variants appear in the addon's class menus and the NPC       |
 | `ClasslessWildcard.WorldDrops.Enable`               | `1`          | Mobs can drop the classless gear                               |
@@ -469,7 +469,8 @@ A row in `cw_ability_override` replaces all of it (`rarity` 255 keeps the heuris
 overridden by default.
 
 An elemental variant takes its base's rarity plus `Elemental.RarityBump` (1 by default), capped at
-legendary, and rolls at `Elemental.RollWeightPct` of that rarity's weight. A variant follows its
+legendary, and rolls at `Elemental.RollWeightPct` of that rarity's weight (8% by default,
+since each of the 27 bases gains seven copies). A variant follows its
 base's final rarity, including one set by an override, and a base switched off by an override
 takes its variants with it. A variant with its own row in `cw_ability_override` keeps exactly what
 that row says.
@@ -531,15 +532,15 @@ strike. The attack keeps 85% of its weapon multiplier (75% for Holy) and adds an
 that grows with your spell power, so a variant rewards Intellect as well as attack power. Where
 the attack has a free effect slot it also carries one effect the element is known for:
 
-| Element | Extra effect on hit |
-| ------- | ------------------- |
-| Fire    | Burns the target for 6 seconds |
-| Frost   | Slows the target's movement by 30% for 6 seconds |
-| Earth   | Slows the target's attacks by 10% for 6 seconds |
-| Poison  | Poisons the target for 12 seconds |
-| Arcane  | None. The elemental hit is larger instead |
-| Shadow  | Reduces healing the target receives by 20% for 6 seconds |
-| Holy    | Heals you for the elemental hit's value |
+| | Element | Extra effect on hit |
+| :-: | ------- | ------------------- |
+| <img src="docs/badges/fire.png" alt="" width="20"> | Fire | Burns the target for 6 seconds |
+| <img src="docs/badges/frost.png" alt="" width="20"> | Frost | Slows the target's movement by 30% for 6 seconds |
+| <img src="docs/badges/earth.png" alt="" width="20"> | Earth | Slows the target's attacks by 10% for 6 seconds |
+| <img src="docs/badges/poison.png" alt="" width="20"> | Poison | Poisons the target for 12 seconds |
+| <img src="docs/badges/arcane.png" alt="" width="20"> | Arcane | None. The elemental hit is larger instead |
+| <img src="docs/badges/shadow.png" alt="" width="20"> | Shadow | Reduces healing the target receives by 20% for 6 seconds |
+| <img src="docs/badges/holy.png" alt="" width="20"> | Holy | Heals you for the elemental hit's value |
 
 Attacks that already use all three effect slots (every combo point builder, plus Maim, Mangle,
 Overpower, Mortal Strike, Aimed Shot, Whirlwind, Death Strike, Obliterate and Plague Strike)

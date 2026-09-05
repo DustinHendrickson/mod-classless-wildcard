@@ -280,12 +280,17 @@ ClasslessWildcard.Elemental.RarityBump = 1
 #    ClasslessWildcard.Elemental.RollWeightPct
 #        Each variant rolls at this percentage of its rarity's weight. This is
 #        what keeps the Wildcard pool honest: each strike gains seven variants,
-#        and RarityBump alone barely changes how often they roll. At 15 the
-#        seven together add about one more copy of the base to the pool rather
-#        than seven. Raise it to see more elemental strikes. It does not affect
-#        Classless purchase costs.
-#        Default: 15
-ClasslessWildcard.Elemental.RollWeightPct = 15
+#        and RarityBump alone barely changes how often they roll, so without
+#        this the pool would be mostly elemental strikes.
+#
+#        The 27 bases are low-level weapon strikes, so the variants crowd the
+#        early pool hardest: rolls respect learn levels, and at low level there
+#        is far less to roll against. Raise it to see more elemental strikes,
+#        lower it to see fewer. It does not affect Classless purchase costs, and
+#        it does not affect whether they can be bought at all: for that, see
+#        InPool below.
+#        Default: 8
+ClasslessWildcard.Elemental.RollWeightPct = 8
 
 #    ClasslessWildcard.Elemental.InPool
 #        Whether variants are dealt by Wildcard rolls and sold on the Classless
