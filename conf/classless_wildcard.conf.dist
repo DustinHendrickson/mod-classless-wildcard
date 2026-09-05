@@ -272,6 +272,19 @@ ClasslessWildcard.Rarity.LevelFloors = "25,50"
 #        Default: 1
 ClasslessWildcard.Elemental.Enable = 1
 
+#    ClasslessWildcard.Forged.Enable
+#        Register the forged spells: abilities that belong to no class, filed
+#        under a Hero spellbook tab of their own. They come from
+#        cw_spells_forged.sql, which also writes the Hero skill line itself, and
+#        every player needs the client patch for their names and tooltips. Off
+#        does not register them, which is only safe before any have been handed
+#        out. The startup log names the generation id the rows came from and the
+#        client installer prints the id it applied; they must match.
+#        Default: 1
+#
+#        [RESTART REQUIRED]
+ClasslessWildcard.Forged.Enable = 1
+
 #    ClasslessWildcard.Elemental.RarityBump
 #        Tiers above the base line's rarity, capped at legendary.
 #        Default: 1

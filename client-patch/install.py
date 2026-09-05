@@ -34,7 +34,7 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, HERE)
 
 from lib import (blp, charcreate, clientfs, dbc, elemental, exepatch,  # noqa: E402
-                 gluestrings, mpq, outfit)
+                 forged, gluestrings, mpq, outfit)
 
 MANIFEST_NAME = "ClasslessWildcard-install.json"
 ADDON_NAME = "ClasslessWildcard"
@@ -455,6 +455,21 @@ def do_install(args, wow_dir):
                     report.append("  elemental variants  skipped (%s)" % error)
             else:
                 report.append("  elemental variants  skipped (no elemental_manifest.json shipped)")
+
+        # Forged spells: abilities that belong to no class, filed under a Hero
+        # tab of their own. Runs after the elemental pass so both extend the
+        # same patched Spell.dbc and SkillLineAbility.dbc rather than one
+        # overwriting the other.
+        if args.forged:
+            manifest_file = forged.manifest_path()
+            if os.path.exists(manifest_file):
+                try:
+                    manifest = forged.load_manifest(manifest_file)
+                    forged.apply(files, dbc_payload, manifest, report)
+                except (forged.ForgedError, dbc.DbcError, FileNotFoundError) as error:
+                    report.append("  forged spells       skipped (%s)" % error)
+            else:
+                report.append("  forged spells       skipped (no forged_manifest.json shipped)")
     target = os.path.join(data_dir, "patch-%s.MPQ" % suffix)
     if not args.dry_run:
         mpq.write_archive(target, dbc_payload)
@@ -561,6 +576,7 @@ _OUR_FILES = frozenset(x.lower() for x in (
     GLUESTRINGS, CHARCREATE_LUA,
     CLASSICONS_INGAME, CLASSICONS_CREATE,
     elemental.SPELL, elemental.SPELLVISUAL, elemental.SPELLICON,
+    forged.SKILLLINE,
 ))
 # the elemental step paints one icon per (base icon, element); the names are
 # derived, so ownership of those is decided by prefix rather than by list
@@ -741,6 +757,8 @@ def main(argv=None):
     parser.add_argument("--no-creation-text", dest="glue", action="store_false",
                         help="skip the Hero creation-screen text and armored "
                              "outfit (and the Wow.exe patch they need)")
+    parser.add_argument("--no-forged", dest="forged", action="store_false",
+                        help="skip the forged spells and the Hero spellbook tab")
     parser.add_argument("--no-elemental", dest="elemental", action="store_false",
                         help="leave out the elemental ability variants (spell rows and icons)")
     parser.add_argument("--no-hero-icon", dest="hero_icon", action="store_false",

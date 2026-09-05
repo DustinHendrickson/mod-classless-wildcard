@@ -211,6 +211,7 @@ void ClasslessMgr::LoadConfig(bool /*reload*/)
     cfg.formKitsEnable = sConfigMgr->GetOption<bool>("ClasslessWildcard.FormStarterKits", true);
     cfg.ignoreSpellTools = sConfigMgr->GetOption<bool>("ClasslessWildcard.IgnoreSpellTools", true);
     cfg.elementalEnable = sConfigMgr->GetOption<bool>("ClasslessWildcard.Elemental.Enable", true);
+    cfg.forgedEnable = sConfigMgr->GetOption<bool>("ClasslessWildcard.Forged.Enable", true);
     cfg.elementalRarityBump = sConfigMgr->GetOption<uint32>("ClasslessWildcard.Elemental.RarityBump", 1);
     cfg.elementalRollWeightPct = sConfigMgr->GetOption<uint32>("ClasslessWildcard.Elemental.RollWeightPct", 8);
     cfg.elementalInPool = sConfigMgr->GetOption<bool>("ClasslessWildcard.Elemental.InPool", true);
@@ -833,6 +834,7 @@ void ClasslessMgr::BuildLibrary()
     // done) and before overrides, so a realm can still tune any variant row
     // in cw_ability_override like any other ability.
     LoadVariants();
+    LoadForgedSpells();
     ResolveTalentAbilityLines();
 
     std::unordered_set<uint32> overridden;
@@ -1057,6 +1059,116 @@ void ClasslessMgr::GrantRequiredForm(Player* player, AbilityEntry const& e)
 // A variant whose base is not in the pool is skipped and logged rather than
 // registered: the generator mirrors BuildLibrary's filters, but a realm that
 // excluded the base by config should not get the variant either.
+// Spells that belong to no class, on the Hero skill line.
+//
+// These are generated rather than shipped by Blizzard: gen_forged_spells.py
+// writes their Spell.dbc rows into spell_dbc and their line rows into
+// skilllineability_dbc, and cw_forged_spells says which ones the module owns.
+//
+// They carry a class-masked SkillLineAbility row so the CLIENT files them under
+// the Hero tab, which means the pass over SkillLineAbility.dbc sees them too and
+// enters them like any trained ability. On a realm with TrainerTaughtOnly on,
+// the trainer filter then throws them straight back out, because no trainer
+// teaches them; with it off they survive, rated from their own power. Either
+// way this table is the authority, so the id is taken back rather than shared,
+// exactly as LoadVariants does for the elemental lines.
+//
+// Rarity is the one place forged spells differ from every other ability: their
+// power was CHOSEN, not inherited, so a rarity in the row wins over the
+// heuristic. 255 means "no opinion, rate it like anything else".
+void ClasslessMgr::LoadForgedSpells()
+{
+    if (!cfg.forgedEnable)
+        return;
+
+    QueryResult result = WorldDatabase.Query(
+        "SELECT first_spell, recipe, rarity FROM cw_forged_spells WHERE enabled = 1");
+    if (!result)
+    {
+        LOG_INFO("module.classless", "mod-classless-wildcard: no forged spells configured");
+        return;
+    }
+
+    GrantGuard guard(_applyingGrant);
+    uint32 added = 0, skipped = 0;
+    do
+    {
+        Field* f = result->Fetch();
+        uint32 const firstSpell = f[0].Get<uint32>();
+        std::string const recipe = f[1].Get<std::string>();
+        uint8 const rarityRow = f[2].Get<uint8>();
+
+        SpellInfo const* firstInfo = sSpellMgr->GetSpellInfo(firstSpell);
+        if (!firstInfo)
+        {
+            LOG_WARN("module.classless",
+                     "mod-classless-wildcard: forged spell {} ({}) is missing from spell_dbc; "
+                     "run the module's SQL and restart", firstSpell, recipe);
+            ++skipped;
+            continue;
+        }
+
+        _abilities.erase(firstSpell);
+
+        AbilityEntry e;
+        e.firstSpellId = firstSpell;
+        e.passive = firstInfo->IsPassive();
+        e.name = firstInfo->SpellName[0] ? firstInfo->SpellName[0] : recipe;
+        e.type = ClassifyAbility(firstInfo, e.passive);
+        e.forged = true;
+        // No class owns these, so every class can buy and roll them. The
+        // browser reads the forged flag instead of the mask, or an all-classes
+        // ability would be listed eleven times over.
+        e.classMask = 0x5FF;
+
+        for (uint32 sp = firstSpell; sp; sp = sSpellMgr->GetNextSpellInChain(sp))
+        {
+            SpellInfo const* info = sSpellMgr->GetSpellInfo(sp);
+            if (!info)
+                break;
+            e.ranks.push_back(sp);
+            uint32 const lvl = info->SpellLevel ? info->SpellLevel : info->BaseLevel;
+            e.rankLevels.push_back(uint8(std::min<uint32>(lvl ? lvl : 1, 255)));
+        }
+        if (e.ranks.empty())
+        {
+            ++skipped;
+            continue;
+        }
+        for (size_t ri = 1; ri < e.rankLevels.size(); ++ri)
+            if (e.rankLevels[ri] < e.rankLevels[ri - 1])
+                e.rankLevels[ri] = e.rankLevels[ri - 1];
+
+        if (rarityRow <= uint8(Rarity::Legendary))
+            e.rarity = static_cast<Rarity>(rarityRow);
+        else
+            e.rarity = RarityFromPower(LineCooldown(e), 0, e.rankLevels[0]);
+        e.cost = cfg.abilityCostByRarity[uint8(e.rarity)];
+        e.weight = 0;   // 0 = roll at the rarity's own weight
+
+        for (uint32 sp : e.ranks)
+            _spellToFirst[sp] = firstSpell;
+
+        _abilities.emplace(firstSpell, std::move(e));
+        ++added;
+    } while (result->NextRow());
+
+    // The generation id the rows were produced with. The client installer prints
+    // the same id for the manifest it applied; when the two differ, a player's
+    // tooltips describe rows this server is not running.
+    std::string generation = "unknown";
+    if (WorldDatabase.Query(
+            "SELECT 1 FROM information_schema.TABLES WHERE TABLE_SCHEMA = DATABASE() "
+            "AND TABLE_NAME = 'cw_forged_meta'"))
+        if (QueryResult gen = WorldDatabase.Query(
+                "SELECT `value` FROM cw_forged_meta WHERE `key` = 'generation'"))
+            generation = gen->Fetch()[0].Get<std::string>();
+
+    LOG_INFO("module.classless",
+             "mod-classless-wildcard: {} forged spell line(s) registered ({} skipped), generation {}",
+             added, skipped, generation);
+}
+
 void ClasslessMgr::LoadVariants()
 {
     if (!cfg.elementalEnable)

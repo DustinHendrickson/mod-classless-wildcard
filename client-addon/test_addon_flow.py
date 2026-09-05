@@ -415,6 +415,31 @@ def test_browser(h):
     subs = [str(CW.talEntries[i].sub["__text"]) for i in (1, 2)]
     h.check("Active" in subs[0] and "Passive" in subs[1], "talent rows are tagged Active / Passive: %r" % subs)
 
+    # ---- the Hero page: forged spells belong to no class, so they get their own
+    h.clear_sent()
+    hero = None
+    for i in range(1, 20):
+        b = CW.classButtons[i]
+        if b is None:
+            break
+        if int(b.classId) == 12:
+            hero = b
+    h.check(hero is not None, "the class strip carries a twelfth button for the Hero line")
+    if hero is not None:
+        # a realm with Forged.Enable off must not show a button opening nothing
+        h.recv("CFG|1|1|1|0")
+        h.check(hero["__shown"] is False,
+                "with forged spells off the server, the Hero button is hidden")
+        h.recv("CFG|1|1|1|1")
+        h.check(hero["__shown"] is True, "and shown once the server says it runs them")
+        before = CW.tabIndex
+        h.click(hero)
+        h.check(any(str(m).startswith("ABIL 12 ") for m in h.sent()),
+                "clicking it asks the server for class 12, the Hero page (%s)" % h.sent())
+        h.check(CW.tabIndex == before,
+                "and leaves the Talents pane alone, because Hero has no tree")
+    h.click(CW.classButtons[1])
+
     # ---- the level filter: what this character can take, and it leads
     h.clear_sent()
     h.check(str(CW.abilScopeBtn["__text"]) == "My level"

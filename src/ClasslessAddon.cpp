@@ -120,9 +120,11 @@ namespace
         // unless it is, because with IncludeDeathKnight off there is nothing
         // behind them -- and hard-coding that on the client meant the tab could
         // never appear once a realm turned it on.
-        SendAddon(player, Acore::StringFormat("CFG|{}|{}|{}",
+        // The Hero button is hidden the same way when forged spells are off,
+        // so a realm that does not run them has no button opening an empty page.
+        SendAddon(player, Acore::StringFormat("CFG|{}|{}|{}|{}",
             cfg.talentCostPerRank, cfg.talentFlatCost ? 1 : 0,
-            cfg.includeDeathKnight ? 1 : 0));
+            cfg.includeDeathKnight ? 1 : 0, cfg.forgedEnable ? 1 : 0));
     }
 
     void SendErr(Player* player, std::string const& text)
@@ -147,7 +149,15 @@ namespace
         SORT_TYPE       = 4    // grouped by type (talents: active before passive), then level
     };
 
-    // ABIL <class> <page> [sort] [type] [scope]: type 0 shows everything, 1..6
+    // Not a class id. The addon's twelfth browser button asks for the Hero
+    // line, whose spells belong to no class at all.
+    constexpr uint8 CLASS_PAGE_HERO = 12;
+
+    // ABIL <class> <page> [sort] [type] [scope]. Class 12 is not a class: it is
+    // the Hero line, and asks for the forged spells instead. They carry an
+    // all-classes mask so anyone can buy them, so filtering the class pages by
+    // mask alone would put every one of them under all eleven class buttons.
+    // type 0 shows everything, 1..6
     // keeps one AbilityType (its value + 1, so a missing argument means "all").
     // scope 1 keeps only what the Hero's level allows, 0 the whole library; a
     // missing argument means the whole library, which is what a client that
@@ -157,6 +167,7 @@ namespace
                          uint32 levelScope)
     {
         CharState& st = sClasslessMgr->GetState(player);
+        bool const heroPage = classId == CLASS_PAGE_HERO;
         uint32 classMask = classId >= 1 && classId <= 11 ? (1u << (classId - 1)) : 0;
 
         // Exactly the rule BuyAbility enforces, so the filtered list is the
@@ -167,7 +178,7 @@ namespace
 
         std::vector<AbilityEntry const*> list;
         for (auto const& [firstSpell, e] : sClasslessMgr->Abilities())
-            if (e.enabled && (e.classMask & classMask)
+            if (e.enabled && (heroPage ? e.forged : (!e.forged && (e.classMask & classMask)))
                 && (!e.variant || sClasslessMgr->cfg.elementalShowInBrowser)
                 && (!typeArg || uint32(e.type) + 1 == typeArg)
                 && (!levelOnly || e.rankLevels.empty() || uint32(e.rankLevels[0]) <= heroLevel))

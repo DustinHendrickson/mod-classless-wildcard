@@ -97,6 +97,9 @@ namespace ClasslessWildcard
         bool   enabled = true;
         bool   passive = false;
         bool   variant = false;         // an elemental variant (cw_ability_variants)
+        bool   forged = false;          // a Hero-line spell (cw_forged_spells): owned by no
+                                        // class, so it browses under Hero rather than under
+                                        // all eleven at once
         uint32 variantBase = 0;         // and the line it varies, so its rarity can be
                                         // re-derived once overrides have touched the base
         AbilityType type = AbilityType::Utility;
@@ -301,6 +304,7 @@ namespace ClasslessWildcard
         // elemental ability variants (cw_ability_variants, generated): a
         // variant is registered one rarity tier above its base
         bool   elementalEnable = true;
+        bool   forgedEnable = true;           // the Hero line's own spells
         uint32 elementalRarityBump = 1;
         uint32 elementalRollWeightPct = 8;    // of the rarity weight, per variant
         bool   elementalInPool = true;        // rolled and buyable; off = owned ones keep working

@@ -26,13 +26,15 @@ local RARITY_RGB = {
 local CLASS_NAMES = {
     [1] = "Warrior", [2] = "Paladin", [3] = "Hunter", [4] = "Rogue", [5] = "Priest",
     [6] = "Death Knight", [7] = "Shaman", [8] = "Mage", [9] = "Warlock", [11] = "Druid",
+    [12] = "Hero",
 }
 -- Every class, Death Knight included. Whether its button is SHOWN depends on
 -- the server: with IncludeDeathKnight off there are no Death Knight abilities
 -- or talents in the library, so the button would open an empty page. The old
 -- list left 6 out permanently, which meant a realm that enabled Death Knight
 -- content had no way to browse it.
-local CLASS_ORDER = { 1, 2, 3, 4, 5, 6, 7, 8, 9, 11 }
+local CLASS_HERO = 12       -- not a class: the Hero line's own browser page
+local CLASS_ORDER = { 1, 2, 3, 4, 5, 6, 7, 8, 9, 11, CLASS_HERO }
 
 -- ---------------------------------------------------------------------------
 -- state
@@ -285,7 +287,12 @@ for i, classId in ipairs(CLASS_ORDER) do
         b.icon:SetTexture("Interface\\Glues\\CharacterCreate\\UI-CharacterCreate-Classes")
     end
     local tc = CLASS_TCOORDS[CLASS_TOKENS[classId]]
-    if tc then b.icon:SetTexCoord(tc[1], tc[2], tc[3], tc[4]) end
+    if tc then
+        b.icon:SetTexCoord(tc[1], tc[2], tc[3], tc[4])
+    else
+        -- the Hero page: the same icon its spellbook tab wears
+        b.icon:SetTexture("Interface\\Icons\\Ability_Hunter_FocusedAim")
+    end
     b.slot = b:CreateTexture(nil, "OVERLAY")
     b.slot:SetWidth(CLASS_BTN * 1.72); b.slot:SetHeight(CLASS_BTN * 1.72)
     b.slot:SetPoint("CENTER", 0, -1)
@@ -301,7 +308,9 @@ for i, classId in ipairs(CLASS_ORDER) do
         CW.classIndex = i
         RequestAbil(0)
         -- follow the class across: jump the Talents pane to that class's first
-        -- tree, so both panes are showing the same class
+        -- tree, so both panes are showing the same class. The Hero page has no
+        -- tree of its own, so it leaves the Talents pane alone.
+        if classId == CLASS_HERO then return end
         for idx, t in ipairs(CW.tabs) do
             if t.class == classId then
                 CW.tabIndex = idx
@@ -318,13 +327,15 @@ for i, classId in ipairs(CLASS_ORDER) do
     b:SetScript("OnLeave", function() GameTooltip:Hide() end)
     classButtons[i] = b
 end
+CW.classButtons = classButtons
 
 -- Position the strip over the buttons that are actually visible, so hiding the
 -- Death Knight one leaves the rest centred instead of gapped.
 function CW.LayoutClassStrip()
     local visible = {}
     for _, b in ipairs(classButtons) do
-        if b.classId == 6 and not CW.dkEnabled then
+        if (b.classId == 6 and not CW.dkEnabled)
+            or (b.classId == CLASS_HERO and not CW.forgedEnabled) then
             b:Hide()
         else
             b:Show()
@@ -4331,8 +4342,11 @@ local function HandleMessage(msg)
         -- servers, which is why the default is off rather than on: a missing
         -- field must not conjure a class button with nothing behind it.
         local dk = (tonumber(p[4]) or 0) == 1
-        if dk ~= CW.dkEnabled then
-            CW.dkEnabled = dk
+        -- Absent from older servers, and absent means off: a Hero button with
+        -- nothing behind it is worse than no button.
+        local forged = (tonumber(p[5]) or 0) == 1
+        if dk ~= CW.dkEnabled or forged ~= CW.forgedEnabled then
+            CW.dkEnabled, CW.forgedEnabled = dk, forged
             CW.LayoutClassStrip()
         end
         RenderList()

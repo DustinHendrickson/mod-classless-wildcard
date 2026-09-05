@@ -196,6 +196,7 @@ private:
     // module-owned spells with no trainer, so they bypass TrainerTaughtOnly
     // and inherit their base's levels, class mask and spellbook tab.
     void LoadVariants();
+    void LoadForgedSpells();
     // Which ability lines each talent's spells head or teach (Pyroblast,
     // Mortal Strike, Mangle); taking the talent grants those lines.
     void ResolveTalentAbilityLines();
