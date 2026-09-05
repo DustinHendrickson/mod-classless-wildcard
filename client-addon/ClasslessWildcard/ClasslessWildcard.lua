@@ -120,6 +120,16 @@ CW.RequestAbil, CW.RequestTal = RequestAbil, RequestTal
 local frame = CreateFrame("Frame", "ClasslessWildcardFrame", UIParent)
 frame:SetWidth(950); frame:SetHeight(600)
 frame:SetPoint("CENTER")
+-- Above the rest of the interface while it is open. UIParent is MEDIUM and a
+-- plain child of it inherits that, which tied the panel with the resource bars
+-- and with minimap buttons -- and a tie is broken by creation order, so those
+-- drew over it. HIGH clears everything the game puts at MEDIUM or below,
+-- including MinimapCluster and PlayerFrame at BACKGROUND, and still sits under
+-- DIALOG (the flyouts, StaticPopups) and FULLSCREEN_DIALOG (the roll reveal,
+-- the starting hand). Toplevel so clicking the panel raises it over anything
+-- else that lands at HIGH.
+frame:SetFrameStrata("HIGH")
+frame:SetToplevel(true)
 -- The whole look of the panel (pane outlines, header strips, textured
 -- ground) is one baked image applied as the backdrop. RefreshPanelArt applies
 -- it again on entering the world, after a cinematic and whenever the panel
@@ -1820,6 +1830,8 @@ end
 
 local barsFrame = CreateFrame("Frame", "ClasslessWildcardBars", UIParent)
 barsFrame:SetWidth(BARS.W); barsFrame:SetHeight(58)
+-- A HUD element: above the world, below the panel and every dialog.
+barsFrame:SetFrameStrata("MEDIUM")
 if PlayerFrame then
     -- dock under the player frame so ALL pools read as one unit frame
     barsFrame:SetPoint("TOPLEFT", PlayerFrame, "BOTTOMLEFT", 100, 24)

@@ -520,6 +520,14 @@ def build_variant(spell, sla, icon, visual, base_id, base_index, rank_index, ele
     if sla_fields:
         sla_fields[0] = sla_id
         sla_fields[2] = first_variant_id + rank_index
+        # AcquireMethod is set, not copied. 1 and 2 mean the core hands the
+        # spell over with the skill line itself, which is what every class's
+        # starting strike says -- Heroic Strike, Sinister Strike, Raptor
+        # Strike, Plague Strike, Blood Strike. Copied onto a variant it makes
+        # the variant a free class spell, and the server reads it as a trained
+        # ability rather than a variant, so it is rated from its own power
+        # instead of one tier above its base. A variant is rolled for: 0.
+        sla_fields[9] = 0
 
     lost = "rider dropped: no free slot" if (rider and rider_slot is None) else ""
     return dict(id=first_variant_id + rank_index, first=first_variant_id, base=base_id,

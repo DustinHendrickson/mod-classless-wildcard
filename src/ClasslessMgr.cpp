@@ -1096,8 +1096,22 @@ void ClasslessMgr::LoadVariants()
             ++skipped;
             continue;
         }
-        if (_abilities.count(variantFirst))
+        if (variantFirst == baseFirst)
+        {
+            LOG_WARN("module.classless",
+                     "mod-classless-wildcard: variant {} names itself as its own base, row ignored", variantFirst);
+            ++skipped;
             continue;
+        }
+
+        // This table is the authority on what a variant id is. The pass over
+        // SkillLineAbility.dbc enters every class-masked spell as an ordinary
+        // ability, and a variant carries such a row so the client files it in
+        // the right spellbook tab -- so a variant can already be sitting in
+        // the pool, rated from its own power instead of one tier above its
+        // base, and without the variant flag ResyncVariants needs to correct
+        // it. Take the id back.
+        _abilities.erase(variantFirst);
 
         AbilityEntry const& base = baseItr->second;
         AbilityEntry e;
@@ -2516,6 +2530,19 @@ void ClasslessMgr::GrantAbilityInternal(Player* player, AbilityEntry const& e, G
     GrantRequiredForm(player, e);
     // a newly gained spell needs its tab straight away, not at next login
     SyncSpellbookTabs(player);
+
+    // Learning one spell can hand over a whole starter set. Player::addSpell
+    // calls LearnDefaultSkill for the spell's own skill line when that line
+    // says AcquireMethod 2, and the SetSkill behind it fires
+    // learnSkillRewardedSpells, which teaches every AcquireMethod 1/2 spell on
+    // the line. Holy Light and Seal of Righteousness are both AcquireMethod 2
+    // on line 594, so a Hero who rolls Holy Light is handed Seal of
+    // Righteousness with it.
+    //
+    // Repeated here rather than left to SyncSpellbookTabs above, which does
+    // nothing at all when spellbook tabs are switched off.
+    if (cfg.stripStartingSpells && !cfg.spellbookTabs)
+        StripUnearnedSpells(player);
 }
 
 // Some abilities do nothing on their own: a Hero who draws Bear Form without
@@ -2970,22 +2997,23 @@ void ClasslessMgr::SyncSpellbookTabs(Player* player, bool clearChassisLines)
 
     // Then a tab for each school they actually know.
     std::set<uint16> const& give = (cfg.spellbookTabs >= 2) ? _classSkillLines : want;
-    bool added = false;
     for (uint16 line : give)
         if (!player->HasSkill(line))
-        {
             // value 1 with a level-scaled max, exactly what LearnDefaultSkill
             // gives a class line (SKILL_RANGE_LEVEL) and what UpdateSkillsForLevel
             // re-writes it to on every level-up
             player->SetSkill(line, 0, 1, player->GetMaxSkillValueForLevel());
-            added = true;
-        }
 
-    // SetSkill just fired learnSkillRewardedSpells for every line added, which
-    // hands out that line's learned-on-skill starter spells. Take back anything
-    // the Hero did not earn, right now rather than at next login -- otherwise a
-    // roll that opens a new tab pays out free spells until they relog.
-    if (added && cfg.stripStartingSpells)
+    // SetSkill fires learnSkillRewardedSpells for every line added, which hands
+    // out that line's learned-on-skill starter spells. Take back anything the
+    // Hero did not earn, right now rather than at next login -- otherwise a roll
+    // that opens a new tab pays out free spells until they relog.
+    //
+    // Swept whether or not a line was added HERE. Player::addSpell adds a
+    // spell's own line for it whenever that line says AcquireMethod 2, so by
+    // the time this runs the line can already be present and the free spells
+    // already in the book, with nothing for this function to notice.
+    if (cfg.stripStartingSpells)
         StripUnearnedSpells(player);
 }
 

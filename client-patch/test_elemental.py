@@ -139,6 +139,22 @@ def main(argv=None):
     check("SkillLineAbility.dbc: variant rows open to every class", bad == 0 and added,
           "%d added, %d wrong" % (added, bad))
 
+    # AcquireMethod 1 and 2 mean the core hands the spell over with the skill
+    # line itself. Every class's starting strike says that, so a row copied
+    # from Heroic Strike or Sinister Strike carries it, and the variant stops
+    # being something rolled for: the server also reads it as an ordinary
+    # trained ability and rates it from its own power rather than one tier
+    # above its base. Every variant row must say 0.
+    granted = [v["id"] for v in variants if v["sla"] and v["sla"][9] != 0]
+    for v in variants:
+        if v["sla"] and v["sla"][0] in ids:
+            row = struct.unpack_from("<14I", records, ids[v["sla"][0]] * r1)
+            if row[9] != 0 and v["id"] not in granted:
+                granted.append(v["id"])
+    check("SkillLineAbility.dbc: no variant is handed out with the skill line",
+          not granted, "%d row(s) carry AcquireMethod 1/2: %s"
+          % (len(granted), granted[:6]) if granted else "%d row(s) checked" % len(variants))
+
     # ---- targeting ---------------------------------------------------------
     # The percent hit and the elemental add must target exactly what the
     # base's weapon effect targeted: an area strike stays an area strike, a

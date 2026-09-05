@@ -74,6 +74,9 @@ StubMT.__index = function(self, k)
     if k == "SetAlpha" then return function(s, v) rawset(s, "__alpha", v) end end
     if k == "GetAlpha" then return function(s) return rawget(s, "__alpha") or 1 end end
     if k == "SetFrameLevel" then return function(s, v) rawset(s, "__level", v) end end
+    if k == "SetFrameStrata" then return function(s, v) rawset(s, "__strata", v) end end
+    if k == "GetFrameStrata" then return function(s) return rawget(s, "__strata") or "MEDIUM" end end
+    if k == "SetToplevel" then return function(s, v) rawset(s, "__toplevel", v and true or false) end end
     if k == "GetFrameLevel" then return function(s) return rawget(s, "__level") or 0 end end
     if k == "SetTexCoord" then return function(s, ...) rawset(s, "__coord", {...}) end end
     if k == "SetPoint" then return function(s, ...) rawset(s, "__point", {...}) end end
@@ -1452,6 +1455,44 @@ def test_settings(h):
     h.check(CW.setFly["__shown"] is False, "clicking Settings again closes it")
 
 
+# Every strata WoW draws, lowest first. UIParent is MEDIUM, so anything that
+# never states one lands there -- which is what put the resource bars and the
+# minimap buttons level with the panel, and a tie goes to whatever was created
+# last.
+STRATA = ["BACKGROUND", "LOW", "MEDIUM", "HIGH", "DIALOG", "FULLSCREEN",
+          "FULLSCREEN_DIALOG", "TOOLTIP"]
+
+
+def test_layering(h):
+    print("--- layering: what draws over what")
+    CW = h.CW
+    g = h.g
+
+    def strata(obj, what):
+        v = obj["__strata"] or "MEDIUM"
+        h.check(v in STRATA, "%s has a real strata (%s)" % (what, v))
+        return STRATA.index(v)
+
+    panel = strata(g.ClasslessWildcardFrame, "the panel")
+    bars = strata(g.ClasslessWildcardBars, "the resource bars")
+    reveal = strata(g.ClasslessWildcardReveal, "the roll reveal")
+    hand = strata(g.ClasslessWildcardHand, "the starting hand")
+    stats = strata(g.ClasslessWildcardStats, "the stats flyout")
+    helpfly = strata(g.ClasslessWildcardHelp, "the help flyout")
+
+    h.check(panel > bars,
+            "the panel draws over the resource bars (%s > %s)"
+            % (STRATA[panel], STRATA[bars]))
+    h.check(panel > STRATA.index("MEDIUM"),
+            "and over everything left on UIParent's own MEDIUM -- minimap, unit frames")
+    h.check(g.ClasslessWildcardFrame["__toplevel"] is True,
+            "clicking the panel raises it within its strata")
+    for name, s in (("the roll reveal", reveal), ("the starting hand", hand),
+                    ("the stats flyout", stats), ("the help flyout", helpfly)):
+        h.check(s > panel, "%s still opens above the panel (%s > %s)"
+                % (name, STRATA[s], STRATA[panel]))
+
+
 def main():
     try:
         h = Harness()
@@ -1475,6 +1516,7 @@ def main():
     test_reveal_layout(h)
     test_resource_bars(h)
     test_settings(h)
+    test_layering(h)
     if h.failures:
         print("\n%d check(s) FAILED" % h.failures)
         return 1
