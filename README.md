@@ -326,6 +326,13 @@ Everything the NPC and the addon do is also available as a chat command.
 | `/cwbars lock \| unlock` | Pin the mini-bars in place, or let them be dragged |
 | `/cwbars reset`         | Put the mini-bars back under the player frame      |
 
+**Browsing.** Each pane's header carries its own controls. On the left is the sort order: by
+level or tier, by name, or grouped by type. On the right is the level filter, **My level** or
+**Any level**: My level lists only what the character can take at the level they are, Any level
+lists the whole library. Abilities have a type filter between the two as well, for melee, ranged,
+spells, heals, utility or passive. Both panes open on My level, and each remembers its own
+choices per account.
+
 **Padlocks.** A padlock holds an ability back from the starting hand's "Roll Abilities" pass,
 which rerolls everything unlocked at once. That pass only exists below `FreeRerollBelowLevel`,
 so at that level every remaining padlock is dropped, the button stops being offered, and rerolls

@@ -384,15 +384,16 @@ def test_browser(h):
     h.recv(state(0))
     h.clear_sent()
     CW.SetTab("ABIL")
-    h.check("ABIL 1 0 0 0" in h.sent(), "default request: class 1, page 0, level ascending, all types")
+    h.check("ABIL 1 0 0 0 1" in h.sent(),
+            "default request: class 1, page 0, level ascending, all types, this level only")
     h.clear_sent()
     for _ in range(4):
         h.click(CW.abilSortBtn)
-    h.check(str(CW.abilSortBtn["__text"]) == "By type" and "ABIL 1 0 4 0" in h.sent(),
+    h.check(str(CW.abilSortBtn["__text"]) == "By type" and "ABIL 1 0 4 0 1" in h.sent(),
             "four clicks reach By type and re-request page 0 (%s)" % str(CW.abilSortBtn["__text"]))
     h.clear_sent()
     h.click(CW.abilTypeBtn)
-    h.check(str(CW.abilTypeBtn["__text"]) == "Melee" and "ABIL 1 0 4 2" in h.sent(), "type filter Melee sends type 2")
+    h.check(str(CW.abilTypeBtn["__text"]) == "Melee" and "ABIL 1 0 4 2 1" in h.sent(), "type filter Melee sends type 2")
     h.recv("AB|1|0|1|100:0:1:0:0:4:1;72:0:2:0:0:12:1;")
     sub = str(CW.abilEntries[1].sub["__text"])
     h.check("Melee" in sub and "1 Ability Essence" in sub, "rows carry the type while filtering: %r" % sub)
@@ -405,14 +406,52 @@ def test_browser(h):
     h.recv("TB|161:1;")
     h.clear_sent()
     h.recv("TBE|")
-    h.check("TAL 161 0 0" in h.sent(), "tabs arriving request the tree in tier order")
+    h.check("TAL 161 0 0 1" in h.sent(), "tabs arriving request the tree in tier order")
     h.clear_sent()
     for _ in range(4):
         h.click(CW.talSortBtn)
-    h.check(str(CW.talSortBtn["__text"]) == "By type" and "TAL 161 0 4" in h.sent(), "talent sort cycles to By type")
+    h.check(str(CW.talSortBtn["__text"]) == "By type" and "TAL 161 0 4 1" in h.sent(), "talent sort cycles to By type")
     h.recv("TL|161|0|1|1234:12294:0:0:1:6:1;1235:12295:0:0:3:0:0;")
     subs = [str(CW.talEntries[i].sub["__text"]) for i in (1, 2)]
     h.check("Active" in subs[0] and "Passive" in subs[1], "talent rows are tagged Active / Passive: %r" % subs)
+
+    # ---- the level filter: what this character can take, and it leads
+    h.clear_sent()
+    h.check(str(CW.abilScopeBtn["__text"]) == "My level"
+            and str(CW.talScopeBtn["__text"]) == "My level",
+            "both browsers open on My level")
+    h.click(CW.abilScopeBtn)
+    h.check(str(CW.abilScopeBtn["__text"]) == "Any level" and "ABIL 1 0 0 0 0" in h.sent(),
+            "cycling it asks for the whole library instead (%s)" % h.sent())
+    h.clear_sent()
+    h.click(CW.talScopeBtn)
+    h.check(str(CW.talScopeBtn["__text"]) == "Any level" and "TAL 161 0 4 0" in h.sent(),
+            "the talents pane carries its own copy of the filter (%s)" % h.sent())
+    g.ClasslessWildcardDB.abilScope = 99
+    g.ClasslessWildcardDB.talScope = 99
+    CW.LoadBrowseChoices()
+    h.check(CW.abilScope == 1 and CW.talScope == 1
+            and str(CW.abilScopeBtn["__text"]) == "My level",
+            "a saved value that is not a real choice falls back to My level")
+
+    h.clear_sent()
+    frame["__shown"] = True
+    h.recv(state(0, level=21))
+    h.check(any(str(m).startswith("ABIL ") for m in h.sent())
+            and any(str(m).startswith("TAL ") for m in h.sent()),
+            "a level-up re-asks for both lists, since rows just opened (%s)" % h.sent())
+
+    # ---- an empty pane explains itself rather than looking broken
+    h.recv("AB|1|0|1|")
+    h.check(CW.abilEmpty["__shown"] is True and "Any level" in str(CW.abilEmpty["__text"]),
+            "a level filter that empties the list names the way out: %r"
+            % str(CW.abilEmpty["__text"]))
+    h.click(CW.abilScopeBtn)
+    h.recv("AB|1|0|1|")
+    h.check(CW.abilEmpty["__shown"] is True and "filter" in str(CW.abilEmpty["__text"]),
+            "with the filter off it just says nothing matched: %r" % str(CW.abilEmpty["__text"]))
+    h.recv("AB|1|0|1|100:0:1:0:0:4:1;")
+    h.check(CW.abilEmpty["__shown"] is False, "and the note goes the moment there is a row")
 
     frame["__scripts"]["OnShow"](frame)
     h.recv(state(0))

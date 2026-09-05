@@ -147,19 +147,30 @@ namespace
         SORT_TYPE       = 4    // grouped by type (talents: active before passive), then level
     };
 
-    // ABIL <class> <page> [sort] [type]: type 0 shows everything, 1..6 keeps
-    // one AbilityType (its value + 1, so a missing argument means "all").
+    // ABIL <class> <page> [sort] [type] [scope]: type 0 shows everything, 1..6
+    // keeps one AbilityType (its value + 1, so a missing argument means "all").
+    // scope 1 keeps only what the Hero's level allows, 0 the whole library; a
+    // missing argument means the whole library, which is what a client that
+    // does not know about the filter expects to get.
     // Each record: first:rarity:cost:owned:passive:level:type
-    void SendAbilityPage(Player* player, uint8 classId, uint32 page, uint32 sort, uint32 typeArg)
+    void SendAbilityPage(Player* player, uint8 classId, uint32 page, uint32 sort, uint32 typeArg,
+                         uint32 levelScope)
     {
         CharState& st = sClasslessMgr->GetState(player);
         uint32 classMask = classId >= 1 && classId <= 11 ? (1u << (classId - 1)) : 0;
+
+        // Exactly the rule BuyAbility enforces, so the filtered list is the
+        // list that can actually be acted on. A realm with level requirements
+        // switched off gates nothing, so the filter hides nothing.
+        bool const levelOnly = levelScope && sClasslessMgr->cfg.respectLevelReqs;
+        uint32 const heroLevel = player->GetLevel();
 
         std::vector<AbilityEntry const*> list;
         for (auto const& [firstSpell, e] : sClasslessMgr->Abilities())
             if (e.enabled && (e.classMask & classMask)
                 && (!e.variant || sClasslessMgr->cfg.elementalShowInBrowser)
-                && (!typeArg || uint32(e.type) + 1 == typeArg))
+                && (!typeArg || uint32(e.type) + 1 == typeArg)
+                && (!levelOnly || e.rankLevels.empty() || uint32(e.rankLevels[0]) <= heroLevel))
                 list.push_back(&e);
 
         auto level = [](AbilityEntry const* e) { return e->rankLevels.empty() ? 1u : uint32(e->rankLevels[0]); };
@@ -223,17 +234,24 @@ namespace
         SendAddon(player, "TBE|");
     }
 
-    // TAL <tab> <page> [sort]. Each record:
+    // TAL <tab> <page> [sort] [scope]. scope 1 keeps only the tiers the Hero's
+    // level has opened, 0 the whole tree. Each record:
     // talent:rank1spell:rarity:owned:max:row:active (active = the talent's
     // rank-1 spell is something you cast, not a passive)
-    void SendTalentPage(Player* player, uint32 tabId, uint32 page, uint32 sort)
+    void SendTalentPage(Player* player, uint32 tabId, uint32 page, uint32 sort, uint32 levelScope)
     {
         CharState& st = sClasslessMgr->GetState(player);
+
+        // The same tier rule BuyTalentRank and the roll pool use: row R opens
+        // at level 10 + 5R.
+        bool const levelOnly = levelScope && sClasslessMgr->cfg.respectLevelReqs;
+        uint32 const heroLevel = player->GetLevel();
 
         struct Row { TalentPoolEntry const* t; std::string name; bool active; };
         std::vector<Row> list;
         for (auto const& [talentId, t] : sClasslessMgr->Talents())
-            if (t.enabled && t.tabId == tabId)
+            if (t.enabled && t.tabId == tabId
+                && (!levelOnly || heroLevel >= 10u + uint32(t.row) * 5u))
             {
                 SpellInfo const* info = sSpellMgr->GetSpellInfo(t.rankSpells[0]);
                 list.push_back({ &t, info && info->SpellName[0] ? info->SpellName[0] : "",
@@ -446,11 +464,11 @@ namespace
         if (cmd == "HELLO" || cmd == "STATE")
             SendState(player);
         else if (cmd == "ABIL")
-            SendAbilityPage(player, uint8(argNum(1)), argNum(2), argNum(3), argNum(4));
+            SendAbilityPage(player, uint8(argNum(1)), argNum(2), argNum(3), argNum(4), argNum(5));
         else if (cmd == "TABS")
             SendTalentTabs(player);
         else if (cmd == "TAL")
-            SendTalentPage(player, argNum(1), argNum(2), argNum(3));
+            SendTalentPage(player, argNum(1), argNum(2), argNum(3), argNum(4));
         else if (cmd == "OWN")
             SendOwnedAbilities(player);
         else if (cmd == "OWNT")

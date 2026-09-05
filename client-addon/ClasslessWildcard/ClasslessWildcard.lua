@@ -96,20 +96,28 @@ CW.BROWSE = {
     ABIL_TYPES = { { "All", 0 }, { "Melee", 2 }, { "Ranged", 3 }, { "Spells", 4 },
                    { "Heals", 5 }, { "Utility", 1 }, { "Passive", 6 } },
     TYPE_NAMES = { [0] = "Utility", [1] = "Melee", [2] = "Ranged", [3] = "Spell", [4] = "Heal", [5] = "Passive" },
+    -- label, and the level scope the server expects: 1 keeps only what this
+    -- character's level lets them take, 0 keeps the whole list. Shared by both
+    -- browsers, which each remember their own choice.
+    SCOPES = { { "My level", 1 }, { "Any level", 0 } },
 }
 CW.abilSort, CW.abilType, CW.talSort = 1, 1, 1
+-- Both browsers open on what the character can take right now.
+CW.abilScope, CW.talScope = 1, 1
 
 local function RequestAbil(page)
     CW.abilPage = page
     Send("ABIL " .. CLASS_ORDER[CW.classIndex] .. " " .. page .. " " .. (CW.abilSort - 1)
-         .. " " .. CW.BROWSE.ABIL_TYPES[CW.abilType][2])
+         .. " " .. CW.BROWSE.ABIL_TYPES[CW.abilType][2]
+         .. " " .. CW.BROWSE.SCOPES[CW.abilScope][2])
 end
 
 local function RequestTal(page)
     local t = CW.tabs[CW.tabIndex]
     if not t then return end
     CW.talPage = page
-    Send("TAL " .. t.id .. " " .. page .. " " .. (CW.talSort - 1))
+    Send("TAL " .. t.id .. " " .. page .. " " .. (CW.talSort - 1)
+         .. " " .. CW.BROWSE.SCOPES[CW.talScope][2])
 end
 CW.RequestAbil, CW.RequestTal = RequestAbil, RequestTal
 
@@ -440,7 +448,7 @@ end
 
 -- Abilities pane -----------------------------------------------------------------
 local ABIL_X, ABIL_W = 24, 296
-MakePaneHeader(ABIL_X, ABIL_W, "Abilities")
+MakePaneHeader(ABIL_X + 84, 80, "Abilities")
 
 local abilEntries = {}
 for i = 1, ENTRIES do
@@ -450,7 +458,7 @@ local abilPrev, abilPage, abilNext = MakePager(ABIL_X, ABIL_W, 66)
 
 -- Talents pane -------------------------------------------------------------------
 local TAL_X, TAL_W = 336, 296
-MakePaneHeader(TAL_X, TAL_W, "Talents")
+MakePaneHeader(TAL_X + 84, 80, "Talents")
 
 -- Sort and filter buttons sit at the ends of the header strips, either side
 -- of the pane titles. Clicking cycles the choice and reloads page 1. Block
@@ -471,9 +479,27 @@ do
         ClasslessWildcardDB = ClasslessWildcardDB or {}
         ClasslessWildcardDB[key] = value
     end
-    local abilSortBtn = MakeHeaderButton(ABIL_X + 4, 92, B.ABIL_SORTS[1])
-    local abilTypeBtn = MakeHeaderButton(ABIL_X + ABIL_W - 96, 92, B.ABIL_TYPES[1][1])
-    local talSortBtn = MakeHeaderButton(TAL_X + 4, 92, B.TAL_SORTS[1])
+    -- Slots on the strip: sort on the left, then the pane title, then the
+    -- filters. Widths are the widest label each control has to hold plus the
+    -- button art's padding, measured in the game's own font.
+    local abilSortBtn = MakeHeaderButton(ABIL_X + 4, 80, B.ABIL_SORTS[1])
+    local abilTypeBtn = MakeHeaderButton(ABIL_X + 164, 58, B.ABIL_TYPES[1][1])
+    local abilScopeBtn = MakeHeaderButton(ABIL_X + 226, 66, B.SCOPES[1][1])
+    local talSortBtn = MakeHeaderButton(TAL_X + 4, 80, B.TAL_SORTS[1])
+    local talScopeBtn = MakeHeaderButton(TAL_X + 226, 66, B.SCOPES[1][1])
+
+    -- Stands in for the list when a filter leaves nothing, so an empty pane
+    -- reads as a filter result rather than a panel that failed to load.
+    local function MakeEmptyNote(x, width)
+        local t = frame:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+        t:SetPoint("TOPLEFT", x + 16, PANE_TOP - 36 - 2 * ENTRY_H)
+        t:SetWidth(width - 32)
+        t:SetJustifyH("CENTER")
+        t:Hide()
+        return t
+    end
+    CW.abilEmpty = MakeEmptyNote(ABIL_X, ABIL_W)
+    CW.talEmpty = MakeEmptyNote(TAL_X, TAL_W)
     abilSortBtn:SetScript("OnClick", function()
         CW.abilSort = CW.abilSort % #B.ABIL_SORTS + 1
         abilSortBtn:SetText(B.ABIL_SORTS[CW.abilSort])
@@ -492,7 +518,20 @@ do
         SaveBrowseChoice("talSort", CW.talSort)
         RequestTal(0)
     end)
+    abilScopeBtn:SetScript("OnClick", function()
+        CW.abilScope = CW.abilScope % #B.SCOPES + 1
+        abilScopeBtn:SetText(B.SCOPES[CW.abilScope][1])
+        SaveBrowseChoice("abilScope", CW.abilScope)
+        RequestAbil(0)
+    end)
+    talScopeBtn:SetScript("OnClick", function()
+        CW.talScope = CW.talScope % #B.SCOPES + 1
+        talScopeBtn:SetText(B.SCOPES[CW.talScope][1])
+        SaveBrowseChoice("talScope", CW.talScope)
+        RequestTal(0)
+    end)
     CW.abilSortBtn, CW.abilTypeBtn, CW.talSortBtn = abilSortBtn, abilTypeBtn, talSortBtn
+    CW.abilScopeBtn, CW.talScopeBtn = abilScopeBtn, talScopeBtn
 
     -- saved choices arrive with the saved variables, after this file has run
     function CW.LoadBrowseChoices()
@@ -500,9 +539,13 @@ do
         CW.abilSort = B.ABIL_SORTS[ClasslessWildcardDB.abilSort or 0] and ClasslessWildcardDB.abilSort or 1
         CW.abilType = B.ABIL_TYPES[ClasslessWildcardDB.abilType or 0] and ClasslessWildcardDB.abilType or 1
         CW.talSort = B.TAL_SORTS[ClasslessWildcardDB.talSort or 0] and ClasslessWildcardDB.talSort or 1
+        CW.abilScope = B.SCOPES[ClasslessWildcardDB.abilScope or 0] and ClasslessWildcardDB.abilScope or 1
+        CW.talScope = B.SCOPES[ClasslessWildcardDB.talScope or 0] and ClasslessWildcardDB.talScope or 1
         abilSortBtn:SetText(B.ABIL_SORTS[CW.abilSort])
         abilTypeBtn:SetText(B.ABIL_TYPES[CW.abilType][1])
         talSortBtn:SetText(B.TAL_SORTS[CW.talSort])
+        abilScopeBtn:SetText(B.SCOPES[CW.abilScope][1])
+        talScopeBtn:SetText(B.SCOPES[CW.talScope][1])
     end
 end
 local treeLeft = CreateFrame("Button", nil, frame)
@@ -1231,6 +1274,19 @@ local function UpdateStatus()
     end
 end
 
+-- What an empty pane says. A level filter emptying a list is the ordinary
+-- case for a low-level character, so it names the way out.
+function CW.ShowEmptyNote(note, firstRow, scope, what)
+    if firstRow then
+        note:Hide()
+        return
+    end
+    note:SetText(scope == 1
+        and ("|cffaaaaaaNo " .. what .. " at your level yet.\nSwitch to Any level to see the rest.|r")
+        or ("|cffaaaaaaNo " .. what .. " match this filter.|r"))
+    note:Show()
+end
+
 local function RenderAbilPane()
     local s = CW.state
     abilPage:SetText((CW.abilPage + 1) .. " / " .. CW.abilTotal)
@@ -1265,6 +1321,7 @@ local function RenderAbilPane()
             w:Hide()
         end
     end
+    CW.ShowEmptyNote(CW.abilEmpty, CW.abilRows[1], CW.abilScope, "abilities")
 end
 
 local function RenderTalPane()
@@ -1319,6 +1376,7 @@ local function RenderTalPane()
             w:Hide()
         end
     end
+    CW.ShowEmptyNote(CW.talEmpty, CW.talRows[1], CW.talScope, "talents")
 end
 
 -- A padlock holds a card back from the starting hand's roll-everything pass,
@@ -4092,6 +4150,7 @@ local function HandleMessage(msg)
 
     if kind == "S" then
         local s = CW.state
+        local wasLevel = s.level
         s.mode, s.ae, s.te, s.pity, s.chance = tonumber(p[2]) or 255, tonumber(p[3]) or 0, tonumber(p[4]) or 0, tonumber(p[5]) or 0, tonumber(p[6]) or 0
         s.scrolls, s.level, s.deadline = tonumber(p[7]) or 0, tonumber(p[8]) or 1, tonumber(p[9]) or 5
         s.rebirth, s.rebirthCost = tonumber(p[10]) or 0, tonumber(p[11]) or 0
@@ -4118,6 +4177,12 @@ local function HandleMessage(msg)
         if reveal:IsShown() and rvFX.SetRerollButton then rvFX.SetRerollButton() end
         CW.UpdateBarsVisibility()
         UpdateStatus()
+        -- A level-up opens rows that the level filter was hiding, so ask for
+        -- the page again rather than leaving a stale list behind.
+        if wasLevel and s.level ~= wasLevel and frame:IsShown() then
+            if CW.abilScope == 1 then RequestAbil(CW.abilPage or 0) end
+            if CW.talScope == 1 then RequestTal(CW.talPage or 0) end
+        end
         -- fresh Wildcard hero: lock & roll your starting hand
         if CW.pendingHand then
             CW.pendingHand = nil
