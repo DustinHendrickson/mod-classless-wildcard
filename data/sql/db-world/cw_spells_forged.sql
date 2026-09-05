@@ -4,18 +4,75 @@
 
 CREATE TABLE IF NOT EXISTS `cw_forged_spells` (
   `first_spell` INT UNSIGNED NOT NULL COMMENT 'rank 1 of the forged line',
-  `recipe`      VARCHAR(48) NOT NULL COMMENT 'the recipe key, for tracing',
-  `rarity`      TINYINT UNSIGNED NOT NULL DEFAULT 255 COMMENT '255 = derive from power',
-  `type`        TINYINT UNSIGNED NOT NULL DEFAULT 255 COMMENT '0 utility 1 melee 2 ranged 3 spell 4 heal 5 passive, 255 = classify from the spell',
-  `enabled`     TINYINT UNSIGNED NOT NULL DEFAULT 1,
+  `recipe` VARCHAR(48) NOT NULL COMMENT 'the recipe key, for tracing',
+  `rarity` TINYINT UNSIGNED NOT NULL DEFAULT 255 COMMENT '255 = derive from power',
+  `type` TINYINT UNSIGNED NOT NULL DEFAULT 255 COMMENT '0 utility 1 melee 2 ranged 3 spell 4 heal 5 passive, 255 = classify from the spell',
+  `enabled` TINYINT UNSIGNED NOT NULL DEFAULT 1,
   PRIMARY KEY (`first_spell`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='Classless forged spells';
 
+-- CREATE TABLE IF NOT EXISTS leaves a table that already exists exactly
+-- as it found it, so a realm that applied an earlier build of this file
+-- still has that build's columns. Add the missing ones before anything
+-- below names them.
+DROP PROCEDURE IF EXISTS cw_forged_spells_schema;
+DELIMITER //
+CREATE PROCEDURE cw_forged_spells_schema()
+BEGIN
+    IF NOT EXISTS (SELECT 1 FROM information_schema.COLUMNS
+                   WHERE TABLE_SCHEMA = DATABASE()
+                     AND TABLE_NAME = 'cw_forged_spells'
+                     AND COLUMN_NAME = 'recipe') THEN
+        ALTER TABLE `cw_forged_spells` ADD COLUMN `recipe` VARCHAR(48) NOT NULL COMMENT 'the recipe key, for tracing' AFTER `first_spell`;
+    END IF;
+    IF NOT EXISTS (SELECT 1 FROM information_schema.COLUMNS
+                   WHERE TABLE_SCHEMA = DATABASE()
+                     AND TABLE_NAME = 'cw_forged_spells'
+                     AND COLUMN_NAME = 'rarity') THEN
+        ALTER TABLE `cw_forged_spells` ADD COLUMN `rarity` TINYINT UNSIGNED NOT NULL DEFAULT 255 COMMENT '255 = derive from power' AFTER `recipe`;
+    END IF;
+    IF NOT EXISTS (SELECT 1 FROM information_schema.COLUMNS
+                   WHERE TABLE_SCHEMA = DATABASE()
+                     AND TABLE_NAME = 'cw_forged_spells'
+                     AND COLUMN_NAME = 'type') THEN
+        ALTER TABLE `cw_forged_spells` ADD COLUMN `type` TINYINT UNSIGNED NOT NULL DEFAULT 255 COMMENT '0 utility 1 melee 2 ranged 3 spell 4 heal 5 passive, 255 = classify from the spell' AFTER `rarity`;
+    END IF;
+    IF NOT EXISTS (SELECT 1 FROM information_schema.COLUMNS
+                   WHERE TABLE_SCHEMA = DATABASE()
+                     AND TABLE_NAME = 'cw_forged_spells'
+                     AND COLUMN_NAME = 'enabled') THEN
+        ALTER TABLE `cw_forged_spells` ADD COLUMN `enabled` TINYINT UNSIGNED NOT NULL DEFAULT 1 AFTER `type`;
+    END IF;
+END //
+DELIMITER ;
+CALL cw_forged_spells_schema();
+DROP PROCEDURE IF EXISTS cw_forged_spells_schema;
+
 CREATE TABLE IF NOT EXISTS `cw_forged_meta` (
-  `key`   VARCHAR(32) NOT NULL,
+  `key` VARCHAR(32) NOT NULL,
   `value` VARCHAR(64) NOT NULL,
   PRIMARY KEY (`key`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='Which generator run the forged rows came from';
+
+-- CREATE TABLE IF NOT EXISTS leaves a table that already exists exactly
+-- as it found it, so a realm that applied an earlier build of this file
+-- still has that build's columns. Add the missing ones before anything
+-- below names them.
+DROP PROCEDURE IF EXISTS cw_forged_meta_schema;
+DELIMITER //
+CREATE PROCEDURE cw_forged_meta_schema()
+BEGIN
+    IF NOT EXISTS (SELECT 1 FROM information_schema.COLUMNS
+                   WHERE TABLE_SCHEMA = DATABASE()
+                     AND TABLE_NAME = 'cw_forged_meta'
+                     AND COLUMN_NAME = 'value') THEN
+        ALTER TABLE `cw_forged_meta` ADD COLUMN `value` VARCHAR(64) NOT NULL AFTER `key`;
+    END IF;
+END //
+DELIMITER ;
+CALL cw_forged_meta_schema();
+DROP PROCEDURE IF EXISTS cw_forged_meta_schema;
+
 REPLACE INTO `cw_forged_meta` (`key`, `value`) VALUES ('generation', 'de87f4d853e3');
 
 -- The Hero skill line. Both rows are load-bearing: without the

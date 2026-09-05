@@ -429,6 +429,33 @@ def main():
     check("the SQL deletes its own id range before inserting",
           ("DELETE FROM `spell_dbc` WHERE `ID` BETWEEN %d AND %d;" % (SPELL_BASE, BLOCK_END)) in sql)
 
+    # This one shipped: CREATE TABLE IF NOT EXISTS leaves a table that already
+    # exists exactly as it found it, so a realm that had applied an earlier
+    # build kept a cw_forged_spells with no `type` column, and the INSERT below
+    # died with "Unknown column 'type' in 'field list'". For every table this
+    # file creates, each column a later write names has to be either the
+    # primary key, which no version has been without, or one a guarded ALTER
+    # adds first.
+    unmigrated, tables = [], re.findall(r"CREATE TABLE IF NOT EXISTS `(\w+)`", sql)
+    for table in tables:
+        pk = re.search(r"CREATE TABLE IF NOT EXISTS `%s`.*?PRIMARY KEY \(`(\w+)`\)"
+                       % table, sql, re.S)
+        added = {m.group(1): m.start() for m in
+                 re.finditer(r"ALTER TABLE `%s` ADD COLUMN `(\w+)`" % table, sql)}
+        for w in re.finditer(r"(?:INSERT|REPLACE) INTO `%s` \(([^)]*)\)" % table, sql):
+            for c in re.findall(r"`(\w+)`", w.group(1)):
+                if pk and c == pk.group(1):
+                    continue
+                at = added.get(c)
+                if (at is None or at > w.start()
+                        or "IF NOT EXISTS" not in sql[max(0, at - 400):at]):
+                    unmigrated.append("%s.%s" % (table, c))
+    check("every column a write names survives an older copy of its table",
+          len(tables) >= 2 and not unmigrated,
+          "%d table(s); a column with no guarded ALTER above the write that "
+          "names it is an Unknown column error on any realm that applied an "
+          "older build; unmigrated %s" % (len(tables), unmigrated))
+
     scripted_keys = {r["key"] for r in RECIPES if r.get("script")}
     want_rows = sum(1 for sp in doc["spells"]
                     if sp["key"] in scripted_keys and not sp["key"].endswith("_companion"))
