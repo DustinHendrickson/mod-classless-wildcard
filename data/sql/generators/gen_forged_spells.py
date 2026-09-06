@@ -105,7 +105,9 @@ SUMMON_CREATURES = [
     (990111, "Reclaimed Sentry", 3127, None),    # Cannon, something that can fire
     (990112, "Cairn", 30516, None),              # AzsharaStoneTablet02, a standing stone
     (990113, "Waystone", 30886, None),           # AzsharaStoneTablet04, a marker stone
-    (990114, "Signal Fire", 26506, None),        # UL_Torch01, a torch
+    # 26506 is an Ulduar DOODAD at native scale 3.0; at 0.4 only its flame
+    # showed and it read as an orb. This is the Midsummer bonfire.
+    (990114, "Signal Fire", 22993, None),        # SummerFest_Bonfire_Large01
     (990115, "Rally Point", 27399, None),        # ArgentCrusade_Banner01, a banner
 ]
 
@@ -133,8 +135,8 @@ ALL_CLASSES = 0x5FF
 # The display's own CreatureModelScale multiplies this, so a model built at 3.0
 # needs 0.4 to stand at about head height.
 MODEL_SCALE = {
-    990110: 2.00,     # BoneGuardSpike is 0.45 natively
-    990114: 0.40,     # UL_Torch01 is 3.00 natively
+    990110: 0.90,     # BoneGuardSpike is 0.45 natively, and 2.00 stood over the player
+    990114: 1.50,     # the bonfire is 0.66 natively, so this is about waist high
     990117: 0.33,     # the scarab is a raid mob at 1.00
 }
 
@@ -192,6 +194,8 @@ A_MOD_POWER_REGEN = 85               # mana per five seconds
 A_OBS_MOD_HEALTH = 20                # a PERCENT of maximum health per tick (Blood Craze)
 A_MOD_WEAPON_CRIT = 52               # crit with weapons
 A_MOD_SPELL_CRIT = 57                # crit with spells
+A_PERIODIC_LEECH = 53                # damage over time that heals the caster
+A_MOD_HEALING_TAKEN_PCT = 118        # healing RECEIVED, negative to cut it
 A_MOD_STAT = 29                      # Mark of the Wild, with misc -1 for every stat
 A_DAMAGE_SHIELD = 15                 # Thorns, Retribution Aura
 A_MOD_POWER_COST_PCT = 72            # misc is a school mask; negative is cheaper
@@ -335,7 +339,7 @@ RECIPES = [
     dict(
         key="second_nature", name="Second Nature", rarity=0, type=4,
         first_level=6, ranks=6, step=14, donor=139, school=2,
-        icon=2900, visual=280, visual_kits=dict(instant_area=9159), power=("mana", 10), power_is_pct=True,
+        icon=2900, visual=32, visual_kits=dict(instant_area=9159), power=("mana", 10), power_is_pct=True,
         range_idx=RANGE_SELF, cast_idx=CAST_INSTANT, cooldown_ms=45000,
         effects=[
             dict(eff=E_HEAL, base=heal(0.80), tgt=T_SELF),
@@ -375,7 +379,7 @@ RECIPES = [
             dict(eff=E_TRIGGER_SPELL, base=1, tgt=T_ENEMY, trigger="companion"),
         ],
         companion=dict(
-            name="Antipode Blast", school=16, speed=SPEED_BOLT, visual=67, icon=2371,
+            name="Antipode Blast", school=16, speed=SPEED_BOLT, visual=13,  # Frostbolt's: this half IS the frost damage, icon=2371,
             desc="Frost half of Antipode Blast.",
             duration_idx=DUR_6S,
             effects=[
@@ -390,7 +394,12 @@ RECIPES = [
     dict(
         key="overflow", name="Overflow", rarity=2, type=4,
         first_level=24, ranks=5, step=12, donor=2061, school=2,
-        icon=1871, visual=3077, visual_kits=dict(impact=231), power=("mana", 24), power_is_pct=True,
+        icon=1871, # Holy Nova's, which is the expanding holy ring: its impact kit (3153)
+        # plays that ring on every unit the spell reaches, so the spill draws
+        # itself outward from the target rather than flashing once on them.
+        # No stock heal fills the area kit slots at all, so the ring per target
+        # is how the game itself draws an area heal.
+        visual=3643, visual_kits=dict(instant_area=3153), power=("mana", 24), power_is_pct=True,
         range_idx=RANGE_40, cast_idx=CAST_2500, cooldown_ms=0,
         effects=[
             dict(eff=E_HEAL, base=heal(1.0), tgt=T_TARGET_ALLY),
@@ -404,7 +413,7 @@ RECIPES = [
     dict(
         key="vanguard_rush", name="Vanguard Rush", rarity=3, type=1,
         first_level=34, ranks=4, step=12, donor=100, school=1,
-        icon=1886, visual=867, visual_kits=dict(instant_area=9366), power=("rage", 20),
+        icon=1886, visual=867, visual_kits=dict(instant_area=9366), power=("energy", 40),
         range_idx=RANGE_20, cast_idx=CAST_INSTANT, cooldown_ms=30000,
         effects=[
             dict(eff=E_CHARGE, base=1, tgt=T_ENEMY),
@@ -413,7 +422,8 @@ RECIPES = [
             dict(eff=E_TRIGGER_SPELL, base=1, tgt=T_ENEMY, trigger="companion"),
         ],
         companion=dict(
-            name="Vanguard Rush", school=1, visual=867, icon=1886,
+            name="Vanguard Rush", school=1, visual=10703,  # Shockwave's: Charge's own look has no impact kit
+            #               at all, so the strike that lands was invisible, icon=1886,
             desc="Impact of Vanguard Rush.",
             effects=[dict(eff=E_SCHOOL_DAMAGE, base=dmg(0.5), tgt=T_ENEMY)],
         ),
@@ -440,7 +450,7 @@ RECIPES = [
     dict(
         key="vertigo", name="Vertigo", rarity=2, type=0, mechanic=2,   # disoriented
         first_level=38, ranks=4, step=11, donor=8122, school=32,
-        icon=2875, visual=263, visual_kits=dict(target_impact=3394), power=("mana", 12), power_is_pct=True,
+        icon=2875, visual=346, visual_kits=dict(target_impact=3394), power=("mana", 12), power_is_pct=True,
         range_idx=RANGE_SELF, cast_idx=CAST_INSTANT, cooldown_ms=30000,
         duration_idx=DUR_6S,
         effects=[
@@ -477,7 +487,7 @@ RECIPES = [
     dict(
         key="bulwark_anchor", name="Bulwark Anchor", rarity=2, type=0,
         first_level=28, ranks=5, step=12, donor=5730, school=8,
-        icon=334, visual=8111, visual_kits=dict(instant_area=9264), power=("mana", 16), power_is_pct=True,
+        icon=3506, visual=5787, visual_kits=dict(instant_area=9264), power=("mana", 16), power_is_pct=True,
         range_idx=RANGE_SELF, cast_idx=CAST_INSTANT, cooldown_ms=60000,
         duration_idx=DUR_20S,
         summon=dict(entry=990110, name="Bulwark Anchor"),
@@ -495,7 +505,7 @@ RECIPES = [
     dict(
         key="reclaimed_sentry", name="Reclaimed Sentry", rarity=3, type=0,
         first_level=56, ranks=3, step=8, donor=5730, school=8,
-        icon=3065, visual=8111, power=("mana", 20), power_is_pct=True,
+        icon=3065, visual=13077, power=("mana", 20), power_is_pct=True,
         range_idx=RANGE_30, cast_idx=CAST_1500, cooldown_ms=120000,
         duration_idx=DUR_20S,
         summon=dict(entry=990111, name="Reclaimed Sentry"),
@@ -536,7 +546,7 @@ RECIPES = [
     dict(
         key="brace", name="Brace", rarity=0, type=0,
         first_level=5, ranks=6, step=13, donor=1044, school=1,
-        icon=3397, visual=4050, visual_kits=dict(instant_area=9264),
+        icon=3397, visual=345, visual_kits=dict(instant_area=9264),
         power=("energy", 15),
         range_idx=RANGE_SELF, cast_idx=CAST_INSTANT, cooldown_ms=30000,
         duration_idx=DUR_6S,
@@ -578,7 +588,7 @@ RECIPES = [
     dict(
         key="adrenaline", name="Adrenaline", rarity=0, type=0,
         first_level=12, ranks=5, step=13, donor=1044, school=64,
-        icon=1904, visual=4050, visual_kits=dict(instant_area=1005),
+        icon=1997, visual=1588, visual_kits=dict(instant_area=1005),
         power=("mana", 12), power_is_pct=True,
         range_idx=RANGE_SELF, cast_idx=CAST_INSTANT, cooldown_ms=60000,
         effects=[
@@ -591,7 +601,7 @@ RECIPES = [
     dict(
         key="draw_attention", name="Draw Attention", rarity=0, type=0,
         first_level=8, ranks=1, step=1, donor=355, school=1,
-        icon=1938, visual=246, visual_kits=dict(instant_area=9264),
+        icon=1938, visual=34, visual_kits=dict(instant_area=9264),
         power=("energy", 15),
         range_idx=RANGE_20, cast_idx=CAST_INSTANT, cooldown_ms=8000,
         duration_idx=DUR_6S,
@@ -624,7 +634,7 @@ RECIPES = [
     dict(
         key="bolt_forward", name="Bolt Forward", rarity=0, type=0,
         first_level=14, ranks=1, step=1, donor=2983, school=1,
-        icon=3897, visual=4050, visual_kits=dict(instant_area=3394),
+        icon=3897, visual=6, visual_kits=dict(instant_area=3394),
         power=("energy", 20),
         range_idx=RANGE_SELF, cast_idx=CAST_INSTANT, cooldown_ms=90000,
         duration_idx=DUR_10S,
@@ -642,7 +652,7 @@ RECIPES = [
     dict(
         key="rattle", name="Rattle", rarity=0, type=0,
         first_level=16, ranks=5, step=13, donor=1160, school=1,
-        icon=1739, visual=263, visual_kits=dict(target_impact=6898),
+        icon=1739, visual=210, visual_kits=dict(target_impact=6898),
         power=("energy", 20),
         range_idx=RANGE_20, cast_idx=CAST_INSTANT, cooldown_ms=0,
         duration_idx=DUR_15S,
@@ -672,7 +682,7 @@ RECIPES = [
     dict(
         key="borrowed_stance", name="Borrowed Stance", rarity=0, type=0,
         first_level=20, ranks=4, step=14, donor=1044, school=2,
-        icon=2140, visual=246, visual_kits=dict(instant_area=1005),
+        icon=2140, visual=236, visual_kits=dict(instant_area=1005),
         power=("mana", 10), power_is_pct=True,
         range_idx=RANGE_SELF, cast_idx=CAST_INSTANT, cooldown_ms=60000,
         duration_idx=DUR_15S,
@@ -691,7 +701,7 @@ RECIPES = [
     dict(
         key="cairn", name="Cairn", rarity=0, type=0,
         first_level=15, ranks=5, step=13, donor=5730, school=8,
-        icon=442, visual=8111, visual_kits=dict(instant_area=9366),
+        icon=442, visual=58, visual_kits=dict(instant_area=9366),
         power=("mana", 12), power_is_pct=True,
         range_idx=RANGE_SELF, cast_idx=CAST_INSTANT, cooldown_ms=45000,
         duration_idx=DUR_15S,
@@ -713,7 +723,7 @@ RECIPES = [
     dict(
         key="waystone", name="Waystone", rarity=0, type=0,
         first_level=22, ranks=1, step=1, donor=5730, school=8,
-        icon=2034, visual=8111, visual_kits=dict(instant_area=9366),
+        icon=2034, visual=3405, visual_kits=dict(instant_area=9366),
         power=("mana", 12), power_is_pct=True,
         range_idx=RANGE_SELF, cast_idx=CAST_INSTANT, cooldown_ms=60000,
         duration_idx=DUR_20S,
@@ -733,7 +743,7 @@ RECIPES = [
     dict(
         key="signal_fire", name="Signal Fire", rarity=1, type=0,
         first_level=26, ranks=4, step=13, donor=5730, school=4,
-        icon=1887, visual=8111, visual_kits=dict(instant_area=728),
+        icon=1887, visual=10383, visual_kits=dict(instant_area=728),
         power=("mana", 14), power_is_pct=True,
         range_idx=RANGE_SELF, cast_idx=CAST_INSTANT, cooldown_ms=60000,
         duration_idx=DUR_20S,
@@ -754,7 +764,7 @@ RECIPES = [
     dict(
         key="rally_point", name="Rally Point", rarity=2, type=0,
         first_level=34, ranks=1, step=1, donor=5730, school=1,
-        icon=433, visual=8111, visual_kits=dict(instant_area=1005),
+        icon=433, visual=209, visual_kits=dict(instant_area=1005),
         power=("mana", 16), power_is_pct=True,
         range_idx=RANGE_SELF, cast_idx=CAST_INSTANT, cooldown_ms=120000,
         duration_idx=DUR_20S,
@@ -778,7 +788,7 @@ RECIPES = [
         # delivery is now a buff you cast on somebody, which the set had none of.
         key="quicksilver", name="Quicksilver", rarity=3, type=0,
         first_level=44, ranks=1, step=1, donor=1044, school=64,
-        icon=2186, visual=280, visual_kits=dict(instant_area=9159),
+        icon=2186, visual=4600, visual_kits=dict(instant_area=9159),
         power=("mana", 18), power_is_pct=True,
         range_idx=RANGE_30, cast_idx=CAST_1500, cooldown_ms=180000,
         duration_idx=DUR_15S,
@@ -796,7 +806,7 @@ RECIPES = [
     dict(
         key="venom_beetle", name="Venom Beetle", rarity=0, type=0,
         first_level=10, ranks=1, step=1, donor=688, school=8,
-        icon=1630, visual=8111, visual_kits=dict(instant_area=3031),
+        icon=1630, visual=4043, visual_kits=dict(instant_area=3031),
         power=("mana", 25), power_is_pct=True,
         range_idx=RANGE_SELF, cast_idx=CAST_3000, cooldown_ms=0,
         duration_idx=DUR_PERMANENT,
@@ -854,13 +864,13 @@ RECIPES = [
     dict(
         key="crossdraw", name="Crossdraw", rarity=1, script=True, type=1,
         first_level=14, ranks=6, step=12, donor=1752, school=1,
-        icon=2458, visual=253, power=("energy", 45),
+        icon=2458, visual=211, power=("energy", 45),
         range_idx=RANGE_MELEE, cast_idx=CAST_INSTANT, cooldown_ms=0,
         effects=[
             dict(eff=E_WEAPON_PERCENT, base=100, tgt=T_ENEMY),
         ],
         companion=dict(
-            name="Crossdraw", school=64, visual=253, icon=2458,
+            name="Crossdraw", school=64, visual=965,  # Arcane Explosion's: this half IS the arcane damage, icon=2458,
             visual_kits=dict(impact=1005),
             desc="The arcane half of Crossdraw.",
             effects=[dict(eff=E_SCHOOL_DAMAGE, base=dmg(0.5), tgt=T_ENEMY)],
@@ -907,31 +917,36 @@ RECIPES = [
         compare="Multi-Shot: level 18, chain 3, 10s cooldown. Same cooldown, chain caps at 3.",
     ),
     dict(
-        key="bleed_over", name="Bleed Over", rarity=2, script=True, type=3,
-        first_level=30, ranks=4, step=12, donor=133, school=8,
-        icon=1468,
-        # Serpent Sting's look: Nature, a real missile (model 1522) and an
-        # impact. It was Fireball's, which is the wrong school and drew a
-        # missile this spell had no speed to move.
-        visual=3179, speed=SPEED_BOLT, visual_kits=dict(impact=3031),
+        key="bleed_over", name="Bleed Over", rarity=2, type=3,
+        first_level=30, ranks=4, step=13, donor=1079, school=8,
+        # Rip's look: a bleed, with a real cast kit. It was Serpent Sting's,
+        # which has a missile and no cast kit, so nothing animated at all.
+        icon=1468, visual=3941,
         power=("mana", 15), power_is_pct=True,
         range_idx=RANGE_30, cast_idx=CAST_INSTANT, cooldown_ms=15000,
         duration_idx=DUR_12S,
+        # It used to extend your OTHER damage-over-time effects, which is worth
+        # nothing to a Hero who rolled none. This takes from the target and
+        # gives to you, and shuts their healing down while it runs.
         effects=[
-            dict(eff=E_APPLY_AURA, aura=A_PERIODIC_DAMAGE, base=dmg(0.30),
+            dict(eff=E_APPLY_AURA, aura=A_PERIODIC_LEECH, base=dmg(0.28),
                  tgt=T_ENEMY, amplitude=3000),
-            # how many of your other periodics it extends; the script reads it
-            dict(eff=E_DUMMY, base=("ranks", [2, 3, 4, 5]), tgt=T_ENEMY),
+            dict(eff=E_APPLY_AURA, aura=A_MOD_HEALING_TAKEN_PCT, base=-25,
+                 tgt=T_ENEMY),
         ],
-        desc=("Deals $o1 Shadow damage over $d and extends up to $s2 of your other damage over "
-              "time effects on the target by 6 sec."),
-        compare="Extends by a fixed 6s rather than refreshing to full: refreshing approaches "
-                "never recasting a dot again, which is an exploit, not a spell.",
+        desc=("Opens a wound for $o1 Nature damage over $d, healing you for the damage "
+              "done, and reduces healing the target receives by 25%."),
+        compare="Every leech in the player pool is a channel except Devouring Plague, and "
+                "none of them touches healing received; Mortal Strike and Wound Poison cut "
+                "healing and take nothing back. The two together are on no button in the "
+                "game. Four ticks at a bit over a quarter of the damage anchor each, which "
+                "is under a rolled instant nuke for the same mana, and the healing cut is "
+                "half Mortal Strike's.",
     ),
     dict(
         key="quickening", name="Quickening", rarity=3, script=True, type=0,
         first_level=42, ranks=4, step=10, donor=1044, school=64,
-        icon=2899, visual=263, visual_kits=dict(instant_area=9159),
+        icon=2899, visual=7870, visual_kits=dict(instant_area=9159),
         power=("mana", 15), power_is_pct=True,
         range_idx=RANGE_SELF, cast_idx=CAST_INSTANT, cooldown_ms=120000,
         duration_idx=DUR_12S,
@@ -947,7 +962,7 @@ RECIPES = [
     dict(
         key="repertoire", name="Repertoire", rarity=3, script=True, type=0,
         first_level=52, ranks=3, step=9, donor=1044, school=2,
-        icon=2615, visual=246, visual_kits=dict(instant_area=1005),
+        icon=2615, visual=7553, visual_kits=dict(instant_area=1005),
         power=("mana", 10), power_is_pct=True,
         range_idx=RANGE_SELF, cast_idx=CAST_INSTANT, cooldown_ms=180000,
         duration_idx=DUR_20S,
@@ -1292,11 +1307,24 @@ def build(spell, only=None):
     return spells, lines, meta, visuals
 
 
-def generation_id(spells):
+def generation_id(spells, visuals=(), creatures=()):
+    """A fingerprint of the WHOLE run, not just the spell rows.
+
+    It stamps cw_forged_meta and is the one number that says whether a realm is
+    running current data. It used to hash only id, values and sla -- and a
+    recombined visual keeps its id when its donor changes, so a round that moved
+    every spell onto a different look left the stamp identical and a stale
+    client patch looked current. Creature rows are in for the same reason: a
+    model or a scale change moves nothing else.
+    """
     h = hashlib.sha1()
     for s in sorted(spells, key=lambda x: x["id"]):
         h.update(json.dumps([s["id"], s["values"], s["sla"]],
                             sort_keys=True, default=str).encode("utf-8"))
+    for v in sorted(visuals, key=lambda x: x["id"]):
+        h.update(json.dumps(v, sort_keys=True, default=str).encode("utf-8"))
+    for c in sorted(creatures):
+        h.update(json.dumps(c, sort_keys=True, default=str).encode("utf-8"))
     return h.hexdigest()[:12]
 
 
@@ -1556,7 +1584,13 @@ def main(argv=None):
     only = {k.strip() for k in args.only.split(",") if k.strip()} or None
     spells, lines, meta, visuals = build(spell, only)
     check_blocks(spells, visuals)
-    gen = generation_id(spells)
+    # the whole run, so a round that only changes a look or a model still
+    # moves the stamp a realm compares against
+    gen = generation_id(spells, visuals,
+                        [(e, n, d, MODEL_SCALE.get(e, 1.0)) for e, n, d, _p in SUMMON_CREATURES]
+                        + [(e, k, d, MODEL_SCALE.get(e, 1.0))
+                           for k, rows in sorted(PET_CREATURES.items())
+                           for e, d, _n, _dm, _hm in rows])
 
     print("forged spells: %d lines, %d rows, generation %s" % (len(lines), len(spells), gen))
     for ln in lines:

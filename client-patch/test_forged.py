@@ -374,6 +374,30 @@ def main():
              if int(m.group(2)) in INVISIBLE_DISPLAYS]
     check("no summoned creature wears an invisible model", not invis, "%s" % invis[:3])
 
+    # a recombined visual is its donor's look with a kit moved, so two spells
+    # built on one donor look alike whatever ids they carry
+    vid_donor = {v["id"]: v["base"] for v in doc.get("visuals", [])}
+
+    # ---- two lines must not share a look --------------------------------------
+    # Recombining one donor with a different kit slot barely changes what a
+    # spell looks like, so three spells built on Hand of Freedom read as the
+    # same effect however different their kits. A spell and its own hidden half
+    # are meant to match; anything else is reuse.
+    import collections as _c
+    donors = _c.defaultdict(set)
+    for sp in spells:
+        base = sp["key"]
+        for suffix in ("_companion", "_pet0", "_pet1", "_pet2"):
+            if base.endswith(suffix):
+                base = base[:-len(suffix)]
+        vid = sp["values"][F["SpellVisual"]]
+        donors[vid_donor.get(vid, vid)].add(base)
+    shared = ["visual %d is on %s" % (v, ", ".join(sorted(w)))
+              for v, w in sorted(donors.items()) if len(w) > 1]
+    check("no two forged lines are built on the same donor visual", not shared,
+          "%d distinct donor(s) over %d lines; %s"
+          % (len(donors), len(spells), shared[:3]))
+
     # ---- a marker must not wear a totem ---------------------------------------
     # A shaman totem model standing beside real totems is confusing, and none of
     # these is a totem in any mechanical sense. Checked against the model path

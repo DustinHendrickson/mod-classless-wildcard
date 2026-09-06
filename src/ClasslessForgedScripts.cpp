@@ -77,7 +77,6 @@ namespace
 
     constexpr uint32 CROSSDRAW_WINDOW_MS = 5000;
     constexpr uint32 CROSSDRAW_COMPANION_OFFSET = 16;   // matches PER_RECIPE / 2
-    constexpr uint32 BLEED_OVER_EXTEND_MS = 6000;
     constexpr uint8  REPERTOIRE_MAX_STACKS = 5;
     constexpr int32  REPERTOIRE_PER_STACK = 3;
     constexpr uint32 QUICKENING_MIN_POINTS = 20;      // rage plus energy, in displayed points
@@ -311,75 +310,6 @@ class spell_cw_ricochet_shot_bounce : public SpellScript
 };
 
 // =====================================================================
-// Bleed Over -- extends your own periodics on the target.
-//
-// EXTENDS by a fixed six seconds rather than refreshing to full. Refreshing is
-// unbounded: with enough damage-over-time effects it approaches never having to
-// recast any of them. Only auras this caster applied are touched, and only ones
-// that actually tick, so it can never reach a stun or somebody else's work.
-// =====================================================================
-class spell_cw_bleed_over : public SpellScript
-{
-    PrepareSpellScript(spell_cw_bleed_over);
-
-    void ExtendPeriodics(SpellEffIndex /*effIndex*/)
-    {
-        Unit* caster = GetCaster();
-        Unit* target = GetHitUnit();
-        if (!caster || !target)
-            return;
-
-        // how many it reaches is the second effect's value, which is also what
-        // the tooltip shows; two plus the rank if a row somehow lacks it
-        uint32 const first = sSpellMgr->GetFirstSpellInChain(GetSpellInfo()->Id);
-        uint32 const rank = GetSpellInfo()->Id - first;
-        int32 const fromData = GetSpellInfo()->Effects[EFFECT_1].Effect == SPELL_EFFECT_DUMMY
-            ? GetSpellInfo()->Effects[EFFECT_1].CalcValue(caster) : 0;
-        size_t const limit = fromData > 0 ? size_t(fromData) : size_t(2 + rank);
-
-        std::vector<Aura*> mine;
-        for (auto const& applied : target->GetAppliedAuras())
-        {
-            Aura* aura = applied.second ? applied.second->GetBase() : nullptr;
-            if (!aura || aura->GetCasterGUID() != caster->GetGUID())
-                continue;
-            if (aura->GetId() == GetSpellInfo()->Id)
-                continue;                       // not its own dot
-            if (aura->GetDuration() < 0)
-                continue;                       // permanent: nothing to extend
-            SpellInfo const* info = aura->GetSpellInfo();
-            bool periodic = false;
-            for (uint8 i = 0; i < MAX_SPELL_EFFECTS && !periodic; ++i)
-                if (AuraEffect const* eff = aura->GetEffect(i))
-                    periodic = eff->GetAmplitude() > 0
-                        && (info->Effects[i].ApplyAuraName == SPELL_AURA_PERIODIC_DAMAGE
-                            || info->Effects[i].ApplyAuraName == SPELL_AURA_PERIODIC_LEECH
-                            || info->Effects[i].ApplyAuraName == SPELL_AURA_PERIODIC_DAMAGE_PERCENT);
-            if (periodic)
-                mine.push_back(aura);
-        }
-
-        // the ones closest to falling off are the ones worth the extension
-        std::sort(mine.begin(), mine.end(),
-                  [](Aura const* a, Aura const* b) { return a->GetDuration() < b->GetDuration(); });
-
-        for (size_t i = 0; i < mine.size() && i < limit; ++i)
-        {
-            Aura* aura = mine[i];
-            int32 const capped = std::min<int32>(aura->GetDuration() + int32(BLEED_OVER_EXTEND_MS),
-                                                 aura->GetMaxDuration() + int32(BLEED_OVER_EXTEND_MS));
-            aura->SetDuration(capped);
-        }
-    }
-
-    void Register() override
-    {
-        OnEffectHitTarget += SpellEffectFn(spell_cw_bleed_over::ExtendPeriodics,
-                                          EFFECT_0, SPELL_EFFECT_APPLY_AURA);
-    }
-};
-
-// =====================================================================
 // Quickening -- mana to cast, rage and energy to make it worth casting.
 //
 // The DBC gives a spell one PowerType, so mana is the declared cost and the
@@ -554,7 +484,6 @@ void AddClasslessForgedScripts()
     RegisterSpellScript(spell_cw_crossdraw);
     RegisterSpellScript(spell_cw_ricochet_shot);
     RegisterSpellScript(spell_cw_ricochet_shot_bounce);
-    RegisterSpellScript(spell_cw_bleed_over);
     RegisterSpellScript(spell_cw_quickening);
     RegisterSpellScript(spell_cw_repertoire);
     RegisterSpellScript(spell_cw_wildcard_surge);
