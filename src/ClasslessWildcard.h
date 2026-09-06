@@ -39,6 +39,11 @@ namespace ClasslessWildcard
     // The starting hand is four cards. The client addon draws exactly four and
     // the config is clamped to it, so the two can never disagree.
     constexpr uint32 MAX_STARTING_HAND = 4;
+    // The forged spells' own skill line. No class learns it and its rows say
+    // AcquireMethod 0, so only SyncSpellbookTabs ever hands the skill out; the
+    // client files the spells under General without it. Must equal HERO_LINE in
+    // data/sql/generators/gen_forged_spells.py; test_forged.py checks.
+    constexpr uint32 HERO_SKILL_LINE = 990;
 
     enum class Mode : uint8
     {

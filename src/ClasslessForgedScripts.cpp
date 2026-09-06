@@ -37,6 +37,10 @@
 #include "SpellAuras.h"
 #include "SpellMgr.h"
 #include "SpellScript.h"
+#include "CellImpl.h"
+#include "GridNotifiers.h"
+#include "GridNotifiersImpl.h"
+#include "SpellDefines.h"
 
 #include <algorithm>
 #include <unordered_map>
@@ -74,8 +78,12 @@ namespace
     constexpr uint32 BLEED_OVER_EXTEND_MS = 6000;
     constexpr uint8  REPERTOIRE_MAX_STACKS = 5;
     constexpr int32  REPERTOIRE_PER_STACK = 3;
-    constexpr uint32 QUICKENING_MIN_POINTS = 20;
+    constexpr uint32 QUICKENING_MIN_POINTS = 20;      // rage plus energy, in displayed points
+    constexpr int32  QUICKENING_POINTS_PER_PCT = 5;
     constexpr int32  QUICKENING_MAX_PCT = 20;
+    constexpr uint32 RICOCHET_COMPANION_OFFSET = 16;    // matches PER_RECIPE / 2
+    constexpr float  RICOCHET_RANGE = 8.0f;
+    constexpr uint32 RICOCHET_MANA_PCT = 6;              // of maximum mana, per ricochet
     constexpr int32  SURGE_PER_ABILITY_PCT = 8;
     constexpr int32  SURGE_MAX_PCT = 40;
 
@@ -190,40 +198,110 @@ class spell_cw_crossdraw : public SpellScript
 };
 
 // =====================================================================
-// Ricochet Shot -- energy to fire, mana to keep bouncing.
+// Ricochet Shot -- one shot, then ricochets that are casts of their own.
 //
-// Everything settles at target selection, which the core runs ONCE per cast:
-// SelectImplicitChainTargets calls this hook after it has picked the chain, so
-// trimming here is the last word and there is nothing to cancel mid-flight.
-// The mana is charged for exactly the bounces that survive the trim.
+// Every ricochet is cast BY the target it leaves, at the next enemy within
+// eight yards, with this player as the original caster. That is what draws
+// the missile between the two of them, and what keeps the damage and the
+// threat the player's: Spell::DoAllEffectOnTarget deals from the original
+// caster. The main spell's second effect is a marker aura whose base points
+// are the rank's ricochet budget; the companion (id + 16) is one ricochet's
+// damage, a dummy effect carrying the budget that remains, and the same
+// marker, so a shot never returns to something it has already hit. Each
+// ricochet costs a share of the player's maximum mana and stops when that
+// cannot be paid.
 // =====================================================================
+namespace
+{
+    Unit* NextRicochetTarget(Unit* from, Player* owner, uint32 mainId, uint32 bounceId)
+    {
+        std::list<Unit*> nearby;
+        Acore::AnyUnfriendlyUnitInObjectRangeCheck check(from, owner, RICOCHET_RANGE);
+        Acore::UnitListSearcher<Acore::AnyUnfriendlyUnitInObjectRangeCheck> searcher(from, nearby, check);
+        Cell::VisitAllObjects(from, searcher, RICOCHET_RANGE);
+
+        Unit* best = nullptr;
+        float bestDist = RICOCHET_RANGE + 1.0f;
+        for (Unit* u : nearby)
+        {
+            if (u == from || u == owner || !u->IsAlive())
+                continue;
+            if (u->HasAura(mainId) || u->HasAura(bounceId))
+                continue;                               // this shot has been there
+            if (!owner->IsValidAttackTarget(u))
+                continue;
+            float const d = from->GetDistance(u);
+            if (d < bestDist)
+            {
+                best = u;
+                bestDist = d;
+            }
+        }
+        return best;
+    }
+
+    void Ricochet(Unit* from, Player* owner, uint32 mainId, uint32 bounceId, int32 remaining)
+    {
+        if (remaining <= 0 || !from || !owner)
+            return;
+        if (!sSpellMgr->GetSpellInfo(bounceId))
+            return;                                     // the rank's companion row is missing
+        Unit* next = NextRicochetTarget(from, owner, mainId, bounceId);
+        if (!next)
+            return;
+        uint32 const cost = std::max<uint32>(1, owner->GetMaxPower(POWER_MANA) * RICOCHET_MANA_PCT / 100);
+        if (uint32(owner->GetPower(POWER_MANA)) < cost)
+            return;                                     // what you cannot pay for, it does not do
+        owner->ModifyPower(POWER_MANA, -int32(cost));
+
+        CustomSpellValues values;
+        values.AddSpellMod(SPELLVALUE_BASE_POINT1, remaining - 1);
+        from->CastCustomSpell(bounceId, values, next, TRIGGERED_FULL_MASK, nullptr, nullptr, owner->GetGUID());
+    }
+}
+
 class spell_cw_ricochet_shot : public SpellScript
 {
     PrepareSpellScript(spell_cw_ricochet_shot);
 
-    void TrimToWhatIsPaidFor(std::list<WorldObject*>& targets)
+    // AfterHit, not OnEffectHit: by then the marker aura is on the target, so
+    // the first ricochet's search already sees it.
+    void Bounce()
     {
-        Player* caster = GetCaster() ? GetCaster()->ToPlayer() : nullptr;
-        if (!caster || targets.size() <= 1)
+        Player* owner = GetCaster() ? GetCaster()->ToPlayer() : nullptr;
+        Unit* target = GetHitUnit();
+        if (!owner || !target)
             return;
-
-        uint32 const perBounce = std::max<uint32>(1, caster->GetMaxPower(POWER_MANA) * 6 / 100);
-        uint32 const have = caster->GetPower(POWER_MANA);
-        uint32 const afford = perBounce ? have / perBounce : 0;
-        // the first target is the shot itself and is paid for with energy
-        size_t const keep = std::min<size_t>(targets.size(), size_t(afford) + 1);
-
-        if (keep < targets.size())
-            targets.resize(keep);
-        uint32 const bounces = uint32(targets.size() - 1);
-        if (bounces)
-            caster->ModifyPower(POWER_MANA, -int32(bounces * perBounce));
+        int32 const budget = GetSpellInfo()->Effects[EFFECT_1].CalcValue(owner);
+        Ricochet(target, owner, GetSpellInfo()->Id,
+                 GetSpellInfo()->Id + RICOCHET_COMPANION_OFFSET, budget);
     }
 
     void Register() override
     {
-        OnObjectAreaTargetSelect += SpellObjectAreaTargetSelectFn(
-            spell_cw_ricochet_shot::TrimToWhatIsPaidFor, EFFECT_0, TARGET_UNIT_TARGET_ENEMY);
+        AfterHit += SpellHitFn(spell_cw_ricochet_shot::Bounce);
+    }
+};
+
+class spell_cw_ricochet_shot_bounce : public SpellScript
+{
+    PrepareSpellScript(spell_cw_ricochet_shot_bounce);
+
+    void Bounce()
+    {
+        Unit* from = GetHitUnit();
+        Unit* original = GetOriginalCaster();
+        Player* owner = original ? original->ToPlayer() : nullptr;
+        if (!from || !owner)
+            return;
+        int32 const remaining = GetSpellValue()->EffectBasePoints[EFFECT_1];
+        Ricochet(from, owner, GetSpellInfo()->Id - RICOCHET_COMPANION_OFFSET,
+                 GetSpellInfo()->Id, remaining);
+    }
+
+    void Register() override
+    {
+        AfterHit += SpellHitFn(spell_cw_ricochet_shot_bounce::Bounce);
     }
 };
 
@@ -246,10 +324,13 @@ class spell_cw_bleed_over : public SpellScript
         if (!caster || !target)
             return;
 
-        // rank 1 reaches two, and each rank one more
+        // how many it reaches is the second effect's value, which is also what
+        // the tooltip shows; two plus the rank if a row somehow lacks it
         uint32 const first = sSpellMgr->GetFirstSpellInChain(GetSpellInfo()->Id);
         uint32 const rank = GetSpellInfo()->Id - first;
-        size_t const limit = size_t(2 + rank);
+        int32 const fromData = GetSpellInfo()->Effects[EFFECT_1].Effect == SPELL_EFFECT_DUMMY
+            ? GetSpellInfo()->Effects[EFFECT_1].CalcValue(caster) : 0;
+        size_t const limit = fromData > 0 ? size_t(fromData) : size_t(2 + rank);
 
         std::vector<Aura*> mine;
         for (auto const& applied : target->GetAppliedAuras())
@@ -311,7 +392,8 @@ class spell_cw_quickening : public SpellScript
         Player* caster = GetCaster() ? GetCaster()->ToPlayer() : nullptr;
         if (!caster)
             return SPELL_FAILED_BAD_TARGETS;
-        if (caster->GetPower(POWER_RAGE) + caster->GetPower(POWER_ENERGY) < int32(QUICKENING_MIN_POINTS))
+        // rage is stored ten to the displayed point; energy is not
+        if (caster->GetPower(POWER_RAGE) / 10 + caster->GetPower(POWER_ENERGY) < int32(QUICKENING_MIN_POINTS))
             return SPELL_FAILED_NO_POWER;
         return SPELL_CAST_OK;
     }
@@ -321,9 +403,9 @@ class spell_cw_quickening : public SpellScript
         Player* caster = GetCaster() ? GetCaster()->ToPlayer() : nullptr;
         if (!caster)
             return;
-        int32 const rage = caster->GetPower(POWER_RAGE);
+        int32 const rage = caster->GetPower(POWER_RAGE);      // stored units, ten a point
         int32 const energy = caster->GetPower(POWER_ENERGY);
-        _pct = std::min<int32>((rage + energy) / 10, QUICKENING_MAX_PCT);
+        _pct = std::min<int32>((rage / 10 + energy) / QUICKENING_POINTS_PER_PCT, QUICKENING_MAX_PCT);
         caster->ModifyPower(POWER_RAGE, -rage);
         caster->ModifyPower(POWER_ENERGY, -energy);
     }
@@ -430,6 +512,7 @@ void AddClasslessForgedScripts()
     new cw_forged_watcher();
     RegisterSpellScript(spell_cw_crossdraw);
     RegisterSpellScript(spell_cw_ricochet_shot);
+    RegisterSpellScript(spell_cw_ricochet_shot_bounce);
     RegisterSpellScript(spell_cw_bleed_over);
     RegisterSpellScript(spell_cw_quickening);
     RegisterSpellScript(spell_cw_repertoire);

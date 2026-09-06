@@ -265,7 +265,7 @@ def main():
             base = e.get("base")
             if not isinstance(base, tuple):
                 continue
-            want = resolve(base, s["level"])
+            want = resolve(base, s["level"], s["rank"] - 1)
             got = s["values"][F["EffectBasePoints"] + slot] + 1
             checked += 1
             if want and abs(got - want) / want > 0.2:
@@ -309,7 +309,7 @@ def main():
     missing = []
     for sp in spells:
         for i in range(3):
-            if sp["values"][F["Effect"] + i] != 28:
+            if sp["values"][F["Effect"] + i] not in (28, 56):   # SUMMON, SUMMON_PET
                 continue
             entry = sp["values"][F["EffectMiscValue"] + i]
             if re.search(r"INSERT INTO `creature_template`[^;]*\(%d," % entry, sql_all, re.S) is None:
@@ -360,7 +360,18 @@ def main():
         rad = _Dbc(_os.path.join(_dbc_dir, "SpellRadius.dbc"))
     except Exception:
         rad = None
-    AREA_TARGETS = {22, 28, 31, 45, 56, 33}
+    # Implicit target ids by what they select, from the table in SpellInfo.cpp.
+    # A SRC or DEST id sets a position and selects nobody, so an aura, a heal
+    # or a weapon swing given one of those alone lands on nothing. Vertigo,
+    # Wide Arc, Sinkhole and Spore Wash shipped exactly that way, and the old
+    # version of this check called 22 and 28 "area targets" and let them by.
+    UNIT_T = {1, 2, 3, 4, 5, 6, 7, 8, 15, 16, 20, 21, 24, 25, 27, 30, 31, 33, 34,
+              35, 37, 38, 45, 54}
+    DEST_T = {9, 17, 18, 28, 29, 32, 36, 41, 42, 43, 44, 46, 47, 48, 49, 50, 53,
+              55, 63, 87}
+    SRC_T = {22}
+    AREA_T = {7, 8, 15, 16, 20, 30, 31, 33, 34, 37, 28}     # these need a radius
+    LANDS_ON_UNITS = {2, 6, 10, 30, 31, 64, 68, 96, 114, 121, 145}
     HEAL_EFFECTS = {10, 65}
     DAMAGE_EFFECTS = {2, 31, 121, 58, 17}
     for sp in spells:
@@ -371,9 +382,33 @@ def main():
             if not eff:
                 continue
             tgt = v[F["EffectImplicitTargetA"] + i]
+            tgtb = v[F["EffectImplicitTargetB"] + i]
             if eff in (6, 27):
                 has_aura = True
-            if rad is not None and tgt in AREA_TARGETS:
+            if tgt not in UNIT_T | DEST_T | SRC_T:
+                coherence.append("%s: effect %d uses target %d, which is not in the table"
+                                 % (sp["name"], i, tgt))
+            if eff in LANDS_ON_UNITS and tgt not in UNIT_T and tgtb not in UNIT_T:
+                coherence.append("%s: effect %d lands on units but targets a position (%d/%d)"
+                                 % (sp["name"], i, tgt, tgtb))
+            if eff == 27 and tgt not in DEST_T:
+                coherence.append("%s: effect %d is a persistent area with no destination"
+                                 % (sp["name"], i))
+            # Consecration's area applies 3 (PERIODIC_DAMAGE); 4 is DUMMY, and
+            # Sinkhole and Reclaimed Sentry shipped dealing nothing with it
+            if eff == 27 and v[F["EffectApplyAuraName"] + i] not in (3, 8, 23, 53, 89, 226):
+                coherence.append("%s: effect %d is a persistent area applying aura %d, which does nothing"
+                                 % (sp["name"], i, v[F["EffectApplyAuraName"] + i]))
+            # rage is stored ten to the displayed point: a 20 shows as "2 Rage"
+            if v[41] == 1 and v[42] and (v[42] % 10 or v[42] < 50):
+                coherence.append("%s: costs %d stored rage, which shows as %.1f"
+                                 % (sp["name"], v[42], v[42] / 10.0))
+            # ENERGIZE of energy cannot usefully exceed the 100-point pool
+            if eff == 30 and v[F["EffectMiscValue"] + i] == 3 \
+                    and v[F["EffectBasePoints"] + i] + 1 > 100:
+                coherence.append("%s: effect %d restores %d energy into a pool of 100"
+                                 % (sp["name"], i, v[F["EffectBasePoints"] + i] + 1))
+            if rad is not None and (tgt in AREA_T or tgtb in AREA_T):
                 row = rad.row_of(v[F["EffectRadiusIndex"] + i])
                 if row is None or not rad.f(row, 1):
                     coherence.append("%s: effect %d is an area target with no radius"
@@ -383,7 +418,7 @@ def main():
             if eff in DAMAGE_EFFECTS and tgt in (1, 21):
                 coherence.append("%s: effect %d damages the caster or an ally"
                                  % (sp["name"], i))
-            if v[F["RangeIndex"]] == 1 and tgt == 6:
+            if v[F["RangeIndex"]] == 1 and 6 in (tgt, tgtb):
                 coherence.append("%s: effect %d targets an enemy at self range"
                                  % (sp["name"], i))
         if has_aura and not v[F["DurationIndex"]]:
@@ -396,6 +431,7 @@ def main():
     # $d on a spell with no duration renders as nothing. Both are silent: the
     # spell works and only its description is wrong.
     bad_var = []
+    by_id = {sp["id"]: sp for sp in spells}
     for sp in spells:
         text = sp["description"] or ""
         vals = sp["values"]
@@ -411,6 +447,15 @@ def main():
                 bad_var.append("%s: $a%d has no radius" % (sp["name"], slot + 1))
         if "$d" in text and not vals[F["DurationIndex"]]:
             bad_var.append("%s: $d but no duration" % sp["name"])
+        # $<spellid>s1 is the client's reference to another spell's value; the
+        # generator fills it with the rank's companion, so it has to name a row
+        # in this manifest with an effect in that slot
+        for m in re.finditer(r"\$(\d+)([soa])(\d)", text):
+            other = by_id.get(int(m.group(1)))
+            slot = int(m.group(3)) - 1
+            if other is None or slot < 0 or slot > 2 or not other["values"][F["Effect"] + slot]:
+                bad_var.append("%s: $%s%s%s points at nothing"
+                               % (sp["name"], m.group(1), m.group(2), m.group(3)))
     check("every tooltip variable points at something real", not bad_var,
           "%d description(s) checked; %s" % (len(spells), bad_var[:4]))
 
@@ -424,6 +469,14 @@ def main():
           re.search(r"INSERT INTO `skillraceclassinfo_dbc`[^;]*\(\d+, %d, 0, 0," % HERO_LINE,
                     sql, re.S) is not None,
           "without it _LoadSkills deletes the skill at every login")
+    # The server compiles the Hero line id in (SyncSpellbookTabs hands the
+    # skill out by it); the generator writes the rows under HERO_LINE. Two
+    # numbers, one meaning.
+    header = io.open(os.path.join(MODULE, "src", "ClasslessWildcard.h"), encoding="utf-8").read()
+    m = re.search(r"constexpr uint32 HERO_SKILL_LINE = (\d+);", header)
+    check("the Hero line id is the one the server compiled in",
+          m is not None and int(m.group(1)) == HERO_LINE,
+          "header says %s, generator says %d" % (m.group(1) if m else None, HERO_LINE))
     check("the run is stamped with a generation id",
           "cw_forged_meta" in sql and doc["generation"] in sql)
     check("the SQL deletes its own id range before inserting",
@@ -457,15 +510,17 @@ def main():
           "older build; unmigrated %s" % (len(tables), unmigrated))
 
     scripted_keys = {r["key"] for r in RECIPES if r.get("script")}
+    bounce_keys = {r["key"] for r in RECIPES if r.get("companion_script")}
     want_rows = sum(1 for sp in doc["spells"]
-                    if sp["key"] in scripted_keys and not sp["key"].endswith("_companion"))
+                    if (sp["key"] in scripted_keys and not sp["key"].endswith("_companion"))
+                    or (sp["key"].endswith("_companion") and sp["key"][:-len("_companion")] in bounce_keys))
     got_rows = re.findall(r"^\((\d+), 'spell_cw_([a-z_]+)'\)", sql, re.M)
     check("every rank of a scripted line binds to its script",
           len(got_rows) == want_rows and want_rows > 0,
           "%d row(s) for %d scripted rank(s); a missing rank loses its script silently"
           % (len(got_rows), want_rows))
     unscripted = [i for i, name in got_rows
-                  if name not in scripted_keys]
+                  if (name[:-len("_bounce")] if name.endswith("_bounce") else name) not in scripted_keys]
     check("no unscripted line was given a script row", not unscripted,
           "offenders %s" % unscripted[:4])
 

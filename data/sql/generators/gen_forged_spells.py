@@ -93,11 +93,13 @@ SUMMON_CREATURES = [
 # A pet creature per RANK, because a creature carries one spell list. The
 # modifiers stack on top of the level scaling Guardian::InitStats already does.
 PET_CREATURES = {
+    # (entry, display, how many of the recipe's pet_spells it knows, dmg, hp).
+    # One creature: a pet learns each default spell when its level reaches the
+    # spell's SpellLevel (Pet::InitLevelupSpellsForLevel), so the three
+    # abilities arrive at 10, 30 and 50 without a second creature or a second
+    # rank. Its stats come from the owner's level, as every pet's do.
     "venom_beetle": [
-        # (entry, display, how many of the recipe's pet_spells it knows, dmg, hp)
-        (990117, 2730, 1, 1.0, 1.0),
-        (990118, 2730, 2, 1.35, 1.35),
-        (990119, 2730, 3, 1.7, 1.7),
+        (990117, 2730, 3, 1.0, 1.0),
     ],
 }
 ALL_CLASSES = 0x5FF
@@ -126,6 +128,7 @@ def anchor(kind, level):
 
 # ---- effect, aura and index constants, all verified against real rows -------
 E_SCHOOL_DAMAGE, E_DUMMY, E_HEAL = 2, 3, 10
+E_SUMMON_PET = 56                    # Summon Imp: a real, permanent, saved pet
 E_PERSISTENT_AREA, E_SUMMON, E_ENERGIZE = 27, 28, 30
 E_INTERRUPT_CAST, E_TRIGGER_SPELL = 68, 64
 # 31 takes base points as a PERCENTAGE of weapon damage (Backstab is 127).
@@ -136,7 +139,9 @@ E_WEAPON_PERCENT, E_NORMALIZED_WEAPON_DMG, E_CHARGE = 31, 121, 96
 E_PULL_TOWARDS_DEST = 145            # the core comments this "Black Hole Effect"
 E_APPLY_AURA = 6
 
-A_PERIODIC_DAMAGE_AREA = 4           # on a persistent area
+A_PERIODIC_DAMAGE_AREA = 3           # what Consecration's persistent area applies. 4 is
+                                     # SPELL_AURA_DUMMY, and two spells shipped dealing nothing
+A_DUMMY = 4                          # a marker with no effect of its own
 A_MOD_CONFUSE = 5                    # Blind, Polymorph
 A_PERIODIC_DAMAGE = 3
 A_PERIODIC_HEAL = 8
@@ -150,19 +155,44 @@ A_MOD_INCREASE_SPEED = 31            # Sprint, Dash
 A_SCHOOL_ABSORB = 69                 # Power Word: Shield, Savage Defense
 A_MOD_ATTACK_POWER = 99              # Battle Shout up, Demoralizing Shout down
 A_MOD_STAT = 29                      # Mark of the Wild, with misc -1 for every stat
+A_DAMAGE_SHIELD = 15                 # Thorns, Retribution Aura
+A_MOD_POWER_COST_PCT = 72            # misc is a school mask; negative is cheaper
+A_MOD_INCREASE_HEALTH_PCT = 133      # Last Stand
+A_MOD_ATTACK_SPEED_PCT = 138         # Thunder Clap: negative slows melee swings
+A_HASTE_SPELLS = 216                 # Curse of Tongues, Slow: negative slows casting
 A_MOD_COOLDOWN = 196                 # flat SECONDS added to a cooldown as it starts;
                                      # its only stock users add time, so this subtracts
 
 E_ATTACK_ME = 114                    # the taunt half of Taunt itself
 
-T_SELF, T_ENEMY = 1, 6
-T_DEST_AREA_ENEMY, T_AREA_ENEMY_SRC = 28, 22
-T_TARGET_ALLY, T_AREA_ALLY_SRC = 21, 31
+# Implicit targets, by the table in SpellInfo.cpp. Two kinds matter here: a
+# UNIT target chooses who the effect lands on; a SRC or DEST target only sets a
+# position, and an effect given one of those on its own lands on nobody. Four
+# effects shipped that way (22 alone on a confuse and a weapon swing, 28 alone
+# on a pull and two slows). Shapes below are copied from named stock spells.
+T_SELF, T_ENEMY, T_TARGET_ALLY = 1, 6, 21
+T_SRC_CASTER = 22                    # sets the source; goes in TargetA...
+T_AREA_ENEMY_SRC = 15                # ...with this in TargetB: enemies around the
+                                     # caster. Frost Nova, Thunder Clap, Psychic
+                                     # Scream, Divine Storm: 141 player effects,
+                                     # and none writes 15 alone
+T_AREA_ENEMY_DEST = 16               # enemies around the destination, alone
+                                     # (Shadowfury, Inferno: 27)
+T_DEST_TARGET_ANY = 63               # the destination is the target's feet...
+T_AREA_ALLY_DEST = 31                # ...with this in TargetB: allies around
+                                     # them (Circle of Healing, Wild Growth)
+T_DEST_DYNOBJ_ENEMY = 28             # where a persistent area sits (Death and Decay)
+T_DEST_CAST = 87                     # where the player clicked (Lightwell)
+T_DEST_TOTEM_SLOT = 41               # a totem slot beside the caster (Earthbind Totem)
+T_DEST_CASTER_SUMMON = 32            # where a pet appears (Summon Imp)
+ALL_SCHOOLS = 0x7F                   # MAX_SPELL_SCHOOL is 7
 
 RANGE_SELF, RANGE_MELEE, RANGE_20, RANGE_30, RANGE_40 = 1, 2, 3, 4, 5
-CAST_INSTANT, CAST_1500, CAST_2000, CAST_2500 = 1, 16, 5, 19
+RANGE_RANGED = 114                   # "Hunter Range", 0 to 35 yards: every shot uses it
+CAST_INSTANT, CAST_1500, CAST_2000, CAST_2500, CAST_3000 = 1, 16, 5, 19, 14
 DUR_NONE, DUR_4S, DUR_6S, DUR_8S, DUR_10S, DUR_12S, DUR_15S, DUR_20S, DUR_30S = \
     0, 35, 32, 31, 1, 29, 8, 18, 9
+DUR_PERMANENT = 21                   # -1: Summon Imp's
 # Read out of SpellRadius.dbc, not guessed: index 36 is 0 yards and index 12 is
 # 100. An area effect with a zero radius hits a point and nothing else, and
 # nothing anywhere reports it.
@@ -227,10 +257,10 @@ RECIPES = [
         effects=[
             dict(eff=E_WEAPON_PERCENT, base=110, tgt=T_ENEMY),
             dict(eff=E_SCHOOL_DAMAGE, base=dmg(0.35), tgt=T_ENEMY),
-            dict(eff=E_ENERGIZE, base=dmg(0.6), tgt=T_SELF, misc=POWER["mana"]),
+            dict(eff=E_ENERGIZE, base=dmg(0.12), tgt=T_SELF, misc=POWER["mana"]),
         ],
-        desc=("A graceless swing with whatever you happen to be holding, dealing $s1% "
-              "weapon damage plus $s2 damage. The effort is worth $s3 mana."),
+        desc=("Strikes the target for $s1% weapon damage plus $s2 additional damage, and "
+              "restores $s3 mana to you."),
         compare="Sinister Strike is a better strike; this one funds the spells that cost mana.",
     ),
     dict(
@@ -243,7 +273,7 @@ RECIPES = [
             dict(eff=E_APPLY_AURA, aura=A_PERIODIC_HEAL, base=heal(0.30),
                  tgt=T_SELF, amplitude=3000),
         ],
-        desc="Catch your breath and let the worst of it close. Restores $o1 health over $d.",
+        desc="Heals yourself for $o1 over $d.",
         compare="A rolled instant heal is about four times this; 1.2x the heal anchor over 4 ticks.",
     ),
     dict(
@@ -255,8 +285,7 @@ RECIPES = [
             dict(eff=E_SCHOOL_DAMAGE, base=dmg(1.0), tgt=T_ENEMY),
             dict(eff=E_HEAL, base=dmg(0.40), tgt=T_SELF),
         ],
-        desc=("Hurls a guttering ember that burns the enemy for $s1 Fire damage and "
-              "feeds $s2 health back to you."),
+        desc="Deals $s1 Fire damage to the target and heals you for $s2.",
         compare="Heal is 40% of the damage, well under a real heal per point of mana.",
     ),
     dict(
@@ -280,8 +309,8 @@ RECIPES = [
                 dict(eff=E_APPLY_AURA, aura=A_MOD_DECREASE_SPEED, base=-30, tgt=T_ENEMY),
             ],
         ),
-        desc=("Splits a bolt into halves that should not hold together, dealing $s1 Fire "
-              "and as much again in Frost. The target is left burning and slowed for $d."),
+        desc=("Deals $s1 Fire damage and ${companion}s1 Frost damage to the target. The target "
+              "burns for an additional $o2 Fire damage over $d and moves 30% slower for $d."),
         compare="Chain Lightning does 191 at level 32 on 6s; the 30% slow is half Chains of Ice.",
     ),
     dict(
@@ -291,10 +320,11 @@ RECIPES = [
         range_idx=RANGE_40, cast_idx=CAST_2500, cooldown_ms=0,
         effects=[
             dict(eff=E_HEAL, base=heal(1.0), tgt=T_TARGET_ALLY),
-            dict(eff=E_HEAL, base=heal(0.28), tgt=T_AREA_ALLY_SRC, radius=RADIUS_8YD),
+            dict(eff=E_HEAL, base=heal(0.28), tgt=T_DEST_TARGET_ANY, tgtb=T_AREA_ALLY_DEST,
+                 radius=RADIUS_8YD),
         ],
-        desc=("Pours healing into a friendly target for $s1. What will not fit spills to "
-              "allies within $a2 yards of them for $s2."),
+        desc=("Heals a friendly target for $s1, and other allies within $a2 yards of them for "
+              "$s2."),
         compare="Prayer of Healing puts 301 on the whole party at level 30; this is dumber and smaller.",
     ),
     dict(
@@ -304,7 +334,8 @@ RECIPES = [
         range_idx=RANGE_20, cast_idx=CAST_INSTANT, cooldown_ms=30000,
         effects=[
             dict(eff=E_CHARGE, base=1, tgt=T_ENEMY),
-            dict(eff=E_HEAL, base=heal(0.35), tgt=T_AREA_ALLY_SRC, radius=RADIUS_10YD),
+            dict(eff=E_HEAL, base=heal(0.35), tgt=T_DEST_TARGET_ANY, tgtb=T_AREA_ALLY_DEST,
+                 radius=RADIUS_10YD),
             dict(eff=E_TRIGGER_SPELL, base=1, tgt=T_ENEMY, trigger="companion"),
         ],
         companion=dict(
@@ -312,8 +343,8 @@ RECIPES = [
             desc="Impact of Vanguard Rush.",
             effects=[dict(eff=E_SCHOOL_DAMAGE, base=dmg(0.5), tgt=T_ENEMY)],
         ),
-        desc=("Charge an enemy and strike them on arrival. Allies within $a2 yards of where "
-              "you land are healed for $s2."),
+        desc=("Charges an enemy and strikes it on arrival for ${companion}s1 damage. Allies "
+              "within $a2 yards of where you land are healed for $s2."),
         compare="Circle of Healing is 343 in 15yd on 6s at level 50; this is ~a tenth the throughput.",
     ),
     dict(
@@ -323,25 +354,30 @@ RECIPES = [
         range_idx=RANGE_20, cast_idx=CAST_INSTANT, cooldown_ms=15000,
         effects=[
             dict(eff=E_INTERRUPT_CAST, base=1, tgt=T_ENEMY),
+            dict(eff=E_APPLY_AURA, aura=A_HASTE_SPELLS, base=-25, tgt=T_ENEMY),
         ],
-        desc=("Cuts a spell off mid-word. Interrupts casting and locks that school for $d."),
-        compare="Kick: 10s cd / 5s lock, melee. Counterspell: 24s / 8s. This: 15s / 4s, ranged.",
+        desc=("Interrupts the target's spellcasting and prevents any spell in that school from "
+              "being cast for $d. The target also casts 25% slower for $d."),
+        compare="Kick: 10s cd / 5s lock, melee. Counterspell: 24s / 8s. This: 15s / 4s, "
+                "ranged, plus half a Curse of Tongues for the same 4s so it is not Kick "
+                "with a longer reach.",
         duration_idx=DUR_4S,
     ),
     dict(
         key="vertigo", name="Vertigo", rarity=2, type=0, mechanic=2,   # disoriented
         first_level=38, ranks=4, step=11, donor=8122, school=32,
         icon=2875, visual=263, visual_kits=dict(target_impact=3394), power=("mana", 12), power_is_pct=True,
-        range_idx=RANGE_20, cast_idx=CAST_INSTANT, cooldown_ms=30000,
+        range_idx=RANGE_SELF, cast_idx=CAST_INSTANT, cooldown_ms=30000,
         duration_idx=DUR_6S,
         effects=[
             dict(eff=E_APPLY_AURA, aura=A_MOD_CONFUSE, base=0,
-                 tgt=T_AREA_ENEMY_SRC, radius=RADIUS_8YD),
+                 tgt=T_SRC_CASTER, tgtb=T_AREA_ENEMY_SRC, radius=RADIUS_8YD),
         ],
-        desc=("The ground stops agreeing with them. Enemies within $a1 yards of your target "
-              "are disoriented for $d. Any damage ends it."),
-        compare="Psychic Scream fears for 8s on 30s cd around the caster; this is 6s, at range, "
-                "and breaks on damage.",
+        desc=("Disorients enemies within $a1 yards of you for $d. Any damage taken will break "
+              "the effect."),
+        compare="Psychic Scream's own shape (22/15 around the caster): it fears for 8s on "
+                "30s cd; this disorients for 6s and breaks on damage. Was written with 22 "
+                "alone and at 20 yards, which disoriented nobody.",
     ),
     dict(
         key="sinkhole", name="Sinkhole", rarity=3, type=3, mechanic=11,  # snare
@@ -350,14 +386,15 @@ RECIPES = [
         range_idx=RANGE_30, cast_idx=CAST_INSTANT, cooldown_ms=45000,
         duration_idx=DUR_6S,
         effects=[
-            dict(eff=E_PULL_TOWARDS_DEST, base=1, tgt=T_DEST_AREA_ENEMY, radius=RADIUS_8YD),
+            dict(eff=E_PULL_TOWARDS_DEST, base=1, tgt=T_AREA_ENEMY_DEST, radius=RADIUS_8YD),
             dict(eff=E_PERSISTENT_AREA, aura=A_PERIODIC_DAMAGE_AREA, base=dmg(0.125),
-                 tgt=T_DEST_AREA_ENEMY, radius=RADIUS_8YD, amplitude=1000),
+                 tgt=T_DEST_DYNOBJ_ENEMY, radius=RADIUS_8YD, amplitude=1000),
             dict(eff=E_APPLY_AURA, aura=A_MOD_DECREASE_SPEED, base=-60,
-                 tgt=T_DEST_AREA_ENEMY, radius=RADIUS_8YD),
+                 tgt=T_AREA_ENEMY_DEST, radius=RADIUS_8YD),
         ],
-        desc=("The ground gives way. Enemies within $a1 yards are dragged to the centre "
-              "and held there, slowed and burning, for $d."),
+        desc=("Opens a sinkhole at the target location, pulling enemies within $a1 yards to its "
+              "center and slowing them by 60% for $d. Enemies inside take $o2 Shadow damage "
+              "over its duration."),
         compare="Frost Nova roots 8s on 25s cd for 19 damage: the game prices hard holds at ~0 "
                 "damage, so this slows instead of rooting.",
     ),
@@ -369,12 +406,14 @@ RECIPES = [
         duration_idx=DUR_20S,
         summon=dict(entry=990110, name="Bulwark Anchor"),
         effects=[
-            dict(eff=E_SUMMON, base=1, tgt=41, misc=990110),
+            dict(eff=E_SUMMON, base=1, tgt=T_DEST_TOTEM_SLOT, misc=990110),
             dict(eff=E_APPLY_AURA, aura=A_MOD_DAMAGE_TAKEN_PCT, base=-4,
-                 tgt=T_AREA_ALLY_SRC, radius=RADIUS_15YD),
+                 tgt=T_AREA_ALLY_DEST, radius=RADIUS_15YD),
+            dict(eff=E_APPLY_AURA, aura=A_MOD_ATTACK_SPEED_PCT, base=-15,
+                 tgt=T_AREA_ENEMY_DEST, radius=RADIUS_15YD),
         ],
-        desc=("Drives an anchor into the ground. You and allies within $a2 yards of it take "
-              "4% less damage for $d."),
+        desc=("Drives an anchor into the ground beside you for $d. You and allies within $a2 "
+              "yards take 4% less damage, and enemies within $a3 yards attack 15% slower."),
         compare="Blessing of Sanctuary gives 3% party-wide, permanently. This is 4% in a fixed circle for 20s.",
     ),
     dict(
@@ -385,12 +424,15 @@ RECIPES = [
         duration_idx=DUR_20S,
         summon=dict(entry=990111, name="Reclaimed Sentry"),
         effects=[
-            dict(eff=E_SUMMON, base=1, tgt=46, misc=990111),
+            dict(eff=E_SUMMON, base=1, tgt=T_DEST_CAST, misc=990111),
             dict(eff=E_PERSISTENT_AREA, aura=A_PERIODIC_DAMAGE_AREA, base=dmg(0.13),
-                 tgt=T_DEST_AREA_ENEMY, radius=RADIUS_10YD, amplitude=2000),
+                 tgt=T_DEST_DYNOBJ_ENEMY, radius=RADIUS_10YD, amplitude=2000),
+            dict(eff=E_APPLY_AURA, aura=A_HASTE_SPELLS, base=-25,
+                 tgt=T_AREA_ENEMY_DEST, radius=RADIUS_10YD),
         ],
-        desc=("Raises a sentry out of the ground. It fires on anything hostile within $a2 "
-              "yards of it for $d. It cannot move, be healed, or hold threat."),
+        desc=("Raises a sentry at the target location for $d. It deals $o2 Nature damage over "
+              "its duration to enemies within $a2 yards, and enemies within $a3 yards when it "
+              "rises cast 25% slower. It cannot move, be healed, or hold threat."),
         compare="Ten ticks over its life against a 469 band anchor: ~1.3 casts' worth, spread "
                 "over 20s and only against whatever stays near it.",
     ),
@@ -401,13 +443,12 @@ RECIPES = [
     dict(
         key="hurl", name="Hurl", rarity=0, type=2,
         first_level=3, ranks=7, step=11, donor=133, school=1,
-        icon=251, visual=567, power=("energy", 20),
+        icon=251, visual=567, power=("energy", 25),
         range_idx=RANGE_20, cast_idx=CAST_INSTANT, cooldown_ms=6000,
         effects=[
             dict(eff=E_SCHOOL_DAMAGE, base=dmg(0.85), tgt=T_ENEMY),
         ],
-        desc=("Throws whatever is to hand at a distant enemy for $s1 damage. No weapon "
-              "required, and no aim worth the name."),
+        desc="Throws a heavy object at the target, dealing $s1 damage.",
         compare="0.85x anchor for an instant on a 6s cooldown. The point is having any "
                 "ranged attack at all, which a rolled build often has none of.",
     ),
@@ -421,20 +462,20 @@ RECIPES = [
         effects=[
             dict(eff=E_APPLY_AURA, aura=A_MOD_DAMAGE_TAKEN_PCT, base=-10, tgt=T_SELF),
         ],
-        desc="Set your feet and take the hit. Damage you suffer is reduced by 10% for $d.",
+        desc="Reduces all damage you take by 10% for $d.",
         compare="Shield Wall is -60% for 12s on 5 minutes. This is -10% for 6s on 30 seconds, "
                 "which is about a tenth of the mitigation for a fifth of the wait.",
     ),
     dict(
         key="kick_dirt", name="Kick Dirt", rarity=0, type=0, mechanic=11,  # snare
         first_level=9, ranks=5, step=13, donor=1766, school=1,
-        icon=350, visual=263, power=("energy", 20),
+        icon=350, visual=263, power=("energy", 30),
         range_idx=RANGE_MELEE, cast_idx=CAST_INSTANT, cooldown_ms=15000,
         duration_idx=DUR_6S,
         effects=[
             dict(eff=E_APPLY_AURA, aura=A_MOD_DECREASE_SPEED, base=-50, tgt=T_ENEMY),
         ],
-        desc="A faceful of grit and gravel. The target is slowed by 50% for $d.",
+        desc="Reduces the target's movement speed by 50% for $d.",
         compare="Chains of Ice is -95% for 10s and Crippling Poison -50% on every hit. "
                 "This is -50% for 6s on a 15s cooldown: an escape, not a lockdown.",
     ),
@@ -445,9 +486,9 @@ RECIPES = [
         power=("mana", 12), power_is_pct=True,
         range_idx=RANGE_SELF, cast_idx=CAST_INSTANT, cooldown_ms=60000,
         effects=[
-            dict(eff=E_ENERGIZE, base=dmg(1.4), tgt=T_SELF, misc=POWER["energy"]),
+            dict(eff=E_ENERGIZE, base=("ranks", [20, 25, 30, 35, 40]), tgt=T_SELF, misc=POWER["energy"]),
         ],
-        desc="Burn a moment of focus for a second wind. Restores $s1 energy.",
+        desc="Instantly restores $s1 energy.",
         compare="Makeshift Strike turns energy into mana; this turns mana back into energy, "
                 "so neither pool can strand a build that leans on the other.",
     ),
@@ -462,7 +503,7 @@ RECIPES = [
             dict(eff=E_ATTACK_ME, base=1, tgt=T_ENEMY),
             dict(eff=E_APPLY_AURA, aura=A_MOD_TAUNT, base=1, tgt=T_ENEMY),
         ],
-        desc=("A shout, a gesture, a thrown rock. The target turns on you for $d."),
+        desc="Taunts the target to attack you for $d.",
         compare="Taunt itself: level 10, 8s cooldown, no rank scaling. Copied wholesale, "
                 "because a taunt either works or it does not.",
     ),
@@ -470,12 +511,13 @@ RECIPES = [
         key="wide_arc", name="Wide Arc", rarity=0, type=1,
         first_level=11, ranks=6, step=12, donor=1680, school=1,
         icon=1952, visual=12006, visual_kits=dict(impact=4551),
-        power=("energy", 35),
+        power=("energy", 45),
         range_idx=RANGE_MELEE, cast_idx=CAST_INSTANT, cooldown_ms=6000,
         effects=[
-            dict(eff=E_WEAPON_PERCENT, base=55, tgt=T_AREA_ENEMY_SRC, radius=RADIUS_8YD),
+            dict(eff=E_WEAPON_PERCENT, base=55, tgt=T_SRC_CASTER, tgtb=T_AREA_ENEMY_SRC,
+                 radius=RADIUS_8YD),
         ],
-        desc=("A wide, untidy swing at everything within $a1 yards, for $s1% weapon damage."),
+        desc="Strikes all enemies within $a1 yards for $s1% weapon damage.",
         compare="Whirlwind is 100% weapon damage to everything on a 10s cooldown at level 36. "
                 "This is 55% on 6s from level 11, which is worse per swing and available "
                 "twenty-five levels earlier.",
@@ -490,7 +532,7 @@ RECIPES = [
         effects=[
             dict(eff=E_APPLY_AURA, aura=A_MOD_INCREASE_SPEED, base=40, tgt=T_SELF),
         ],
-        desc="A short, ugly burst of speed. Movement speed increases by 40% for $d.",
+        desc="Increases your movement speed by $s1% for $d.",
         compare="Sprint is +50% for 15s on 5 minutes and Dash the same. This is +40% for 6s "
                 "on 90 seconds: less of it, more often, and never a substitute for either.",
     ),
@@ -505,7 +547,7 @@ RECIPES = [
             dict(eff=E_APPLY_AURA, aura=A_MOD_ATTACK_POWER, base=("dmg", -0.6),
                  tgt=T_ENEMY),
         ],
-        desc="Puts the target off their stride, reducing their attack power by $s1 for $d.",
+        desc="Reduces the target's attack power by $s1 for $d.",
         compare="Demoralizing Shout takes 35 attack power off everything nearby at level 14. "
                 "This takes less, off one target, and is the only weaken a rolled build is "
                 "guaranteed to have.",
@@ -520,7 +562,7 @@ RECIPES = [
         effects=[
             dict(eff=E_APPLY_AURA, aura=A_SCHOOL_ABSORB, base=heal(0.50), tgt=T_SELF),
         ],
-        desc="A hasty guard thrown up in front of you. Absorbs $s1 damage for $d.",
+        desc="Absorbs $s1 damage for $d.",
         compare="Power Word: Shield absorbs 44 at level 6 with no cooldown. This is half the "
                 "heal anchor on a 45 second cooldown, so it eats one hit rather than a fight.",
     ),
@@ -534,8 +576,7 @@ RECIPES = [
         effects=[
             dict(eff=E_APPLY_AURA, aura=A_MOD_DAMAGE_DONE_PCT, base=5, tgt=T_SELF),
         ],
-        desc=("You settle into a stance that belongs to nobody in particular. Damage done "
-              "increases by 5% for $d."),
+        desc="Increases all damage you deal by 5% for $d.",
         compare="Death Wish is +20% for 30s on 3 minutes. This is +5% for 15s on 1 minute: "
                 "a quarter of the size for a fifth of the wait, which is where a Common "
                 "version of a signature cooldown belongs.",
@@ -549,15 +590,18 @@ RECIPES = [
         duration_idx=DUR_15S,
         summon=dict(entry=990112, name="Cairn"),
         effects=[
-            dict(eff=E_SUMMON, base=1, tgt=41, misc=990112),
+            dict(eff=E_SUMMON, base=1, tgt=T_DEST_TOTEM_SLOT, misc=990112),
             dict(eff=E_APPLY_AURA, aura=A_PERIODIC_HEAL, base=heal(0.14),
-                 tgt=T_AREA_ALLY_SRC, radius=RADIUS_10YD, amplitude=3000),
+                 tgt=T_AREA_ALLY_DEST, radius=RADIUS_10YD, amplitude=3000),
+            dict(eff=E_APPLY_AURA, aura=A_DAMAGE_SHIELD, base=dmg(0.10),
+                 tgt=T_AREA_ALLY_DEST, radius=RADIUS_10YD),
         ],
-        desc=("Stacks a few stones into something that means safety here. You and allies "
-              "within $a2 yards recover $o2 health over $d."),
-        compare="Second Nature heals one person and Overflow heals in a burst; this is the "
-                "only healing in the set that stays somewhere. A fifth of the heal anchor "
-                "per tick, spread across whoever stands in it.",
+        desc=("Places a cairn beside you for $d. You and allies within $a2 yards recover $o2 "
+              "health over its duration, and anything that strikes you in melee takes $s3 "
+              "Nature damage."),
+        compare="Healing Stream Totem heals; Thorns hurts what hits you; no spell does "
+                "both. The heal is a fifth of the heal anchor per tick, the shield a tenth "
+                "of the damage anchor per hit, which is Thorns' own size at the level.",
     ),
     dict(
         key="waystone", name="Waystone", rarity=0, type=0,
@@ -568,15 +612,16 @@ RECIPES = [
         duration_idx=DUR_20S,
         summon=dict(entry=990113, name="Waystone"),
         effects=[
-            dict(eff=E_SUMMON, base=1, tgt=41, misc=990113),
+            dict(eff=E_SUMMON, base=1, tgt=T_DEST_TOTEM_SLOT, misc=990113),
             dict(eff=E_APPLY_AURA, aura=A_MOD_INCREASE_SPEED, base=15,
-                 tgt=T_AREA_ALLY_SRC, radius=RADIUS_15YD),
+                 tgt=T_AREA_ALLY_DEST, radius=RADIUS_15YD),
+            dict(eff=E_APPLY_AURA, aura=A_MOD_DECREASE_SPEED, base=-15,
+                 tgt=T_AREA_ENEMY_DEST, radius=RADIUS_15YD),
         ],
-        desc=("Sets a marker worth walking towards. You and allies within $a2 yards of it "
-              "move 15% faster for $d."),
-        compare="Sprint is +50% for 15s on 5 minutes, for one person. This is +15% for the "
-                "group. It lands once when planted, because a speed buff you have to stand "
-                "next to would be worth nothing.",
+        desc=("Places a waystone beside you for $d. You and allies within $a2 yards move 15% "
+              "faster, and enemies within $a3 yards move 15% slower."),
+        compare="Sprint speeds one person; Earthbind Totem slows enemies; no spell does "
+                "both sides. +15% and -15% for 20s, once when planted. Earthbind is -50%.",
     ),
     dict(
         key="signal_fire", name="Signal Fire", rarity=1, type=0,
@@ -587,15 +632,17 @@ RECIPES = [
         duration_idx=DUR_20S,
         summon=dict(entry=990114, name="Signal Fire"),
         effects=[
-            dict(eff=E_SUMMON, base=1, tgt=41, misc=990114),
+            dict(eff=E_SUMMON, base=1, tgt=T_DEST_TOTEM_SLOT, misc=990114),
             dict(eff=E_APPLY_AURA, aura=A_MOD_STAT, base=("dmg", 0.06), misc=-1,
-                 tgt=T_AREA_ALLY_SRC, radius=RADIUS_15YD),
+                 tgt=T_AREA_ALLY_DEST, radius=RADIUS_15YD),
+            dict(eff=E_APPLY_AURA, aura=A_MOD_DAMAGE_TAKEN_PCT, base=4,
+                 tgt=T_AREA_ENEMY_DEST, radius=RADIUS_15YD),
         ],
-        desc=("Lights something that can be seen from a distance. You and allies within $a2 "
-              "yards gain $s2 to all attributes for $d."),
-        compare="Mark of the Wild is +37 to every attribute, permanently, on the whole raid. "
-                "This is a fraction of that for 20 seconds, and the only stat buff a rolled "
-                "build is guaranteed to have.",
+        desc=("Lights a signal fire beside you for $d. You and allies within $a2 yards gain $s2 "
+              "to all attributes, and enemies within $a3 yards take 4% more damage."),
+        compare="Mark of the Wild buffs stats; Curse of the Elements is +13% damage taken in "
+                "two schools; no spell does both. A fraction of Mark for 20s, and +4% to "
+                "all damage for the same 20s.",
     ),
     dict(
         key="rally_point", name="Rally Point", rarity=2, type=0,
@@ -606,12 +653,14 @@ RECIPES = [
         duration_idx=DUR_20S,
         summon=dict(entry=990115, name="Rally Point"),
         effects=[
-            dict(eff=E_SUMMON, base=1, tgt=41, misc=990115),
+            dict(eff=E_SUMMON, base=1, tgt=T_DEST_TOTEM_SLOT, misc=990115),
             dict(eff=E_APPLY_AURA, aura=A_MOD_DAMAGE_DONE_PCT, base=3,
-                 tgt=T_AREA_ALLY_SRC, radius=RADIUS_15YD),
+                 tgt=T_AREA_ALLY_DEST, radius=RADIUS_15YD),
+            dict(eff=E_APPLY_AURA, aura=A_MOD_INCREASE_HEALTH_PCT, base=5,
+                 tgt=T_AREA_ALLY_DEST, radius=RADIUS_15YD),
         ],
-        desc=("Plants a banner worth fighting under. You and allies within $a2 yards deal 3% "
-              "more damage for $d."),
+        desc=("Plants a banner beside you for $d. You and allies within $a2 yards deal 3% more "
+              "damage and have 5% more health."),
         compare="Borrowed Stance gives one person 5% for 15s on a minute. This gives the group "
                 "3% for 20s on two, which is the usual trade: less each, more people, longer wait.",
     ),
@@ -624,56 +673,63 @@ RECIPES = [
         duration_idx=DUR_20S,
         summon=dict(entry=990116, name="Drill Ground"),
         effects=[
-            dict(eff=E_SUMMON, base=1, tgt=41, misc=990116),
+            dict(eff=E_SUMMON, base=1, tgt=T_DEST_TOTEM_SLOT, misc=990116),
             dict(eff=E_APPLY_AURA, aura=A_MOD_COOLDOWN, base=-2,
-                 tgt=T_AREA_ALLY_SRC, radius=RADIUS_15YD),
+                 tgt=T_AREA_ALLY_DEST, radius=RADIUS_15YD),
+            dict(eff=E_APPLY_AURA, aura=A_MOD_POWER_COST_PCT, base=-10, misc=ALL_SCHOOLS,
+                 tgt=T_AREA_ALLY_DEST, radius=RADIUS_15YD),
         ],
-        desc=("Marks out ground to work on. For $d, abilities you and allies within $a2 yards "
-              "begin using come off cooldown 2 sec sooner."),
+        desc=("Marks out a drill ground beside you for $d. Abilities you and allies within $a2 "
+              "yards use come off cooldown 2 sec sooner and cost 10% less."),
         compare="SPELL_AURA_MOD_COOLDOWN is read when a cooldown STARTS, so this shortens "
                 "cooldowns begun during the window rather than speeding up ones already "
                 "running. Flat seconds, so it is worth far more to a 6 second ability than "
                 "a 3 minute one, and the global cooldown is the floor either way.",
     ),
     dict(
-        key="venom_beetle", name="Venom Beetle", rarity=2, type=0,
-        first_level=30, ranks=3, step=16, donor=5730, school=8,
+        key="venom_beetle", name="Venom Beetle", rarity=0, type=0,
+        first_level=10, ranks=1, step=1, donor=688, school=8,
         icon=1630, visual=8111, visual_kits=dict(instant_area=3031),
-        power=("mana", 18), power_is_pct=True,
-        range_idx=RANGE_30, cast_idx=CAST_INSTANT, cooldown_ms=120000,
-        duration_idx=DUR_30S,
+        power=("mana", 25), power_is_pct=True,
+        range_idx=RANGE_SELF, cast_idx=CAST_3000, cooldown_ms=0,
+        duration_idx=DUR_PERMANENT,
         summon=dict(entry=990117, name="Venom Beetle"),
         effects=[
-            dict(eff=E_SUMMON, base=1, tgt=T_ENEMY,
-                 misc=("rank", [990117, 990118, 990119]), miscb=SUMMON_GUARDIAN),
+            # SUMMON_PET: Player::SummonPet, saved to character_pet, back at
+            # login, dismissable, and it levels with its owner
+            dict(eff=E_SUMMON_PET, base=1, tgt=T_DEST_CASTER_SUMMON, misc=990117),
         ],
-        # What it knows. Each lands on the pet bar with an autocast toggle, and
-        # a rank adds the next one: rank 1 bites, rank 2 spits, rank 3 chokes.
+        # What it knows. Each keeps the marker row as donor: Summon Imp's carries
+        # SPELL_ATTR1_NO_AUTOCAST_AI, which would grey them out on the bar. A
+        # pet learns a default spell when its level reaches the spell's own, so
+        # one beetle bites at 10, spits at 30 and chokes at 50.
         pet_spells=[
-            dict(name="Venom Bite", school=8, icon=1630, visual=67,
+            dict(name="Venom Bite", level=10, donor=5730, school=8, icon=1630, visual=67,
                  visual_kits=dict(impact=3031), duration_idx=DUR_12S,
                  range_idx=RANGE_MELEE, cast_idx=CAST_INSTANT, cooldown_ms=6000,
                  power=("mana", 0),
-                 desc="Poisons the target for $o1 Nature damage over $d.",
+                 desc="Poisons the target, dealing $o1 Nature damage over $d.",
                  effects=[dict(eff=E_APPLY_AURA, aura=A_PERIODIC_DAMAGE,
                                base=("dmg", 0.20), tgt=T_ENEMY, amplitude=3000)]),
-            dict(name="Weakening Spit", school=8, icon=1739, visual=67,
+            dict(name="Weakening Spit", level=30, donor=5730, school=8, icon=1739, visual=67,
                  visual_kits=dict(impact=3031), duration_idx=DUR_15S,
                  range_idx=RANGE_20, cast_idx=CAST_INSTANT, cooldown_ms=15000,
                  power=("mana", 0),
-                 desc="Spits acid, reducing the target's attack power by $s1 for $d.",
+                 desc="Reduces the target's attack power by $s1 for $d.",
                  effects=[dict(eff=E_APPLY_AURA, aura=A_MOD_ATTACK_POWER,
                                base=("dmg", -0.5), tgt=T_ENEMY)]),
-            dict(name="Spore Wash", school=8, icon=68, visual=7732,
+            dict(name="Spore Wash", level=50, donor=5730, school=8, icon=68, visual=7732,
                  visual_kits=dict(persistent_area=9352), duration_idx=DUR_6S,
                  range_idx=RANGE_20, cast_idx=CAST_INSTANT, cooldown_ms=30000,
                  power=("mana", 0),
-                 desc="Washes the ground with spores, slowing enemies within $a1 yards for $d.",
+                 desc="Reduces the target's movement speed by 40% for $d.",
+                 # Froststorm Breath's shape: a pet slow is a single-target
+                 # aura, which is what PetAI knows how to autocast
                  effects=[dict(eff=E_APPLY_AURA, aura=A_MOD_DECREASE_SPEED, base=-40,
-                               tgt=T_DEST_AREA_ENEMY, radius=RADIUS_8YD)]),
+                               tgt=T_ENEMY)]),
         ],
-        desc=("Turns something out of the ground that resents being disturbed. It fights for "
-              "you for $d, and what it knows grows with its rank."),
+        desc=("Summons a Venom Beetle to fight at your side. It knows Venom Bite, and learns "
+              "Weakening Spit at level 30 and Spore Wash at level 50."),
         compare="A guardian in Force of Nature's shape, which the core treats as a "
                 "CONTROLLABLE_GUARDIAN: its melee scales with the level it is summoned at, "
                 "its abilities sit on the pet bar with autocast, and DamageModifier climbs "
@@ -697,23 +753,43 @@ RECIPES = [
             desc="The arcane half of Crossdraw.",
             effects=[dict(eff=E_SCHOOL_DAMAGE, base=dmg(0.5), tgt=T_ENEMY)],
         ),
-        desc=("Strike for $s1% weapon damage. If you have cast a spell in the last 5 sec, "
-              "the blow carries its leftover charge and burns as well."),
+        desc=("Strikes the target for $s1% weapon damage. If you have cast a damaging spell in "
+              "the last 5 sec, the strike also deals ${companion}s1 Arcane damage."),
         compare="0.35x anchor base plus 0.5x when the weave lands: 0.85x total, an instant "
                 "on a short cooldown's worth, which is what setting it up is worth.",
     ),
     dict(
         key="ricochet_shot", name="Ricochet Shot", rarity=2, script=True, type=2,
-        first_level=18, ranks=5, step=12, donor=133, school=1,
-        icon=105, visual=567, visual_kits=dict(impact=282),
+        first_level=18, ranks=5, step=12, donor=2643, school=1,
+        icon=105, visual=3299, visual_kits=dict(impact=282),
         power=("energy", 30),
-        range_idx=RANGE_30, cast_idx=CAST_INSTANT, cooldown_ms=10000,
+        range_idx=RANGE_RANGED, cast_idx=CAST_INSTANT, cooldown_ms=10000,
+        duration_idx=DUR_6S,
+        # Each ricochet is this hidden spell, cast BY the target it leaves at
+        # the next enemy with the player as original caster: the missile is
+        # drawn between the two, the damage and threat are the player's.
+        # Slot 2 carries the budget that remains; slot 3 the same marker.
+        companion=dict(
+            name="Ricochet Shot", school=1, visual=3299, icon=105, donor=2643,
+            range_idx=RANGE_40, cast_idx=CAST_INSTANT, cooldown_ms=0, power=("mana", 0),
+            duration_idx=DUR_6S, desc="Ricochet of Ricochet Shot.",
+            effects=[
+                dict(eff=E_SCHOOL_DAMAGE, base=dmg(0.4), tgt=T_ENEMY),
+                dict(eff=E_DUMMY, base=0, tgt=T_ENEMY),
+                dict(eff=E_APPLY_AURA, aura=A_DUMMY, base=0, tgt=T_ENEMY),
+            ],
+        ),
+        companion_script=True,
         effects=[
-            dict(eff=E_SCHOOL_DAMAGE, base=dmg(0.5), tgt=T_ENEMY, chain=("rank", 2, 3)),
+            dict(eff=E_SCHOOL_DAMAGE, base=dmg(0.5), tgt=T_ENEMY),
+            # the marker: its value is the rank's ricochet budget, which the
+            # script reads and the tooltip shows as $s2
+            dict(eff=E_APPLY_AURA, aura=A_DUMMY, base=("ranks", [1, 2, 3, 3, 4]), tgt=T_ENEMY),
         ],
-        desc=("Looses a shot for $s1 damage that ricochets to nearby enemies. Every "
-              "ricochet is paid for in mana as the shot leaves your hand. What you "
-              "cannot pay for, it does not do."),
+        desc=("Fires a shot at the target for $s1 damage, then ricochets up to $s2 more "
+              "times to enemies within 8 yards of the last one hit. Each ricochet deals "
+              "80% of that damage and costs 6% of your maximum mana; it stops when you "
+              "cannot pay."),
         compare="Multi-Shot: level 18, chain 3, 10s cooldown. Same cooldown, chain caps at 3.",
     ),
     dict(
@@ -726,9 +802,11 @@ RECIPES = [
         effects=[
             dict(eff=E_APPLY_AURA, aura=A_PERIODIC_DAMAGE, base=dmg(0.30),
                  tgt=T_ENEMY, amplitude=3000),
+            # how many of your other periodics it extends; the script reads it
+            dict(eff=E_DUMMY, base=("ranks", [2, 3, 4, 5]), tgt=T_ENEMY),
         ],
-        desc=("Afflicts the target for $o1 Nature damage over $d, and gives every wound you "
-              "have already opened on it another 6 sec to work."),
+        desc=("Deals $o1 Shadow damage over $d and extends up to $s2 of your other damage over "
+              "time effects on the target by 6 sec."),
         compare="Extends by a fixed 6s rather than refreshing to full: refreshing approaches "
                 "never recasting a dot again, which is an exploit, not a spell.",
     ),
@@ -743,8 +821,9 @@ RECIPES = [
             dict(eff=E_APPLY_AURA, aura=A_MOD_MELEE_HASTE, base=0, tgt=T_SELF),
             dict(eff=E_APPLY_AURA, aura=A_MOD_CASTING_SPEED, base=0, tgt=T_SELF),
         ],
-        desc=("Spends every point of rage and energy you have. For $d, attack and casting "
-              "speed increase by 1% per 10 points spent, to a maximum of 20%."),
+        desc=("Consumes all of your rage and energy, increasing your attack speed and casting "
+              "speed by 1% for every 5 points consumed, up to 20%, for $d. Requires at least 20 "
+              "rage or energy."),
         compare="Bloodlust is +30% haste for 40s. This caps at +20% for 12s on 2 minutes.",
     ),
     dict(
@@ -757,8 +836,8 @@ RECIPES = [
         effects=[
             dict(eff=E_APPLY_AURA, aura=A_MOD_DAMAGE_DONE_PCT, base=0, tgt=T_SELF),
         ],
-        desc=("For $d, every different ability you use raises your damage by 3%, to a "
-              "maximum of five. Repeating an ability adds nothing."),
+        desc=("For $d, each different ability you use increases your damage by 3%, stacking up "
+              "to 5 times. Using an ability again adds nothing."),
         compare="Avenging Wrath is +20% for 20s on 3 minutes. This tops out at +15% for the "
                 "same 20s on the same cooldown, and only if you cycle five abilities.",
     ),
@@ -771,8 +850,8 @@ RECIPES = [
         effects=[
             dict(eff=E_SCHOOL_DAMAGE, base=dmg(1.6), tgt=T_ENEMY),
         ],
-        desc=("Everything you have gathered, spent at once, for $s1 damage. Increased by 8% "
-              "for each Epic or Legendary ability you own, to a maximum of 40%."),
+        desc=("Deals $s1 Arcane damage to the target, increased by 8% for each Epic or "
+              "Legendary ability you know, up to 40%."),
         compare="1.6x the anchor for a 3 minute cooldown. Capped at +40%: uncapped, a lucky "
                 "hero reached +90% and an unlucky one got nothing.",
     ),
@@ -925,7 +1004,9 @@ def build_row(spell, recipe, rank_index, level, spell_id, next_id, companion_id)
         v[42] = 0
         v[MANA_COST_PCT] = amount
     else:
-        v[42] = amount
+        # Rage is stored times ten: Heroic Strike's 15 rage is a 150 in this
+        # column, and the client divides on display. A 20 here showed "2 Rage".
+        v[42] = amount * 10 if kind == "rage" else amount
         v[MANA_COST_PCT] = 0
 
     for slot in range(3):
@@ -933,7 +1014,7 @@ def build_row(spell, recipe, rank_index, level, spell_id, next_id, companion_id)
         setf("Effect", e["eff"] if e else 0, slot)
         setf("EffectApplyAuraName", (e.get("aura", 0) if e else 0), slot)
         setf("EffectImplicitTargetA", (e.get("tgt", 0) if e else 0), slot)
-        setf("EffectImplicitTargetB", 0, slot)
+        setf("EffectImplicitTargetB", (e.get("tgtb", 0) if e else 0), slot)
         setf("EffectRadiusIndex", (e.get("radius", 0) if e else 0), slot)
         setf("EffectAmplitude", (e.get("amplitude", 0) if e else 0), slot)
         chain = e.get("chain", 0) if e else 0
@@ -961,7 +1042,7 @@ def build_row(spell, recipe, rank_index, level, spell_id, next_id, companion_id)
                 trig = companion_id or 0
                 base = 0
             else:
-                base = resolve(e["base"], level)
+                base = resolve(e["base"], level, rank_index)
         setf("EffectTriggerSpell", trig, slot)
         # EffectBasePoints is stored one below the value the client shows
         setf("EffectBasePoints", int(round(base)) - 1, slot)
@@ -971,15 +1052,21 @@ def build_row(spell, recipe, rank_index, level, spell_id, next_id, companion_id)
             v[k] = ""
     v[F["SpellName"]] = recipe["name"]
     v[F["Rank"]] = "Rank %d" % (rank_index + 1) if recipe["ranks"] > 1 else ""
-    v[F["Description"]] = recipe["desc"]
+    # ${companion}s1 in a description is the client's cross-spell reference to the
+    # rank's own companion, so a hidden half's number shows on the visible half
+    v[F["Description"]] = recipe["desc"].replace("{companion}", str(companion_id or 0))
     v[F["ToolTip"]] = ""
     return v, donor
 
 
-def resolve(base, level):
+def resolve(base, level, rank_index=0):
     if isinstance(base, tuple):
-        kind, mult = base
-        return anchor(kind, level) * mult
+        kind, val = base
+        if kind == "ranks":
+            # a literal per rank, for things the curve cannot price: an energy
+            # restore is capped by a 100-point pool whatever the level
+            return val[min(rank_index, len(val) - 1)]
+        return anchor(kind, level) * val
     return base
 
 
@@ -1036,7 +1123,8 @@ def build(spell, only=None):
         # pet_spells, built at the level of the rank that unlocks them so each
         # is worth something when it arrives.
         for n, petspell in enumerate(recipe.get("pet_spells", [])):
-            unlock = recipe["first_level"] + n * recipe["step"]
+            # a pet learns this at the level it names, so it is built there
+            unlock = petspell.get("level", recipe["first_level"] + n * recipe["step"])
             ps = dict(recipe)
             ps.update(petspell)
             ps["ranks"] = 1
@@ -1170,15 +1258,25 @@ def write_sql(spells, lines, gen, path):
     # line whose later ranks are missing here would silently lose its script
     # partway up the level range. The name is the C++ class name, which is what
     # RegisterSpellScript registers under.
+    # A companion is scripted too when its recipe says companion_script: the
+    # ricochet has to know how many ricochets are left.
+    bounce = {r["key"] for r in RECIPES if r.get("companion_script")}
+
+    def script_name(key):
+        if key.endswith("_companion"):
+            return "spell_cw_%s_bounce" % key[:-len("_companion")]
+        return "spell_cw_%s" % key
+
     scripted = [s for s in spells
-                if s["key"] in SCRIPTED and not s["key"].endswith("_companion")]
+                if (s["key"] in SCRIPTED and not s["key"].endswith("_companion"))
+                or (s["key"].endswith("_companion") and s["key"][:-len("_companion")] in bounce)]
     if scripted:
         L.append("DELETE FROM `spell_script_names` WHERE `spell_id` BETWEEN %d AND %d;"
                  % (SPELL_BASE, BLOCK_END))
         L.append("INSERT INTO `spell_script_names` (`spell_id`, `ScriptName`) VALUES")
         for n, sp in enumerate(scripted):
             end = ";" if n == len(scripted) - 1 else ","
-            L.append("(%d, 'spell_cw_%s')%s" % (sp["id"], sp["key"], end))
+            L.append("(%d, '%s')%s" % (sp["id"], script_name(sp["key"]), end))
         L.append("")
 
     L.append("-- The markers the two summons place. A creature that only stands there")

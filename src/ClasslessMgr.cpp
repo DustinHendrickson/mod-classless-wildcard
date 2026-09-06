@@ -3103,6 +3103,37 @@ void ClasslessMgr::SyncSpellbookTabs(Player* player, bool clearChassisLines)
                 if (t->rankSpells[r])
                     add(t->rankSpells[r]);
 
+    // The Hero line is nobody's class line: no chassis learns it, and a forged
+    // spell's SkillLineAbility row says AcquireMethod 0, so nothing but this
+    // ever hands the skill out. Without it the client has no tab to file the
+    // Hero's spells under and drops them into General. Asked for explicitly,
+    // rather than through _spellSkillLine, so it does not depend on the
+    // skilllineability_dbc rows having loaded; when they have not, say so.
+    if (cfg.forgedEnable)
+    {
+        bool ownsForged = false;
+        for (auto const& [firstSpell, owned] : st.abilities)
+            if (AbilityEntry const* e = GetAbility(firstSpell); e && e->forged)
+            {
+                ownsForged = true;
+                break;
+            }
+        if (ownsForged)
+        {
+            want.insert(uint16(HERO_SKILL_LINE));
+            static bool warned = false;
+            if (!warned && !_classSkillLines.count(uint16(HERO_SKILL_LINE)))
+            {
+                warned = true;
+                LOG_WARN("module.classless",
+                         "mod-classless-wildcard: skill line {} (Hero) has no SkillLineAbility rows "
+                         "loaded: the skilllineability_dbc rows from cw_spells_forged.sql are missing, "
+                         "so forged spells will file under General",
+                         HERO_SKILL_LINE);
+            }
+        }
+    }
+
     GrantGuard guard(_applyingGrant);
 
     // Drop the chassis class's own skill lines, and any other the Hero has
@@ -3116,8 +3147,11 @@ void ClasslessMgr::SyncSpellbookTabs(Player* player, bool clearChassisLines)
             if (!want.count(line) && player->HasSkill(line))
                 player->SetSkill(line, 0, 0, 0);
 
-    // Then a tab for each school they actually know.
-    std::set<uint16> const& give = (cfg.spellbookTabs >= 2) ? _classSkillLines : want;
+    // Then a tab for each school they actually know. The Hero line rides
+    // along in either mode: it is in `want` exactly when a forged spell is owned.
+    std::set<uint16> give = (cfg.spellbookTabs >= 2) ? _classSkillLines : want;
+    if (want.count(uint16(HERO_SKILL_LINE)))
+        give.insert(uint16(HERO_SKILL_LINE));
     for (uint16 line : give)
         if (!player->HasSkill(line))
             // value 1 with a level-scaled max, exactly what LearnDefaultSkill

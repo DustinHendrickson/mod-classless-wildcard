@@ -81,6 +81,8 @@ StubMT.__index = function(self, k)
     if k == "SetTexCoord" then return function(s, ...) rawset(s, "__coord", {...}) end end
     if k == "SetPoint" then return function(s, ...) rawset(s, "__point", {...}) end end
     if k == "SetChecked" then return function(s, v) rawset(s, "__checked", v and true or false) end end
+    if k == "SetAttribute" then return function(s, n, v) local a = rawget(s, "__attributes") or {} a[n] = v rawset(s, "__attributes", a) end end
+    if k == "GetAttribute" then return function(s, n) local a = rawget(s, "__attributes") return a and a[n] end end
     if k == "GetChecked" then return function(s) return rawget(s, "__checked") and 1 or nil end end
     if k == "ClearAllPoints" then return function(s) rawset(s, "__point", nil) end end
     if k == "SetTexture" then return function(s, ...) rawset(s, "__tex", {...}) return true end end
@@ -182,6 +184,20 @@ function UnitHealthMax() return 100 end
 function GetNumShapeshiftForms() return 0 end
 function IsAddOnLoaded() return nil end
 MAX_SKILLLINE_TABS = 8
+-- the spellbook, as the game reports it: twelve skill lines, the twelfth with
+-- fifteen spells so the addon's page has to turn
+BOOKTYPE_SPELL = "spell"
+SPELLBOOK_PAGENUMBERS = { 1, 1, 1, 1, 1, 1, 1, 1 }
+NUM_TABS = 12
+function GetNumSpellTabs() return NUM_TABS end
+function GetSpellTabInfo(i)
+    if i < 1 or i > NUM_TABS then return nil end
+    return "Line " .. i, "Interface\\Icons\\Tab" .. i, (i - 1) * 20, (i == 12) and 15 or 4
+end
+function GetSpellName(slot, book) return "Spell" .. tostring(slot), "Rank " .. tostring(slot % 3 + 1) end
+function GetSpellTexture(slot) return "Interface\\Icons\\Spell" .. tostring(slot) end
+PICKED = {}
+function PickupSpell(slot, book) PICKED[#PICKED + 1] = slot end
 '''
 
 # A current-server state packet: mode, AE, TE, pity, chance, scrolls, level,
@@ -1527,6 +1543,64 @@ STRATA = ["BACKGROUND", "LOW", "MEDIUM", "HIGH", "DIALOG", "FULLSCREEN",
           "FULLSCREEN_DIALOG", "TOOLTIP"]
 
 
+def test_spellbook(h):
+    print("--- spellbook: tabs past the eighth without touching Blizzard's state")
+    CW = h.CW
+    rt = h.rt
+    # a sentinel in every piece of Blizzard state the old code wrote, so a write
+    # shows up as a changed value rather than an absence
+    rt.execute("""
+        SpellBookFrame.selectedSkillLine = 3
+        SpellBookFrame.bookType = "spell"
+        MAX_SKILLLINE_TABS = 8
+        for i = 1, 12 do local b = Stub("CheckButton", "SpellButton" .. i) b.__shown = true end
+        Stub("FontString", "SpellBookPageText").__shown = true
+        Stub("Button", "SpellBookPrevPageButton").__shown = true
+        Stub("Button", "SpellBookNextPageButton").__shown = true
+        for i = 1, 8 do Stub("CheckButton", "SpellBookSkillLineTab" .. i) end
+    """)
+    sb = CW.spellbook
+    h.check(sb is not None, "the addon exposes its spellbook piece")
+    sb.install()
+    sb.layout()
+
+    h.check(rt.eval("MAX_SKILLLINE_TABS") == 8, "MAX_SKILLLINE_TABS is left at Blizzard's 8")
+    h.check(rt.eval("rawget(_G, 'SpellBookSkillLineTab9') == nil"),
+            "no frame is created under Blizzard's tab names past the eighth")
+    h.check(rt.eval("#SPELLBOOK_PAGENUMBERS") == 8, "SPELLBOOK_PAGENUMBERS is not seeded")
+
+    tabs = sb.tabs
+    shown = [k for k in range(1, 33) if tabs[k] is not None and tabs[k]["__shown"]]
+    h.check(shown == [1, 2, 3, 4], "one tab of the addon's own for each line past 8 (lines 9..12)")
+
+    # open line 12: fifteen spells, so a full page and a second one
+    h.click(tabs[4])
+    h.check(sb.line == 12 and sb.frame["__shown"] is True, "clicking the addon's tab opens its page")
+    h.check(rt.eval("SpellBookFrame.selectedSkillLine") == 3,
+            "and Blizzard's selected tab is not written")
+    h.check(rt.eval("SpellButton1.__shown") is False and rt.eval("SpellBookPageText.__shown") is False,
+            "Blizzard's buttons and page text are hidden under it")
+    shown_btns = [i for i in range(1, 13) if sb.buttons[i]["__shown"]]
+    h.check(shown_btns == list(range(1, 13)), "twelve secure buttons on the first page")
+    attr = sb.buttons[1]["__attributes"]
+    h.check(attr is not None and str(attr["type"]) == "spell" and str(attr["spell"]).startswith("Spell221"),
+            "each casts by spell name through a secure attribute (%s)" % (attr and attr["spell"]))
+    h.click(sb.next)
+    shown_btns = [i for i in range(1, 13) if sb.buttons[i]["__shown"]]
+    h.check(shown_btns == [1, 2, 3] and sb.page == 2, "the second page shows the remaining three")
+
+    # dragging goes through PickupSpell with the book slot
+    sb.buttons[1]["__scripts"]["OnDragStart"](sb.buttons[1])
+    h.check(rt.eval("PICKED[#PICKED]") == 233, "dragging a button picks up its spell slot")
+
+    # a Blizzard tab, or closing the book, puts the page away and restores the text
+    sb.close()
+    h.check(sb.line is None and sb.frame["__shown"] is False, "closing puts the page away")
+    h.check(rt.eval("SpellBookPageText.__shown") is True and rt.eval("SpellBookPrevPageButton.__shown") is True,
+            "and gives Blizzard back its page text and arrows")
+    h.check(rt.eval("SpellBookFrame.selectedSkillLine") == 3, "still without writing Blizzard's state")
+
+
 def test_layering(h):
     print("--- layering: what draws over what")
     CW = h.CW
@@ -1581,6 +1655,7 @@ def main():
     test_resource_bars(h)
     test_settings(h)
     test_layering(h)
+    test_spellbook(h)
     if h.failures:
         print("\n%d check(s) FAILED" % h.failures)
         return 1

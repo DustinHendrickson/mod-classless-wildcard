@@ -734,6 +734,14 @@ setBtn:SetPoint("BOTTOMLEFT", 266, 26)
 setBtn:SetText("Settings")
 CW.settingsBtn = setBtn
 
+-- The essence line hangs between the two button clusters. Anchored to the
+-- buttons themselves rather than the frame's centre, so it cannot land under
+-- Settings whatever the frame's width, and Buy Scroll or Archetypes taking the
+-- slot beside Help changes nothing: Settings already sits past the wider of them.
+bottomText:ClearAllPoints()
+bottomText:SetPoint("LEFT", setBtn, "RIGHT", 12, 0)
+bottomText:SetPoint("RIGHT", statsBtn, "LEFT", -12, 0)
+
 -- Archetypes: the starter builds the Hero Advancement NPC offers, for the
 -- Classless path. Shares the slot beside Help with Buy Scroll: that one shows
 -- only on Wildcard and this one only on Classless, so they never overlap.
@@ -2673,99 +2681,263 @@ do
 end
 
 -- ---------------------------------------------------------------------------
--- spellbook tabs
+-- Spellbook tabs past the eighth.
 --
--- The client files a spell under a tab by its skill line -- "Fire", "Holy",
--- "Feral Combat" -- and the server now gives a Hero the skill lines their
--- spells belong to, so every spell has a heading to sit under instead of
--- everything landing in General.
+-- Blizzard builds eight tab buttons, and its update code writes the selected
+-- tab, the page numbers and the spell ids its buttons cast from. Anything an
+-- addon writes into that state, or any Blizzard global its secure code reads,
+-- taints the update, and the client then refuses the cast from a spell button:
+-- "ClasslessWildcard has been blocked from an action only available to the
+-- Blizzard UI". The first version of this raised MAX_SKILLLINE_TABS, seeded
+-- SPELLBOOK_PAGENUMBERS and ran Blizzard's tab click handler from its own
+-- buttons, which is all three.
 --
--- Blizzard only ever builds 8 tab buttons, because no real class needs more.
--- A Hero can span all 33 class skill lines, so build the rest from Blizzard's
--- own virtual template and wrap them into columns beside the spellbook: the
--- frame is only tall enough for 8 in a row.
+-- So nothing here touches Blizzard's state. Tabs 1-8 stay Blizzard's, only
+-- re-anchored into columns beside the book. Tabs 9 and up are the addon's own
+-- buttons, and they open the addon's own page: twelve secure action buttons
+-- that cast by spell name, drag with PickupSpell and show the spell's tooltip.
+-- Clicking one of Blizzard's tabs, or closing the book, puts the page away.
 -- ---------------------------------------------------------------------------
-local CW_TAB_LIMIT = 40          -- comfortably above the 33 that carry spells
-local CW_TABS_PER_COLUMN = 7     -- 8 fit, but the 8th lands on the page-turn row; 7 keeps clear of it
-local CW_TAB_STEP_Y = 49         -- 32px button + Blizzard's 17px gap
-local CW_TAB_STEP_X = 42
+do
+    local BLIZZ_TABS = 8            -- what SpellBookFrame.xml declares
+    local PER_COLUMN = 7            -- an 8th row lands on the page-turn row
+    local STEP_Y, STEP_X = 49, 42   -- 32px button + Blizzard's 17px gap
+    local PER_PAGE = 12             -- Blizzard's SPELLS_PER_PAGE
+    local MAX_TABS = 40             -- comfortably above the 33 lines that carry spells
+    local BOOK = BOOKTYPE_SPELL or "spell"
 
-local function CW_LayoutSpellbookTabs()
-    if not SpellBookFrame then return end
-    for i = 1, MAX_SKILLLINE_TABS do
-        local tab = _G["SpellBookSkillLineTab" .. i]
-        if tab then
-            local col = math.floor((i - 1) / CW_TABS_PER_COLUMN)
-            local row = math.fmod(i - 1, CW_TABS_PER_COLUMN)
-            tab:ClearAllPoints()
-            tab:SetPoint("TOPLEFT", SpellBookFrame, "TOPRIGHT",
-                         -32 + col * CW_TAB_STEP_X, -65 - row * CW_TAB_STEP_Y)
+    local sb = { tabs = {}, buttons = {}, line = nil, page = 1, blizzLine = nil }
+    CW.spellbook = sb
+
+    local function anchorTab(tab, i)
+        local col = math.floor((i - 1) / PER_COLUMN)
+        local row = math.fmod(i - 1, PER_COLUMN)
+        tab:ClearAllPoints()
+        tab:SetPoint("TOPLEFT", SpellBookFrame, "TOPRIGHT",
+                     -32 + col * STEP_X, -65 - row * STEP_Y)
+    end
+
+    -- Blizzard's page furniture. Hidden while our page is up; the buttons come
+    -- back on Blizzard's next update, the text and arrows are ours to restore
+    -- because nothing of Blizzard's ever shows them again.
+    local function blizzardPage(show)
+        for i = 1, PER_PAGE do
+            local b = _G["SpellButton" .. i]
+            if b and not show then b:Hide() end
+        end
+        for _, name in ipairs({ "SpellBookPageText", "SpellBookPrevPageButton", "SpellBookNextPageButton" }) do
+            local f = _G[name]
+            if f then if show then f:Show() else f:Hide() end end
+        end
+        for i = 1, BLIZZ_TABS do
+            local t = _G["SpellBookSkillLineTab" .. i]
+            if t and not show and t.SetChecked then t:SetChecked(false) end
         end
     end
-end
 
-local function CW_BuildSpellbookTabs()
-    if not SpellBookFrame or not MAX_SKILLLINE_TABS then return end
-    if MAX_SKILLLINE_TABS >= CW_TAB_LIMIT then return end
-
-    for i = MAX_SKILLLINE_TABS + 1, CW_TAB_LIMIT do
-        local name = "SpellBookSkillLineTab" .. i
-        if not _G[name] then
-            -- Blizzard's own template, so these behave exactly like tabs 1-8:
-            -- same art, same click handler, same tooltip.
-            local tab = CreateFrame("CheckButton", name, SpellBookFrame,
-                                    "SpellBookSkillLineTabTemplate")
-            tab:SetID(i)
-            tab:Hide()
-
-            -- The glow texture is NOT part of that template. Blizzard declares
-            -- eight of them by hand inside SpellBookTabFlashFrame, and
-            -- SpellBookFrame_Update calls
-            --     _G["SpellBookSkillLineTab"..i.."Flash"]:Hide()
-            -- for every tab up to MAX_SKILLLINE_TABS. Raising the ceiling
-            -- without making these is what threw "attempt to index field '?'".
-            local flashParent = SpellBookTabFlashFrame or SpellBookFrame
-            local flash = flashParent:CreateTexture(name .. "Flash", "OVERLAY")
-            flash:SetTexture("Interface\\Buttons\\CheckButtonGlow")
-            flash:SetBlendMode("ADD")
-            flash:SetWidth(64); flash:SetHeight(64)
-            flash:SetPoint("CENTER", tab, "CENTER", 0, 0)
-            flash:Hide()
-        end
-    end
-    -- The per-tab page counter is a plain table Blizzard seeds for tabs 1-8
-    -- only (SPELLBOOK_PAGENUMBERS[1..8] = 1 in SpellBookFrame_OnLoad). It is
-    -- read arithmetically -- SPELLS_PER_PAGE * (SPELLBOOK_PAGENUMBERS[tab] - 1)
-    -- -- so clicking a tab past 8 with no entry is "nil - 1". Seed the rest.
-    if SPELLBOOK_PAGENUMBERS then
-        for i = MAX_SKILLLINE_TABS + 1, CW_TAB_LIMIT do
-            if SPELLBOOK_PAGENUMBERS[i] == nil then
-                SPELLBOOK_PAGENUMBERS[i] = 1
+    local function render()
+        local page = sb.page
+        local _, _, offset, num = GetSpellTabInfo(sb.line)
+        offset, num = tonumber(offset) or 0, tonumber(num) or 0
+        local pages = math.max(1, math.ceil(num / PER_PAGE))
+        if sb.page > pages then sb.page = pages end
+        local first = (sb.page - 1) * PER_PAGE
+        -- secure buttons cannot be changed in combat; the page then shows what
+        -- it showed last, which is still true, just not refreshed
+        local locked = InCombatLockdown and InCombatLockdown()
+        for i = 1, PER_PAGE do
+            local b = sb.buttons[i]
+            local idx = first + i
+            if idx <= num then
+                local slot = offset + idx
+                local name, rank = GetSpellName(slot, BOOK)
+                b.slot = slot
+                b.icon:SetTexture(GetSpellTexture(slot, BOOK))
+                b.name:SetText(name or "")
+                b.sub:SetText(rank or "")
+                if not locked then
+                    if rank and rank ~= "" then
+                        b:SetAttribute("spell", name .. "(" .. rank .. ")")
+                    else
+                        b:SetAttribute("spell", name)
+                    end
+                    b:Show()
+                end
+            else
+                b.slot = nil
+                if not locked then b:Hide() end
             end
         end
+        sb.pageText:SetText("Page " .. sb.page)
+        if sb.page > 1 then sb.prev:Enable() else sb.prev:Disable() end
+        if sb.page < pages then sb.next:Enable() else sb.next:Disable() end
     end
 
-    -- raise the ceiling only after the buttons exist, so Blizzard's update loop
-    -- can never index a tab that was not created
-    MAX_SKILLLINE_TABS = CW_TAB_LIMIT
-    CW_LayoutSpellbookTabs()
-end
+    local function showOurs()
+        blizzardPage(false)
+        for k, t in ipairs(sb.tabs) do
+            t:SetChecked(BLIZZ_TABS + k == sb.line)
+        end
+        sb.frame:Show()
+        render()
+    end
 
--- SpellBookFrame is loaded on demand, so wait for it rather than assuming.
-local tabWatcher = CreateFrame("Frame")
-tabWatcher:RegisterEvent("PLAYER_ENTERING_WORLD")
-tabWatcher:RegisterEvent("ADDON_LOADED")
-tabWatcher:SetScript("OnEvent", function()
-    if SpellBookFrame and not tabWatcher.done then
-        tabWatcher.done = true
-        CW_BuildSpellbookTabs()
-        -- Blizzard re-shows and re-textures tabs on every update but never
-        -- re-anchors them, so one layout pass after each update is enough.
-        if SpellBookFrame_Update then
-            hooksecurefunc("SpellBookFrame_Update", CW_LayoutSpellbookTabs)
+    local function closeOurs()
+        if not sb.line then return end
+        sb.line = nil
+        sb.frame:Hide()
+        for _, t in ipairs(sb.tabs) do t:SetChecked(false) end
+        blizzardPage(true)
+    end
+
+    local function openLine(line)
+        sb.line = line
+        sb.page = 1
+        sb.blizzLine = SpellBookFrame.selectedSkillLine
+        showOurs()
+    end
+
+    -- our tabs: Blizzard's template for the art, our handlers for everything
+    -- that would otherwise write Blizzard's state
+    local function tabFor(k)
+        local tab = sb.tabs[k]
+        if tab then return tab end
+        tab = CreateFrame("CheckButton", "ClasslessWildcardSpellTab" .. k, SpellBookFrame,
+                          "SpellBookSkillLineTabTemplate")
+        tab:SetScript("OnClick", function(self)
+            local line = BLIZZ_TABS + k
+            if sb.line == line then self:SetChecked(true) return end
+            openLine(line)
+        end)
+        tab:SetScript("OnEnter", function(self)
+            local name = GetSpellTabInfo(BLIZZ_TABS + k)
+            GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
+            GameTooltip:SetText(name or "")
+            GameTooltip:Show()
+        end)
+        tab:SetScript("OnLeave", function() GameTooltip:Hide() end)
+        sb.tabs[k] = tab
+        return tab
+    end
+
+    local function layoutTabs()
+        if not SpellBookFrame then return end
+        for i = 1, BLIZZ_TABS do
+            local tab = _G["SpellBookSkillLineTab" .. i]
+            if tab then anchorTab(tab, i) end
+        end
+        local lines = tonumber(GetNumSpellTabs()) or 0
+        local petBook = SpellBookFrame.bookType and SpellBookFrame.bookType ~= BOOK
+        for k = 1, MAX_TABS - BLIZZ_TABS do
+            local line = BLIZZ_TABS + k
+            if line <= lines and not petBook then
+                local tab = tabFor(k)
+                local _, texture = GetSpellTabInfo(line)
+                tab:SetNormalTexture(texture or "Interface\\Icons\\INV_Misc_QuestionMark")
+                anchorTab(tab, line)
+                tab:Show()
+            elseif sb.tabs[k] then
+                sb.tabs[k]:Hide()
+            end
+        end
+        if sb.line and (sb.line > lines or petBook) then closeOurs() end
+    end
+
+    -- the page: laid over where Blizzard's buttons sit, in their grid
+    local function buildPage()
+        if sb.frame then return end
+        local f = CreateFrame("Frame", "ClasslessWildcardSpellPage", SpellBookFrame)
+        f:SetPoint("TOPLEFT", SpellBookFrame, "TOPLEFT", 0, 0)
+        f:SetPoint("BOTTOMRIGHT", SpellBookFrame, "BOTTOMRIGHT", 0, 0)
+        f:SetFrameLevel((SpellBookFrame:GetFrameLevel() or 0) + 5)
+        f:Hide()
+        sb.frame = f
+        for i = 1, PER_PAGE do
+            local col = (i > PER_PAGE / 2) and 1 or 0
+            local row = (i - 1) - col * (PER_PAGE / 2)
+            local b = CreateFrame("Button", "ClasslessWildcardSpellButton" .. i, f,
+                                  "SecureActionButtonTemplate")
+            b:SetWidth(37); b:SetHeight(37)
+            b:SetPoint("TOPLEFT", f, "TOPLEFT", 45 + col * 188, -89 - row * 42)
+            b:SetAttribute("type", "spell")
+            b:RegisterForClicks("LeftButtonUp")
+            b:RegisterForDrag("LeftButton")
+            b.icon = b:CreateTexture(nil, "ARTWORK")
+            b.icon:SetAllPoints(b)
+            b:SetHighlightTexture("Interface\\Buttons\\ButtonHilight-Square", "ADD")
+            b.name = b:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+            b.name:SetPoint("TOPLEFT", b, "TOPRIGHT", 6, -2)
+            b.name:SetJustifyH("LEFT")
+            b.name:SetWidth(120)
+            b.sub = b:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+            b.sub:SetPoint("TOPLEFT", b.name, "BOTTOMLEFT", 0, -2)
+            b.sub:SetJustifyH("LEFT")
+            b:SetScript("OnDragStart", function(self)
+                if self.slot and PickupSpell then PickupSpell(self.slot, BOOK) end
+            end)
+            b:SetScript("OnEnter", function(self)
+                if not self.slot then return end
+                GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
+                GameTooltip:SetSpell(self.slot, BOOK)
+                GameTooltip:Show()
+            end)
+            b:SetScript("OnLeave", function() GameTooltip:Hide() end)
+            b:Hide()
+            sb.buttons[i] = b
+        end
+        sb.pageText = f:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+        sb.pageText:SetPoint("BOTTOM", f, "BOTTOM", 0, 96)
+        sb.prev = CreateFrame("Button", nil, f, "UIPanelButtonTemplate")
+        sb.prev:SetWidth(70); sb.prev:SetHeight(22)
+        sb.prev:SetPoint("BOTTOMLEFT", f, "BOTTOMLEFT", 45, 90)
+        sb.prev:SetText("Prev")
+        sb.prev:SetScript("OnClick", function() sb.page = math.max(1, sb.page - 1) render() end)
+        sb.next = CreateFrame("Button", nil, f, "UIPanelButtonTemplate")
+        sb.next:SetWidth(70); sb.next:SetHeight(22)
+        sb.next:SetPoint("BOTTOMRIGHT", f, "BOTTOMRIGHT", -45, 90)
+        sb.next:SetText("Next")
+        sb.next:SetScript("OnClick", function() sb.page = sb.page + 1 render() end)
+    end
+
+    local function install()
+        if sb.installed or not SpellBookFrame then return end
+        sb.installed = true
+        buildPage()
+        layoutTabs()
+        -- After each Blizzard update: tabs may have appeared, and if our page
+        -- is up Blizzard has just re-shown its buttons under it.
+        if hooksecurefunc and SpellBookFrame_Update then
+            hooksecurefunc("SpellBookFrame_Update", function()
+                layoutTabs()
+                if sb.line then showOurs() end
+            end)
+        end
+        -- A Blizzard tab closes our page BEFORE its own handler runs, so the
+        -- update that follows finds nothing of ours to fight with.
+        for i = 1, BLIZZ_TABS do
+            local t = _G["SpellBookSkillLineTab" .. i]
+            if t and t.HookScript then t:HookScript("PreClick", closeOurs) end
+        end
+        if SpellBookFrame.HookScript then
+            SpellBookFrame:HookScript("OnHide", closeOurs)
         end
     end
-end)
+    sb.install, sb.open, sb.close, sb.render, sb.layout = install, openLine, closeOurs, render, layoutTabs
+
+    -- SpellBookFrame is there from login, but wait for the world all the same.
+    local watcher = CreateFrame("Frame")
+    watcher:RegisterEvent("PLAYER_ENTERING_WORLD")
+    watcher:RegisterEvent("ADDON_LOADED")
+    watcher:RegisterEvent("LEARNED_SPELL_IN_TAB")
+    watcher:RegisterEvent("SPELLS_CHANGED")
+    watcher:SetScript("OnEvent", function(_, event)
+        if not sb.installed then install() end
+        if sb.installed and event ~= "ADDON_LOADED" then
+            layoutTabs()
+            if sb.line and sb.frame:IsShown() then render() end
+        end
+    end)
+end
 
 SLASH_CLASSLESSWILDCARDBARS1 = "/cwbars"
 SlashCmdList["CLASSLESSWILDCARDBARS"] = function(msg)
