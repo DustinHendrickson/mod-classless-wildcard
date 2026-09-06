@@ -428,6 +428,229 @@ def main():
     check("effects, targets and durations agree", not coherence,
           "%d row(s) checked; %s" % (len(spells), coherence[:3]))
 
+    # ---- a script hook has to name the effect the spell actually has ----------
+    # A SpellScript hook names an effect INDEX and an effect TYPE. If the row's
+    # effect at that index is something else the hook is never called, the spell
+    # quietly loses the half that made it interesting, and nothing logs it.
+    # Read from the C++ rather than assumed, so moving an effect breaks this.
+    cpp = io.open(os.path.join(MODULE, "src", "ClasslessForgedScripts.cpp"),
+                  encoding="utf-8").read()
+    E_CONST = {"SPELL_EFFECT_SCHOOL_DAMAGE": 2, "SPELL_EFFECT_DUMMY": 3,
+               "SPELL_EFFECT_APPLY_AURA": 6, "SPELL_EFFECT_HEAL": 10,
+               "SPELL_EFFECT_PERSISTENT_AREA_AURA": 27, "SPELL_EFFECT_SUMMON": 28,
+               "SPELL_EFFECT_ENERGIZE": 30, "SPELL_EFFECT_WEAPON_PERCENT_DAMAGE": 31,
+               "SPELL_EFFECT_TRIGGER_SPELL": 64, "SPELL_EFFECT_INTERRUPT_CAST": 68,
+               "SPELL_EFFECT_CHARGE": 96, "SPELL_EFFECT_NORMALIZED_WEAPON_DMG": 121}
+    A_CONST = {"SPELL_AURA_MOD_DAMAGE_PERCENT_DONE": 79, "SPELL_AURA_PERIODIC_DAMAGE": 3,
+               "SPELL_AURA_MOD_MELEE_RANGED_HASTE": 192, "SPELL_AURA_DUMMY": 4,
+               "SPELL_AURA_MOD_CASTING_SPEED_NOT_STACK": 65}
+    sql_scripts = io.open(SQL, encoding="utf-8").read()
+    bound = {}
+    for m in re.finditer(r"^\((\d+), '(spell_cw_[a-z_]+)'\)", sql_scripts, re.M):
+        bound.setdefault(m.group(2), []).append(int(m.group(1)))
+    blocks = [(m.group(1), m.start()) for m in
+              re.finditer(r"class (spell_cw_[a-z_]+)\s*:\s*public\s+\w+Script", cpp)]
+    blocks.append(("__end__", len(cpp)))
+    by_sid = {sp["id"]: sp for sp in spells}
+    mismatch = []
+    for n in range(len(blocks) - 1):
+        cls, a = blocks[n]
+        body = cpp[a:blocks[n + 1][1]]
+        ids = bound.get(cls, [])
+        if not ids:
+            mismatch.append("%s is registered but no spell_script_names row names it" % cls)
+            continue
+        for mm in re.finditer(r"EFFECT_(\d)\s*,\s*(SPELL_(?:EFFECT|AURA)_[A-Z_0-9]+)", body):
+            idx, want = int(mm.group(1)), mm.group(2)
+            for sid in ids:
+                v = by_sid[sid]["values"]
+                got_e = v[F["Effect"] + idx]
+                got_a = v[F["EffectApplyAuraName"] + idx]
+                if want in E_CONST and got_e != E_CONST[want]:
+                    mismatch.append("%s hooks EFFECT_%d as %s but %d has effect %d"
+                                    % (cls, idx, want, sid, got_e))
+                elif want in A_CONST and (got_e != 6 or got_a != A_CONST[want]):
+                    mismatch.append("%s hooks EFFECT_%d as %s but %d has aura %d"
+                                    % (cls, idx, want, sid, got_a))
+        for idx in {int(x) for x in re.findall(r"Effects\[EFFECT_(\d)\]", body)}:
+            for sid in ids:
+                if not by_sid[sid]["values"][F["Effect"] + idx]:
+                    mismatch.append("%s reads EFFECT_%d, empty on %d" % (cls, idx, sid))
+    check("every script hook names the effect its spell actually has",
+          not mismatch, "%s" % sorted(set(mismatch))[:3])
+
+    # ---- the art a spell points at has to exist -------------------------------
+    # An icon id that is not in SpellIcon.dbc is a question mark in the
+    # spellbook; a visual that is neither appended nor shipped draws nothing.
+    art = []
+    try:
+        _icon = _Dbc(_os.path.join(_dbc_dir, "SpellIcon.dbc"))
+        _vis2 = _Dbc(_os.path.join(_dbc_dir, "SpellVisual.dbc"))
+    except Exception:
+        _icon = None
+    if _icon is not None:
+        appended = {vv["id"] for vv in doc.get("visuals", [])}
+        for sp in spells:
+            v = sp["values"]
+            if v[F["SpellIconID"]] and _icon.row_of(v[F["SpellIconID"]]) is None:
+                art.append("%s: icon %d does not exist" % (sp["name"], v[F["SpellIconID"]]))
+            vi = v[F["SpellVisual"]]
+            if vi and vi not in appended and _vis2.row_of(vi) is None:
+                art.append("%s: visual %d is neither appended nor shipped" % (sp["name"], vi))
+        for vv in doc.get("visuals", []):
+            if _vis2.row_of(vv["base"]) is None:
+                art.append("recombined visual %d copies a base that does not exist" % vv["id"])
+    check("every icon and visual a spell points at exists", not art, "%s" % art[:3])
+
+    # ---- no donor condition survives that would change how a spell plays ------
+    # Hand of Freedom is castable while stunned on purpose, and six spells that
+    # copied its row inherited that: defensive and offensive cooldowns a stun
+    # could not answer. USES_RANGED_SLOT on Ricochet Shot is the one bit here
+    # that is meant: it is a shot, and Multi-Shot carries the same.
+    STUCK_BITS = [
+        (4, 0x00000004, "ON_NEXT_SWING_NO_DAMAGE"), (4, 0x00000400, "ON_NEXT_SWING"),
+        (4, 0x00000020, "IS_TRADESKILL"), (4, 0x00000200, "HELD_ITEM_ONLY"),
+        (4, 0x00020000, "ONLY_STEALTHED"), (4, 0x00010000, "NOT_SHAPESHIFTED"),
+        (4, 0x00004000, "ONLY_INDOORS"), (4, 0x00008000, "ONLY_OUTDOORS"),
+        (4, 0x10000000, "NOT_IN_COMBAT_ONLY_PEACEFUL"), (4, 0x00000040, "PASSIVE"),
+        (4, 0x00080000, "SCALES_WITH_CREATURE_LEVEL"),
+        (9, 0x00000008, "ALLOW_WHILE_STUNNED"),
+    ]
+    RANGED_OK = {"Ricochet Shot"}
+    stuck = []
+    for sp in spells:
+        v = sp["values"]
+        for col, bit, nm in STUCK_BITS:
+            if v[col] & bit:
+                stuck.append("%s: kept %s from its donor" % (sp["name"], nm))
+        if v[4] & 0x00000002 and sp["name"] not in RANGED_OK:
+            stuck.append("%s: kept USES_RANGED_SLOT from its donor" % sp["name"])
+    check("no donor condition survives that would change how a spell plays",
+          not stuck, "%s" % sorted(set(stuck))[:3])
+
+    # ---- a spell has to FUNCTION, not merely be shaped right ------------------
+    # The faults that leave a correctly-targeted spell behaving wrongly in play:
+    # a periodic with no tick, an aura with no duration, a donor's cooldown
+    # category or proc flags still driving it, a rank that does not improve.
+    function = []
+    try:
+        _dur = _Dbc(_os.path.join(_dbc_dir, "SpellDuration.dbc"))
+    except Exception:
+        _dur = None
+    PERIODIC = {3, 8, 23, 24, 53, 64, 89}          # 4 is DUMMY, not a periodic
+    by_line = {}
+    for sp in spells:
+        by_line.setdefault(sp["key"], []).append(sp)
+    for sp in spells:
+        v = sp["values"]
+        who = "%s r%d" % (sp["name"], sp["rank"])
+        dms = 0
+        if _dur is not None and v[F["DurationIndex"]]:
+            row = _dur.row_of(v[F["DurationIndex"]])
+            dms = _dur.i(row, 1) if row is not None else 0
+        for i in range(3):
+            eff, aura = v[F["Effect"] + i], v[F["EffectApplyAuraName"] + i]
+            if not eff:
+                continue
+            amp = v[F["EffectAmplitude"] + i]
+            if eff in (6, 27) and aura in PERIODIC and not amp:
+                function.append("%s: effect %d is periodic with no tick" % (who, i))
+            if eff in (6, 27) and aura in PERIODIC and amp and dms > 0 and amp > dms:
+                function.append("%s: effect %d ticks slower than its duration" % (who, i))
+            if eff in (6, 27) and not aura:
+                function.append("%s: effect %d applies aura 0" % (who, i))
+        if v[1]:
+            function.append("%s: kept its donor's cooldown category %d" % (who, v[1]))
+        if v[49]:
+            function.append("%s: kept its donor's StackAmount %d" % (who, v[49]))
+        if v[27] and not any(v[F["EffectApplyAuraName"] + i] in (42, 43, 109)
+                             for i in range(3)):
+            function.append("%s: kept its donor's ProcFlags %#x with no proc aura"
+                            % (who, v[27]))
+    for key, rws in by_line.items():
+        rws = sorted(rws, key=lambda x: x["rank"])
+        for i in range(3):
+            vals = [r["values"][F["EffectBasePoints"] + i] + 1 for r in rws
+                    if r["values"][F["Effect"] + i]]
+            if len(vals) != len(rws) or len(set(vals)) < 2:
+                continue
+            mag = [abs(x) for x in vals]
+            if any(b < a for a, b in zip(mag, mag[1:])):
+                function.append("%s: effect %d gets weaker with rank: %s"
+                                % (rws[0]["name"], i, vals))
+    check("every spell functions: ticks, durations, ranks and no donor leftovers",
+          not function, "%s" % sorted(set(function))[:3])
+
+    # ---- every (effect, targetA, targetB) has to be a shape the game uses ----
+    # Copying a donor row and changing its effects produces target combinations
+    # nothing ships. Five markers applied an aura with target 31 alone, which no
+    # player spell in the game does, and Wide Arc kept a melee range index after
+    # becoming a point-blank swing. Both were invisible until the shape was
+    # compared with the shipped spells that do the same thing.
+    unknown_shape = []
+    try:
+        _sp = _Dbc(_os.path.join(_dbc_dir, "Spell.dbc"))
+        _sla = _Dbc(_os.path.join(_dbc_dir, "SkillLineAbility.dbc"))
+        _skl = _Dbc(_os.path.join(_dbc_dir, "SkillLine.dbc"))
+    except Exception:
+        _sp = None
+    if _sp is not None:
+        _cls = {_skl.u(r, 0) for r in range(_skl.rows) if _skl.u(r, 1) == 7}
+        _pool = {_sla.u(r, 2) for r in range(_sla.rows)
+                 if _sla.u(r, 1) in _cls and _sla.u(r, 4)}
+        shapes = set()
+        for r in range(_sp.rows):
+            if _sp.u(r, 0) not in _pool:
+                continue
+            for i in range(3):
+                if _sp.u(r, F["Effect"] + i):
+                    shapes.add((_sp.u(r, F["Effect"] + i),
+                                _sp.u(r, F["EffectImplicitTargetA"] + i),
+                                _sp.u(r, F["EffectImplicitTargetB"] + i)))
+        # the two the set uses on purpose, each half proven on its own
+        ALLOWED_NEW = {(145, 16, 0)}       # a ground-targeted pull; no stock one exists
+        for sp in spells:
+            v = sp["values"]
+            for i in range(3):
+                if not v[F["Effect"] + i]:
+                    continue
+                sh = (v[F["Effect"] + i], v[F["EffectImplicitTargetA"] + i],
+                      v[F["EffectImplicitTargetB"] + i])
+                if sh not in shapes and sh not in ALLOWED_NEW:
+                    unknown_shape.append("%s: effect %d is %s, a shape no player spell uses"
+                                         % (sp["name"], i, sh))
+    check("every effect uses a target shape the game itself ships", not unknown_shape,
+          "%s" % sorted(set(unknown_shape))[:3])
+
+    # ---- a summon has to name a summon type that exists -----------------------
+    # Spell::EffectSummonType looks up SummonProperties by the effect's
+    # MiscValueB and returns immediately when there is no such row, logging
+    # "Unhandled summon type". Every marker in this file wrote 0, and there is
+    # no SummonProperties row 0, so seven spells summoned nothing at all while
+    # their creature and model rows sat unused. Effect 56 (SUMMON_PET) does not
+    # read it and is exempt.
+    props = None
+    try:
+        props = _Dbc(_os.path.join(_dbc_dir, "SummonProperties.dbc"))
+    except Exception:
+        pass
+    bad_summon = []
+    if props is not None:
+        for sp in spells:
+            v = sp["values"]
+            for i in range(3):
+                if v[F["Effect"] + i] != 28:
+                    continue
+                b = v[F["EffectMiscValueB"] + i]
+                if not b or props.row_of(b) is None:
+                    bad_summon.append("%s: effect %d summons with type %d, which is not a "
+                                      "SummonProperties row" % (sp["name"], i, b))
+                elif props.u(props.row_of(b), 4):          # Slot
+                    bad_summon.append("%s: effect %d uses summon type %d, which takes totem "
+                                      "slot %d" % (sp["name"], i, b, props.u(props.row_of(b), 4)))
+    check("every summon names a summon type the core can look up", not bad_summon,
+          "%s" % bad_summon[:3])
+
     # ---- a missile that is drawn has to travel -------------------------------
     # Spell.dbc column 47 is Speed, in yards per second (Fireball 24, Arcane
     # Shot 40, every melee spell 0). The generator never wrote it, so every

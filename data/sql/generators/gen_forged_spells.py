@@ -72,7 +72,18 @@ UNIT_FLAGS_MARKER = 0x00000002 | 0x00000004 | 0x02000000   # non-attackable, no 
 EXTRA_FLAGS_MARKER = 0x00000002 | 0x00000040 | 0x00000080  # civilian, no xp, trigger
 CREATURE_TYPE_TOTEM = 11
 CREATURE_TYPE_BEAST = 1
-SUMMON_GUARDIAN = 1562       # what Force of Nature uses: temporary, fights, despawns
+SUMMON_GUARDIAN = 1562
+# SummonProperties.dbc row for a marker: category 1, type 0, slot 0, flags 0x2.
+# Anti-Magic Zone's row, and the only player summon that is a plain stationary
+# object placed at a destination for the spell's duration -- it reaches
+# EffectSummonType's default branch, a straight Map::SummonCreature.
+#
+# MiscValueB was 0 on every marker, and there is no SummonProperties row 0, so
+# EffectSummonType logged "Unhandled summon type 0" and returned before creating
+# anything. Not the totem rows (63/81/82/83): those take shaman totem slots 1-4,
+# so a marker would destroy the player's totems, and that branch also refuses
+# any summon that is not itself a totem.
+SUMMON_MARKER = 121       # what Force of Nature uses: temporary, fights, despawns
 # (entry, name, CreatureDisplayID). The display id is not optional: models
 # live in creature_template_model, and a creature without a row there spawns
 # invisible. All three are stock totem models.
@@ -87,7 +98,6 @@ SUMMON_CREATURES = [
     (990113, "Waystone", 2419, None),            # Elemental Protection Totem
     (990114, "Signal Fire", 4683, None),         # Fire Nova Totem
     (990115, "Rally Point", 15231, None),        # Totem of Spirits
-    (990116, "Drill Ground", 1421, None),        # Lava Spout Totem
 ]
 
 # A pet creature per RANK, because a creature carries one spell list. The
@@ -185,6 +195,10 @@ T_AREA_ENEMY_DEST = 16               # enemies around the destination, alone
 T_DEST_TARGET_ANY = 63               # the destination is the target's feet...
 T_AREA_ALLY_DEST = 31                # ...with this in TargetB: allies around
                                      # them (Circle of Healing, Wild Growth)
+T_AREA_ALLY_SRC = 30                 # with 22 in TargetA: allies around the
+                                     # CASTER (Divine Hymn). Target 31 on its
+                                     # own, which five markers used, is a shape
+                                     # no player spell in the game uses.
 T_DEST_DYNOBJ_ENEMY = 28             # where a persistent area sits (Death and Decay)
 T_DEST_CAST = 87                     # where the player clicked (Lightwell)
 T_DEST_TOTEM_SLOT = 41               # a totem slot beside the caster (Earthbind Totem)
@@ -429,11 +443,11 @@ RECIPES = [
         duration_idx=DUR_20S,
         summon=dict(entry=990110, name="Bulwark Anchor"),
         effects=[
-            dict(eff=E_SUMMON, base=1, tgt=T_DEST_TOTEM_SLOT, misc=990110),
+            dict(eff=E_SUMMON, base=1, tgt=T_DEST_TOTEM_SLOT, misc=990110, miscb=SUMMON_MARKER),
             dict(eff=E_APPLY_AURA, aura=A_MOD_DAMAGE_TAKEN_PCT, base=-4,
-                 tgt=T_AREA_ALLY_DEST, radius=RADIUS_15YD),
+                 tgt=T_SRC_CASTER, tgtb=T_AREA_ALLY_SRC, radius=RADIUS_15YD),
             dict(eff=E_APPLY_AURA, aura=A_MOD_ATTACK_SPEED_PCT, base=-15,
-                 tgt=T_AREA_ENEMY_DEST, radius=RADIUS_15YD),
+                 tgt=T_SRC_CASTER, tgtb=T_AREA_ENEMY_SRC, radius=RADIUS_15YD),
         ],
         desc=("Drives an anchor into the ground beside you for $d. You and allies within $a2 "
               "yards take 4% less damage, and enemies within $a3 yards attack 15% slower."),
@@ -447,7 +461,7 @@ RECIPES = [
         duration_idx=DUR_20S,
         summon=dict(entry=990111, name="Reclaimed Sentry"),
         effects=[
-            dict(eff=E_SUMMON, base=1, tgt=T_DEST_CAST, misc=990111),
+            dict(eff=E_SUMMON, base=1, tgt=T_DEST_CAST, misc=990111, miscb=SUMMON_MARKER),
             dict(eff=E_PERSISTENT_AREA, aura=A_PERIODIC_DAMAGE_AREA, base=dmg(0.13),
                  tgt=T_DEST_DYNOBJ_ENEMY, radius=RADIUS_10YD, amplitude=2000),
             dict(eff=E_APPLY_AURA, aura=A_HASTE_SPELLS, base=-25,
@@ -536,7 +550,10 @@ RECIPES = [
         first_level=11, ranks=6, step=12, donor=1680, school=1,
         icon=1952, visual=12006, visual_kits=dict(impact=4551),
         power=("energy", 45),
-        range_idx=RANGE_MELEE, cast_idx=CAST_INSTANT, cooldown_ms=6000,
+        # RANGE_SELF is what Whirlwind and Divine Storm use for this exact target
+        # shape (22 + 15): a point-blank swing has no target to be in range of,
+        # and index 2 was applying a 5 yard check against a unit never selected.
+        range_idx=RANGE_SELF, cast_idx=CAST_INSTANT, cooldown_ms=6000,
         effects=[
             dict(eff=E_WEAPON_PERCENT, base=55, tgt=T_SRC_CASTER, tgtb=T_AREA_ENEMY_SRC,
                  radius=RADIUS_8YD),
@@ -614,11 +631,11 @@ RECIPES = [
         duration_idx=DUR_15S,
         summon=dict(entry=990112, name="Cairn"),
         effects=[
-            dict(eff=E_SUMMON, base=1, tgt=T_DEST_TOTEM_SLOT, misc=990112),
+            dict(eff=E_SUMMON, base=1, tgt=T_DEST_TOTEM_SLOT, misc=990112, miscb=SUMMON_MARKER),
             dict(eff=E_APPLY_AURA, aura=A_PERIODIC_HEAL, base=heal(0.14),
-                 tgt=T_AREA_ALLY_DEST, radius=RADIUS_10YD, amplitude=3000),
+                 tgt=T_SRC_CASTER, tgtb=T_AREA_ALLY_SRC, radius=RADIUS_10YD, amplitude=3000),
             dict(eff=E_APPLY_AURA, aura=A_DAMAGE_SHIELD, base=dmg(0.10),
-                 tgt=T_AREA_ALLY_DEST, radius=RADIUS_10YD),
+                 tgt=T_SRC_CASTER, tgtb=T_AREA_ALLY_SRC, radius=RADIUS_10YD),
         ],
         desc=("Places a cairn beside you for $d. You and allies within $a2 yards recover $o2 "
               "health over its duration, and anything that strikes you in melee takes $s3 "
@@ -636,11 +653,11 @@ RECIPES = [
         duration_idx=DUR_20S,
         summon=dict(entry=990113, name="Waystone"),
         effects=[
-            dict(eff=E_SUMMON, base=1, tgt=T_DEST_TOTEM_SLOT, misc=990113),
+            dict(eff=E_SUMMON, base=1, tgt=T_DEST_TOTEM_SLOT, misc=990113, miscb=SUMMON_MARKER),
             dict(eff=E_APPLY_AURA, aura=A_MOD_INCREASE_SPEED, base=15,
-                 tgt=T_AREA_ALLY_DEST, radius=RADIUS_15YD),
+                 tgt=T_SRC_CASTER, tgtb=T_AREA_ALLY_SRC, radius=RADIUS_15YD),
             dict(eff=E_APPLY_AURA, aura=A_MOD_DECREASE_SPEED, base=-15,
-                 tgt=T_AREA_ENEMY_DEST, radius=RADIUS_15YD),
+                 tgt=T_SRC_CASTER, tgtb=T_AREA_ENEMY_SRC, radius=RADIUS_15YD),
         ],
         desc=("Places a waystone beside you for $d. You and allies within $a2 yards move 15% "
               "faster, and enemies within $a3 yards move 15% slower."),
@@ -656,11 +673,11 @@ RECIPES = [
         duration_idx=DUR_20S,
         summon=dict(entry=990114, name="Signal Fire"),
         effects=[
-            dict(eff=E_SUMMON, base=1, tgt=T_DEST_TOTEM_SLOT, misc=990114),
+            dict(eff=E_SUMMON, base=1, tgt=T_DEST_TOTEM_SLOT, misc=990114, miscb=SUMMON_MARKER),
             dict(eff=E_APPLY_AURA, aura=A_MOD_STAT, base=("dmg", 0.06), misc=-1,
-                 tgt=T_AREA_ALLY_DEST, radius=RADIUS_15YD),
+                 tgt=T_SRC_CASTER, tgtb=T_AREA_ALLY_SRC, radius=RADIUS_15YD),
             dict(eff=E_APPLY_AURA, aura=A_MOD_DAMAGE_TAKEN_PCT, base=4,
-                 tgt=T_AREA_ENEMY_DEST, radius=RADIUS_15YD),
+                 tgt=T_SRC_CASTER, tgtb=T_AREA_ENEMY_SRC, radius=RADIUS_15YD),
         ],
         desc=("Lights a signal fire beside you for $d. You and allies within $a2 yards gain $s2 "
               "to all attributes, and enemies within $a3 yards take 4% more damage."),
@@ -677,11 +694,11 @@ RECIPES = [
         duration_idx=DUR_20S,
         summon=dict(entry=990115, name="Rally Point"),
         effects=[
-            dict(eff=E_SUMMON, base=1, tgt=T_DEST_TOTEM_SLOT, misc=990115),
+            dict(eff=E_SUMMON, base=1, tgt=T_DEST_TOTEM_SLOT, misc=990115, miscb=SUMMON_MARKER),
             dict(eff=E_APPLY_AURA, aura=A_MOD_DAMAGE_DONE_PCT, base=3,
-                 tgt=T_AREA_ALLY_DEST, radius=RADIUS_15YD),
+                 tgt=T_SRC_CASTER, tgtb=T_AREA_ALLY_SRC, radius=RADIUS_15YD),
             dict(eff=E_APPLY_AURA, aura=A_MOD_INCREASE_HEALTH_PCT, base=5,
-                 tgt=T_AREA_ALLY_DEST, radius=RADIUS_15YD),
+                 tgt=T_SRC_CASTER, tgtb=T_AREA_ALLY_SRC, radius=RADIUS_15YD),
         ],
         desc=("Plants a banner beside you for $d. You and allies within $a2 yards deal 3% more "
               "damage and have 5% more health."),
@@ -689,26 +706,26 @@ RECIPES = [
                 "3% for 20s on two, which is the usual trade: less each, more people, longer wait.",
     ),
     dict(
-        key="drill_ground", name="Drill Ground", rarity=3, type=0,
-        first_level=44, ranks=1, step=1, donor=5730, school=64,
-        icon=2186, visual=8111, visual_kits=dict(instant_area=9159),
+        # Was Drill Ground, a marker you stood in. A drill ground is not a
+        # thing, and the set already had seven markers. The mechanic survives
+        # because no player spell pairs cooldown rate with power cost; the
+        # delivery is now a buff you cast on somebody, which the set had none of.
+        key="quicksilver", name="Quicksilver", rarity=3, type=0,
+        first_level=44, ranks=1, step=1, donor=1044, school=64,
+        icon=2186, visual=280, visual_kits=dict(instant_area=9159),
         power=("mana", 18), power_is_pct=True,
-        range_idx=RANGE_SELF, cast_idx=CAST_INSTANT, cooldown_ms=180000,
-        duration_idx=DUR_20S,
-        summon=dict(entry=990116, name="Drill Ground"),
+        range_idx=RANGE_30, cast_idx=CAST_1500, cooldown_ms=180000,
+        duration_idx=DUR_15S,
         effects=[
-            dict(eff=E_SUMMON, base=1, tgt=T_DEST_TOTEM_SLOT, misc=990116),
-            dict(eff=E_APPLY_AURA, aura=A_MOD_COOLDOWN, base=-2,
-                 tgt=T_AREA_ALLY_DEST, radius=RADIUS_15YD),
-            dict(eff=E_APPLY_AURA, aura=A_MOD_POWER_COST_PCT, base=-10, misc=ALL_SCHOOLS,
-                 tgt=T_AREA_ALLY_DEST, radius=RADIUS_15YD),
+            dict(eff=E_APPLY_AURA, aura=A_MOD_COOLDOWN, base=-2, tgt=T_TARGET_ALLY),
+            dict(eff=E_APPLY_AURA, aura=A_MOD_POWER_COST_PCT, base=-10,
+                 misc=ALL_SCHOOLS, tgt=T_TARGET_ALLY),
         ],
-        desc=("Marks out a drill ground beside you for $d. Abilities you and allies within $a2 "
-              "yards use come off cooldown 2 sec sooner and cost 10% less."),
-        compare="SPELL_AURA_MOD_COOLDOWN is read when a cooldown STARTS, so this shortens "
-                "cooldowns begun during the window rather than speeding up ones already "
-                "running. Flat seconds, so it is worth far more to a 6 second ability than "
-                "a 3 minute one, and the global cooldown is the floor either way.",
+        desc=("Quickens a friendly target for $d. Their abilities come off cooldown 2 sec "
+              "sooner and cost 10% less."),
+        compare="Nothing in the player pool puts cooldown rate and power cost on one "
+                "button, and the two together are worth an Epic at 44 on a three minute "
+                "cooldown. Cast on somebody else, which no other spell in the set is.",
     ),
     dict(
         key="venom_beetle", name="Venom Beetle", rarity=0, type=0,
@@ -730,7 +747,9 @@ RECIPES = [
         pet_spells=[
             dict(name="Venom Bite", level=10, donor=5730, school=8, icon=1630, visual=5100,
                  duration_idx=DUR_12S,
-                 range_idx=RANGE_MELEE, cast_idx=CAST_INSTANT, cooldown_ms=6000,
+                 # the cooldown matches the duration: at 6 seconds the pet
+                 # recast it over itself and half its casts did nothing
+                 range_idx=RANGE_MELEE, cast_idx=CAST_INSTANT, cooldown_ms=12000,
                  power=("mana", 0),
                  desc="Poisons the target, dealing $o1 Nature damage over $d.",
                  effects=[dict(eff=E_APPLY_AURA, aura=A_PERIODIC_DAMAGE,
@@ -915,6 +934,9 @@ ID_ORDER = [
     "draw_attention", "wide_arc", "bolt_forward", "rattle", "ward_off",
     "borrowed_stance", "cairn",
     "waystone", "signal_fire", "rally_point", "drill_ground", "venom_beetle",
+    # drill_ground's recipe was replaced by quicksilver rather than edited, so
+    # its block is retired and every other id stays where it is
+    "quicksilver",
 ]
 
 _recipe_keys = {r["key"] for r in RECIPES}
@@ -997,6 +1019,11 @@ def build_row(spell, recipe, rank_index, level, spell_id, next_id, companion_id)
         setf("EffectSpellClassMask", 0, off * 3 + 2)
     v[1] = 0                                    # Category
     v[49] = 0                                   # StackAmount
+    # ProcFlags say WHEN this spell's proc aura fires. None of these spells has
+    # one, so a donor's flags are inert at best and a surprise at worst: Charge
+    # brought 0xfec3 to Vanguard Rush and Power Word: Shield's donor brought
+    # 0x1a84 to Ward Off. A recipe that ever wants a proc can set them back.
+    v[27] = recipe.get("proc_flags", 0)          # ProcFlags
 
     # A donor's form requirement is the sharpest edge on this whole approach.
     # SpellInfo::CheckShapeshift refuses a caster in NO form when Stances is
@@ -1016,6 +1043,11 @@ def build_row(spell, recipe, rank_index, level, spell_id, next_id, companion_id)
               | 0x00008000   # ONLY_OUTDOORS
               | 0x00020000   # ONLY_STEALTHED
               | 0x00000040)  # PASSIVE
+    # Hand of Freedom is castable while stunned on purpose; six spells that
+    # copied its row inherited that and became defensive and offensive
+    # cooldowns a stun could not answer. Nothing in this set is meant to beat
+    # crowd control, so the bit goes with the rest of the donor's conditions.
+    v[9] &= ~0x00000008                          # ATTR5 ALLOW_WHILE_STUNNED
     v[18] = 0                                   # RequiresSpellFocus
     for i in range(8):
         v[52 + i] = 0                           # Reagent

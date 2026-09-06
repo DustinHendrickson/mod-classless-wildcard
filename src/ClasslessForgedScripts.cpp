@@ -37,6 +37,8 @@
 #include "SpellAuras.h"
 #include "SpellMgr.h"
 #include "SpellScript.h"
+#include "Pet.h"
+#include "ObjectMgr.h"
 #include "CellImpl.h"
 #include "GridNotifiers.h"
 #include "GridNotifiersImpl.h"
@@ -84,6 +86,9 @@ namespace
     constexpr uint32 RICOCHET_COMPANION_OFFSET = 16;    // matches PER_RECIPE / 2
     constexpr float  RICOCHET_RANGE = 8.0f;
     constexpr uint32 RICOCHET_MANA_PCT = 6;              // of maximum mana, per ricochet
+    // the creature entries this module owns, from gen_forged_spells.py
+    constexpr uint32 FORGED_CREATURE_FIRST = 990110;
+    constexpr uint32 FORGED_CREATURE_LAST = 990130;
     constexpr int32  SURGE_PER_ABILITY_PCT = 8;
     constexpr int32  SURGE_MAX_PCT = 40;
 
@@ -507,8 +512,44 @@ class spell_cw_wildcard_surge : public SpellScript
     }
 };
 
+// =====================================================================
+// A forged pet wears the model its creature_template says, not the one its
+// character_pet row remembers.
+//
+// Pet::LoadPetFromDB applies petInfo->DisplayId, which SavePetToDB wrote when
+// the pet was first summoned. Changing creature_template_model therefore fixes
+// only pets that have never existed; one already saved keeps the old look for
+// good. This corrects our own entries as they enter the world, so a beetle
+// summoned before the model changed fixes itself on the next summon.
+// =====================================================================
+class cw_forged_pet_model : public PetScript
+{
+public:
+    cw_forged_pet_model() : PetScript("cw_forged_pet_model", { PETHOOK_ON_PET_ADD_TO_WORLD }) { }
+
+    void OnPetAddToWorld(Pet* pet) override
+    {
+        if (!pet)
+            return;
+        uint32 const entry = pet->GetEntry();
+        if (entry < FORGED_CREATURE_FIRST || entry > FORGED_CREATURE_LAST)
+            return;
+        CreatureTemplate const* tmpl = sObjectMgr->GetCreatureTemplate(entry);
+        if (!tmpl)
+            return;
+        CreatureModel const* model = tmpl->GetRandomValidModel();
+        if (!model || !model->CreatureDisplayID)
+            return;
+        if (pet->GetNativeDisplayId() == model->CreatureDisplayID)
+            return;                             // already right, nothing to do
+        pet->SetDisplayId(model->CreatureDisplayID);
+        pet->SetNativeDisplayId(model->CreatureDisplayID);
+    }
+};
+
 void AddClasslessForgedScripts()
 {
+    new cw_forged_pet_model();
     new cw_forged_watcher();
     RegisterSpellScript(spell_cw_crossdraw);
     RegisterSpellScript(spell_cw_ricochet_shot);
