@@ -1,7 +1,7 @@
 {
  "version": 1,
  "run": "only=all data-only recipes",
- "generation": "c8f75eb3b723",
+ "generation": "d98385b3af80",
  "spell_block": [
   960000,
   962047
@@ -216,7 +216,7 @@
    "id": 30004,
    "base": 8253,
    "kits": {
-    "3": 3153
+    "3": 7990
    }
   },
   {
@@ -237,7 +237,7 @@
    "id": 30008,
    "base": 7732,
    "kits": {
-    "25": 9352
+    "25": 9523
    }
   },
   {

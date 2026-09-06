@@ -437,6 +437,34 @@ def main():
     check("a caster-centred area burst is only on a spell centred on the caster",
           not misplaced, "%s" % misplaced[:3])
 
+    # ---- a borrowed kit has to be a kit that draws something ------------------
+    # Overflow was given impact kit 3153 on the claim that it was Holy Nova's
+    # expanding ring. It is not: 3153 is Chest:129, a sparkle. The ring is
+    # Base:1722 and lives in Holy Nova's CAST kit. A kit id that exists and is
+    # non-zero told me nothing, so this reads the kit's own effect columns --
+    # the attachment models, not the sound -- and refuses an override that
+    # names a kit which draws nothing at all.
+    _kit = _Dbc(_os.path.join(_dbc_dir, "SpellVisualKit.dbc"))
+    KIT_EFFECT_FIELDS = (3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14)   # attachments
+    hollow = []
+    for vv in doc.get("visuals", []):
+        for slot, kid in sorted(vv.get("kits", {}).items()):
+            kid = int(kid)
+            if not kid:
+                continue
+            _r = _kit.row_of(kid)
+            if _r is None:
+                hollow.append("visual %d slot %s names kit %d, which does not exist"
+                              % (vv["id"], slot, kid))
+                continue
+            draws = any(_kit.i(_r, _f) > 0 for _f in KIT_EFFECT_FIELDS)
+            anim = _kit.i(_r, 1) > 0 or _kit.i(_r, 2) > 0
+            if not draws and not anim:
+                hollow.append("visual %d slot %s names kit %d, which has no effect "
+                              "model and no animation" % (vv["id"], slot, kid))
+    check("every borrowed visual kit exists and draws something",
+          not hollow, "%s" % sorted(set(hollow))[:3])
+
     # ---- a spell that hits somebody has to draw on them ----------------------
     # Quicksilver wore Presence of Mind's row. Presence of Mind is a SELF buff,
     # so its impact kit is 0 -- nothing was ever authored to play on a target --

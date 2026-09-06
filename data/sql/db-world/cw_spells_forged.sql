@@ -73,7 +73,7 @@ DELIMITER ;
 CALL cw_forged_meta_schema();
 DROP PROCEDURE IF EXISTS cw_forged_meta_schema;
 
-REPLACE INTO `cw_forged_meta` (`key`, `value`) VALUES ('generation', 'c8f75eb3b723');
+REPLACE INTO `cw_forged_meta` (`key`, `value`) VALUES ('generation', 'd98385b3af80');
 
 -- The Hero skill line. Both rows are load-bearing: without the
 -- skillline_dbc row GetSkillRangeType returns SKILL_RANGE_NONE, and

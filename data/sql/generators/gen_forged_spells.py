@@ -450,10 +450,15 @@ RECIPES = [
         # by nothing that is not an area centred on the caster. A cast kit
         # plays on the caster; that was the burst.
         visual=8253,
-        # Holy Nova's impact kit is still the right expanding ring, and an
-        # impact kit plays at each UNIT the spell reaches -- the target and the
-        # allies the spill heals, and no one else.
-        visual_kits=dict(impact=3153),
+        # The ring is kit 7990, NOT 3153. Read the SpellVisualKit rows and it is
+        # plain: 3153 is Chest:129 Holy_ImpactDD_Low_Chest.mdx, a sparkle on the
+        # chest, while the expanding ring is Base:1722 holynova_impact_base.mdx,
+        # which Holy Nova carries in its CAST kit 3154 -- at the caster's base,
+        # which is exactly where it kept appearing. 7990 is that same ring with
+        # its sound and no animation at all, so in the impact slot it draws at
+        # the base of every unit the spell reaches: the target and each ally the
+        # spill heals.
+        visual_kits=dict(impact=7990),
         power=("mana", 24), power_is_pct=True,
         range_idx=RANGE_40, cast_idx=CAST_2500, cooldown_ms=0,
         effects=[
@@ -524,7 +529,13 @@ RECIPES = [
     dict(
         key="sinkhole", name="Sinkhole", rarity=3, type=3, mechanic=11,  # snare
         first_level=46, ranks=4, step=11, donor=5740, school=32,
-        icon=2242, visual=7732, visual_kits=dict(persistent_area=9352), power=("mana", 22), power_is_pct=True,
+        # 9352 draws NOTHING: every attachment column on that kit is zero and
+        # all it carries is a sound and a screen shake, so the sinkhole itself
+        # was invisible. 9523 is Death and Decay's ground area
+        # (DeathAndDecay_Area_Base.mdx plus its world effect) -- a dark churning
+        # patch, which is the right school and the right shape for this.
+        icon=2242, visual=7732, visual_kits=dict(persistent_area=9523),
+        power=("mana", 22), power_is_pct=True,
         range_idx=RANGE_30, cast_idx=CAST_1500, cooldown_ms=45000,
         duration_idx=DUR_6S,
         effects=[
