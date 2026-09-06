@@ -218,7 +218,7 @@ namespace
         std::list<Unit*> nearby;
         Acore::AnyUnfriendlyUnitInObjectRangeCheck check(from, owner, RICOCHET_RANGE);
         Acore::UnitListSearcher<Acore::AnyUnfriendlyUnitInObjectRangeCheck> searcher(from, nearby, check);
-        Cell::VisitAllObjects(from, searcher, RICOCHET_RANGE);
+        Cell::VisitObjects(from, searcher, RICOCHET_RANGE);
 
         Unit* best = nullptr;
         float bestDist = RICOCHET_RANGE + 1.0f;
