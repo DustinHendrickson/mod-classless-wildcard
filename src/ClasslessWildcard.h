@@ -338,7 +338,7 @@ namespace ClasslessWildcard
         // what you buy, so each rank is paid for. (The "rank 5 for one point"
         // rule belongs to Wildcard, where the roll hands you the rank free.)
         bool   talentFlatCost = false;
-        bool   enforceTalentRows = true;
+        bool   enforceTalentRows = false;      // tier point totals; the tier LEVEL is respectLevelReqs
         bool   refundOnUnlearn = true;
         uint32 respecCostGold = 50;
 

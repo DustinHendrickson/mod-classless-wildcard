@@ -366,11 +366,13 @@ def main():
     # Wide Arc, Sinkhole and Spore Wash shipped exactly that way, and the old
     # version of this check called 22 and 28 "area targets" and let them by.
     UNIT_T = {1, 2, 3, 4, 5, 6, 7, 8, 15, 16, 20, 21, 24, 25, 27, 30, 31, 33, 34,
-              35, 37, 38, 45, 54}
+              35, 37, 38, 45, 54, 104}
     DEST_T = {9, 17, 18, 28, 29, 32, 36, 41, 42, 43, 44, 46, 47, 48, 49, 50, 53,
               55, 63, 87}
     SRC_T = {22}
-    AREA_T = {7, 8, 15, 16, 20, 30, 31, 33, 34, 37, 28}     # these need a radius
+    # 24 and 104 are the two cone targets; both need a radius, and 104 is the
+    # only one the player pool uses (Cone of Cold, Dragon's Breath)
+    AREA_T = {7, 8, 15, 16, 20, 30, 31, 33, 34, 37, 28, 24, 104}
     LANDS_ON_UNITS = {2, 6, 10, 30, 31, 64, 68, 96, 114, 121, 145}
     HEAL_EFFECTS = {10, 65}
     DAMAGE_EFFECTS = {2, 31, 121, 58, 17}
@@ -425,6 +427,40 @@ def main():
             coherence.append("%s: applies an aura with no duration" % sp["name"])
     check("effects, targets and durations agree", not coherence,
           "%d row(s) checked; %s" % (len(spells), coherence[:3]))
+
+    # ---- a missile that is drawn has to travel -------------------------------
+    # Spell.dbc column 47 is Speed, in yards per second (Fireball 24, Arcane
+    # Shot 40, every melee spell 0). The generator never wrote it, so every
+    # projectile in the set arrived the instant the cast ended with nothing
+    # drawn between caster and target. SpellVisual field 7 says whether the
+    # look has a missile at all, so the two have to agree.
+    missiles = []
+    try:
+        vdbc = _Dbc(_os.path.join(_dbc_dir, "SpellVisual.dbc"))
+    except Exception:
+        vdbc = None
+    if vdbc is not None:
+        # a recombined look is a donor's row with some kit slots moved, so
+        # whether it carries a missile is the DONOR's answer; without this the
+        # rule silently skipped every spell that got a new look
+        donor_of = {v["id"]: v["base"] for v in doc.get("visuals", [])}
+        for sp in spells:
+            v = sp["values"]
+            vid = v[F["SpellVisual"]]
+            row = vdbc.row_of(donor_of.get(vid, vid))
+            if row is None:
+                missiles.append("%s: visual %d resolves to no SpellVisual row"
+                                % (sp["name"], vid))
+                continue
+            has = vdbc.u(row, 7)
+            if has and not v[47]:
+                missiles.append("%s: visual %d draws a missile but Speed is 0"
+                                % (sp["name"], v[F["SpellVisual"]]))
+            if v[47] and not has:
+                missiles.append("%s: Speed %.0f but visual %d draws no missile"
+                                % (sp["name"], v[47], v[F["SpellVisual"]]))
+    check("a drawn missile has a speed, and a speed has a missile", not missiles,
+          "%d row(s) checked; %s" % (len(spells), missiles[:3]))
 
     # ---- the tooltips -------------------------------------------------------
     # $s3 on a spell with two effects renders as literal "$s3" in the client, and

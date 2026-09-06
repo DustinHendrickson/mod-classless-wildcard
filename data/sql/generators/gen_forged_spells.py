@@ -99,7 +99,11 @@ PET_CREATURES = {
     # abilities arrive at 10, 30 and 50 without a second creature or a second
     # rank. Its stats come from the owner's level, as every pet's do.
     "venom_beetle": [
-        (990117, 2730, 3, 1.0, 1.0),
+        # display 15464 is SilithidScarab.mdx at scale 1.0, worn by Spitting
+        # Scarab (15462) in Ahn'Qiraj and six other live creatures. The old
+        # 2730 was Creature\Scorpion\Scorpion.mdx -- a scorpion, and the
+        # commonest hunter pet look there is.
+        (990117, 15464, 3, 1.0, 1.0),
     ],
 }
 ALL_CLASSES = 0x5FF
@@ -185,6 +189,9 @@ T_DEST_DYNOBJ_ENEMY = 28             # where a persistent area sits (Death and D
 T_DEST_CAST = 87                     # where the player clicked (Lightwell)
 T_DEST_TOTEM_SLOT = 41               # a totem slot beside the caster (Earthbind Totem)
 T_DEST_CASTER_SUMMON = 32            # where a pet appears (Summon Imp)
+T_CONE_ENEMY = 104                   # a cone in front of the caster. The only cone
+                                     # the player pool uses: Cone of Cold and
+                                     # Dragon's Breath, both with radius index 13
 ALL_SCHOOLS = 0x7F                   # MAX_SPELL_SCHOOL is 7
 
 RANGE_SELF, RANGE_MELEE, RANGE_20, RANGE_30, RANGE_40 = 1, 2, 3, 4, 5
@@ -206,6 +213,18 @@ POWER = {"mana": 0, "rage": 1, "energy": 3}
 # WotLK prices itself this way -- Fireball is 8%, Flash Heal 18%, Chain
 # Lightning 26% -- and the median across every band is 12 to 18%.
 MANA_COST_PCT = 204
+# Spell.dbc column 47: a missile's speed in yards per second. Zero means the
+# effect lands the instant the cast finishes, with nothing drawn between caster
+# and target -- which is what every projectile in this file did until it was
+# written. Found by scanning the client's own rows for a column where Fireball
+# and Frostbolt hold a plausible speed and Whirlwind holds zero.
+SPEED = 47
+# The speeds the game itself uses, so a forged projectile travels at the same
+# rate as the spell a player would compare it to.
+SPEED_ARROW = 40.0        # Arcane Shot, Auto Shot
+SPEED_BOLT = 24.0         # Fireball
+SPEED_THROWN = 20.0       # Throw
+SPEED_SPIT = 25.0         # between a thrown weapon and an arrow
 
 # The shape of cw_forged_spells, in one place, because write_sql builds both the
 # CREATE and the migration that brings an older table up to it: CREATE TABLE IF
@@ -280,6 +299,7 @@ RECIPES = [
         key="emberfeed", name="Emberfeed", rarity=1, type=3,
         first_level=10, ranks=6, step=12, donor=133, school=4,
         icon=183, visual=67, visual_kits=dict(caster_impact=3374), power=("mana", 12), power_is_pct=True,
+        speed=SPEED_BOLT,   # a fire bolt, at Fireball's speed
         range_idx=RANGE_30, cast_idx=CAST_2000, cooldown_ms=0,
         effects=[
             dict(eff=E_SCHOOL_DAMAGE, base=dmg(1.0), tgt=T_ENEMY),
@@ -292,6 +312,7 @@ RECIPES = [
         key="antipode_blast", name="Antipode Blast", rarity=2, type=3,
         first_level=26, ranks=5, step=12, donor=133, school=4,
         icon=2371, visual=12253, visual_kits=dict(impact=728, target_impact=4991), power=("mana", 16), power_is_pct=True,
+        speed=SPEED_BOLT,   # a fire bolt, at Fireball's speed
         range_idx=RANGE_30, cast_idx=CAST_2000, cooldown_ms=8000,
         duration_idx=DUR_6S,
         effects=[
@@ -301,7 +322,7 @@ RECIPES = [
             dict(eff=E_TRIGGER_SPELL, base=1, tgt=T_ENEMY, trigger="companion"),
         ],
         companion=dict(
-            name="Antipode Blast", school=16, visual=67, icon=2371,
+            name="Antipode Blast", school=16, speed=SPEED_BOLT, visual=67, icon=2371,
             desc="Frost half of Antipode Blast.",
             duration_idx=DUR_6S,
             effects=[
@@ -371,19 +392,21 @@ RECIPES = [
         duration_idx=DUR_6S,
         effects=[
             dict(eff=E_APPLY_AURA, aura=A_MOD_CONFUSE, base=0,
-                 tgt=T_SRC_CASTER, tgtb=T_AREA_ENEMY_SRC, radius=RADIUS_8YD),
+                 tgt=T_CONE_ENEMY, radius=RADIUS_10YD),
+            dict(eff=E_APPLY_AURA, aura=A_MOD_DECREASE_SPEED, base=-30,
+                 tgt=T_CONE_ENEMY, radius=RADIUS_10YD),
         ],
         desc=("Disorients enemies within $a1 yards of you for $d. Any damage taken will break "
               "the effect."),
-        compare="Psychic Scream's own shape (22/15 around the caster): it fears for 8s on "
-                "30s cd; this disorients for 6s and breaks on damage. Was written with 22 "
-                "alone and at 20 yards, which disoriented nobody.",
+        compare="Dragon's Breath's shape exactly: target 104 in a 10 yard cone, a confuse "
+                "and a slow, which is the only cone shape the player pool uses (Cone of "
+                "Cold is the other). Directional, so it can be walked out of.",
     ),
     dict(
         key="sinkhole", name="Sinkhole", rarity=3, type=3, mechanic=11,  # snare
         first_level=46, ranks=4, step=11, donor=5740, school=32,
         icon=2242, visual=7732, visual_kits=dict(persistent_area=9352), power=("mana", 22), power_is_pct=True,
-        range_idx=RANGE_30, cast_idx=CAST_INSTANT, cooldown_ms=45000,
+        range_idx=RANGE_30, cast_idx=CAST_1500, cooldown_ms=45000,
         duration_idx=DUR_6S,
         effects=[
             dict(eff=E_PULL_TOWARDS_DEST, base=1, tgt=T_AREA_ENEMY_DEST, radius=RADIUS_8YD),
@@ -420,7 +443,7 @@ RECIPES = [
         key="reclaimed_sentry", name="Reclaimed Sentry", rarity=3, type=0,
         first_level=56, ranks=3, step=8, donor=5730, school=8,
         icon=3065, visual=8111, power=("mana", 20), power_is_pct=True,
-        range_idx=RANGE_30, cast_idx=CAST_INSTANT, cooldown_ms=120000,
+        range_idx=RANGE_30, cast_idx=CAST_1500, cooldown_ms=120000,
         duration_idx=DUR_20S,
         summon=dict(entry=990111, name="Reclaimed Sentry"),
         effects=[
@@ -444,6 +467,7 @@ RECIPES = [
         key="hurl", name="Hurl", rarity=0, type=2,
         first_level=3, ranks=7, step=11, donor=133, school=1,
         icon=251, visual=567, power=("energy", 25),
+        speed=SPEED_THROWN,   # a thrown rock, at Throw's speed
         range_idx=RANGE_20, cast_idx=CAST_INSTANT, cooldown_ms=6000,
         effects=[
             dict(eff=E_SCHOOL_DAMAGE, base=dmg(0.85), tgt=T_ENEMY),
@@ -704,22 +728,25 @@ RECIPES = [
         # pet learns a default spell when its level reaches the spell's own, so
         # one beetle bites at 10, spits at 30 and chokes at 50.
         pet_spells=[
-            dict(name="Venom Bite", level=10, donor=5730, school=8, icon=1630, visual=67,
-                 visual_kits=dict(impact=3031), duration_idx=DUR_12S,
+            dict(name="Venom Bite", level=10, donor=5730, school=8, icon=1630, visual=5100,
+                 duration_idx=DUR_12S,
                  range_idx=RANGE_MELEE, cast_idx=CAST_INSTANT, cooldown_ms=6000,
                  power=("mana", 0),
                  desc="Poisons the target, dealing $o1 Nature damage over $d.",
                  effects=[dict(eff=E_APPLY_AURA, aura=A_PERIODIC_DAMAGE,
                                base=("dmg", 0.20), tgt=T_ENEMY, amplitude=3000)]),
-            dict(name="Weakening Spit", level=30, donor=5730, school=8, icon=1739, visual=67,
-                 visual_kits=dict(impact=3031), duration_idx=DUR_15S,
+            # a real poison projectile (Poison Spit, missile model 675) with a
+            # speed, so the spit is visible crossing the twenty yards
+            dict(name="Weakening Spit", level=30, donor=5730, school=8, icon=1739,
+                 visual=7910, speed=SPEED_SPIT, duration_idx=DUR_15S,
                  range_idx=RANGE_20, cast_idx=CAST_INSTANT, cooldown_ms=15000,
                  power=("mana", 0),
                  desc="Reduces the target's attack power by $s1 for $d.",
                  effects=[dict(eff=E_APPLY_AURA, aura=A_MOD_ATTACK_POWER,
                                base=("dmg", -0.5), tgt=T_ENEMY)]),
-            dict(name="Spore Wash", level=50, donor=5730, school=8, icon=68, visual=7732,
-                 visual_kits=dict(persistent_area=9352), duration_idx=DUR_6S,
+            # Venom Web Spray's projectile (missile model 618) for a slow
+            dict(name="Spore Wash", level=50, donor=5730, school=8, icon=68,
+                 visual=12013, speed=SPEED_SPIT, duration_idx=DUR_6S,
                  range_idx=RANGE_20, cast_idx=CAST_INSTANT, cooldown_ms=30000,
                  power=("mana", 0),
                  desc="Reduces the target's movement speed by 40% for $d.",
@@ -763,6 +790,7 @@ RECIPES = [
         first_level=18, ranks=5, step=12, donor=2643, school=1,
         icon=105, visual=3299, visual_kits=dict(impact=282),
         power=("energy", 30),
+        speed=SPEED_ARROW,   # a shot, at Arcane Shot's speed
         range_idx=RANGE_RANGED, cast_idx=CAST_INSTANT, cooldown_ms=10000,
         duration_idx=DUR_6S,
         # Each ricochet is this hidden spell, cast BY the target it leaves at
@@ -771,6 +799,7 @@ RECIPES = [
         # Slot 2 carries the budget that remains; slot 3 the same marker.
         companion=dict(
             name="Ricochet Shot", school=1, visual=3299, icon=105, donor=2643,
+            speed=SPEED_ARROW,
             range_idx=RANGE_40, cast_idx=CAST_INSTANT, cooldown_ms=0, power=("mana", 0),
             duration_idx=DUR_6S, desc="Ricochet of Ricochet Shot.",
             effects=[
@@ -795,7 +824,11 @@ RECIPES = [
     dict(
         key="bleed_over", name="Bleed Over", rarity=2, script=True, type=3,
         first_level=30, ranks=4, step=12, donor=133, school=8,
-        icon=1468, visual=67, visual_kits=dict(impact=3031),
+        icon=1468,
+        # Serpent Sting's look: Nature, a real missile (model 1522) and an
+        # impact. It was Fireball's, which is the wrong school and drew a
+        # missile this spell had no speed to move.
+        visual=3179, speed=SPEED_BOLT, visual_kits=dict(impact=3031),
         power=("mana", 15), power_is_pct=True,
         range_idx=RANGE_30, cast_idx=CAST_INSTANT, cooldown_ms=15000,
         duration_idx=DUR_12S,
@@ -844,9 +877,13 @@ RECIPES = [
     dict(
         key="wildcard_surge", name="Wildcard Surge", rarity=4, script=True, type=3,
         first_level=70, ranks=2, step=8, donor=133, school=64,
-        icon=1950, visual=12006, visual_kits=dict(impact_area=13152),
+        icon=1950,
+        # Arcane Barrage's look: Arcane, missile model 322, impact 9849. It
+        # was Divine Storm's, a melee whirl with no missile at all.
+        visual=9947, visual_kits=dict(impact_area=13152),
         power=("mana", 20), power_is_pct=True,
-        range_idx=RANGE_30, cast_idx=CAST_INSTANT, cooldown_ms=180000,
+        speed=SPEED_BOLT,   # a bolt, at Fireball's speed
+        range_idx=RANGE_30, cast_idx=CAST_2500, cooldown_ms=180000,
         effects=[
             dict(eff=E_SCHOOL_DAMAGE, base=dmg(1.6), tgt=T_ENEMY),
         ],
@@ -997,6 +1034,10 @@ def build_row(spell, recipe, rank_index, level, spell_id, next_id, companion_id)
     v[3] = recipe.get("mechanic", 0)            # Mechanic, stated per recipe
     setf("SpellVisual", recipe["visual"])
     setf("SpellIconID", recipe["icon"])
+
+    # a missile only travels if the row says how fast; the visual alone does
+    # nothing, and a visual WITHOUT a missile ignores this
+    v[SPEED] = float(recipe.get("speed", 0.0))
 
     kind, amount = recipe.get("power", ("mana", 0))
     v[41] = POWER[kind]
@@ -1361,6 +1402,14 @@ def write_manifest(spells, lines, visuals, gen, path, run_desc):
                spell_block=[SPELL_BASE, BLOCK_END],
                skill_line=dict(id=HERO_LINE, name=HERO_LINE_NAME,
                                category=SKILL_CATEGORY_CLASS, icon=HERO_LINE_ICON),
+               # The same row the SQL writes to skillraceclassinfo_dbc. The
+               # server needs it (Player::_LoadSkills deletes a skill that has
+               # none, at every login); the client's copy had none, which was
+               # the last difference between the Hero line and a class line.
+               # Masks are 0, which both sides read as "no restriction".
+               skill_race_class=dict(id=RCI_ID, skill=HERO_LINE, race_mask=0,
+                                     class_mask=0, flags=RCI_FLAGS, min_level=0,
+                                     tier=0, cost_index=0),
                lines=[dict(key=l["key"], name=l["name"], first=l["first"]) for l in lines],
                visuals=visuals,
                spells=[dict(id=s["id"], first=s["first"], rank=s["rank"], level=s["level"],

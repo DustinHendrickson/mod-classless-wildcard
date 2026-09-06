@@ -58,6 +58,7 @@ public:
     // ------- classless (free-pick) -------
     bool BuyAbility(Player* player, uint32 firstSpellId, std::string* err);
     bool UnlearnAbility(Player* player, uint32 firstSpellId, std::string* err);
+    bool UnlearnTalent(Player* player, uint32 talentId, std::string* err);
     bool BuyTalentRank(Player* player, uint32 talentId, std::string* err);
     bool Respec(Player* player, std::string* err);
 

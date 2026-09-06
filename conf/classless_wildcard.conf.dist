@@ -371,9 +371,12 @@ ClasslessWildcard.Classless.TalentCostPerRank = 1
 ClasslessWildcard.Classless.TalentFlatCost = 0
 
 #    ClasslessWildcard.Classless.EnforceTalentRows
-#        Require the points-spent-in-tree total that each talent row demands.
-#        Default: 1
-ClasslessWildcard.Classless.EnforceTalentRows = 1
+#        Require the points-spent-in-tree total a talent row demands in a class
+#        tree (5 per row). Off: a Hero drawing from every tree at once would
+#        never reach a deep row otherwise. The tier's LEVEL still applies
+#        under RespectLevelReqs.
+#        Default: 0
+ClasslessWildcard.Classless.EnforceTalentRows = 0
 
 #    ClasslessWildcard.Classless.RefundOnUnlearn
 #        Refund the essence paid when an ability is unlearned.

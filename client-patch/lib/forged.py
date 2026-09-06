@@ -34,9 +34,15 @@ SKILLLINE = "DBFilesClient\\SkillLine.dbc"
 SPELL = "DBFilesClient\\Spell.dbc"
 SPELLVISUAL = "DBFilesClient\\SpellVisual.dbc"
 SKILLLINEABILITY = "DBFilesClient\\SkillLineAbility.dbc"
+SKILLRACECLASSINFO = "DBFilesClient\\SkillRaceClassInfo.dbc"
 
 SKILLLINE_FIELDS = 56
 SPELLVISUAL_FIELDS = 32
+# SkillRaceClassInfo.dbc, 3.3.5a: 0 ID, 1 SkillID, 2 RaceMask, 3 ClassMask,
+# 4 Flags, 5 MinLevel, 6 SkillTierID, 7 SkillCostIndex. Confirmed against the
+# client's own file: 8 fields, and a class line reads e.g.
+# (57, 6 Frost, 0xFFFFFFFF, 128 mage, 1040, 0, 0, 0).
+SKILLRACECLASSINFO_FIELDS = 8
 
 # SkillLine.dbc, 3.3.5a: 0 ID, 1 CategoryID, 2 SkillCostsID,
 # 3..18 DisplayName + 19 mask, 20..35 Description + 36 mask, 37 SpellIcon,
@@ -81,6 +87,26 @@ def append_skill_line(data: bytes, line: dict):
     for col in range(SL_NAME_FIRST, SL_NAME_MASK):
         struct.pack_into("<I", row, col * 4, off)
     struct.pack_into("<I", row, SL_NAME_MASK * 4, 0xFF)
+    records += row
+    return _join(count + 1, fields, rec, records, strings), 1
+
+
+def append_skill_race_class(data: bytes, rci: dict):
+    """The Hero line's race/class row. Returns (bytes, added).
+
+    Without one the server drops the skill at every login, and the client has
+    no such row for any line it does not already know about."""
+    count, fields, rec, records, strings = _split(
+        data, SKILLRACECLASSINFO_FIELDS, "SkillRaceClassInfo.dbc")
+    ids = _ids(records, rec, count)
+    if rci["id"] in ids:
+        return _join(count, fields, rec, records, strings), 0
+
+    row = bytearray(rec)
+    for col, value in enumerate((rci["id"], rci["skill"], rci["race_mask"],
+                                 rci["class_mask"], rci["flags"], rci["min_level"],
+                                 rci["tier"], rci["cost_index"])):
+        struct.pack_into("<I", row, col * 4, value)
     records += row
     return _join(count + 1, fields, rec, records, strings), 1
 
@@ -137,6 +163,14 @@ def apply(files, payload: dict, manifest: dict, report: list):
     payload[SKILLLINE] = patched
     report.append("    SkillLine.dbc     %d row added: the %s tab"
                   % (added, manifest["skill_line"]["name"]))
+
+    rci = manifest.get("skill_race_class")
+    if rci:
+        raw, _ = table(SKILLRACECLASSINFO)
+        patched, added = append_skill_race_class(raw, rci)
+        payload[SKILLRACECLASSINFO] = patched
+        report.append("    SkillRaceClassInfo.dbc  %d row added: the %s line's race/class row"
+                      % (added, manifest["skill_line"]["name"]))
 
     visuals = manifest.get("visuals", [])
     if visuals:

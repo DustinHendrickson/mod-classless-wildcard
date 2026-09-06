@@ -234,7 +234,7 @@ void ClasslessMgr::LoadConfig(bool /*reload*/)
              cfg.talentEssencePerLevel, uint32(cfg.talentEssenceStartLevel));
     cfg.talentCostPerRank = sConfigMgr->GetOption<uint32>("ClasslessWildcard.Classless.TalentCostPerRank", 1);
     cfg.talentFlatCost = sConfigMgr->GetOption<bool>("ClasslessWildcard.Classless.TalentFlatCost", false);
-    cfg.enforceTalentRows = sConfigMgr->GetOption<bool>("ClasslessWildcard.Classless.EnforceTalentRows", true);
+    cfg.enforceTalentRows = sConfigMgr->GetOption<bool>("ClasslessWildcard.Classless.EnforceTalentRows", false);
     cfg.refundOnUnlearn = sConfigMgr->GetOption<bool>("ClasslessWildcard.Classless.RefundOnUnlearn", true);
     cfg.respecCostGold = sConfigMgr->GetOption<uint32>("ClasslessWildcard.Classless.RespecCostGold", 50);
 
@@ -3276,6 +3276,43 @@ bool ClasslessMgr::UnlearnAbility(Player* player, uint32 firstSpellId, std::stri
     PruneCompanions(player);
     SaveState(player);
     Msg(player, Acore::StringFormat("Unlearned {}.", SpellName(e->firstSpellId)));
+    return true;
+}
+
+bool ClasslessMgr::UnlearnTalent(Player* player, uint32 talentId, std::string* err)
+{
+    CharState& st = GetState(player);
+    if (st.mode != Mode::Classless)
+    {
+        if (err) *err = "Unlearning is a Classless-path feature. Wildcard Heroes reroll instead.";
+        return false;
+    }
+    TalentPoolEntry const* t = GetTalent(talentId);
+    auto owned = t ? st.talents.find(talentId) : st.talents.end();
+    if (!t || owned == st.talents.end())
+    {
+        if (err) *err = "You do not own that talent.";
+        return false;
+    }
+    // Another owned talent may stand on this one. Refuse and say which,
+    // rather than pull it out from under them.
+    for (auto const& [otherId, otherRank] : st.talents)
+        if (otherId != talentId)
+            if (TalentPoolEntry const* other = GetTalent(otherId); other && other->dependsOn == talentId)
+            {
+                if (err) *err = Acore::StringFormat("{} requires this talent. Unlearn that one first.",
+                                                    SpellName(other->rankSpells[0]));
+                return false;
+            }
+
+    uint8 const ranks = owned->second;
+    std::string const name = SpellName(t->rankSpells[0]);
+    RemoveTalentInternal(player, *t);
+    // what was paid: the first rank only under the flat price, every rank otherwise
+    if (cfg.refundOnUnlearn)
+        st.talentEssence += cfg.talentFlatCost ? cfg.talentCostPerRank : cfg.talentCostPerRank * ranks;
+    SaveState(player);
+    Msg(player, Acore::StringFormat("Unlearned {}.", name));
     return true;
 }
 

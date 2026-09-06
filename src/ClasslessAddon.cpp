@@ -506,6 +506,8 @@ namespace
             sClasslessMgr->UnlearnAbility(player, argNum(1), &err) ? SendOk(player, "UNL") : SendErr(player, err);
         else if (cmd == "TALBUY")
             sClasslessMgr->BuyTalentRank(player, argNum(1), &err) ? SendOk(player, "TALBUY") : SendErr(player, err);
+        else if (cmd == "TALUNL")
+            sClasslessMgr->UnlearnTalent(player, argNum(1), &err) ? SendOk(player, "TALUNL") : SendErr(player, err);
         else if (cmd == "RESPEC")
             sClasslessMgr->Respec(player, &err) ? SendOk(player, "RESPEC") : SendErr(player, err);
         else if (cmd == "BAR")

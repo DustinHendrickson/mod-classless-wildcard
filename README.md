@@ -106,8 +106,9 @@ projected as you spend. Reallocating is free.</em>
 ### Building a Hero
 
 - **Classless free pick.** Rarity-priced abilities, and talents from every tree bought a rank at
-  a time with prerequisites and tier rules enforced. Unlearning refunds essence, a full respec
-  costs gold, and owned spell lines rank up automatically as you level.
+  a time with prerequisites enforced and each tier opening at its level (no points-in-tree
+  total: a Hero draws from every tree at once). Unlearning an ability or a talent refunds its
+  essence, a full respec costs gold, and owned spell lines rank up automatically as you level.
 - **Wildcard rolls.** Free rerolls below level 10, rarity-weighted rolls, ability locking, and
   synergy rolls that favour classes you already own. A talent roll also rolls its rank, and rank
   is rarity: rank 1 is common, rank 5 is legendary, and landing on rank 5 hands you the full

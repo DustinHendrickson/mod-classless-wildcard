@@ -91,6 +91,11 @@ StubMT.__index = function(self, k)
     if k == "GetFont" then return function() return "Fonts\\FRIZQT__.TTF", 12, "" end end
     if k == "GetCenter" then return function() return 0, 0 end end
     if k == "GetPoint" then return function() return "CENTER", nil, "CENTER", 0, 0 end end
+    -- these take a NAME and set the global, which is how Blizzard's own code
+    -- finds "<tab>Flash"; the generic fallback below dropped it
+    if k == "CreateTexture" or k == "CreateFontString" then
+        return function(s, name, ...) return Stub(k, name, s) end
+    end
     if NUMERIC[k] then
         return function(s)
             if k == "GetHeight" then return rawget(s, "__h") or 0 end
@@ -120,6 +125,11 @@ end
 -- any other CapitalCase global (UIParent, GameTooltip, Minimap, SpellBookFrame,
 -- saved variables ...) springs into being as a stub on first touch
 setmetatable(_G, { __index = function(t, k)
+    -- the client does NOT define these until something creates them, and an
+    -- addon checking `if _G["SpellBookSkillLineTab9"] then` has to see nil
+    if type(k) == "string" and k:match("^SpellBookSkillLineTab%d") then
+        return nil
+    end
     if type(k) == "string" and k:sub(1, 1):match("%u") then
         local v = Stub(k)
         rawset(t, k, v)
@@ -195,7 +205,11 @@ function GetSpellTabInfo(i)
     return "Line " .. i, "Interface\\Icons\\Tab" .. i, (i - 1) * 20, (i == 12) and 15 or 4
 end
 function GetSpellName(slot, book) return "Spell" .. tostring(slot), "Rank " .. tostring(slot % 3 + 1) end
-function GetSpellTexture(slot) return "Interface\\Icons\\Spell" .. tostring(slot) end
+-- slot 226 has no texture: the stock book draws an empty square there, and the
+-- addon must leave that square alone rather than cover it
+function GetSpellTexture(slot) if slot == 226 then return "" end return "Interface\\Icons\\Spell" .. tostring(slot) end
+function GetCVarBool(name) return true end
+function GetKnownSlotFromHighestRankSlot(slot) return slot end
 PICKED = {}
 function PickupSpell(slot, book) PICKED[#PICKED + 1] = slot end
 '''
@@ -1544,61 +1558,105 @@ STRATA = ["BACKGROUND", "LOW", "MEDIUM", "HIGH", "DIALOG", "FULLSCREEN",
 
 
 def test_spellbook(h):
-    print("--- spellbook: tabs past the eighth without touching Blizzard's state")
+    print("--- spellbook: Blizzard's tabs and pages, and a secure overlay past the eighth")
     CW = h.CW
     rt = h.rt
-    # a sentinel in every piece of Blizzard state the old code wrote, so a write
-    # shows up as a changed value rather than an absence
+    # read BEFORE anything here writes it: the addon has already loaded, and a
+    # write at load is exactly how the first version broke casting
+    at_load = rt.eval("MAX_SKILLLINE_TABS")
     rt.execute("""
         SpellBookFrame.selectedSkillLine = 3
         SpellBookFrame.bookType = "spell"
-        MAX_SKILLLINE_TABS = 8
-        for i = 1, 12 do local b = Stub("CheckButton", "SpellButton" .. i) b.__shown = true end
-        Stub("FontString", "SpellBookPageText").__shown = true
-        Stub("Button", "SpellBookPrevPageButton").__shown = true
-        Stub("Button", "SpellBookNextPageButton").__shown = true
+        for i = 1, 12 do Stub("CheckButton", "SpellButton" .. i) end
         for i = 1, 8 do Stub("CheckButton", "SpellBookSkillLineTab" .. i) end
+        Stub("Frame", "SpellBookTabFlashFrame")
     """)
     sb = CW.spellbook
     h.check(sb is not None, "the addon exposes its spellbook piece")
     sb.install()
-    sb.layout()
 
-    h.check(rt.eval("MAX_SKILLLINE_TABS") == 8, "MAX_SKILLLINE_TABS is left at Blizzard's 8")
-    h.check(rt.eval("rawget(_G, 'SpellBookSkillLineTab9') == nil"),
-            "no frame is created under Blizzard's tab names past the eighth")
-    h.check(rt.eval("#SPELLBOOK_PAGENUMBERS") == 8, "SPELLBOOK_PAGENUMBERS is not seeded")
+    h.check(at_load == 8 and rt.eval("MAX_SKILLLINE_TABS") == 8,
+            "MAX_SKILLLINE_TABS is left at 8 at load and after install, so Blizzard's "
+            "update loop reads nothing of ours (was %s)" % at_load)
+    # tabs past the eighth ARE Blizzard's frames, from Blizzard's template
+    tab9 = rt.eval("rawget(_G, 'SpellBookSkillLineTab9')")
+    h.check(tab9 is not None and tab9["__shown"] is True,
+            "a tab past the eighth exists and is shown")
+    h.check(str(tab9["__template"]) == "SpellBookSkillLineTabTemplate",
+            "and it is Blizzard's own template, so its click is Blizzard's handler")
+    h.check(tab9["__scripts"]["OnClick"] is None,
+            "the addon sets no OnClick of its own on it")
+    h.check(rt.eval("rawget(_G, 'SpellBookSkillLineTab9Flash')") is not None,
+            "its Flash texture exists, so LEARNED_SPELL_IN_TAB has something to show")
+    h.check(rt.eval("rawget(_G, 'SpellBookSkillLineTab13')") is None,
+            "no tab is built past the number of lines the game reports")
 
-    tabs = sb.tabs
-    shown = [k for k in range(1, 33) if tabs[k] is not None and tabs[k]["__shown"]]
-    h.check(shown == [1, 2, 3, 4], "one tab of the addon's own for each line past 8 (lines 9..12)")
+    # on a stock tab, nothing of the addon's is over the page
+    h.check(all(sb.overlays[i] is None or sb.overlays[i]["__shown"] is False
+                for i in range(1, 13)),
+            "on tabs 1-8 no overlay is shown: the stock page is untouched")
 
-    # open line 12: fifteen spells, so a full page and a second one
-    h.click(tabs[4])
-    h.check(sb.line == 12 and sb.frame["__shown"] is True, "clicking the addon's tab opens its page")
-    h.check(rt.eval("SpellBookFrame.selectedSkillLine") == 3,
-            "and Blizzard's selected tab is not written")
-    h.check(rt.eval("SpellButton1.__shown") is False and rt.eval("SpellBookPageText.__shown") is False,
-            "Blizzard's buttons and page text are hidden under it")
-    shown_btns = [i for i in range(1, 13) if sb.buttons[i]["__shown"]]
-    h.check(shown_btns == list(range(1, 13)), "twelve secure buttons on the first page")
-    attr = sb.buttons[1]["__attributes"]
-    h.check(attr is not None and str(attr["type"]) == "spell" and str(attr["spell"]).startswith("Spell221"),
-            "each casts by spell name through a secure attribute (%s)" % (attr and attr["spell"]))
-    h.click(sb.next)
-    shown_btns = [i for i in range(1, 13) if sb.buttons[i]["__shown"]]
-    h.check(shown_btns == [1, 2, 3] and sb.page == 2, "the second page shows the remaining three")
+    # tab 12: fifteen spells, so twelve on page one
+    rt.execute("SpellBookFrame.selectedSkillLine = 12")
+    sb.update()
+    shown = [i for i in range(1, 13) if sb.overlays[i]["__shown"]]
+    # offset 220, 15 spells: page one is slots 221-232, and 226 has no texture
+    h.check(shown == [1, 2, 3, 4, 5, 7, 8, 9, 10, 11, 12],
+            "on a tab past the eighth every FILLED slot gets a secure overlay (%s)" % shown)
+    h.check(rt.eval("SPELLBOOK_PAGENUMBERS[12]") == 1,
+            "and its page number is seeded, which is why the overlay is needed")
+    b = sb.overlays[1]
+    attr = b["__attributes"]
+    h.check(attr is not None and str(attr["type"]) == "spell"
+            and str(attr["spell"]).startswith("Spell221"),
+            "each overlay casts by spell name through a secure attribute (%s)"
+            % (attr and attr["spell"]))
 
-    # dragging goes through PickupSpell with the book slot
-    sb.buttons[1]["__scripts"]["OnDragStart"](sb.buttons[1])
-    h.check(rt.eval("PICKED[#PICKED]") == 233, "dragging a button picks up its spell slot")
+    # page two: three spells, and the empty squares stay Blizzard's
+    rt.execute("SPELLBOOK_PAGENUMBERS[12] = 2")
+    sb.update()
+    shown = [i for i in range(1, 13) if sb.overlays[i]["__shown"]]
+    h.check(shown == [1, 2, 3],
+            "the last page shows only its three, the rest staying Blizzard's empty squares (%s)" % shown)
 
-    # a Blizzard tab, or closing the book, puts the page away and restores the text
-    sb.close()
-    h.check(sb.line is None and sb.frame["__shown"] is False, "closing puts the page away")
-    h.check(rt.eval("SpellBookPageText.__shown") is True and rt.eval("SpellBookPrevPageButton.__shown") is True,
-            "and gives Blizzard back its page text and arrows")
-    h.check(rt.eval("SpellBookFrame.selectedSkillLine") == 3, "still without writing Blizzard's state")
+    b.__getitem__("__scripts")["OnDragStart"](b)
+    h.check(rt.eval("PICKED[#PICKED]") == 233, "dragging an overlay picks up its spell slot")
+
+    # combat: a secure button cannot be shown or retargeted, so it waits
+    rt.execute("function InCombatLockdown() return true end")
+    rt.execute("SPELLBOOK_PAGENUMBERS[12] = 1")
+    sb.update()
+    h.check(sb.stale is True, "in combat the overlays are left alone and marked stale")
+    rt.execute("function InCombatLockdown() return false end")
+    sb.update()
+    h.check(sb.stale is None and len([i for i in range(1, 13) if sb.overlays[i]["__shown"]]) == 11,
+            "and they catch up when combat ends")
+
+
+def test_talent_unlearn(h):
+    print("--- My Build: giving a talent back on the Classless path")
+    CW = h.CW
+    h.recv(state(0, ae=5, te=5, level=40))
+    h.recv("OA|")
+    h.recv("OAE|")
+    h.recv("OT|101:133:2:3:5;")        # talentId 101, spell 133, rarity 2, rank 3 of 5
+    h.recv("OTE|")
+    h.g.ClasslessWildcard["__shown"] = True
+    CW.SetTab(1)
+    row = None
+    for i in range(1, 20):
+        r = CW.buildRows[i]
+        if r is None:
+            break
+        if r["__shown"] and r.spellId == 133 and r.actBtn["__shown"]:
+            row = r
+    if row is None:
+        h.check(False, "the talent has a row in My Build with an action button")
+        return
+    h.check(row is not None, "the talent has a row in My Build with an action button")
+    h.clear_sent()
+    h.click(row.actBtn)
+    h.check(h.sent() == ["TALUNL 101"], "and its button asks the server to unlearn it (%s)" % h.sent())
 
 
 def test_layering(h):
@@ -1656,6 +1714,7 @@ def main():
     test_settings(h)
     test_layering(h)
     test_spellbook(h)
+    test_talent_unlearn(h)
     if h.failures:
         print("\n%d check(s) FAILED" % h.failures)
         return 1
