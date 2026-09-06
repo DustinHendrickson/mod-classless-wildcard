@@ -26,7 +26,7 @@ SQL = os.path.join(MODULE, "data", "sql", "db-world", "cw_spells_forged.sql")
 sys.path.insert(0, os.path.join(MODULE, "data", "sql", "generators"))
 
 from gen_forged_spells import (F, RECIPES, HERO_LINE, SPELL_BASE, BLOCK_END,
-                               MANA_COST_PCT,
+                               MANA_COST_PCT, CREATURE_SCRIPT, CREATURE_SPELL,
                                anchor, resolve, ALL_CLASSES)
 
 # columns the shared F map does not name
@@ -1208,6 +1208,40 @@ def main():
           % (len(got_rows), want_rows))
     unscripted = [i for i, name in got_rows
                   if (name[:-len("_bounce")] if name.endswith("_bounce") else name) not in scripted_keys]
+    # ---- an emplacement that acts needs a script AND a spell ------------------
+    # Reclaimed Sentry's turret has an AI only because creature_template names
+    # one, and it knows what to fire only because creature_template_spell puts
+    # a bolt in slot 0 -- Creature::UpdateEntry copies that into m_spells and
+    # the AI fires m_spells[0]. A marker summon records no spell id at all, so
+    # the creature entry is the ONLY thing that tells rank 1's turret from
+    # rank 3's. Drop either row and it is back to standing there.
+    emplacement = []
+    for entry, script in sorted(CREATURE_SCRIPT.items()):
+        if re.search(r"INSERT INTO `creature_template`[^;]*\(%d, '[^']*', '', [^)]*'%s', 12340\)"
+                     % (entry, re.escape(script)), sql_all, re.S) is None:
+            emplacement.append("creature %d does not carry ScriptName %s" % (entry, script))
+        # the C++ CLASS name and the script name it registers under are
+        # different strings, so resolve the class from the constructor
+        klass = re.search(r"class (\w+)\s*:\s*public CreatureScript.{0,4000}?"
+                          r'CreatureScript\("%s"\)' % re.escape(script), cpp, re.S)
+        if not klass:
+            emplacement.append("%s: no CreatureScript registers that name" % script)
+        elif ("new %s();" % klass.group(1)) not in cpp.split("AddClasslessForgedScripts")[-1]:
+            emplacement.append("%s: class %s is never constructed in "
+                               "AddClasslessForgedScripts" % (script, klass.group(1)))
+    for entry, (key, idx) in sorted(CREATURE_SPELL.items()):
+        want = next((sp["id"] for sp in spells
+                     if sp["key"] == "%s_pet%d" % (key, idx)), None)
+        if want is None:
+            emplacement.append("creature %d wants %s_pet%d, which no spell provides"
+                               % (entry, key, idx))
+            continue
+        if re.search(r"INSERT INTO `creature_template_spell`[^;]*\(%d, 0, %d, 12340\)"
+                     % (entry, want), sql_all, re.S) is None:
+            emplacement.append("creature %d has no slot-0 row for spell %d" % (entry, want))
+    check("every scripted emplacement carries its script and its spell",
+          not emplacement, "%s" % sorted(set(emplacement))[:4])
+
     check("no unscripted line was given a script row", not unscripted,
           "offenders %s" % unscripted[:4])
 

@@ -102,12 +102,18 @@ SUMMON_MARKER = 121       # what Force of Nature uses: temporary, fights, despaw
 # without one Creature::UpdateEntry returns false and nothing spawns.
 SUMMON_CREATURES = [
     (990110, "Bulwark Anchor", 31124, None),     # BoneGuardSpike, driven into the ground
-    # 3127 is the Scarlet Land Cannon, a siege piece the core spawns at scale
-    # 2.4. It towered over the player, and a cannon promises a barrel that
-    # turns and a shot that lands -- neither of which a marker summon has AI
-    # to do. 19218 is the Gnomish Flame Turret, built to sit still and burn
-    # what stands near it, which is what this spell does.
-    (990111, "Reclaimed Sentry", 19218, None),   # Gnomish Flame Turret
+    # The Gnomish Flame Turret, and it does turn out to shoot. A marker summon
+    # records no spell id (UNIT_CREATED_BY_SPELL is set for pets only), so a
+    # turret cannot know which rank made it: each rank is its own creature
+    # entry instead, and each entry carries its own bolt in
+    # creature_template_spell, which Creature::UpdateEntry copies into
+    # m_spells. The AI fires m_spells[0] and never handles a spell id.
+    (990111, "Reclaimed Sentry", 19218,
+     dict(script="npc_cw_reclaimed_sentry", recipe="reclaimed_sentry", spell=0)),
+    (990118, "Reclaimed Sentry", 19218,
+     dict(script="npc_cw_reclaimed_sentry", recipe="reclaimed_sentry", spell=1)),
+    (990119, "Reclaimed Sentry", 19218,
+     dict(script="npc_cw_reclaimed_sentry", recipe="reclaimed_sentry", spell=2)),
     # Was AzsharaStoneTablet02, which is the same look as Waystone's Tablet04:
     # two files, one object on screen. The client exposes no rock pile to
     # creatures at all, so this is the Oracle crystal the core spawns at scale
@@ -144,6 +150,12 @@ ALL_CLASSES = 0x5FF
 # taller than the player at 1.0.
 # The display's own CreatureModelScale multiplies this, so a model built at 3.0
 # needs 0.4 to stand at about head height.
+# entry -> the CreatureScript that drives it, and entry -> which of the
+# recipe's pet_spells it holds. Only an emplacement that acts has either.
+CREATURE_SCRIPT = {e: x["script"] for e, _n, _d, x in SUMMON_CREATURES if x}
+CREATURE_SPELL = {e: (x["recipe"], x["spell"])
+                  for e, _n, _d, x in SUMMON_CREATURES if x}
+
 MODEL_SCALE = {
     990110: 0.90,     # BoneGuardSpike is 0.45 natively, and 2.00 stood over the player
     # SummerFest_Bonfire_Large01 is what the core spawns at 1.00, so 1.50 was
@@ -211,6 +223,7 @@ A_PERIODIC_LEECH = 53                # damage over time that heals the caster
 A_PERIODIC_ENERGIZE = 21             # power per tick, gated like E_ENERGIZE
 A_MOD_HEALING_TAKEN_PCT = 118        # healing RECEIVED, negative to cut it
 A_MOD_STAT = 29                      # Mark of the Wild, with misc -1 for every stat
+A_MOD_RESISTANCE_PCT = 101           # Faerie Fire and Expose Armor; misc 1 is armour
 A_DAMAGE_SHIELD = 15                 # Thorns, Retribution Aura
 A_MOD_POWER_COST_PCT = 72            # misc is a school mask; negative is cheaper
 A_MOD_INCREASE_HEALTH_PCT = 133      # Last Stand
@@ -286,6 +299,7 @@ SPEED_BOLT = 24.0         # Fireball
 SPEED_THROWN = 20.0       # Throw
 SPEED_HEAVY_THROW = 50.0  # Heroic Throw
 SPEED_SPIT = 25.0         # between a thrown weapon and an arrow
+SPEED_FIREBOLT = 19.0     # the Imp's Firebolt, missile model 188
 
 # The shape of cw_forged_spells, in one place, because write_sql builds both the
 # CREATE and the migration that brings an older table up to it: CREATE TABLE IF
@@ -571,37 +585,66 @@ RECIPES = [
     ),
     dict(
         key="reclaimed_sentry", name="Reclaimed Sentry", rarity=3, type=0,
-        # Fire, not Nature: the thing it plants is a flame turret, and the
-        # damage it does should be the damage the model is throwing.
         first_level=56, ranks=3, step=8, donor=5730, school=4,
-        # INV_Gizmo_GnomishFlameTurret -- the icon of the very object the
-        # summon wears, in place of a shaman icon on a machine.
         icon=2629, visual=13077,
-        # Feral Spirit's look has no persistent-area kit, so the burning patch
-        # this spell leaves on the ground drew nothing at all. Flamestrike's
-        # 9357 is that patch.
-        # persistent_area 9357 is Flamestrike's burning ground. precast 60 is
-        # what Fire Shield, Immolate and Rocket Blast wind up with; Feral
-        # Spirit's row has no precast at all, so the cast bar ran with the
-        # player standing still.
-        visual_kits=dict(persistent_area=9357, precast=60),
+        # Feral Spirit's row has no precast at all, so the cast bar ran with the
+        # player standing still; 60 is what Fire Shield, Immolate and Rocket
+        # Blast wind up with. The ground field is gone -- the turret shoots now,
+        # so there is nothing left to draw on the floor.
+        visual_kits=dict(precast=60),
         power=("mana", 20), power_is_pct=True,
         range_idx=RANGE_30, cast_idx=CAST_1500, cooldown_ms=120000,
         duration_idx=DUR_20S,
         summon=dict(entry=990111, name="Reclaimed Sentry"),
+        # One creature per rank, so each turret carries its own bolt. The old
+        # single entry could not tell rank 1 from rank 3.
         effects=[
-            dict(eff=E_SUMMON, base=1, tgt=T_DEST_CAST, misc=990111, miscb=SUMMON_MARKER),
-            dict(eff=E_PERSISTENT_AREA, aura=A_PERIODIC_DAMAGE_AREA, base=dmg(0.13),
-                 tgt=T_DEST_DYNOBJ_ENEMY, radius=RADIUS_10YD, amplitude=2000),
-            dict(eff=E_APPLY_AURA, aura=A_HASTE_SPELLS, base=-25,
-                 tgt=T_AREA_ENEMY_DEST, radius=RADIUS_10YD),
+            dict(eff=E_SUMMON, base=1, tgt=T_DEST_CAST,
+                 misc=("rank", [990111, 990118, 990119]), miscb=SUMMON_MARKER),
         ],
-        desc=("Deploys a salvaged flame turret at the target location for $d. It burns "
-              "enemies within $a2 yards for $o2 Fire damage over its duration, and enemies "
-              "within $a3 yards when it deploys cast 25% slower. It cannot move or be healed."),
-        compare="Ten ticks over its life against a 469 band anchor: ~1.3 casts' worth, spread "
-                "over 20s and only against whatever stays near it. It is an emplacement, not "
-                "a guardian: nothing in the set summons something that fights on its own.",
+        # What each rank's turret fires, one per rank, built at that rank's
+        # level. npc_cw_reclaimed_sentry casts m_spells[0] once a second at
+        # whatever is inside twenty yards, with the owner as original caster.
+        pet_spells=[
+            dict(name="Sentry Bolt", level=56, donor=5730, school=4, icon=2629,
+                 visual=28, speed=SPEED_FIREBOLT, duration_idx=DUR_10S,
+                 range_idx=RANGE_20, cast_idx=CAST_INSTANT, cooldown_ms=0,
+                 power=("mana", 0),
+                 desc="Deals $s1 Fire damage and reduces armor by 10% for $d.",
+                 effects=[
+                     dict(eff=E_SCHOOL_DAMAGE, base=("dmg", 0.08), tgt=T_ENEMY),
+                     dict(eff=E_APPLY_AURA, aura=A_MOD_RESISTANCE_PCT, base=-10,
+                          misc=1, tgt=T_ENEMY),
+                 ]),
+            dict(name="Sentry Bolt", level=64, donor=5730, school=4, icon=2629,
+                 visual=28, speed=SPEED_FIREBOLT, duration_idx=DUR_10S,
+                 range_idx=RANGE_20, cast_idx=CAST_INSTANT, cooldown_ms=0,
+                 power=("mana", 0),
+                 desc="Deals $s1 Fire damage and reduces armor by 10% for $d.",
+                 effects=[
+                     dict(eff=E_SCHOOL_DAMAGE, base=("dmg", 0.08), tgt=T_ENEMY),
+                     dict(eff=E_APPLY_AURA, aura=A_MOD_RESISTANCE_PCT, base=-10,
+                          misc=1, tgt=T_ENEMY),
+                 ]),
+            dict(name="Sentry Bolt", level=72, donor=5730, school=4, icon=2629,
+                 visual=28, speed=SPEED_FIREBOLT, duration_idx=DUR_10S,
+                 range_idx=RANGE_20, cast_idx=CAST_INSTANT, cooldown_ms=0,
+                 power=("mana", 0),
+                 desc="Deals $s1 Fire damage and reduces armor by 10% for $d.",
+                 effects=[
+                     dict(eff=E_SCHOOL_DAMAGE, base=("dmg", 0.08), tgt=T_ENEMY),
+                     dict(eff=E_APPLY_AURA, aura=A_MOD_RESISTANCE_PCT, base=-10,
+                          misc=1, tgt=T_ENEMY),
+                 ]),
+        ],
+        desc=("Deploys a salvaged flame turret at the target location for $d. It fires on "
+              "enemies within 20 yards about once a second, and its bolts reduce armor by "
+              "10% for 10 sec. It cannot move or be healed."),
+        compare="Twenty bolts over its life at 0.08x the band anchor each is about 1.6 casts' "
+                "worth, spread across whatever stays inside twenty yards, on a two minute "
+                "cooldown. The armour strip sits between Faerie Fire's 5% and Expose Armor's "
+                "20% and is the only one in the set. Nothing else a Hero can roll puts a "
+                "thing on the ground that picks its own targets.",
     ),
     # ---- the low-level Commons -----------------------------------------------
     # A fresh Hero starts with four cards and no guarantee any of them is a
@@ -1635,9 +1678,11 @@ def write_sql(spells, lines, gen, path):
             L.append("(%d, '%s', '', 1, 80, 35, 0, 1, 0, %d, 0, 1, %d, %.2f, %.2f, '', 12340)%s"
                      % (entry, cname, CREATURE_TYPE_BEAST, 0x00000040, dmg, hp, end))
         else:
-            L.append("(%d, '%s', '', 1, 80, 35, 0, 1, %d, %d, 0, 1, %d, 1.00, 1.00, '', 12340)%s"
+            # ScriptName is what binds a CreatureScript, and an emplacement that
+            # acts needs one. Everything else keeps the empty name it had.
+            L.append("(%d, '%s', '', 1, 80, 35, 0, 1, %d, %d, 0, 1, %d, 1.00, 1.00, '%s', 12340)%s"
                      % (entry, cname, UNIT_FLAGS_MARKER, CREATURE_TYPE_TOTEM,
-                        EXTRA_FLAGS_MARKER, end))
+                        EXTRA_FLAGS_MARKER, CREATURE_SCRIPT.get(entry, ""), end))
     L.append("")
 
     L.append("-- Models live in their own table. Without a row here the marker")
@@ -1665,6 +1710,14 @@ def write_sql(spells, lines, gen, path):
                         if sp["key"] == "%s_pet%d" % (key, idx)), None)
             if sid:
                 petrows.append((entry, idx, sid))
+    # An emplacement holds exactly one spell, in slot 0, so its AI can fire
+    # m_spells[0] without knowing any id. One entry per rank is what makes the
+    # rank's own numbers reachable.
+    for entry, (key, idx) in sorted(CREATURE_SPELL.items()):
+        sid = next((sp["id"] for sp in spells
+                    if sp["key"] == "%s_pet%d" % (key, idx)), None)
+        if sid:
+            petrows.append((entry, 0, sid))
     if petrows:
         L.append("-- What the pet knows. Creature.cpp copies these into m_spells, and")
         L.append("-- InitCharmCreateSpells puts each one on the pet bar with an autocast")

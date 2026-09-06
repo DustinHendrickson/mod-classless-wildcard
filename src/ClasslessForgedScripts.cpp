@@ -38,7 +38,10 @@
 #include "SpellMgr.h"
 #include "SpellScript.h"
 #include "Pet.h"
+#include "ObjectAccessor.h"
 #include "ObjectMgr.h"
+#include "PassiveAI.h"
+#include "TemporarySummon.h"
 #include "CellImpl.h"
 #include "GridNotifiers.h"
 #include "GridNotifiersImpl.h"
@@ -477,9 +480,111 @@ public:
     }
 };
 
+// =====================================================================
+// Reclaimed Sentry -- an emplacement that actually fires.
+//
+// The turret is a marker summon: visible, non-attackable, immobile, and left
+// on faction 35, which is friendly to everything. It cannot judge who is
+// hostile and never tries. TempSummon::InitStats hands the owner's faction and
+// level only to a creature carrying CREATURE_FLAG_EXTRA_TRIGGER, and that flag
+// is what replaces a creature's model with the invisible one -- the last thing
+// this summon can afford. So every question about a target is asked of the
+// OWNER, and every bolt is cast with the owner as original caster, which puts
+// the damage, the threat and the spell bonuses on the player. Ricochet Shot
+// already works exactly this way.
+//
+// Which bolt it fires comes from creature_template_spell, one row per rank's
+// own creature entry, which Creature::UpdateEntry copies into m_spells. A
+// marker summon records no spell id at all -- the default branch of
+// EffectSummonType passes none and UNIT_CREATED_BY_SPELL is set for pets only
+// -- so the entry IS how a turret knows its rank. Nothing here holds a spell
+// id, and another rank needs no edit to this file.
+// =====================================================================
+namespace
+{
+    constexpr uint32 SENTRY_SHOT_MS = 1000;
+    constexpr float SENTRY_RANGE = 20.0f;
+}
+
+struct npc_cw_reclaimed_sentry : public NullCreatureAI
+{
+    explicit npc_cw_reclaimed_sentry(Creature* creature)
+        : NullCreatureAI(creature), _timer(SENTRY_SHOT_MS) { }
+
+    void UpdateAI(uint32 diff) override
+    {
+        if (_timer > diff)
+        {
+            _timer -= diff;
+            return;
+        }
+        _timer = SENTRY_SHOT_MS;
+
+        uint32 const bolt = me->m_spells[0];
+        if (!bolt || !sSpellMgr->GetSpellInfo(bolt))
+            return;                     // this entry's bolt row is missing
+
+        TempSummon const* summon = me->ToTempSummon();
+        if (!summon)
+            return;
+        Player* owner = ObjectAccessor::GetPlayer(*me, summon->GetSummonerGUID());
+        if (!owner || !owner->IsInWorld() || !owner->IsAlive())
+            return;
+
+        std::list<Unit*> nearby;
+        Acore::AnyUnfriendlyUnitInObjectRangeCheck check(me, owner, SENTRY_RANGE);
+        Acore::UnitListSearcher<Acore::AnyUnfriendlyUnitInObjectRangeCheck> searcher(me, nearby, check);
+        Cell::VisitObjects(me, searcher, SENTRY_RANGE);
+
+        // Spread the armour strip before doubling up: the nearest enemy not
+        // already carrying it, and only when they all are does it fall back to
+        // the nearest of them.
+        Unit* pick = nullptr;
+        float best = SENTRY_RANGE + 1.0f;
+        bool fresh = false;
+        for (Unit* target : nearby)
+        {
+            if (!target->IsAlive() || !owner->IsValidAttackTarget(target))
+                continue;
+            bool const unmarked = !target->HasAura(bolt);
+            float const dist = me->GetDistance(target);
+            if (unmarked && !fresh)
+            {
+                pick = target;
+                best = dist;
+                fresh = true;
+                continue;
+            }
+            if (unmarked != fresh || dist >= best)
+                continue;
+            pick = target;
+            best = dist;
+        }
+        if (!pick)
+            return;
+
+        me->CastSpell(pick, bolt, TRIGGERED_FULL_MASK, nullptr, nullptr, owner->GetGUID());
+    }
+
+private:
+    uint32 _timer;
+};
+
+class cw_forged_sentry : public CreatureScript
+{
+public:
+    cw_forged_sentry() : CreatureScript("npc_cw_reclaimed_sentry") { }
+
+    CreatureAI* GetAI(Creature* creature) const override
+    {
+        return new npc_cw_reclaimed_sentry(creature);
+    }
+};
+
 void AddClasslessForgedScripts()
 {
     new cw_forged_pet_model();
+    new cw_forged_sentry();
     new cw_forged_watcher();
     RegisterSpellScript(spell_cw_crossdraw);
     RegisterSpellScript(spell_cw_ricochet_shot);
