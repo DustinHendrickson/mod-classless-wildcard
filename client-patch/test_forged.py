@@ -26,6 +26,7 @@ SQL = os.path.join(MODULE, "data", "sql", "db-world", "cw_spells_forged.sql")
 sys.path.insert(0, os.path.join(MODULE, "data", "sql", "generators"))
 
 from gen_forged_spells import (F, RECIPES, HERO_LINE, SPELL_BASE, BLOCK_END,
+                               MANA_COST_PCT,
                                anchor, resolve, ALL_CLASSES)
 
 # columns the shared F map does not name
@@ -56,6 +57,11 @@ def check(label, ok, detail=""):
         FAILS.append(label)
 
 
+
+
+# how many rules live in check_against_client, so a bare run can say what it
+# skipped. The check below keeps this honest if a rule is added or removed.
+CLIENT_RULES = 9
 
 
 def check_against_client(client_dir, doc):
@@ -305,16 +311,27 @@ def main():
     check("no rank is past level 80", ok_cap)
 
     # ---- the curve ----------------------------------------------------------
+    # A companion's own rank is always 1 (comp["ranks"] = 1 keeps its rank text
+    # empty), but it is BUILT at the index of the rank that triggered it, so a
+    # ("ranks", [...]) literal inside one has to be resolved at that index.
+    # Levels rise strictly within a line, so the level the two share names it.
+    parent_rank = {}
+    for s in spells:
+        if recipe_key(s["key"]) == s["key"]:
+            parent_rank[(s["key"], s["level"])] = s["rank"]
     off, checked = [], 0
     for s in spells:
         key = recipe_key(s["key"])
         recipe = by_key[key]
         effects = effects_for(recipe, s["key"])
+        idx = s["rank"] - 1
+        if s["key"].endswith("_companion"):
+            idx = parent_rank.get((key, s["level"]), s["rank"]) - 1
         for slot, e in enumerate(effects):
             base = e.get("base")
             if not isinstance(base, tuple):
                 continue
-            want = resolve(base, s["level"], s["rank"] - 1)
+            want = resolve(base, s["level"], idx)
             got = s["values"][F["EffectBasePoints"] + slot] + 1
             checked += 1
             if want and abs(got - want) / want > 0.2:
@@ -378,6 +395,29 @@ def main():
     # built on one donor look alike whatever ids they carry
     vid_donor = {v["id"]: v["base"] for v in doc.get("visuals", [])}
 
+    # ---- a caster-centred burst must belong at the caster ---------------------
+    # SpellVisual field 23 is the InstantAreaKit: the area burst a spell paints
+    # around ITSELF. Holy Nova and Arcane Explosion use it because they are
+    # centred on the caster. Overflow, Quicksilver and Draw Attention used it
+    # for a heal, a buff and a taunt aimed at somebody up to forty yards away,
+    # and all three painted the burst on the caster. The kit that plays at each
+    # unit a spell reaches is field 3, the ImpactKit.
+    CASTER_REL = {1, 18, 22, 30, 15, 32, 41, 42, 43, 44}
+    # a charge ends at its target, so the caster IS there when the burst plays
+    ENDS_AT_TARGET = {"Vanguard Rush"}
+    misplaced = []
+    for rec in RECIPES:
+        if "instant_area" not in (rec.get("visual_kits") or {}):
+            continue
+        if rec["name"] in ENDS_AT_TARGET:
+            continue
+        tg = [e.get("tgt") for e in rec["effects"]] + [e.get("tgtb", 0) for e in rec["effects"]]
+        if not all(t in CASTER_REL or not t for t in tg):
+            misplaced.append("%s paints an instant-area burst at the caster but targets %s"
+                             % (rec["name"], sorted({t for t in tg if t})))
+    check("a caster-centred area burst is only on a spell centred on the caster",
+          not misplaced, "%s" % misplaced[:3])
+
     # ---- two lines must not share a look --------------------------------------
     # Recombining one donor with a different kit slot barely changes what a
     # spell looks like, so three spells built on Hand of Freedom read as the
@@ -391,6 +431,9 @@ def main():
             if base.endswith(suffix):
                 base = base[:-len(suffix)]
         vid = sp["values"][F["SpellVisual"]]
+        if not vid:
+            continue    # no look at all is not a shared look: a companion that
+                        # only energizes the caster carries none on purpose
         donors[vid_donor.get(vid, vid)].add(base)
     shared = ["visual %d is on %s" % (v, ", ".join(sorted(w)))
               for v, w in sorted(donors.items()) if len(w) > 1]
@@ -602,6 +645,108 @@ def main():
     check("every script hook names the effect its spell actually has",
           not mismatch, "%s" % sorted(set(mismatch))[:3])
 
+    # ---- what a script spends and what the spell charges must agree -----------
+    # Quickening empties every point of rage and energy -- that IS its cost --
+    # and also declared 15% of base mana, so a Hero at full energy with a drained
+    # mana bar was told "Not enough mana" for a spell that never touches mana.
+    # A script that spends a pool means the spell either charges nothing, or
+    # charges one of the pools it spends, or is a deliberate two-pool design
+    # named here with its reason.
+    POWER_NAME = {0: "mana", 1: "rage", 3: "energy"}
+    TWO_POOL = {   # spell name -> why a second pool is intended and stated in the tooltip
+        "Ricochet Shot": "energy fires the shot, mana is charged per ricochet and the "
+                         "tooltip says so",
+        "Quickening": "mana pays for the cast, then every point of rage and energy is "
+                      "consumed to size the buff; the description says exactly that",
+    }
+    # A class body runs to its matching brace, not to wherever the next class
+    # happens to start: Ricochet Shot's per-bounce mana lives in an anonymous
+    # namespace written above its class and below Crossdraw's, and reading
+    # "until the next class" credited that spend to Crossdraw. Helpers are
+    # written directly above the class that uses them throughout this file, so
+    # a namespace block is credited forward, to the class that follows it.
+    def _class_body(src, start):
+        i = src.index("{", start)
+        depth, j = 0, i
+        while j < len(src):
+            if src[j] == "{":
+                depth += 1
+            elif src[j] == "}":
+                depth -= 1
+                if depth == 0:
+                    return src[i:j + 1], j
+            j += 1
+        return src[i:], len(src)
+
+    owned = {}
+    ends = []
+    for n in range(len(blocks) - 1):
+        cls, a = blocks[n]
+        body, end = _class_body(cpp, a)
+        owned[cls] = body
+        ends.append((cls, a, end))
+    # every anonymous namespace goes to the next class that starts after it
+    for m in re.finditer(r"\nnamespace\s*\n?\s*\{", cpp):
+        helper, _ = _class_body(cpp, m.start())
+        nxt = [c for c, a, _e in ends if a > m.start()]
+        if nxt:
+            owned[nxt[0]] = owned.get(nxt[0], "") + helper
+    spend = {}
+    for cls, body in owned.items():
+        pools = set(re.findall(r"ModifyPower\(POWER_(\w+),\s*-", body))
+        if pools:
+            spend[cls] = {p.lower() for p in pools}
+    pool_bad = []
+    for cls, pools in spend.items():
+        for sid in bound.get(cls, []):
+            sp = by_sid[sid]
+            v = sp["values"]
+            cost = v[42] or v[MANA_COST_PCT]
+            if not cost:
+                continue
+            declared = POWER_NAME.get(v[41], str(v[41]))
+            if declared in pools or sp["name"] in TWO_POOL:
+                continue
+            pool_bad.append("%s spends %s but charges %s"
+                            % (sp["name"], "+".join(sorted(pools)), declared))
+    # `not mismatch` stood here, which is the list the check ABOVE builds and
+    # which was empty, so this rule passed no matter what pool_bad held.
+    check("a script's pool and the spell's declared cost agree", not pool_bad,
+          "%s" % sorted(set(pool_bad))[:3])
+
+
+    # ---- a power restore has to be allowed to reach a pool that is not the bar --
+    # EffectEnergize, EffectEnergizePct and HandlePeriodicEnergizeAuraTick all
+    # begin the same way:
+    #
+    #   if (unitTarget->IsPlayer() && !unitTarget->HasActivePowerType(power)
+    #       && !m_spellInfo->HasAttribute(SPELL_ATTR7_ONLY_IN_SPELLBOOK_UNTIL_LEARNED))
+    #       return;
+    #
+    # and Player::HasActivePowerType is getPowerType() == power, the displayed
+    # bar alone. This module gives every Hero mana, rage AND energy, so two of
+    # any Hero's three pools are always "not active": without AttributesEx7 bit
+    # 16 the effect returns without a word. Adrenaline restored energy to
+    # nobody but an energy chassis for this reason, and Makeshift Strike's
+    # "restores mana to you" reached only casters.
+    ENERGIZE_EFFECTS = (30, 137)     # SPELL_EFFECT_ENERGIZE, _ENERGIZE_PCT
+    AURA_PERIODIC_ENERGIZE = 21
+    ATTR7_RESTORE_SECONDARY = 0x00010000
+    ATTRIBUTES_EX7 = 11
+    unreachable = []
+    for sp in spells:
+        v = sp["values"]
+        restores = any(v[F["Effect"] + i] in ENERGIZE_EFFECTS
+                       or (v[F["Effect"] + i] == 6
+                           and v[F["EffectApplyAuraName"] + i] == AURA_PERIODIC_ENERGIZE)
+                       for i in range(3))
+        if restores and not (v[ATTRIBUTES_EX7] & ATTR7_RESTORE_SECONDARY):
+            unreachable.append("%s (%d)" % (sp["name"], sp["id"]))
+    check("every spell that restores power may reach a pool that is not the bar",
+          not unreachable,
+          "without AttributesEx7 bit 16 the server drops the restore for any player "
+          "whose displayed pool differs; offenders: %s" % sorted(set(unreachable))[:4])
+
     # ---- the art a spell points at has to exist -------------------------------
     # An icon id that is not in SpellIcon.dbc is a question mark in the
     # spellbook; a visual that is neither appended nor shipped draws nothing.
@@ -635,6 +780,11 @@ def main():
         (4, 0x10000000, "NOT_IN_COMBAT_ONLY_PEACEFUL"), (4, 0x00000040, "PASSIVE"),
         (4, 0x00080000, "SCALES_WITH_CREATURE_LEVEL"),
         (9, 0x00000008, "ALLOW_WHILE_STUNNED"),
+        # a finishing move's combo-point requirement, which arrives with the
+        # donor: Rip's turned a ranged Nature bleed into "That ability requires
+        # combo points" with nothing in the spell to do with them
+        (5, 0x00100000, "FINISHING_MOVE_DAMAGE (requires combo points)"),
+        (5, 0x00400000, "FINISHING_MOVE_DURATION (requires combo points)"),
     ]
     RANGED_OK = {"Ricochet Shot"}
     stuck = []
@@ -804,7 +954,10 @@ def main():
         text = sp["description"] or ""
         vals = sp["values"]
         effects = [vals[F["Effect"] + i] for i in range(3)]
-        for m in re.finditer(r"\$([soa])(\d)", text):
+        # $/10;s1 is Blizzard's own form for a rage amount, which is stored
+        # times ten. Without the optional divisor here the pattern misses it
+        # and the reference inside goes unchecked.
+        for m in re.finditer(r"\$(?:/\d+;)?([soa])(\d)", text):
             kind, slot = m.group(1), int(m.group(2)) - 1
             if slot < 0 or slot > 2 or not effects[slot]:
                 bad_var.append("%s: $%s%d has no effect" % (sp["name"], kind, slot + 1))
@@ -818,7 +971,7 @@ def main():
         # $<spellid>s1 is the client's reference to another spell's value; the
         # generator fills it with the rank's companion, so it has to name a row
         # in this manifest with an effect in that slot
-        for m in re.finditer(r"\$(\d+)([soa])(\d)", text):
+        for m in re.finditer(r"\$(?:/\d+;)?(\d+)([soa])(\d)", text):
             other = by_id.get(int(m.group(1)))
             slot = int(m.group(3)) - 1
             if other is None or slot < 0 or slot > 2 or not other["values"][F["Effect"] + slot]:
@@ -894,6 +1047,17 @@ def main():
 
     sla_rows = re.findall(r"^\((\d+), (\d+), (\d+), 0, (\d+), 0, 0, 1, (\d+), (\d+),",
                           sql, re.M)
+    # ---- the suite knows how many rules it has ---------------------------------
+    # A bare run prints "SKIPPED: N client-side rule(s)". If a rule is added to
+    # check_against_client and that N is not moved, the run under-reports what
+    # it left out, which is how a silent gap starts.
+    _src = io.open(os.path.join(HERE, "test_forged.py"), encoding="utf-8").read()
+    _body = _src[_src.index("def check_against_client("):_src.index("def main(")]
+    _n = len(re.findall(r'check\(\s*"', _body))
+    check("the count of client-side rules matches the rules there are",
+          _n == CLIENT_RULES,
+          "check_against_client holds %d rule(s), CLIENT_RULES says %d" % (_n, CLIENT_RULES))
+
     check("every SQL skill-line row matches the manifest",
           len(sla_rows) == len(withsla) and all(int(r[5]) == 0 for r in sla_rows),
           "%d row(s)" % len(sla_rows))
@@ -903,6 +1067,15 @@ def main():
         global dbc
         from lib import dbc
         check_against_client(sys.argv[1], doc)
+    else:
+        # Nine rules read the bytes the installer actually writes, and they are
+        # the only ones that can catch an installer that drops a field. Saying
+        # "all checks pass" while they sat out is the same lie as a rule that
+        # never fires, so the run says what it did not do.
+        print()
+        print("SKIPPED: %d client-side rule(s) need the client -- "
+              r'pass its path, e.g. test_forged.py "B:\World.of.Warcraft.3.3.5a"'
+              % CLIENT_RULES)
 
     print()
     if FAILS:

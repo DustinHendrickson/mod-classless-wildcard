@@ -102,7 +102,12 @@ SUMMON_MARKER = 121       # what Force of Nature uses: temporary, fights, despaw
 # without one Creature::UpdateEntry returns false and nothing spawns.
 SUMMON_CREATURES = [
     (990110, "Bulwark Anchor", 31124, None),     # BoneGuardSpike, driven into the ground
-    (990111, "Reclaimed Sentry", 3127, None),    # Cannon, something that can fire
+    # 3127 is the Scarlet Land Cannon, a siege piece the core spawns at scale
+    # 2.4. It towered over the player, and a cannon promises a barrel that
+    # turns and a shot that lands -- neither of which a marker summon has AI
+    # to do. 19218 is the Gnomish Flame Turret, built to sit still and burn
+    # what stands near it, which is what this spell does.
+    (990111, "Reclaimed Sentry", 19218, None),   # Gnomish Flame Turret
     (990112, "Cairn", 30516, None),              # AzsharaStoneTablet02, a standing stone
     (990113, "Waystone", 30886, None),           # AzsharaStoneTablet04, a marker stone
     # 26506 is an Ulduar DOODAD at native scale 3.0; at 0.4 only its flame
@@ -166,6 +171,7 @@ def anchor(kind, level):
 E_SCHOOL_DAMAGE, E_DUMMY, E_HEAL = 2, 3, 10
 E_SUMMON_PET = 56                    # Summon Imp: a real, permanent, saved pet
 E_PERSISTENT_AREA, E_SUMMON, E_ENERGIZE = 27, 28, 30
+E_ENERGIZE_PCT = 137                 # a PERCENT of a pool, misc = the pool
 E_INTERRUPT_CAST, E_TRIGGER_SPELL = 68, 64
 # 31 takes base points as a PERCENTAGE of weapon damage (Backstab is 127).
 # 121 is normalized weapon damage plus base points as a FLAT add (Sinister
@@ -195,6 +201,7 @@ A_OBS_MOD_HEALTH = 20                # a PERCENT of maximum health per tick (Blo
 A_MOD_WEAPON_CRIT = 52               # crit with weapons
 A_MOD_SPELL_CRIT = 57                # crit with spells
 A_PERIODIC_LEECH = 53                # damage over time that heals the caster
+A_PERIODIC_ENERGIZE = 21             # power per tick, gated like E_ENERGIZE
 A_MOD_HEALING_TAKEN_PCT = 118        # healing RECEIVED, negative to cut it
 A_MOD_STAT = 29                      # Mark of the Wild, with misc -1 for every stat
 A_DAMAGE_SHIELD = 15                 # Thorns, Retribution Aura
@@ -255,6 +262,10 @@ POWER = {"mana": 0, "rage": 1, "energy": 3}
 # WotLK prices itself this way -- Fireball is 8%, Flash Heal 18%, Chain
 # Lightning 26% -- and the median across every band is 12 to 18%.
 MANA_COST_PCT = 204
+# AttributesEx7 is column 11, and bit 16 is the core's "Can restore secondary
+# power". See build_row: without it a power-restoring effect is a no-op on any
+# player whose displayed bar is not the pool being filled.
+ATTR7_RESTORE_SECONDARY_POWER = 0x00010000
 # Spell.dbc column 47: a missile's speed in yards per second. Zero means the
 # effect lands the instant the cast finishes, with nothing drawn between caster
 # and target -- which is what every projectile in this file did until it was
@@ -328,29 +339,55 @@ RECIPES = [
         companion=dict(
             name="Makeshift Strike", school=1, visual=0, icon=2185, donor=1752,
             range_idx=RANGE_MELEE, cast_idx=CAST_INSTANT, cooldown_ms=0,
-            power=("energy", 0), desc="Mana returned by Makeshift Strike.",
+            power=("energy", 0), desc="Mana and rage returned by Makeshift Strike.",
+            # Rage is a flat hundred-point pool at every level, so it takes a
+            # literal per rank the way an energy restore does rather than a
+            # level curve. Stored times ten: 50 here is 5 rage.
             effects=[dict(eff=E_ENERGIZE, base=dmg(0.12), tgt=T_SELF,
-                          misc=POWER["mana"])],
+                          misc=POWER["mana"]),
+                     dict(eff=E_ENERGIZE, base=("ranks", [20, 20, 30, 30, 40, 40, 50]),
+                          tgt=T_SELF, misc=POWER["rage"])],
         ),
         desc=("Strikes the target for $s1% weapon damage plus $s2 additional damage, and "
-              "restores ${companion}s1 mana to you."),
+              "restores ${companion}s1 mana and $/10;{companion}s2 rage to you."),
         compare="Sinister Strike is a better strike; this one funds the spells that cost mana.",
     ),
     dict(
-        key="second_nature", name="Second Nature", rarity=0, type=4,
-        first_level=6, ranks=6, step=14, donor=139, school=2,
-        icon=2900, visual=32, visual_kits=dict(instant_area=9159), power=("mana", 10), power_is_pct=True,
-        range_idx=RANGE_SELF, cast_idx=CAST_INSTANT, cooldown_ms=45000,
+        key="second_nature", name="Second Nature", rarity=0, type=0,
+        first_level=6, ranks=6, step=14, donor=29166, school=8,
+        # Innervate's: a precast, a cast and an impact kit, no missile, and it
+        # is the game's own picture of reserves coming back. The icon is
+        # Spell_Nature_UnyeildingStamina, a body finding its own second wind,
+        # in place of a holy heal sparkle on a spell that no longer heals.
+        icon=312, visual=3884,
+        # Free. A refill priced in the pool it refills cannot be cast when it
+        # is wanted, which is what 10% of a mana bar bought here; Innervate,
+        # Arcane Torrent, Bloodrage and Thistle Tea are all free for the same
+        # reason.
+        power=("mana", 0),
+        range_idx=RANGE_SELF, cast_idx=CAST_INSTANT, cooldown_ms=90000,
+        # SPELL_EFFECT_ENERGIZE_PCT, with MiscValue naming the pool: a percent
+        # of maximum, so one number is worth the same at 6 as at 76 and the
+        # spell needs no level curve at all. Three effect slots, three pools,
+        # and a Hero holds all three at once. AttributesEx7 bit 16 -- set in
+        # build_row off these effects -- is what lets the two that are not the
+        # displayed bar arrive; without it two thirds of this is a no-op.
         effects=[
-            dict(eff=E_HEAL, base=heal(0.80), tgt=T_SELF),
-            dict(eff=E_ENERGIZE, base=heal(0.30), tgt=T_SELF, misc=POWER["mana"]),
+            dict(eff=E_ENERGIZE_PCT, base=("ranks", [4, 5, 6, 7, 8, 10]),
+                 tgt=T_SELF, misc=POWER["mana"]),
+            dict(eff=E_ENERGIZE_PCT, base=("ranks", [8, 11, 14, 17, 20, 25]),
+                 tgt=T_SELF, misc=POWER["rage"]),
+            dict(eff=E_ENERGIZE_PCT, base=("ranks", [8, 11, 14, 17, 20, 25]),
+                 tgt=T_SELF, misc=POWER["energy"]),
         ],
-        desc="Heals you for $s1 and restores $s2 mana.",
-        compare="No spell in the player pool heals and returns mana at once: Evocation and "
-                "Innervate are mana only, every heal is health only. At level 6 that is one "
-                "button for whichever bar ran out, which is the classless problem in "
-                "miniature. It was a self heal-over-time, which is now the dull half of "
-                "Brace five levels earlier.",
+        desc="Restores $s1% of your maximum mana and $s2% of your maximum rage and energy.",
+        compare="No button in the game fills more than one pool, because no class has "
+                "more than one bar to fill: Innervate and Evocation are mana, Bloodrage is "
+                "rage, Thistle Tea is energy. A Hero carries all three, so the classless "
+                "refill is the one that answers whichever bar ran dry. Rank 6 is 10% of a "
+                "mana bar on 90 seconds, 6.7% a minute against Divine Plea's 25% and Arcane "
+                "Torrent's 3%, and 25 rage a cast against Bloodrage's 30 a minute. It was a "
+                "self-heal with a mana return, which is Overflow's job and Emberfeed's.",
     ),
     dict(
         key="emberfeed", name="Emberfeed", rarity=1, type=3,
@@ -379,7 +416,9 @@ RECIPES = [
             dict(eff=E_TRIGGER_SPELL, base=1, tgt=T_ENEMY, trigger="companion"),
         ],
         companion=dict(
-            name="Antipode Blast", school=16, speed=SPEED_BOLT, visual=13,  # Frostbolt's: this half IS the frost damage, icon=2371,
+            # Frostbolt's: this half IS the frost damage.
+            name="Antipode Blast", school=16, speed=SPEED_BOLT,
+            visual=13, icon=2371,
             desc="Frost half of Antipode Blast.",
             duration_idx=DUR_6S,
             effects=[
@@ -394,12 +433,13 @@ RECIPES = [
     dict(
         key="overflow", name="Overflow", rarity=2, type=4,
         first_level=24, ranks=5, step=12, donor=2061, school=2,
-        icon=1871, # Holy Nova's, which is the expanding holy ring: its impact kit (3153)
-        # plays that ring on every unit the spell reaches, so the spill draws
-        # itself outward from the target rather than flashing once on them.
-        # No stock heal fills the area kit slots at all, so the ring per target
-        # is how the game itself draws an area heal.
-        visual=3643, visual_kits=dict(instant_area=3153), power=("mana", 24), power_is_pct=True,
+        icon=1871,
+        # Holy Nova's. Its own impact kit (3153) IS the expanding ring, and an
+        # impact kit plays at every unit the spell reaches -- the target and the
+        # allies the spill lands on. No override: field 23, the instant-area kit,
+        # paints at the CASTER, which is right for Holy Nova and wrong for a heal
+        # thrown forty yards.
+        visual=3643, power=("mana", 24), power_is_pct=True,
         range_idx=RANGE_40, cast_idx=CAST_2500, cooldown_ms=0,
         effects=[
             dict(eff=E_HEAL, base=heal(1.0), tgt=T_TARGET_ALLY),
@@ -422,8 +462,9 @@ RECIPES = [
             dict(eff=E_TRIGGER_SPELL, base=1, tgt=T_ENEMY, trigger="companion"),
         ],
         companion=dict(
-            name="Vanguard Rush", school=1, visual=10703,  # Shockwave's: Charge's own look has no impact kit
-            #               at all, so the strike that lands was invisible, icon=1886,
+            # Shockwave's: Charge's own look has no impact kit at all, so the
+            # strike that lands and heals had nothing to show for itself.
+            name="Vanguard Rush", school=1, visual=10703, icon=1886,
             desc="Impact of Vanguard Rush.",
             effects=[dict(eff=E_SCHOOL_DAMAGE, base=dmg(0.5), tgt=T_ENEMY)],
         ),
@@ -504,8 +545,17 @@ RECIPES = [
     ),
     dict(
         key="reclaimed_sentry", name="Reclaimed Sentry", rarity=3, type=0,
-        first_level=56, ranks=3, step=8, donor=5730, school=8,
-        icon=3065, visual=13077, power=("mana", 20), power_is_pct=True,
+        # Fire, not Nature: the thing it plants is a flame turret, and the
+        # damage it does should be the damage the model is throwing.
+        first_level=56, ranks=3, step=8, donor=5730, school=4,
+        # INV_Gizmo_GnomishFlameTurret -- the icon of the very object the
+        # summon wears, in place of a shaman icon on a machine.
+        icon=2629, visual=13077,
+        # Feral Spirit's look has no persistent-area kit, so the burning patch
+        # this spell leaves on the ground drew nothing at all. Flamestrike's
+        # 9357 is that patch.
+        visual_kits=dict(persistent_area=9357),
+        power=("mana", 20), power_is_pct=True,
         range_idx=RANGE_30, cast_idx=CAST_1500, cooldown_ms=120000,
         duration_idx=DUR_20S,
         summon=dict(entry=990111, name="Reclaimed Sentry"),
@@ -516,11 +566,12 @@ RECIPES = [
             dict(eff=E_APPLY_AURA, aura=A_HASTE_SPELLS, base=-25,
                  tgt=T_AREA_ENEMY_DEST, radius=RADIUS_10YD),
         ],
-        desc=("Raises a sentry at the target location for $d. It deals $o2 Nature damage over "
-              "its duration to enemies within $a2 yards, and enemies within $a3 yards when it "
-              "rises cast 25% slower. It cannot move, be healed, or hold threat."),
+        desc=("Deploys a salvaged flame turret at the target location for $d. It burns "
+              "enemies within $a2 yards for $o2 Fire damage over its duration, and enemies "
+              "within $a3 yards when it deploys cast 25% slower. It cannot move or be healed."),
         compare="Ten ticks over its life against a 469 band anchor: ~1.3 casts' worth, spread "
-                "over 20s and only against whatever stays near it.",
+                "over 20s and only against whatever stays near it. It is an emplacement, not "
+                "a guardian: nothing in the set summons something that fights on its own.",
     ),
     # ---- the low-level Commons -----------------------------------------------
     # A fresh Hero starts with four cards and no guarantee any of them is a
@@ -530,16 +581,39 @@ RECIPES = [
         key="hurl", name="Hurl", rarity=0, type=2,
         first_level=3, ranks=7, step=11, donor=133, school=1,
         icon=251,
-        # Heroic Throw's look. Multi-Shot's had no precast and no cast kit at
-        # all, so nothing wound up and nothing threw; this one has both
-        # (anim 108 then 107) and its own missile.
+        # Heroic Throw's look: precast 171 then cast 172 is a real wind-up and
+        # throw, and its missile model is -1, which is not a missing model. The
+        # client reads -1 as "the weapon the caster is holding", so what flies
+        # is the player's own axe or mace. That is the point of the spell and it
+        # stays.
         visual=13222, power=("energy", 25),
-        speed=SPEED_HEAVY_THROW,   # Heroic Throw's, which this look belongs to
+        # Not Heroic Throw's 50, which is among the fastest missiles in the game
+        # and crossed twenty yards in four tenths of a second. Twenty is what
+        # the game's own Throw uses, and Throw is exactly this: a weapon leaving
+        # your hand. One second over the same range, slower than Fireball's 24
+        # covers thirty.
+        speed=SPEED_THROWN,
         range_idx=RANGE_20, cast_idx=CAST_INSTANT, cooldown_ms=6000,
         effects=[
             dict(eff=E_SCHOOL_DAMAGE, base=dmg(0.85), tgt=T_ENEMY),
+            dict(eff=E_TRIGGER_SPELL, base=1, tgt=T_ENEMY, trigger="companion"),
         ],
-        desc="Throws a heavy object at the target, dealing $s1 damage.",
+        # The rage arrives through a companion aimed at the ENEMY, not an
+        # ENERGIZE aimed at the caster: an impact kit plays at every unit a
+        # spell touches, and Heroic Throw's look has one (12327), so a
+        # self-targeted effect would have landed the thrown object on the
+        # player too. The companion carries no visual and no speed at all.
+        companion=dict(
+            name="Hurl", school=1, visual=0, icon=251, donor=133, speed=0.0,
+            range_idx=RANGE_20, cast_idx=CAST_INSTANT, cooldown_ms=0,
+            power=("energy", 0), desc="Rage generated by Hurl.",
+            effects=[dict(eff=E_ENERGIZE, base=("ranks", [20, 30, 30, 40, 40, 50, 50]),
+                          tgt=T_SELF, misc=POWER["rage"])],
+        ),
+        # The missile is the weapon in your hand, so the text says so rather
+        # than "a heavy object".
+        desc=("Hurls your weapon at the target, dealing $s1 damage and generating "
+              "$/10;{companion}s1 rage."),
         compare="0.85x anchor for an instant on a 6s cooldown. The point is having any "
                 "ranged attack at all, which a rolled build often has none of.",
     ),
@@ -567,23 +641,28 @@ RECIPES = [
     dict(
         key="kick_dirt", name="Pocket Sand", rarity=0, type=0, mechanic=11,  # snare
         first_level=9, ranks=5, step=13, donor=2094, school=1,
-        # Blind's look: its cast kit (730, anim 53) throws something into the
-        # target's face. The old donor was Kick, whose cast kit is a punch.
-        icon=350, visual=3440, power=("energy", 30),
-        range_idx=RANGE_MELEE, cast_idx=CAST_INSTANT, cooldown_ms=30000,
+        # Sand Blast's look: a cast kit and an impact kit, no missile, and the
+        # impact plays on every unit a cone reaches. Blind's had a cast kit and
+        # nothing else, so the enemies never showed being hit.
+        icon=350, visual=7431, power=("energy", 30),
+        # Cone of Cold's shape exactly: range index 1, target 104, radius index
+        # 13. A handful of grit thrown at face height does not pick one enemy.
+        range_idx=RANGE_SELF, cast_idx=CAST_INSTANT, cooldown_ms=30000,
         duration_idx=DUR_4S,
-        # Blind's own shape, which in the data is a slow AND a confuse on one
-        # enemy. Four seconds rather than ten, and thirty seconds rather than
-        # three minutes, so it is a peel a level 9 Hero can hold rather than a
-        # rogue's opener.
+        # Blind's two auras, a slow AND a confuse, now across the cone. Four
+        # seconds rather than ten and thirty seconds rather than three minutes,
+        # and any damage ends the blind, so it stays a peel and not a mez.
         effects=[
-            dict(eff=E_APPLY_AURA, aura=A_MOD_DECREASE_SPEED, base=-50, tgt=T_ENEMY),
-            dict(eff=E_APPLY_AURA, aura=A_MOD_CONFUSE, base=0, tgt=T_ENEMY),
+            dict(eff=E_APPLY_AURA, aura=A_MOD_DECREASE_SPEED, base=-50,
+                 tgt=T_CONE_ENEMY, radius=RADIUS_10YD),
+            dict(eff=E_APPLY_AURA, aura=A_MOD_CONFUSE, base=0,
+                 tgt=T_CONE_ENEMY, radius=RADIUS_10YD),
         ],
-        desc=("Throws a handful of grit in the target's face, blinding them and slowing "
-              "them by 50% for $d. Any damage ends the blind."),
-        compare="Blind is 10s on a 3 minute cooldown and this is 4s on 30 seconds, off the "
-                "same two auras. Short enough to be a peel and long enough to walk away.",
+        desc=("Throws a handful of grit in front of you, blinding enemies in a $a1 yard cone "
+              "and slowing them by 50% for $d. Any damage ends the blind."),
+        compare="Psychic Scream is 8s of fear on 30 seconds at level 14; this is 4s of blind "
+                "and a slow on the same cooldown, in a cone rather than all around, and it "
+                "breaks the moment anything lands on them.",
     ),
     dict(
         key="adrenaline", name="Adrenaline", rarity=0, type=0,
@@ -601,7 +680,9 @@ RECIPES = [
     dict(
         key="draw_attention", name="Draw Attention", rarity=0, type=0,
         first_level=8, ranks=1, step=1, donor=355, school=1,
-        icon=1938, visual=34, visual_kits=dict(instant_area=9264),
+        # Taunt's own impact plays on the taunted enemy; the caster-centred
+        # area kit would have flashed it on the caster instead.
+        icon=1938, visual=34,
         power=("energy", 15),
         range_idx=RANGE_20, cast_idx=CAST_INSTANT, cooldown_ms=8000,
         duration_idx=DUR_6S,
@@ -654,7 +735,9 @@ RECIPES = [
         first_level=16, ranks=5, step=13, donor=1160, school=1,
         icon=1739, visual=210, visual_kits=dict(target_impact=6898),
         power=("energy", 20),
-        range_idx=RANGE_20, cast_idx=CAST_INSTANT, cooldown_ms=0,
+        # Fifteen seconds, which is its own duration: a debuff with no cooldown
+        # at all could be held on every enemy in a pull at once.
+        range_idx=RANGE_20, cast_idx=CAST_INSTANT, cooldown_ms=15000,
         duration_idx=DUR_15S,
         effects=[
             dict(eff=E_APPLY_AURA, aura=A_MOD_ATTACK_POWER, base=("dmg", -0.6),
@@ -788,7 +871,9 @@ RECIPES = [
         # delivery is now a buff you cast on somebody, which the set had none of.
         key="quicksilver", name="Quicksilver", rarity=3, type=0,
         first_level=44, ranks=1, step=1, donor=1044, school=64,
-        icon=2186, visual=4600, visual_kits=dict(instant_area=9159),
+        # Presence of Mind's, impact and all: this lands on somebody else, so the
+        # caster-centred area kit drew it on the wrong person.
+        icon=2186, visual=4600,
         power=("mana", 18), power_is_pct=True,
         range_idx=RANGE_30, cast_idx=CAST_1500, cooldown_ms=180000,
         duration_idx=DUR_15S,
@@ -870,7 +955,8 @@ RECIPES = [
             dict(eff=E_WEAPON_PERCENT, base=100, tgt=T_ENEMY),
         ],
         companion=dict(
-            name="Crossdraw", school=64, visual=965,  # Arcane Explosion's: this half IS the arcane damage, icon=2458,
+            # Arcane Explosion's: this half IS the arcane damage.
+            name="Crossdraw", school=64, visual=965, icon=2458,
             visual_kits=dict(impact=1005),
             desc="The arcane half of Crossdraw.",
             effects=[dict(eff=E_SCHOOL_DAMAGE, base=dmg(0.5), tgt=T_ENEMY)],
@@ -918,9 +1004,11 @@ RECIPES = [
     ),
     dict(
         key="bleed_over", name="Bleed Over", rarity=2, type=3,
-        first_level=30, ranks=4, step=13, donor=1079, school=8,
-        # Rip's look: a bleed, with a real cast kit. It was Serpent Sting's,
-        # which has a missile and no cast kit, so nothing animated at all.
+        first_level=30, ranks=4, step=13, donor=172, school=8,
+        # Corruption's row: instant, ranged, no weapon and no combo points.
+        # The LOOK is Rip's (a bleed with a real cast kit) and that is a
+        # separate column -- taking Rip as the donor as well is what made
+        # this a finishing move.
         icon=1468, visual=3941,
         power=("mana", 15), power_is_pct=True,
         range_idx=RANGE_30, cast_idx=CAST_INSTANT, cooldown_ms=15000,
@@ -947,6 +1035,9 @@ RECIPES = [
         key="quickening", name="Quickening", rarity=3, script=True, type=0,
         first_level=42, ranks=4, step=10, donor=1044, school=64,
         icon=2899, visual=7870, visual_kits=dict(instant_area=9159),
+        # Three pools on purpose: mana to cast it, then every point of rage and
+        # energy consumed to size the buff. The description says so and a Hero
+        # holds all three, so this is a real cost and not a stray column.
         power=("mana", 15), power_is_pct=True,
         range_idx=RANGE_SELF, cast_idx=CAST_INSTANT, cooldown_ms=120000,
         duration_idx=DUR_12S,
@@ -1128,7 +1219,28 @@ def build_row(spell, recipe, rank_index, level, spell_id, next_id, companion_id)
     # copied its row inherited that and became defensive and offensive
     # cooldowns a stun could not answer. Nothing in this set is meant to beat
     # crowd control, so the bit goes with the rest of the donor's conditions.
+    # A finishing move needs combo points, and the requirement lives on the
+    # donor's row: Rip's brought "That ability requires combo points" to a
+    # ranged Nature bleed that has nothing to do with them. Both bits go, the
+    # same way the stance and stun conditions do.
+    v[5] &= ~(0x00100000     # ATTR1 FINISHING_MOVE_DAMAGE
+              | 0x00400000)  # ATTR1 FINISHING_MOVE_DURATION
     v[9] &= ~0x00000008                          # ATTR5 ALLOW_WHILE_STUNNED
+    # AttributesEx7 bit 16, which AzerothCore's own enum info names "Can
+    # restore secondary power": the ONLY thing in the server that lets a spell
+    # fill a pool which is not a player's displayed bar. EffectEnergize,
+    # EffectEnergizePct and HandlePeriodicEnergizeAuraTick each refuse a player
+    # outright without it, and those three reads are its only uses anywhere.
+    # A Hero holds mana, rage and energy at once -- OnPlayerAfterUpdateMaxPower
+    # floors all three -- but only the chassis pool counts as active, so
+    # Adrenaline's energy reached nobody but an energy chassis and Makeshift
+    # Strike's mana return reached only casters, both without a word on screen.
+    # Derived from the effects rather than declared, so the next recipe that
+    # restores power gets it whether or not anyone remembers.
+    if any(e.get("eff") in (E_ENERGIZE, E_ENERGIZE_PCT)
+           or e.get("aura") == A_PERIODIC_ENERGIZE
+           for e in recipe["effects"]):
+        v[11] |= ATTR7_RESTORE_SECONDARY_POWER
     v[18] = 0                                   # RequiresSpellFocus
     for i in range(8):
         v[52 + i] = 0                           # Reagent
@@ -1279,7 +1391,11 @@ def build(spell, only=None):
                 comp = dict(recipe)
                 comp.update(recipe["companion"])
                 comp["ranks"] = 1
-                crow, cdonor = build_row(spell, comp, 0, level, cid, None, None)
+                # the PARENT's rank index, not 0: a companion is a single-rank
+                # spell (comp["ranks"] = 1 keeps its rank text empty) but its
+                # numbers still come from the rank that triggered it, and a
+                # ("ranks", [...]) literal resolved to the first entry every time.
+                crow, cdonor = build_row(spell, comp, r, level, cid, None, None)
                 # a hidden half: no skill line row, so it never shows in a tab
                 spells.append(dict(id=cid, first=cid, rank=1, level=level,
                                    key=recipe["key"] + "_companion", values=crow,
