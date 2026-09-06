@@ -1659,6 +1659,57 @@ def test_talent_unlearn(h):
     h.check(h.sent() == ["TALUNL 101"], "and its button asks the server to unlearn it (%s)" % h.sent())
 
 
+def test_default_scope(h):
+    print("--- a brand-new profile opens both browsers on My level")
+    CW = h.CW
+    rt = h.rt
+    B = CW.BROWSE
+
+    # SCOPES[1] is the one the server reads as "only what this level allows"
+    h.check(str(B.SCOPES[1][1]) == "My level" and B.SCOPES[1][2] == 1,
+            "SCOPES[1] is My level and asks the server for scope 1")
+
+    # a new user: saved variables have never been written
+    rt.execute("ClasslessWildcardDB = nil")
+    CW.LoadBrowseChoices()
+    h.check(CW.abilScope == 1 and CW.talScope == 1,
+            "with no saved variables both scopes default to My level (%s, %s)"
+            % (CW.abilScope, CW.talScope))
+    h.check(str(CW.abilScopeBtn["__text"]) == "My level"
+            and str(CW.talScopeBtn["__text"]) == "My level",
+            "and both buttons say so")
+
+    # an empty table, which is what the client hands a first-time user
+    rt.execute("ClasslessWildcardDB = {}")
+    CW.LoadBrowseChoices()
+    h.check(CW.abilScope == 1 and CW.talScope == 1,
+            "an empty saved-variables table defaults the same way")
+
+    # and the requests that go out actually carry scope 1
+    h.recv(state(0, level=1))
+    h.g.ClasslessWildcard["__shown"] = True
+    h.clear_sent()
+    CW.RequestAbil(0)
+    CW.RequestTal(0)
+    sent = h.sent()
+    abil = [m for m in sent if m.startswith("ABIL ")]
+    h.check(abil and abil[0].split()[-1] == "1",
+            "the first ability request asks for scope 1 (%s)" % (abil[0] if abil else None))
+    tal = [m for m in sent if m.startswith("TAL ")]
+    h.check(not tal or tal[0].split()[-1] == "1",
+            "the first talent request asks for scope 1 (%s)" % (tal[0] if tal else "none sent"))
+
+    # a returning user keeps whatever they chose
+    rt.execute("ClasslessWildcardDB = { abilScope = 2, talScope = 2 }")
+    CW.LoadBrowseChoices()
+    h.check(CW.abilScope == 2 and CW.talScope == 2,
+            "a returning user's own choice is still honoured")
+    h.check(str(CW.abilScopeBtn["__text"]) == "Any level",
+            "and the button follows it")
+    rt.execute("ClasslessWildcardDB = nil")
+    CW.LoadBrowseChoices()
+
+
 def test_layering(h):
     print("--- layering: what draws over what")
     CW = h.CW
@@ -1713,6 +1764,7 @@ def main():
     test_resource_bars(h)
     test_settings(h)
     test_layering(h)
+    test_default_scope(h)
     test_spellbook(h)
     test_talent_unlearn(h)
     if h.failures:

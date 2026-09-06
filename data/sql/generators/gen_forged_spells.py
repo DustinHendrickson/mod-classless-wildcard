@@ -69,7 +69,11 @@ RCI_FLAGS = 1040             # what the module's other class-line rows use
 # move, cannot be selected, give no experience and never aggro. Everything the
 # spell actually does is an area effect on the spell itself.
 UNIT_FLAGS_MARKER = 0x00000002 | 0x00000004 | 0x02000000   # non-attackable, no move, no select
-EXTRA_FLAGS_MARKER = 0x00000002 | 0x00000040 | 0x00000080  # civilian, no xp, trigger
+# NOT 0x80 CREATURE_FLAG_EXTRA_TRIGGER. Unit.cpp:16978 replaces a trigger's
+# display id with GetFirstInvisibleModel() for every viewer who is not in GM
+# mode, whatever creature_template_model says, which is why the markers stayed
+# invisible through a model fix, a summon-properties fix and a targeting fix.
+EXTRA_FLAGS_MARKER = 0x00000002 | 0x00000040               # civilian, no xp
 CREATURE_TYPE_TOTEM = 11
 CREATURE_TYPE_BEAST = 1
 SUMMON_GUARDIAN = 1562
@@ -93,7 +97,10 @@ SUMMON_MARKER = 121       # what Force of Nature uses: temporary, fights, despaw
 # they are off limits for the same reason their icons would be.
 SUMMON_CREATURES = [
     (990110, "Bulwark Anchor", 2420, None),      # Earthgrab Totem
-    (990111, "Reclaimed Sentry", 11686, None),   # Dire Maul Crystal Totem
+    # 11686 was Creature\InvisibleStalker\InvisibleStalker.mdx, the model the
+    # core hands out when it wants nothing drawn. 19073 is DraeneiTotem_Earth,
+    # worn by four live creatures and unlike the shaman totems the others use.
+    (990111, "Reclaimed Sentry", 19073, None),   # DraeneiTotem_Earth
     (990112, "Cairn", 2418, None),               # Spirit Calling Totem
     (990113, "Waystone", 2419, None),            # Elemental Protection Totem
     (990114, "Signal Fire", 4683, None),         # Fire Nova Totem
@@ -117,6 +124,11 @@ PET_CREATURES = {
     ],
 }
 ALL_CLASSES = 0x5FF
+
+# creature_template_model.DisplayScale, which Creature::SetDisplayId passes to
+# SetObjectScale. The scarab's own model is built for a raid mob and stands
+# taller than the player at 1.0.
+MODEL_SCALE = {990117: 0.33}
 
 # ---- the curve --------------------------------------------------------------
 # (band midpoint, median value) measured over 540 damage and 158 heal effects
@@ -168,6 +180,10 @@ A_MOD_TAUNT = 11                     # Taunt, Hand of Reckoning
 A_MOD_INCREASE_SPEED = 31            # Sprint, Dash
 A_SCHOOL_ABSORB = 69                 # Power Word: Shield, Savage Defense
 A_MOD_ATTACK_POWER = 99              # Battle Shout up, Demoralizing Shout down
+A_MOD_POWER_REGEN = 85               # mana per five seconds
+A_OBS_MOD_HEALTH = 20                # a PERCENT of maximum health per tick (Blood Craze)
+A_MOD_WEAPON_CRIT = 52               # crit with weapons
+A_MOD_SPELL_CRIT = 57                # crit with spells
 A_MOD_STAT = 29                      # Mark of the Wild, with misc -1 for every stat
 A_DAMAGE_SHIELD = 15                 # Thorns, Retribution Aura
 A_MOD_POWER_COST_PCT = 72            # misc is a school mask; negative is cheaper
@@ -238,6 +254,7 @@ SPEED = 47
 SPEED_ARROW = 40.0        # Arcane Shot, Auto Shot
 SPEED_BOLT = 24.0         # Fireball
 SPEED_THROWN = 20.0       # Throw
+SPEED_HEAVY_THROW = 50.0  # Heroic Throw
 SPEED_SPIT = 25.0         # between a thrown weapon and an arrow
 
 # The shape of cw_forged_spells, in one place, because write_sql builds both the
@@ -287,13 +304,24 @@ RECIPES = [
         first_level=1, ranks=7, step=12, donor=1752, school=1,
         icon=2185, visual=253, visual_kits=dict(impact=4551), power=("energy", 40),
         range_idx=RANGE_MELEE, cast_idx=CAST_INSTANT, cooldown_ms=0,
+        # The mana arrives through a companion aimed at the ENEMY rather than an
+        # ENERGIZE aimed at the caster. A spell's impact kit plays at every unit
+        # it touches, so a self-targeted effect put the strike's own impact on
+        # the player as well as on what they hit.
         effects=[
             dict(eff=E_WEAPON_PERCENT, base=110, tgt=T_ENEMY),
             dict(eff=E_SCHOOL_DAMAGE, base=dmg(0.35), tgt=T_ENEMY),
-            dict(eff=E_ENERGIZE, base=dmg(0.12), tgt=T_SELF, misc=POWER["mana"]),
+            dict(eff=E_TRIGGER_SPELL, base=1, tgt=T_ENEMY, trigger="companion"),
         ],
+        companion=dict(
+            name="Makeshift Strike", school=1, visual=0, icon=2185, donor=1752,
+            range_idx=RANGE_MELEE, cast_idx=CAST_INSTANT, cooldown_ms=0,
+            power=("energy", 0), desc="Mana returned by Makeshift Strike.",
+            effects=[dict(eff=E_ENERGIZE, base=dmg(0.12), tgt=T_SELF,
+                          misc=POWER["mana"])],
+        ),
         desc=("Strikes the target for $s1% weapon damage plus $s2 additional damage, and "
-              "restores $s3 mana to you."),
+              "restores ${companion}s1 mana to you."),
         compare="Sinister Strike is a better strike; this one funds the spells that cost mana.",
     ),
     dict(
@@ -312,7 +340,7 @@ RECIPES = [
     dict(
         key="emberfeed", name="Emberfeed", rarity=1, type=3,
         first_level=10, ranks=6, step=12, donor=133, school=4,
-        icon=183, visual=67, visual_kits=dict(caster_impact=3374), power=("mana", 12), power_is_pct=True,
+        icon=183, visual=67, visual_kits=dict(caster_impact=2730), power=("mana", 12), power_is_pct=True,
         speed=SPEED_BOLT,   # a fire bolt, at Fireball's speed
         range_idx=RANGE_30, cast_idx=CAST_2000, cooldown_ms=0,
         effects=[
@@ -480,8 +508,12 @@ RECIPES = [
     dict(
         key="hurl", name="Hurl", rarity=0, type=2,
         first_level=3, ranks=7, step=11, donor=133, school=1,
-        icon=251, visual=567, power=("energy", 25),
-        speed=SPEED_THROWN,   # a thrown rock, at Throw's speed
+        icon=251,
+        # Heroic Throw's look. Multi-Shot's had no precast and no cast kit at
+        # all, so nothing wound up and nothing threw; this one has both
+        # (anim 108 then 107) and its own missile.
+        visual=13222, power=("energy", 25),
+        speed=SPEED_HEAVY_THROW,   # Heroic Throw's, which this look belongs to
         range_idx=RANGE_20, cast_idx=CAST_INSTANT, cooldown_ms=6000,
         effects=[
             dict(eff=E_SCHOOL_DAMAGE, base=dmg(0.85), tgt=T_ENEMY),
@@ -498,24 +530,39 @@ RECIPES = [
         range_idx=RANGE_SELF, cast_idx=CAST_INSTANT, cooldown_ms=30000,
         duration_idx=DUR_6S,
         effects=[
-            dict(eff=E_APPLY_AURA, aura=A_MOD_DAMAGE_TAKEN_PCT, base=-10, tgt=T_SELF),
+            dict(eff=E_APPLY_AURA, aura=A_MOD_DAMAGE_TAKEN_PCT, base=-15, tgt=T_SELF),
+            # a PERCENT of maximum health per tick, which is Blood Craze's aura,
+            # so a level 5 ability is still worth pressing at 80
+            dict(eff=E_APPLY_AURA, aura=A_OBS_MOD_HEALTH, base=2, tgt=T_SELF,
+                 amplitude=2000),
         ],
-        desc="Reduces all damage you take by 10% for $d.",
-        compare="Shield Wall is -60% for 12s on 5 minutes. This is -10% for 6s on 30 seconds, "
-                "which is about a tenth of the mitigation for a fifth of the wait.",
+        desc=("Reduces all damage you take by 15% and restores $s2% of your maximum health "
+              "every 2 sec for $d."),
+        compare="Shield Wall is -60% for 12s on 5 minutes and returns nothing. Damage taken "
+                "with a flat heal on it is Health Funnel and with dodge is Aspect of the "
+                "Monkey; with a percentage of maximum health, nothing. Percent-based, so it "
+                "does not become the level 5 button nobody presses at 40.",
     ),
     dict(
-        key="kick_dirt", name="Kick Dirt", rarity=0, type=0, mechanic=11,  # snare
-        first_level=9, ranks=5, step=13, donor=1766, school=1,
-        icon=350, visual=263, power=("energy", 30),
-        range_idx=RANGE_MELEE, cast_idx=CAST_INSTANT, cooldown_ms=15000,
-        duration_idx=DUR_6S,
+        key="kick_dirt", name="Pocket Sand", rarity=0, type=0, mechanic=11,  # snare
+        first_level=9, ranks=5, step=13, donor=2094, school=1,
+        # Blind's look: its cast kit (730, anim 53) throws something into the
+        # target's face. The old donor was Kick, whose cast kit is a punch.
+        icon=350, visual=3440, power=("energy", 30),
+        range_idx=RANGE_MELEE, cast_idx=CAST_INSTANT, cooldown_ms=30000,
+        duration_idx=DUR_4S,
+        # Blind's own shape, which in the data is a slow AND a confuse on one
+        # enemy. Four seconds rather than ten, and thirty seconds rather than
+        # three minutes, so it is a peel a level 9 Hero can hold rather than a
+        # rogue's opener.
         effects=[
             dict(eff=E_APPLY_AURA, aura=A_MOD_DECREASE_SPEED, base=-50, tgt=T_ENEMY),
+            dict(eff=E_APPLY_AURA, aura=A_MOD_CONFUSE, base=0, tgt=T_ENEMY),
         ],
-        desc="Reduces the target's movement speed by 50% for $d.",
-        compare="Chains of Ice is -95% for 10s and Crippling Poison -50% on every hit. "
-                "This is -50% for 6s on a 15s cooldown: an escape, not a lockdown.",
+        desc=("Throws a handful of grit in the target's face, blinding them and slowing "
+              "them by 50% for $d. Any damage ends the blind."),
+        compare="Blind is 10s on a 3 minute cooldown and this is 4s on 30 seconds, off the "
+                "same two auras. Short enough to be a peel and long enough to walk away.",
     ),
     dict(
         key="adrenaline", name="Adrenaline", rarity=0, type=0,
@@ -569,13 +616,17 @@ RECIPES = [
         icon=3897, visual=4050, visual_kits=dict(instant_area=3394),
         power=("energy", 20),
         range_idx=RANGE_SELF, cast_idx=CAST_INSTANT, cooldown_ms=90000,
-        duration_idx=DUR_6S,
+        duration_idx=DUR_10S,
         effects=[
             dict(eff=E_APPLY_AURA, aura=A_MOD_INCREASE_SPEED, base=40, tgt=T_SELF),
+            dict(eff=E_APPLY_AURA, aura=A_MOD_POWER_REGEN, base=30, misc=0, tgt=T_SELF),
         ],
-        desc="Increases your movement speed by $s1% for $d.",
-        compare="Sprint is +50% for 15s on 5 minutes and Dash the same. This is +40% for 6s "
-                "on 90 seconds: less of it, more often, and never a substitute for either.",
+        desc=("Increases your movement speed by $s1% and restores $s2 mana every 5 sec "
+              "for $d."),
+        compare="Sprint is +50% for 15s on 5 minutes and gives nothing back. This is +40% "
+                "for 10s on 90 seconds with mana behind it, and no spell in the game pairs "
+                "run speed with mana regeneration: the run is for whoever closes the gap, "
+                "the mana for whoever stands still and casts.",
     ),
     dict(
         key="rattle", name="Rattle", rarity=0, type=0,
@@ -615,12 +666,16 @@ RECIPES = [
         range_idx=RANGE_SELF, cast_idx=CAST_INSTANT, cooldown_ms=60000,
         duration_idx=DUR_15S,
         effects=[
-            dict(eff=E_APPLY_AURA, aura=A_MOD_DAMAGE_DONE_PCT, base=5, tgt=T_SELF),
+            dict(eff=E_APPLY_AURA, aura=A_MOD_DAMAGE_DONE_PCT, base=4, tgt=T_SELF),
+            dict(eff=E_APPLY_AURA, aura=A_MOD_WEAPON_CRIT, base=5, tgt=T_SELF),
+            dict(eff=E_APPLY_AURA, aura=A_MOD_SPELL_CRIT, base=5, tgt=T_SELF),
         ],
-        desc="Increases all damage you deal by 5% for $d.",
-        compare="Death Wish is +20% for 30s on 3 minutes. This is +5% for 15s on 1 minute: "
-                "a quarter of the size for a fifth of the wait, which is where a Common "
-                "version of a signature cooldown belongs.",
+        desc=("Increases all damage you deal by $s1% and your critical strike chance with "
+              "both weapons and spells by $s2% for $d."),
+        compare="A stance belongs to one way of fighting; this one does not. Weapon crit "
+                "with spell crit is Demonic Tactics, a passive talent rather than a button, "
+                "and no spell puts damage done alongside them. It pays a Hero the same "
+                "whatever they rolled, which is the point of the line.",
     ),
     dict(
         key="cairn", name="Cairn", rarity=0, type=0,
@@ -1128,7 +1183,15 @@ def build_row(spell, recipe, rank_index, level, spell_id, next_id, companion_id)
     # ${companion}s1 in a description is the client's cross-spell reference to the
     # rank's own companion, so a hidden half's number shows on the visible half
     v[F["Description"]] = recipe["desc"].replace("{companion}", str(companion_id or 0))
-    v[F["ToolTip"]] = ""
+    # Column 187 is what the BUFF ICON shows on hover; column 170 is what the
+    # spellbook shows. Every row set this to "", so a Hero could see a buff
+    # running and had no way to find out what it was doing. A spell that applies
+    # an aura now carries the same sentence in both places.
+    if any(v[F["Effect"] + i] in (6, 27) for i in range(3)):
+        v[F["ToolTip"]] = recipe.get("tooltip", recipe["desc"]).replace(
+            "{companion}", str(companion_id or 0))
+    else:
+        v[F["ToolTip"]] = ""
     return v, donor
 
 
@@ -1390,7 +1453,8 @@ def write_sql(spells, lines, gen, path):
              "`VerifiedBuild`) VALUES")
     for n, c in enumerate(creatures):
         end = ";" if n == len(creatures) - 1 else ","
-        L.append("(%d, 0, %d, 1, 1, 12340)%s" % (c[0], c[2], end))
+        L.append("(%d, 0, %d, %.2f, 1, 12340)%s"
+                 % (c[0], c[2], MODEL_SCALE.get(c[0], 1.0), end))
     L.append("")
 
     # A creature's own spells. Creature.cpp copies these into m_spells, which is

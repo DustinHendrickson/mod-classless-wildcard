@@ -302,6 +302,46 @@ def main():
     check("no creature carries more spells than the pet bar holds", not over,
           "MAX_SPELL_CHARM is 4; offenders %s" % over[:3])
 
+    # ---- a buff has to say what it is doing, and be drawable ------------------
+    # Column 187 is the ToolTip the BUFF ICON shows on hover; 170 is the
+    # spellbook Description. Every forged row shipped with 187 empty, so a Hero
+    # could watch a buff run and never find out what it was. And display 11686
+    # is Creature\InvisibleStalker\InvisibleStalker.mdx, which the core uses
+    # when it wants nothing drawn -- Reclaimed Sentry wore it for six rounds.
+    INVISIBLE_DISPLAYS = {11686}
+    silent = [sp["name"] for sp in spells
+              if any(sp["values"][F["Effect"] + i] in (6, 27) for i in range(3))
+              and not sp["values"][187]]
+    check("every spell that applies an aura carries a buff tooltip", not silent,
+          "%d aura row(s); %s" % (
+              sum(1 for sp in spells
+                  if any(sp["values"][F["Effect"] + i] in (6, 27) for i in range(3))),
+              sorted(set(silent))[:3]))
+
+    sql_disp = io.open(SQL, encoding="utf-8").read()
+    invis = ["creature %s is given display %s, which is an invisible model"
+             % (m.group(1), m.group(2))
+             for m in re.finditer(r"^\((99\d{4}), 0, (\d+), ", sql_disp, re.M)
+             if int(m.group(2)) in INVISIBLE_DISPLAYS]
+    check("no summoned creature wears an invisible model", not invis, "%s" % invis[:3])
+
+    # ---- a summoned creature must not be a "trigger" --------------------------
+    # Unit.cpp:16978 rewrites the display id in the update block sent to each
+    # client: a creature template with CREATURE_FLAG_EXTRA_TRIGGER (0x80) is
+    # given GetFirstInvisibleModel() for every viewer who is not in GM mode,
+    # whatever creature_template_model says. Every marker carried that bit, and
+    # it defeated a model fix, a summon-properties fix and a targeting fix in
+    # turn -- the creature was there and the client was told to draw nothing.
+    sql_cre = io.open(SQL, encoding="utf-8").read()
+    triggers = []
+    for m in re.finditer(r"^\((99\d{4}), '([^']*)', '', 1, 80, \d+, \d+, \d+, "
+                         r"\d+, \d+, \d+, \d+, (\d+),", sql_cre, re.M):
+        if int(m.group(3)) & 0x80:
+            triggers.append("%s (%s) has CREATURE_FLAG_EXTRA_TRIGGER, so the client is "
+                            "told to draw an invisible model" % (m.group(2), m.group(1)))
+    check("no summoned creature is flagged as a trigger", not triggers,
+          "%s" % triggers[:3])
+
     # ---- every summon has a creature, and that creature has a model ---------
     # Models live in creature_template_model, not creature_template. A creature
     # with no row there spawns invisible: the spell works and nothing appears.
@@ -670,6 +710,8 @@ def main():
         for sp in spells:
             v = sp["values"]
             vid = v[F["SpellVisual"]]
+            if not vid:
+                continue          # 0 is "draw nothing", which Throw itself uses
             row = vdbc.row_of(donor_of.get(vid, vid))
             if row is None:
                 missiles.append("%s: visual %d resolves to no SpellVisual row"
