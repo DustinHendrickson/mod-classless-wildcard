@@ -742,13 +742,23 @@ RECIPES = [
         first_level=12, ranks=5, step=13, donor=1044, school=64,
         icon=1997, visual=1588, visual_kits=dict(instant_area=1005),
         power=("mana", 12), power_is_pct=True,
-        range_idx=RANGE_SELF, cast_idx=CAST_INSTANT, cooldown_ms=60000,
+        range_idx=RANGE_SELF, cast_idx=CAST_INSTANT, cooldown_ms=120000,
+        # Rage is stored times ten, so 250 is 25 rage, and it is flat across the
+        # ranks the way the energy is not: rage caps at a hundred points at
+        # every level, so there is no curve to climb. AttributesEx7 bit 16 is
+        # set from these effects in build_row -- without it neither pool
+        # arrives for a Hero whose displayed bar is the other one.
         effects=[
             dict(eff=E_ENERGIZE, base=("ranks", [20, 25, 30, 35, 40]), tgt=T_SELF, misc=POWER["energy"]),
+            dict(eff=E_ENERGIZE, base=250, tgt=T_SELF, misc=POWER["rage"]),
         ],
-        desc="Instantly restores $s1 energy.",
-        compare="Makeshift Strike turns energy into mana; this turns mana back into energy, "
-                "so neither pool can strand a build that leans on the other.",
+        # $/10;s2 is Blizzard's own form for a rage amount held in effect 2:
+        # Mighty Rage and Shield Specialization both write it that way.
+        desc="Instantly restores $s1 energy and $/10;s2 rage.",
+        compare="Makeshift Strike turns energy into mana; this turns mana back into energy "
+                "and rage, so no pool can strand a build that leans on another. Bloodrage is "
+                "30 rage a minute for health; this is 25 rage and up to 40 energy every two "
+                "minutes for mana.",
     ),
     dict(
         key="draw_attention", name="Draw Attention", rarity=0, type=0,
