@@ -108,7 +108,12 @@ SUMMON_CREATURES = [
     # to do. 19218 is the Gnomish Flame Turret, built to sit still and burn
     # what stands near it, which is what this spell does.
     (990111, "Reclaimed Sentry", 19218, None),   # Gnomish Flame Turret
-    (990112, "Cairn", 30516, None),              # AzsharaStoneTablet02, a standing stone
+    # Was AzsharaStoneTablet02, which is the same look as Waystone's Tablet04:
+    # two files, one object on screen. The client exposes no rock pile to
+    # creatures at all, so this is the Oracle crystal the core spawns at scale
+    # 1 as "Crystal of Unstable Energy" -- a standing glowing outcrop, which
+    # suits a thing that mends and shields whoever stands near it.
+    (990112, "Cairn", 25931, None),              # O_Crystal_01, a standing crystal
     (990113, "Waystone", 30886, None),           # AzsharaStoneTablet04, a marker stone
     # 26506 is an Ulduar DOODAD at native scale 3.0; at 0.4 only its flame
     # showed and it read as an orb. This is the Midsummer bonfire.
@@ -141,7 +146,9 @@ ALL_CLASSES = 0x5FF
 # needs 0.4 to stand at about head height.
 MODEL_SCALE = {
     990110: 0.90,     # BoneGuardSpike is 0.45 natively, and 2.00 stood over the player
-    990114: 1.50,     # the bonfire is 0.66 natively, so this is about waist high
+    # SummerFest_Bonfire_Large01 is what the core spawns at 1.00, so 1.50 was
+    # half again bigger than a real Midsummer bonfire and stood over the player
+    990114: 0.50,     # a fire you could light, not a festival
     990117: 0.33,     # the scarab is a raid mob at 1.00
 }
 
@@ -434,12 +441,20 @@ RECIPES = [
         key="overflow", name="Overflow", rarity=2, type=4,
         first_level=24, ranks=5, step=12, donor=2061, school=2,
         icon=1871,
-        # Holy Nova's. Its own impact kit (3153) IS the expanding ring, and an
-        # impact kit plays at every unit the spell reaches -- the target and the
-        # allies the spill lands on. No override: field 23, the instant-area kit,
-        # paints at the CASTER, which is right for Holy Nova and wrong for a heal
-        # thrown forty yards.
-        visual=3643, power=("mana", 24), power_is_pct=True,
+        # Circle of Healing's, whose own effect shape is (HEAL, TargetA 63,
+        # TargetB 31) -- this spell's spill effect exactly. Its cast kit (165)
+        # is what single-target buffs use, so nothing paints on the caster.
+        # Holy Nova's row was wrong for this and twice over: not the area kit,
+        # which 3643 never set, but cast kit 3154, which is used by Holy Nova,
+        # Cleanse Nova, Sunseeker Blessing, Fungal Creep and Spirit Heal and
+        # by nothing that is not an area centred on the caster. A cast kit
+        # plays on the caster; that was the burst.
+        visual=8253,
+        # Holy Nova's impact kit is still the right expanding ring, and an
+        # impact kit plays at each UNIT the spell reaches -- the target and the
+        # allies the spill heals, and no one else.
+        visual_kits=dict(impact=3153),
+        power=("mana", 24), power_is_pct=True,
         range_idx=RANGE_40, cast_idx=CAST_2500, cooldown_ms=0,
         effects=[
             dict(eff=E_HEAL, base=heal(1.0), tgt=T_TARGET_ALLY),
@@ -554,7 +569,11 @@ RECIPES = [
         # Feral Spirit's look has no persistent-area kit, so the burning patch
         # this spell leaves on the ground drew nothing at all. Flamestrike's
         # 9357 is that patch.
-        visual_kits=dict(persistent_area=9357),
+        # persistent_area 9357 is Flamestrike's burning ground. precast 60 is
+        # what Fire Shield, Immolate and Rocket Blast wind up with; Feral
+        # Spirit's row has no precast at all, so the cast bar ran with the
+        # player standing still.
+        visual_kits=dict(persistent_area=9357, precast=60),
         power=("mana", 20), power_is_pct=True,
         range_idx=RANGE_30, cast_idx=CAST_1500, cooldown_ms=120000,
         duration_idx=DUR_20S,
@@ -871,9 +890,13 @@ RECIPES = [
         # delivery is now a buff you cast on somebody, which the set had none of.
         key="quicksilver", name="Quicksilver", rarity=3, type=0,
         first_level=44, ranks=1, step=1, donor=1044, school=64,
-        # Presence of Mind's, impact and all: this lands on somebody else, so the
-        # caster-centred area kit drew it on the wrong person.
-        icon=2186, visual=4600,
+        # Amplify Magic's, which is a mage buff cast on ANOTHER player: the same
+        # school, the same shape, and a complete row -- precast 266, cast 267,
+        # impact 991. Presence of Mind was wrong twice: it is a SELF buff, so
+        # its impact kit is 0 and the ally being buffed saw nothing at all, and
+        # its precast is 0 as well so the caster stood still through the cast.
+        # No kit override; the row already has all three.
+        icon=2186, visual=969,
         power=("mana", 18), power_is_pct=True,
         range_idx=RANGE_30, cast_idx=CAST_1500, cooldown_ms=180000,
         duration_idx=DUR_15S,
@@ -1071,7 +1094,10 @@ RECIPES = [
         icon=1950,
         # Arcane Barrage's look: Arcane, missile model 322, impact 9849. It
         # was Divine Storm's, a melee whirl with no missile at all.
-        visual=9947, visual_kits=dict(impact_area=13152),
+        # precast 7428 is Arcane Blast's, and a precast kit is what plays
+        # DURING the cast bar. 9947's own field 1 is zero, so a two and a half
+        # second cast animated nothing at all.
+        visual=9947, visual_kits=dict(impact_area=13152, precast=7428),
         power=("mana", 20), power_is_pct=True,
         speed=SPEED_BOLT,   # a bolt, at Fireball's speed
         range_idx=RANGE_30, cast_idx=CAST_2500, cooldown_ms=180000,

@@ -249,6 +249,25 @@ def main():
     check("the DBC extract is readable, so every check that needs it can run",
           _dbc_ok, "" if _dbc_ok else "%s at %s; set CW_DBC to the extract"
           % (_dbc_why, _dbc_dir))
+    if _dbc_ok:
+        # opened once, here, because more than one rule reads them and a handle
+        # created below the rule that uses it is how the last no-op happened
+        _vis2 = _Dbc(_os.path.join(_dbc_dir, "SpellVisual.dbc"))
+        _icon = _Dbc(_os.path.join(_dbc_dir, "SpellIcon.dbc"))
+        # a recombined visual's cast kit is its base's unless the recipe
+        # overrode slot 2, so resolve it the same way the installer will
+        appended_castkit = {}
+        appended_precast = {}
+        appended_kits = {}
+        for vv in doc.get("visuals", []):
+            _b = _vis2.row_of(vv["base"])
+            _k = _vis2.u(_b, 2) if _b is not None else 0
+            appended_castkit[vv["id"]] = int(vv.get("kits", {}).get("2", _k))
+            _p = _vis2.u(_b, 1) if _b is not None else 0
+            appended_precast[vv["id"]] = int(vv.get("kits", {}).get("1", _p))
+            for _f in (3, 23, 24, 25):
+                _d = _vis2.u(_b, _f) if _b is not None else 0
+                appended_kits[(vv["id"], _f)] = int(vv.get("kits", {}).get(str(_f), _d))
     if not _dbc_ok:
         # everything below reads it. Stopping here reports one honest
         # failure instead of a page of checks that looked at nothing.
@@ -417,6 +436,127 @@ def main():
                              % (rec["name"], sorted({t for t in tg if t})))
     check("a caster-centred area burst is only on a spell centred on the caster",
           not misplaced, "%s" % misplaced[:3])
+
+    # ---- a spell that hits somebody has to draw on them ----------------------
+    # Quicksilver wore Presence of Mind's row. Presence of Mind is a SELF buff,
+    # so its impact kit is 0 -- nothing was ever authored to play on a target --
+    # and the ally you spent a three minute cooldown on saw nothing whatsoever.
+    # A spell that reaches a unit draws on it through the impact kit (field 3);
+    # a ground spell draws with the area kits instead, so either will do.
+    UNIT_TARGETS = {1, 6, 21, 15, 16, 30, 31, 104, 63, 25, 45, 53, 57}
+    invisible = []
+    for sp in spells:
+        if sp["sla"] is None:
+            continue          # a hidden half is meant to be unseen
+        v = sp["values"]
+        tg = set()
+        for i in range(3):
+            if v[F["Effect"] + i]:
+                tg.add(v[F["EffectImplicitTargetA"] + i])
+                tg.add(v[F["EffectImplicitTargetB"] + i])
+        if not (tg & UNIT_TARGETS):
+            continue          # pure ground or summon work: area kits carry it
+        vid = v[F["SpellVisual"]]
+
+        def _slot(field):
+            got = appended_kits.get((vid, field))
+            if got is not None:
+                return got
+            _row = _vis2.row_of(vid)
+            return _vis2.u(_row, field) if _row is not None else 0
+
+        if not _slot(3) and not (_slot(23) or _slot(24) or _slot(25)):
+            invisible.append("%s (visual %d)" % (sp["name"], vid))
+    check("every spell that reaches a unit draws something on it",
+          not invisible,
+          "no impact kit and no area kit: the target sees nothing; %s"
+          % sorted(set(invisible))[:4])
+
+    # ---- a cast bar needs something to animate --------------------------------
+    # SpellVisual field 1, the precast kit, is what the caster plays WHILE the
+    # cast bar runs. Three lines sat on donor rows whose field 1 is zero and
+    # stood perfectly still through a two and a half second cast. The
+    # correlation across this set was exact: every line that animated had one.
+    _sct = _Dbc(_os.path.join(_dbc_dir, "SpellCastTimes.dbc"))
+    _cast_ms = {_sct.u(_r, 0): _sct.i(_r, 1) for _r in range(_sct.rows)}
+    still = []
+    for sp in spells:
+        if sp["sla"] is None:
+            continue          # a hidden half has no cast bar of its own
+        # column 28 is CastingTimeIndex; the F dict has no name for it, the
+        # generator writes it as v[28] too
+        if _cast_ms.get(sp["values"][28], 0) <= 0:
+            continue
+        vid = sp["values"][F["SpellVisual"]]
+        pre = appended_precast.get(vid)
+        if pre is None:
+            _row = _vis2.row_of(vid)
+            pre = _vis2.u(_row, 1) if _row is not None else 0
+        if not pre:
+            still.append(sp["name"])
+    check("every spell with a cast time animates while it casts",
+          not still,
+          "no precast kit means the caster stands still through the cast bar; %s"
+          % sorted(set(still))[:4])
+
+    # ---- a look belongs to the shape it was drawn for ------------------------
+    # Overflow wore Holy Nova's row for its expanding impact ring and painted a
+    # nova on the caster for three rounds. The area kit was never the problem:
+    # 3643 does not set field 23. It was CAST kit 3154, and a cast kit plays on
+    # the caster whatever the effects target. A kit override cannot save this --
+    # precast and cast ride along with the donor's row.
+    #
+    # Keyed on the cast kit rather than the visual id, because one visual is
+    # shared by many unrelated spells and any of them may happen to be an area.
+    # A kit counts as caster-centred when at least three stock spells use it and
+    # three quarters of them are an area centred on the caster. The signal is
+    # not marginal: Holy Nova's 3154 is 24 of 26, Circle of Healing's 165 is 7
+    # of 118, Sprint's 395 is 2 of 100.
+    CASTER_AREA = {(22, 15), (22, 30), (22, 7), (18, 31), (22, 45)}
+    _sp = _Dbc(_os.path.join(_dbc_dir, "Spell.dbc"))
+    _castkit = {_vis2.u(_r, 0): _vis2.u(_r, 2) for _r in range(_vis2.rows)}
+    _tally = {}
+    for _r in range(_sp.rows):
+        _k = _castkit.get(_sp.u(_r, F["SpellVisual"]), 0)
+        if not _k:
+            continue
+        _shapes = {(_sp.u(_r, F["EffectImplicitTargetA"] + _i),
+                    _sp.u(_r, F["EffectImplicitTargetB"] + _i))
+                   for _i in range(3) if _sp.u(_r, F["Effect"] + _i)}
+        _c = _tally.setdefault(_k, [0, 0])
+        _c[1] += 1
+        if _shapes & CASTER_AREA:
+            _c[0] += 1
+    CENTRED_KITS = {_k for _k, (_a, _n) in _tally.items() if _n >= 3 and _a >= 0.75 * _n}
+    # The measure is the shape of a kit's users, which is a proxy for "this kit
+    # draws a big area graphic" and not the thing itself. A shout is an
+    # animation on the shouter, so the roar kit reads fine on one target -- and
+    # Blizzard agrees: three of its twenty users are single target.
+    CENTRED_OK = {
+        "Rattle": "cast kit 351 is the roar kit, and Demoralize, Howling Blade and "
+                  "Ignored are stock single-target spells on it: a shout plays on "
+                  "the shouter and draws no ring",
+    }
+    borrowed = []
+    for sp in spells:
+        v = sp["values"]
+        vid = v[F["SpellVisual"]]
+        kit = appended_castkit.get(vid)
+        if kit is None:
+            _row = _vis2.row_of(vid)
+            kit = _vis2.u(_row, 2) if _row is not None else 0
+        if kit not in CENTRED_KITS:
+            continue
+        mine = {(v[F["EffectImplicitTargetA"] + i], v[F["EffectImplicitTargetB"] + i])
+                for i in range(3) if v[F["Effect"] + i]}
+        if mine & CASTER_AREA or sp["name"] in CENTRED_OK:
+            continue
+        borrowed.append("%s takes cast kit %d, which stock uses for an area centred "
+                        "on the caster" % (sp["name"], kit))
+    check("no line borrows a cast kit drawn for an area centred on the caster",
+          not borrowed,
+          "a cast kit plays on the caster and no kit override removes it; %s"
+          % sorted(set(borrowed))[:3])
 
     # ---- two lines must not share a look --------------------------------------
     # Recombining one donor with a different kit slot barely changes what a
@@ -751,8 +891,6 @@ def main():
     # An icon id that is not in SpellIcon.dbc is a question mark in the
     # spellbook; a visual that is neither appended nor shipped draws nothing.
     art = []
-    _icon = _Dbc(_os.path.join(_dbc_dir, "SpellIcon.dbc"))
-    _vis2 = _Dbc(_os.path.join(_dbc_dir, "SpellVisual.dbc"))
     if _icon is not None:
         appended = {vv["id"] for vv in doc.get("visuals", [])}
         for sp in spells:
