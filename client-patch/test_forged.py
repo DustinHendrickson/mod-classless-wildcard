@@ -106,6 +106,32 @@ def check_against_client(client_dir, doc):
         check("Spell.dbc: every forged row is appended", not missing,
               "%d added, missing %s" % (len(doc["spells"]), missing[:4]))
 
+        # The buff tooltip, read back out of what the installer produced. The
+        # generator set column 187 correctly for a whole round while
+        # append_spells wrote the fourth locale block as a hardcoded "", so the
+        # client kept showing a nameless icon. Checking the manifest alone
+        # could never have seen that; this reads the bytes the client will.
+        strings = payload[forged.SPELL][20 + count * rec:]
+
+        def text(row, col):
+            off = struct.unpack_from("<I", body, row * rec + col * 4)[0]
+            end = strings.find(bytes([0]), off)
+            return strings[off:end].decode("utf-8", "replace") if end >= 0 else ""
+
+        blank = []
+        for sp in doc["spells"]:
+            if not sp.get("tooltip"):
+                continue
+            if sp["id"] not in ids:
+                continue
+            if text(ids[sp["id"]], 187) != sp["tooltip"]:
+                blank.append("%s: installed tooltip is %r, manifest says %r"
+                             % (sp["name"], text(ids[sp["id"]], 187)[:30],
+                                sp["tooltip"][:30]))
+        check("Spell.dbc: the buff tooltip the installer writes is the one asked for",
+              not blank, "%d row(s) carry one; %s"
+              % (sum(1 for sp in doc["spells"] if sp.get("tooltip")), blank[:3]))
+
         # the overrides really applied, spot-checked on every row's school and level
         wrong = []
         for sp in doc["spells"]:
@@ -200,6 +226,29 @@ def check_against_client(client_dir, doc):
 def main():
     doc = json.load(io.open(MANIFEST, encoding="utf-8"))
     spells = doc["spells"]
+
+    # The DBC extract, once, at the top. Several checks read it, and one of
+    # them referenced these helpers before they existed, caught its own
+    # NameError in a bare `except` and passed: it reported OK on a creature
+    # wearing a totem model. An unreadable extract is a FAILURE now, not a
+    # silent skip, so no rule can quietly become a no-op again.
+    from gen_forged_spells import Dbc as _Dbc
+    import os as _os
+    _dbc_dir = _os.environ.get("CW_DBC", r"B:\New folder\dbc")
+    try:
+        _Dbc(_os.path.join(_dbc_dir, "Spell.dbc"))
+        _dbc_ok, _dbc_why = True, None
+    except Exception as exc:
+        _dbc_ok, _dbc_why = False, exc
+    check("the DBC extract is readable, so every check that needs it can run",
+          _dbc_ok, "" if _dbc_ok else "%s at %s; set CW_DBC to the extract"
+          % (_dbc_why, _dbc_dir))
+    if not _dbc_ok:
+        # everything below reads it. Stopping here reports one honest
+        # failure instead of a page of checks that looked at nothing.
+        print()
+        print("%d check(s) FAILED" % len(FAILS))
+        return 1
     by_key = {r["key"]: r for r in RECIPES}
     print("manifest: %d row(s), generation %s\n" % (len(spells), doc["generation"]))
 
@@ -325,6 +374,22 @@ def main():
              if int(m.group(2)) in INVISIBLE_DISPLAYS]
     check("no summoned creature wears an invisible model", not invis, "%s" % invis[:3])
 
+    # ---- a marker must not wear a totem ---------------------------------------
+    # A shaman totem model standing beside real totems is confusing, and none of
+    # these is a totem in any mechanical sense. Checked against the model path
+    # in the client's own files rather than a list of ids.
+    totemish = []
+    _cdi = _Dbc(_os.path.join(_dbc_dir, "CreatureDisplayInfo.dbc"))
+    _cmd = _Dbc(_os.path.join(_dbc_dir, "CreatureModelData.dbc"))
+    if _cdi is not None:
+        _paths = {_cmd.u(r, 0): _cmd.s(r, 2) for r in range(_cmd.rows)}
+        for m in re.finditer(r"^\((99\d{4}), 0, (\d+), ", io.open(SQL, encoding="utf-8").read(), re.M):
+            row = _cdi.row_of(int(m.group(2)))
+            path = _paths.get(_cdi.u(row, 1), "") if row is not None else ""
+            if "totem" in path.lower():
+                totemish.append("creature %s wears %s" % (m.group(1), path.split("\\")[-1]))
+    check("no summoned creature wears a totem model", not totemish, "%s" % totemish[:3])
+
     # ---- a summoned creature must not be a "trigger" --------------------------
     # Unit.cpp:16978 rewrites the display id in the update block sent to each
     # client: a creature template with CREATURE_FLAG_EXTRA_TRIGGER (0x80) is
@@ -392,14 +457,8 @@ def main():
     # An area effect with a zero radius hits a point. An aura with no duration
     # never expires. A heal aimed at an enemy heals nobody. None of the three
     # errors anywhere: RADIUS_10YD was index 36 for a while, which is 0 yards.
-    from gen_forged_spells import Dbc as _Dbc
-    import os as _os
-    _dbc_dir = _os.environ.get("CW_DBC", r"B:\New folder\dbc")
     coherence = []
-    try:
-        rad = _Dbc(_os.path.join(_dbc_dir, "SpellRadius.dbc"))
-    except Exception:
-        rad = None
+    rad = _Dbc(_os.path.join(_dbc_dir, "SpellRadius.dbc"))
     # Implicit target ids by what they select, from the table in SpellInfo.cpp.
     # A SRC or DEST id sets a position and selects nobody, so an aura, a heal
     # or a weapon swing given one of those alone lands on nothing. Vertigo,
@@ -523,11 +582,8 @@ def main():
     # An icon id that is not in SpellIcon.dbc is a question mark in the
     # spellbook; a visual that is neither appended nor shipped draws nothing.
     art = []
-    try:
-        _icon = _Dbc(_os.path.join(_dbc_dir, "SpellIcon.dbc"))
-        _vis2 = _Dbc(_os.path.join(_dbc_dir, "SpellVisual.dbc"))
-    except Exception:
-        _icon = None
+    _icon = _Dbc(_os.path.join(_dbc_dir, "SpellIcon.dbc"))
+    _vis2 = _Dbc(_os.path.join(_dbc_dir, "SpellVisual.dbc"))
     if _icon is not None:
         appended = {vv["id"] for vv in doc.get("visuals", [])}
         for sp in spells:
@@ -573,10 +629,7 @@ def main():
     # a periodic with no tick, an aura with no duration, a donor's cooldown
     # category or proc flags still driving it, a rank that does not improve.
     function = []
-    try:
-        _dur = _Dbc(_os.path.join(_dbc_dir, "SpellDuration.dbc"))
-    except Exception:
-        _dur = None
+    _dur = _Dbc(_os.path.join(_dbc_dir, "SpellDuration.dbc"))
     PERIODIC = {3, 8, 23, 24, 53, 64, 89}          # 4 is DUMMY, not a periodic
     by_line = {}
     for sp in spells:
@@ -628,12 +681,9 @@ def main():
     # becoming a point-blank swing. Both were invisible until the shape was
     # compared with the shipped spells that do the same thing.
     unknown_shape = []
-    try:
-        _sp = _Dbc(_os.path.join(_dbc_dir, "Spell.dbc"))
-        _sla = _Dbc(_os.path.join(_dbc_dir, "SkillLineAbility.dbc"))
-        _skl = _Dbc(_os.path.join(_dbc_dir, "SkillLine.dbc"))
-    except Exception:
-        _sp = None
+    _sp = _Dbc(_os.path.join(_dbc_dir, "Spell.dbc"))
+    _sla = _Dbc(_os.path.join(_dbc_dir, "SkillLineAbility.dbc"))
+    _skl = _Dbc(_os.path.join(_dbc_dir, "SkillLine.dbc"))
     if _sp is not None:
         _cls = {_skl.u(r, 0) for r in range(_skl.rows) if _skl.u(r, 1) == 7}
         _pool = {_sla.u(r, 2) for r in range(_sla.rows)
@@ -669,11 +719,7 @@ def main():
     # no SummonProperties row 0, so seven spells summoned nothing at all while
     # their creature and model rows sat unused. Effect 56 (SUMMON_PET) does not
     # read it and is exempt.
-    props = None
-    try:
-        props = _Dbc(_os.path.join(_dbc_dir, "SummonProperties.dbc"))
-    except Exception:
-        pass
+    props = _Dbc(_os.path.join(_dbc_dir, "SummonProperties.dbc"))
     bad_summon = []
     if props is not None:
         for sp in spells:
@@ -698,10 +744,7 @@ def main():
     # drawn between caster and target. SpellVisual field 7 says whether the
     # look has a missile at all, so the two have to agree.
     missiles = []
-    try:
-        vdbc = _Dbc(_os.path.join(_dbc_dir, "SpellVisual.dbc"))
-    except Exception:
-        vdbc = None
+    vdbc = _Dbc(_os.path.join(_dbc_dir, "SpellVisual.dbc"))
     if vdbc is not None:
         # a recombined look is a donor's row with some kit slots moved, so
         # whether it carries a missile is the DONOR's answer; without this the

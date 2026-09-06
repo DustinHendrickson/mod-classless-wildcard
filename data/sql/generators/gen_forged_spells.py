@@ -28,6 +28,7 @@ import argparse
 import hashlib
 import io
 import json
+import re
 import os
 import sys
 
@@ -95,16 +96,17 @@ SUMMON_MARKER = 121       # what Force of Nature uses: temporary, fights, despaw
 # obvious four -- Healing Stream 4587, Earthbind 4588, Searing 4589, Sentry
 # 4590 -- are all reachable by rolling the shaman totem that places them, so
 # they are off limits for the same reason their icons would be.
+# Props, deliberately not totems: a shaman totem model standing next to real
+# totems is confusing, and these are not totems in any mechanical sense either.
+# Each display is worn by a live creature and has a creature_model_info row --
+# without one Creature::UpdateEntry returns false and nothing spawns.
 SUMMON_CREATURES = [
-    (990110, "Bulwark Anchor", 2420, None),      # Earthgrab Totem
-    # 11686 was Creature\InvisibleStalker\InvisibleStalker.mdx, the model the
-    # core hands out when it wants nothing drawn. 19073 is DraeneiTotem_Earth,
-    # worn by four live creatures and unlike the shaman totems the others use.
-    (990111, "Reclaimed Sentry", 19073, None),   # DraeneiTotem_Earth
-    (990112, "Cairn", 2418, None),               # Spirit Calling Totem
-    (990113, "Waystone", 2419, None),            # Elemental Protection Totem
-    (990114, "Signal Fire", 4683, None),         # Fire Nova Totem
-    (990115, "Rally Point", 15231, None),        # Totem of Spirits
+    (990110, "Bulwark Anchor", 31124, None),     # BoneGuardSpike, driven into the ground
+    (990111, "Reclaimed Sentry", 3127, None),    # Cannon, something that can fire
+    (990112, "Cairn", 30516, None),              # AzsharaStoneTablet02, a standing stone
+    (990113, "Waystone", 30886, None),           # AzsharaStoneTablet04, a marker stone
+    (990114, "Signal Fire", 26506, None),        # UL_Torch01, a torch
+    (990115, "Rally Point", 27399, None),        # ArgentCrusade_Banner01, a banner
 ]
 
 # A pet creature per RANK, because a creature carries one spell list. The
@@ -128,7 +130,13 @@ ALL_CLASSES = 0x5FF
 # creature_template_model.DisplayScale, which Creature::SetDisplayId passes to
 # SetObjectScale. The scarab's own model is built for a raid mob and stands
 # taller than the player at 1.0.
-MODEL_SCALE = {990117: 0.33}
+# The display's own CreatureModelScale multiplies this, so a model built at 3.0
+# needs 0.4 to stand at about head height.
+MODEL_SCALE = {
+    990110: 2.00,     # BoneGuardSpike is 0.45 natively
+    990114: 0.40,     # UL_Torch01 is 3.00 natively
+    990117: 0.33,     # the scarab is a raid mob at 1.00
+}
 
 # ---- the curve --------------------------------------------------------------
 # (band midpoint, median value) measured over 540 damage and 158 heal effects
@@ -329,13 +337,16 @@ RECIPES = [
         first_level=6, ranks=6, step=14, donor=139, school=2,
         icon=2900, visual=280, visual_kits=dict(instant_area=9159), power=("mana", 10), power_is_pct=True,
         range_idx=RANGE_SELF, cast_idx=CAST_INSTANT, cooldown_ms=45000,
-        duration_idx=DUR_12S,
         effects=[
-            dict(eff=E_APPLY_AURA, aura=A_PERIODIC_HEAL, base=heal(0.30),
-                 tgt=T_SELF, amplitude=3000),
+            dict(eff=E_HEAL, base=heal(0.80), tgt=T_SELF),
+            dict(eff=E_ENERGIZE, base=heal(0.30), tgt=T_SELF, misc=POWER["mana"]),
         ],
-        desc="Heals yourself for $o1 over $d.",
-        compare="A rolled instant heal is about four times this; 1.2x the heal anchor over 4 ticks.",
+        desc="Heals you for $s1 and restores $s2 mana.",
+        compare="No spell in the player pool heals and returns mana at once: Evocation and "
+                "Innervate are mana only, every heal is health only. At level 6 that is one "
+                "button for whichever bar ran out, which is the classless problem in "
+                "miniature. It was a self heal-over-time, which is now the dull half of "
+                "Brace five levels earlier.",
     ),
     dict(
         key="emberfeed", name="Emberfeed", rarity=1, type=3,
@@ -379,7 +390,7 @@ RECIPES = [
     dict(
         key="overflow", name="Overflow", rarity=2, type=4,
         first_level=24, ranks=5, step=12, donor=2061, school=2,
-        icon=1871, visual=3077, visual_kits=dict(persistent_area=9366), power=("mana", 24), power_is_pct=True,
+        icon=1871, visual=3077, visual_kits=dict(impact=231), power=("mana", 24), power_is_pct=True,
         range_idx=RANGE_40, cast_idx=CAST_2500, cooldown_ms=0,
         effects=[
             dict(eff=E_HEAL, base=heal(1.0), tgt=T_TARGET_ALLY),
@@ -1188,8 +1199,12 @@ def build_row(spell, recipe, rank_index, level, spell_id, next_id, companion_id)
     # running and had no way to find out what it was doing. A spell that applies
     # an aura now carries the same sentence in both places.
     if any(v[F["Effect"] + i] in (6, 27) for i in range(3)):
-        v[F["ToolTip"]] = recipe.get("tooltip", recipe["desc"]).replace(
+        tip = recipe.get("tooltip", recipe["desc"]).replace(
             "{companion}", str(companion_id or 0))
+        # the buff frame already prints "11 seconds remaining", so the duration
+        # comes off the end the way Blizzard's own aura tooltips leave it out
+        tip = re.sub(r"\s+for \$d(?=[.,]|$)", "", tip)
+        v[F["ToolTip"]] = tip
     else:
         v[F["ToolTip"]] = ""
     return v, donor
@@ -1512,6 +1527,7 @@ def write_manifest(spells, lines, visuals, gen, path, run_desc):
                             key=s["key"], name=s["values"][F["SpellName"]],
                             rank_text=s["values"][F["Rank"]],
                             description=s["values"][F["Description"]],
+                            tooltip=s["values"][F["ToolTip"]],
                             base=s["base"], fields={str(k): v for k, v in s["fields"].items()},
                             values=s["values"], visual=s["visual"], icon=s["icon"],
                             sla=s["sla"])

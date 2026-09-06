@@ -125,7 +125,11 @@ def append_spells(data: bytes, variants):
                 struct.pack_into("<I", row, idx * 4, int(value))
         # the same English text in every locale column, so a client of any
         # locale reads it; the mask bits stay as the base row had them
-        texts = (v["name"], v.get("rank_text", ""), v["description"], "")
+        # the fourth block is the ToolTip, which is what the BUFF ICON shows on
+        # hover. It was hardcoded empty, so every aura this installer has ever
+        # written arrived as a nameless icon however good the manifest was.
+        texts = (v["name"], v.get("rank_text", ""), v["description"],
+                 v.get("tooltip", ""))
         for (first, mask), text in zip(LOCALE_BLOCKS, texts):
             off = _add_string(strings, text) if text else 0
             for col in range(first, mask):
