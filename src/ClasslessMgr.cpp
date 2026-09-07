@@ -2816,14 +2816,18 @@ void ClasslessMgr::SyncRequiredForms(Player* player)
 // left the imp out for good, following a Hero who could never call it back.
 // Anything out that the Hero can no longer summon is sent home.
 //
-// That includes tamed beasts, which an earlier comment here claimed it did
-// not. A beast DOES record the spell that produced it: Unit::InitTamedPet
-// writes Tame Beast into UNIT_CREATED_BY_SPELL when it is tamed, and
-// EffectSummonPet overwrites it with Call Pet once it has been put away and
-// called back. Both of those leave with Tame Beast (Call Pet is its
-// companion), so a rerolled Tame Beast already took the beast with it. Only a
-// pet carrying a zero -- older data, a GM spawn -- was ever missed, and the
-// fallback below covers that.
+// A tamed beast is the exception, and reading UNIT_CREATED_BY_SPELL for one
+// is a trap. The spell it records is the spell that CREATED the pet, and that
+// is never the spell the Hero learned: "Tame Beast" 1515 is only the channel,
+// while the tame itself is SPELL_EFFECT_TAMECREATURE (55) on a second, hidden
+// "Tame Beast" -- 13481 -- that no player ever knows. Unit::InitTamedPet
+// stamps that one, so every freshly tamed beast was sent home the moment it
+// arrived, blaming a spell nobody could own.
+//
+// What a beast actually needs is Call Pet, which is also the id EffectSummonPet
+// writes once the beast has been put away and called back. So ask for that in
+// both cases, and for a realm running without form kits (where Call Pet never
+// arrives) accept the line that would have handed it over.
 //
 // PET_SAVE_NOT_IN_SLOT is what Dismiss Pet uses: the beast is put away, not
 // destroyed, so rolling Tame Beast again calls the same one back.
@@ -2834,8 +2838,16 @@ void ClasslessMgr::DismissOrphanedSummons(Player* player)
         return;
 
     uint32 needed = pet->GetUInt32Value(UNIT_CREATED_BY_SPELL);
-    if (!needed && pet->getPetType() == HUNTER_PET)
-        needed = cfg.callPetSpell;   // nothing recorded: a beast still needs Call Pet
+    if (pet->getPetType() == HUNTER_PET)
+    {
+        if (player->HasSpell(cfg.callPetSpell))
+            return;
+        for (auto const& [kitOwner, kit] : _formKits)
+            if (std::find(kit.begin(), kit.end(), cfg.callPetSpell) != kit.end()
+                && player->HasSpell(kitOwner))
+                return;
+        needed = cfg.callPetSpell;   // name the spell they would actually need
+    }
     if (!needed || player->HasSpell(needed))
         return;
 
@@ -3031,6 +3043,19 @@ uint32 ClasslessMgr::StripUnearnedSpells(Player* player)
                 if (t->rankSpells[r])
                     earned.insert(t->rankSpells[r]);
 
+    // What came free with something owned is earned too. A kit spell that is
+    // not a library line of its own -- Call Pet, Revive Pet, Feed Pet and
+    // Dismiss Pet are all kept out of the pool deliberately -- is taught
+    // outright by GrantFormKit and recorded nowhere, so without this the next
+    // login sweeps it up as unearned and the Hero loses a spell that arrived
+    // with Tame Beast, along with wherever it sat on their action bar.
+    if (cfg.formKitsEnable)
+        for (auto const& [firstSpell, owned] : st.abilities)
+            if (AbilityEntry const* e = GetAbility(firstSpell))
+                for (uint32 rank : e->ranks)
+                    if (auto kit = _formKits.find(rank); kit != _formKits.end())
+                        earned.insert(kit->second.begin(), kit->second.end());
+
     GrantGuard guard(_applyingGrant);
     uint32 removed = 0;
     auto take = [&](uint32 spellId)
@@ -3101,9 +3126,17 @@ void ClasslessMgr::SyncSpellbookTabs(Player* player, bool clearChassisLines)
             want.insert(itr->second);
     };
     for (auto const& [firstSpell, owned] : st.abilities)
+    {
+        // The first spell counts on its own, without resolving the line. An
+        // entry can leave the library while a character still owns it -- a
+        // config change, an override, a filter -- and dropping its tab would
+        // hand every spell on that line to the unlearn cascade in
+        // Player::SetSkill, which is how a Hero loses spells they paid for.
+        add(firstSpell);
         if (AbilityEntry const* e = GetAbility(firstSpell))
             for (uint32 rank : e->ranks)
                 add(rank);
+    }
     for (auto const& [talentId, rank] : st.talents)
         if (TalentPoolEntry const* t = GetTalent(talentId))
             for (uint8 r = 0; r < rank && r < t->rankSpells.size(); ++r)
