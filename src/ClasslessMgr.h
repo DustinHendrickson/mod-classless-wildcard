@@ -167,6 +167,9 @@ public:
     // it too: a pet that was temporarily unsummoned (mounted) when its ability
     // went is not standing there to be caught at removal time.
     void DismissOrphanedSummons(Player* player);
+    // the core drops action buttons for spells this module teaches a moment
+    // too late during login; this puts them back
+    void RestoreDroppedActionButtons(Player* player);
     void SaveState(Player* player);          // persist scalar state row
     void AnnounceState(Player* player);      // login summary line
     uint32 AbilityCost(ClasslessWildcard::AbilityEntry const& e) const;

@@ -2461,10 +2461,73 @@ void ClasslessMgr::HandleLogin(Player* player)
     else
         UpdateAbilityRanks(player);
 
+    // Last, once every spell this login was going to teach has been taught.
+    RestoreDroppedActionButtons(player);
+
     SaveState(player);
 
     if (cfg.announce)
         AnnounceState(player);
+}
+
+// Put back the action buttons the core threw away.
+//
+// Player::_LoadActions checks every saved button against IsActionButtonDataValid
+// while the character is still loading, and a spell button whose spell the
+// character does not know AT THAT MOMENT is dropped and deleted from
+// character_action at the next save. That moment is before this module has
+// granted anything.
+//
+// Everything this module teaches at login arrives too late to save a button:
+// a rank that comes with the level, a form kit, anything the unearned sweep
+// takes and puts straight back. The spell returns, the button does not, and
+// there is nothing on screen to explain it -- a Hero just finds Call Pet gone
+// from their bar after every restart.
+//
+// The rows are still in character_action at this point, so read them back and
+// restore each spell button the Hero really does know now. A button for a spell
+// they genuinely lost is left alone, which is the correct outcome: those are the
+// chassis spells the module took off them.
+void ClasslessMgr::RestoreDroppedActionButtons(Player* player)
+{
+    QueryResult result = CharacterDatabase.Query(
+        "SELECT button, action, type FROM character_action WHERE guid = {} AND spec = {}",
+        player->GetGUID().GetCounter(), uint32(player->GetActiveSpec()));
+    if (!result)
+        return;
+
+    uint32 restored = 0;
+    do
+    {
+        Field* f = result->Fetch();
+        uint8 button = f[0].Get<uint8>();
+        uint32 action = f[1].Get<uint32>();
+        uint8 type = f[2].Get<uint8>();
+
+        if (type != ACTION_BUTTON_SPELL)
+            continue;
+        // GetActionButton answers nullptr for a button the load dropped, so
+        // this is exactly "the core threw this one away"
+        if (player->GetActionButton(button))
+            continue;
+        // and it only comes back if the spell is genuinely known again
+        if (!player->HasSpell(action))
+            continue;
+
+        if (player->addActionButton(button, action, type))
+            ++restored;
+    } while (result->NextRow());
+
+    if (!restored)
+        return;
+
+    // the bars were sent in SendInitialPacketsBeforeAddToMap, long before this
+    player->SendInitialActionButtons();
+    // INFO, not DEBUG: this only fires when something really was dropped, and
+    // it is the one visible trace of a spell that went missing at load.
+    LOG_INFO("module.classless",
+             "mod-classless-wildcard: put back {} action button(s) for {} that the login spell check dropped",
+             restored, player->GetName());
 }
 
 void ClasslessMgr::HandleLevelUp(Player* player, uint8 oldLevel)
