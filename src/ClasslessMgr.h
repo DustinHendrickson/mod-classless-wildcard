@@ -33,6 +33,10 @@ public:
     // ------- library access -------
     ClasslessWildcard::AbilityEntry const* GetAbility(uint32 firstSpellId) const;
     ClasslessWildcard::TalentPoolEntry const* GetTalent(uint32 talentId) const;
+    // How many different classes this Hero has drawn an ability from.
+    // Jack of All Trades scales on it, and nothing else can answer it:
+    // the class mask lives in the character's state, not on the player.
+    uint8 OwnedClassCount(Player* player) const;
     std::map<uint32, ClasslessWildcard::AbilityEntry> const& Abilities() const { return _abilities; }
     std::map<uint32, ClasslessWildcard::TalentPoolEntry> const& Talents() const { return _talents; }
     // resolve any spell id (any rank) to its library entry, nullptr if not in library

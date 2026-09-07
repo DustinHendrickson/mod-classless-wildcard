@@ -65,6 +65,70 @@ namespace
     // not accumulate a row per character it has ever seen.
     // ---------------------------------------------------------------------
 
+    // ---------------------------------------------------------------------
+    // Hero talents that a spell modifier cannot express.
+    //
+    // Every Hero talent sits on SpellFamilyName 14, so its ICON is what tells
+    // one from another: GetDummyAuraEffect(family, icon, effIndex) is how
+    // Blizzard's own scripts find a talent and it is how these do. The numbers
+    // are the icons gen_forged_spells.py writes, and test_forged.py refuses to
+    // build if this file and the generator ever disagree.
+    // ---------------------------------------------------------------------
+    constexpr SpellFamilyNames HERO_FAMILY = SpellFamilyNames(14);
+    constexpr uint32 ICON_ADRENAL_SURGE = 1904;   // Quickening's cap
+    constexpr uint32 ICON_OVERCLOCKED = 2303;     // the sentry's firing rate
+    constexpr uint32 ICON_TWO_SCHOOLS = 2215;     // a school other than the last
+    constexpr uint32 ICON_JACK_OF_ALL = 2590;     // breadth of the build
+
+    // Two Schools: the school mask of the last damage this character dealt.
+    // A pure cache like the two below -- losing it costs one hit's bonus.
+    std::unordered_map<ObjectGuid::LowType, uint32> _lastDamageSchool;
+
+    // Returns the talent's amount, or 0 when the Hero does not own it.
+    int32 HeroTalentAmount(Unit const* unit, uint32 icon)
+    {
+        if (!unit)
+            return 0;
+        if (AuraEffect* eff = unit->GetDummyAuraEffect(HERO_FAMILY, icon, EFFECT_0))
+            return eff->GetAmount();
+        return 0;
+    }
+
+    // Two Schools and Jack of All Trades both scale outgoing numbers, and both
+    // apply to melee, spells and heals alike. Kept in one place so the two can
+    // never drift apart on which of the three they reach.
+    void ApplyHeroTalentBonus(Unit* attacker, uint32 schoolMask, int32& amount,
+                              bool isHeal)
+    {
+        Player* player = attacker ? attacker->ToPlayer() : nullptr;
+        if (!player || amount <= 0)
+            return;
+
+        int32 pct = 0;
+
+        // Jack of All Trades: one step for every three different classes the
+        // Hero has drawn an ability from.
+        if (int32 const perThree = HeroTalentAmount(player, ICON_JACK_OF_ALL))
+            pct += perThree * (sClasslessMgr->OwnedClassCount(player) / 3);
+
+        // Two Schools: only on damage, and only when the school differs from
+        // the last one this character dealt. Recorded either way, so repeating
+        // a school simply earns nothing.
+        if (!isHeal && schoolMask)
+        {
+            ObjectGuid::LowType const guid = player->GetGUID().GetCounter();
+            auto itr = _lastDamageSchool.find(guid);
+            bool const different = (itr == _lastDamageSchool.end() || itr->second != schoolMask);
+            if (different)
+                if (int32 const bonus = HeroTalentAmount(player, ICON_TWO_SCHOOLS))
+                    pct += bonus;
+            _lastDamageSchool[guid] = schoolMask;
+        }
+
+        if (pct > 0)
+            amount = int32(amount + CalculatePct(amount, pct));
+    }
+
     // Crossdraw: when did this character last land a damaging cast?
     std::unordered_map<ObjectGuid::LowType, uint32> _lastDamagingCastMs;
 
@@ -162,6 +226,7 @@ public:
     {
         ObjectGuid::LowType const guid = player->GetGUID().GetCounter();
         _lastDamagingCastMs.erase(guid);
+        _lastDamageSchool.erase(guid);
         _repertoireUsed.erase(guid);
     }
 };
@@ -343,7 +408,9 @@ class spell_cw_quickening : public SpellScript
             return;
         int32 const rage = caster->GetPower(POWER_RAGE);      // stored units, ten a point
         int32 const energy = caster->GetPower(POWER_ENERGY);
-        _pct = std::min<int32>((rage / 10 + energy) / QUICKENING_POINTS_PER_PCT, QUICKENING_MAX_PCT);
+        // Adrenal Surge raises the ceiling, nothing else about the spell.
+        int32 const cap = QUICKENING_MAX_PCT + HeroTalentAmount(caster, ICON_ADRENAL_SURGE);
+        _pct = std::min<int32>((rage / 10 + energy) / QUICKENING_POINTS_PER_PCT, cap);
         caster->ModifyPower(POWER_RAGE, -rage);
         caster->ModifyPower(POWER_ENERGY, -energy);
     }
@@ -531,6 +598,11 @@ struct npc_cw_reclaimed_sentry : public NullCreatureAI
         if (!owner || !owner->IsInWorld() || !owner->IsAlive())
             return;
 
+        // Overclocked shortens the interval by its own percentage. Read from
+        // the OWNER, because the turret carries no talents of its own.
+        if (int32 const faster = HeroTalentAmount(owner, ICON_OVERCLOCKED))
+            _timer = std::max<uint32>(200, SENTRY_SHOT_MS - CalculatePct(SENTRY_SHOT_MS, faster));
+
         std::list<Unit*> nearby;
         Acore::AnyUnfriendlyUnitInObjectRangeCheck check(me, owner, SENTRY_RANGE);
         Acore::UnitListSearcher<Acore::AnyUnfriendlyUnitInObjectRangeCheck> searcher(me, nearby, check);
@@ -581,10 +653,50 @@ public:
     }
 };
 
+// =====================================================================
+// Two Schools and Jack of All Trades.
+//
+// Neither belongs to an ability, so neither can be a spell modifier: they
+// scale everything the Hero does. All three hooks route through one helper so
+// melee, spells and heals can never drift apart.
+// =====================================================================
+class cw_forged_talents : public UnitScript
+{
+public:
+    cw_forged_talents() : UnitScript("cw_forged_talents", true, {
+        UNITHOOK_MODIFY_MELEE_DAMAGE,
+        UNITHOOK_MODIFY_SPELL_DAMAGE_TAKEN,
+        UNITHOOK_MODIFY_HEAL_RECEIVED
+    }) { }
+
+    void ModifyMeleeDamage(Unit* /*target*/, Unit* attacker, uint32& damage) override
+    {
+        int32 amount = int32(damage);
+        ApplyHeroTalentBonus(attacker, SPELL_SCHOOL_MASK_NORMAL, amount, false);
+        damage = uint32(std::max<int32>(0, amount));
+    }
+
+    void ModifySpellDamageTaken(Unit* /*target*/, Unit* attacker, int32& damage,
+                                SpellInfo const* spellInfo) override
+    {
+        ApplyHeroTalentBonus(attacker, spellInfo ? spellInfo->GetSchoolMask() : 0,
+                             damage, false);
+    }
+
+    void ModifyHealReceived(Unit* /*target*/, Unit* healer, uint32& heal,
+                            SpellInfo const* /*spellInfo*/) override
+    {
+        int32 amount = int32(heal);
+        ApplyHeroTalentBonus(healer, 0, amount, true);
+        heal = uint32(std::max<int32>(0, amount));
+    }
+};
+
 void AddClasslessForgedScripts()
 {
     new cw_forged_pet_model();
     new cw_forged_sentry();
+    new cw_forged_talents();
     new cw_forged_watcher();
     RegisterSpellScript(spell_cw_crossdraw);
     RegisterSpellScript(spell_cw_ricochet_shot);

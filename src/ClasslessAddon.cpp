@@ -230,8 +230,13 @@ namespace
         std::string body = "TB|";
         for (auto const& [tabId, mask] : tabs)
         {
+            // 12 is not a class: it is the addon's own Hero page, which has
+            // had a button and an icon since the Hero skill line arrived and
+            // only ever lacked a tree. The Hero talent tab carries ClassMask
+            // bit 11, so the walk has to reach 12 to find it -- stopping at 11
+            // left it reported as a Warrior tree.
             uint8 classId = 1;
-            for (uint8 c = 1; c <= 11; ++c)
+            for (uint8 c = 1; c <= 12; ++c)
                 if (mask & (1u << (c - 1))) { classId = c; break; }
             std::string piece = Acore::StringFormat("{}:{};", tabId, classId);
             if (body.size() + piece.size() > MAX_BODY)

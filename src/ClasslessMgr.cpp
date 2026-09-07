@@ -324,24 +324,15 @@ void ClasslessMgr::LoadConfig(bool /*reload*/)
     cfg.urRageTakenPct = sConfigMgr->GetOption<uint32>("ClasslessWildcard.UniversalResources.RageFromTakenPct", 100);
 
     cfg.chassisEnable = sConfigMgr->GetOption<bool>("ClasslessWildcard.Chassis.Enable", true);
-    cfg.chassisClass = uint8(sConfigMgr->GetOption<uint32>("ClasslessWildcard.Chassis.Class", CLASS_PALADIN));
-    // The chassis must own a real mana pool. Heroes cast whatever they learn,
-    // and a great many of those spells cost mana or a percentage of base mana;
-    // on a rage or energy chassis the character has neither, so the abilities
-    // simply would not fire. Refuse the setting rather than hand someone a
-    // realm of Heroes who cannot cast.
-    if (cfg.chassisEnable)
-    {
-        ChrClassesEntry const* chassis = sChrClassesStore.LookupEntry(cfg.chassisClass);
-        if (!chassis || Powers(chassis->powerType) != POWER_MANA)
-        {
-            LOG_ERROR("module.classless",
-                      "mod-classless-wildcard: ClasslessWildcard.Chassis.Class = {} is not a "
-                      "mana class — Heroes there could not pay for a mana spell. Falling back "
-                      "to Paladin ({}).", cfg.chassisClass, uint32(CLASS_PALADIN));
-            cfg.chassisClass = CLASS_PALADIN;
-        }
-    }
+    // Not a setting. The chassis must own a real mana pool -- Heroes cast
+    // whatever they learn and a great many of those spells cost mana or a
+    // percentage of base mana -- and changing it re-converts every character
+    // and shifts their base stats. Paladin is what the module is built around:
+    // real base mana, spirit regeneration, plate base armour, and no forms,
+    // stances or runes to suppress. Rage and energy are layered on top by the
+    // universal-resource system, so a Paladin-chassis Hero still pays rage for
+    // Bloodthirst and energy for Sinister Strike.
+    cfg.chassisClass = CLASS_PALADIN;
 
     cfg.usMeleeAPPerAgi = sConfigMgr->GetOption<float>("ClasslessWildcard.UniversalStats.MeleeAPPerAgility", 1.0f);
     cfg.usRangedAPPerAgi = sConfigMgr->GetOption<float>("ClasslessWildcard.UniversalStats.RangedAPPerAgility", 1.0f);
@@ -2197,12 +2188,14 @@ bool ClasslessMgr::EnforceChassis(Player* player)
     if (!want || player->getClass() == want)
         return false;
 
+    // The chassis is compiled in, not configured, so this cannot be a bad id
+    // from a conf file; it can only fail if ChrClasses.dbc is missing.
     ChrClassesEntry const* entry = sChrClassesStore.LookupEntry(want);
     if (!entry)
     {
         LOG_ERROR("module.classless",
-                  "mod-classless-wildcard: ClasslessWildcard.Chassis.Class = {} is not a "
-                  "valid class id — leaving characters on their original class", want);
+                  "mod-classless-wildcard: class id {} is not in ChrClasses.dbc — "
+                  "leaving characters on their original class", want);
         return false;
     }
 
@@ -2930,10 +2923,30 @@ void ClasslessMgr::GrantTalentRankInternal(Player* player, TalentPoolEntry const
     if (!newRank || newRank > t.maxRank)
         return;
 
-    if (newRank > 1 && t.rankSpells[newRank - 2] && player->HasSpell(t.rankSpells[newRank - 2]))
-        player->removeSpell(t.rankSpells[newRank - 2], SPEC_MASK_ALL, false);
+    // The rank the Hero actually holds, which is not always newRank - 1: a
+    // roll can land on rank 5 outright. Removing rankSpells[newRank - 2]
+    // blindly meant a jump from 2 to 5 removed rank 4 -- which was never
+    // learned -- and left rank 2's passive applied alongside rank 5's, both
+    // modifiers stacking.
+    uint8 oldRank = 0;
+    if (auto itr = st.talents.find(t.talentId); itr != st.talents.end())
+        oldRank = itr->second;
+    if (oldRank && oldRank != newRank && t.rankSpells[oldRank - 1]
+        && player->HasSpell(t.rankSpells[oldRank - 1]))
+        player->removeSpell(t.rankSpells[oldRank - 1], SPEC_MASK_ALL, false);
 
     player->learnSpell(t.rankSpells[newRank - 1]);
+    // Tell the core this is a TALENT, not just a spell. learnSpell applies the
+    // passive and the server has always calculated with it, but addTalent is
+    // what fills m_talents, and m_talents is all BuildPlayerTalentsInfoData
+    // sends. Without it the client never learns the character owns the talent
+    // and cannot apply its modifiers to a tooltip -- which is why Thunder Clap
+    // kept showing its unmodified rage cost. InitTalentForLevel then recomputes
+    // the points (see OnPlayerCalculateTalentsPoints) and sends the packet.
+    player->addTalent(t.rankSpells[newRank - 1], player->GetActiveSpecMask(), oldRank);
+    player->InitTalentForLevel();
+    player->SetFreeTalentPoints(0);
+    player->SendTalentsInfoData(false);
     // a talent that teaches a spell needs its tab now, not at next login
     SyncSpellbookTabs(player);
     st.talents[t.talentId] = newRank;
@@ -2964,7 +2977,13 @@ void ClasslessMgr::RemoveTalentInternal(Player* player, TalentPoolEntry const& t
     for (uint8 r = 0; r < t.maxRank; ++r)
     {
         uint32 rankSpell = t.rankSpells[r];
-        if (!rankSpell || !player->HasSpell(rankSpell))
+        if (!rankSpell)
+            continue;
+        // Out of the talent map as well as the spellbook, or the core keeps
+        // counting it against m_usedTalentCount and the client keeps drawing
+        // its modifier into every tooltip it touches.
+        player->_removeTalent(rankSpell, SPEC_MASK_ALL);
+        if (!player->HasSpell(rankSpell))
             continue;
         // a rank spell that is also rank 1 of a line the Hero bought or
         // rolled stays: that line owns it now
@@ -2974,6 +2993,10 @@ void ClasslessMgr::RemoveTalentInternal(Player* player, TalentPoolEntry const& t
                 continue;
         player->removeSpell(rankSpell, SPEC_MASK_ALL, false);
     }
+
+    player->InitTalentForLevel();
+    player->SetFreeTalentPoints(0);
+    player->SendTalentsInfoData(false);
 
     // the ability line the talent handed over goes with it
     for (uint32 first : t.abilityLines)
@@ -3715,6 +3738,18 @@ uint32 ClasslessMgr::RollAbility(Player* player, GrantSource source)
         PushAddon(player, Acore::StringFormat("RV|A|{}|{}|{}",
             chosen->firstSpellId, uint32(chosen->rarity), synergy ? 1 : 0));
     return chosen->firstSpellId;
+}
+
+uint8 ClasslessMgr::OwnedClassCount(Player* player) const
+{
+    if (!player)
+        return 0;
+    uint32 const mask = OwnedClassMask(const_cast<ClasslessMgr*>(this)->GetState(player));
+    uint8 count = 0;
+    for (uint8 c = 1; c <= 11; ++c)
+        if (mask & (1u << (c - 1)))
+            ++count;
+    return count;
 }
 
 uint32 ClasslessMgr::RollTalent(Player* player)

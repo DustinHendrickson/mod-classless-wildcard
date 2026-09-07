@@ -308,9 +308,9 @@ for i, classId in ipairs(CLASS_ORDER) do
         CW.classIndex = i
         RequestAbil(0)
         -- follow the class across: jump the Talents pane to that class's first
-        -- tree, so both panes are showing the same class. The Hero page has no
-        -- tree of its own, so it leaves the Talents pane alone.
-        if classId == CLASS_HERO then return end
+        -- tree, so both panes are showing the same class. The Hero page has one
+        -- of its own now -- the server reports the Hero talent tab as class 12
+        -- -- so it takes the same path as every other button.
         for idx, t in ipairs(CW.tabs) do
             if t.class == classId then
                 CW.tabIndex = idx
@@ -2750,12 +2750,27 @@ do
     -- The slot a stock button shows, exactly as SpellBook_GetSpellID works it
     -- out; the second value is the highest-rank slot when ranks are hidden.
     local function slotFor(i, line)
-        local _, _, offset, num = GetSpellTabInfo(line)
+        -- GetSpellTabInfo returns SIX values, and the last two matter:
+        -- name, texture, offset, numSpells, highestRankOffset, highestRankNumSpells.
+        -- Blizzard never reads the raw pair directly -- SpellBook_GetTabInfo
+        -- swaps in the highest-rank pair whenever "Show All Ranks" is off, and
+        -- SpellButton_UpdateButton stores THAT in
+        -- SpellBookFrame.selectedSkillLineOffset, which is what
+        -- SpellBook_GetSpellID then adds. Reading the raw offset put every
+        -- overlay a few slots away from the stock button underneath it: the
+        -- icon was one spell and the tooltip and the drag were another, which
+        -- is exactly what "Blessing of Might shows Seal of Command" is.
+        local _, _, offset, num, hiOffset, hiNum = GetSpellTabInfo(line)
+        local allRanks = not GetCVarBool or GetCVarBool("ShowAllSpellRanks")
+        if not allRanks then
+            offset = hiOffset or offset
+            num = hiNum or num
+        end
         offset, num = tonumber(offset) or 0, tonumber(num) or 0
         local page = SPELLBOOK_PAGENUMBERS and SPELLBOOK_PAGENUMBERS[line] or 1
         local slot = i + offset + PER_PAGE * (page - 1)
         if slot > offset + num then return nil end
-        if GetCVarBool and not GetCVarBool("ShowAllSpellRanks") and GetKnownSlotFromHighestRankSlot then
+        if not allRanks and GetKnownSlotFromHighestRankSlot then
             return GetKnownSlotFromHighestRankSlot(slot) or slot, slot
         end
         return slot, slot

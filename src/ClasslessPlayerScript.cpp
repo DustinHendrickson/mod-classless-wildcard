@@ -100,6 +100,20 @@ public:
     // deliberately: the untouched contexts drive Death Knight rune machinery
     // and the stat/talent maths this module already replaces, where claiming
     // to be every class at once breaks things rather than freeing them.
+    // Counterattack is the only thing AURA_STATE_HUNTER_PARRY feeds, so a
+    // Hero is a hunter for the parry question exactly when they hold it.
+    // Ranks, oldest first; HasSpell is a hash lookup and this runs only on a
+    // parry.
+    static bool OwnsCounterattack(Player const* player)
+    {
+        static constexpr uint32 COUNTERATTACK_RANKS[] =
+            { 19306, 20909, 20910, 27067, 48998, 48999 };
+        for (uint32 id : COUNTERATTACK_RANKS)
+            if (player->HasSpell(id))
+                return true;
+        return false;
+    }
+
     Optional<bool> OnPlayerIsClass(Player const* player, Classes playerClass, ClassContext context) override
     {
         Config const& cfg = sClasslessMgr->cfg;
@@ -123,11 +137,36 @@ public:
             // any other chassis would silently lose shields.
             case CLASS_CONTEXT_EQUIP_SHIELDS:
             // Reactive abilities -- Overpower, Revenge, Riposte, Counterattack
-            // -- only light up if the core sets the matching aura state, and
-            // it sets each one only for its own class. A Hero who bought
-            // Overpower needs the warrior state to exist. Harmless when the
-            // ability is not owned: an aura state nothing reads costs nothing.
+            // -- light up only when the core sets the matching aura state, and
+            // this is the ONE context where "a Hero is every class" is the
+            // wrong answer, because the core uses these questions to choose
+            // BETWEEN states that exclude each other:
+            //
+            //   dodge  Unit.cpp: `if (!IsClass(CLASS_ROGUE, ...))` sets
+            //          AURA_STATE_DEFENSE. Answering yes skipped it, so
+            //          Revenge never came up after a dodge.
+            //   parry  `if (IsClass(CLASS_HUNTER, ...))` sets HUNTER_PARRY,
+            //          else DEFENSE. Answering yes took the hunter branch, so
+            //          Revenge never came up after a parry either.
+            //   block  unconditional, which is why blocks worked and were the
+            //          only thing that did.
+            //
+            // So answer from what the Hero actually owns. A Hero holding
+            // Counterattack is a hunter for the parry question and gets
+            // HUNTER_PARRY; everyone else gets DEFENSE and Revenge works.
+            // Nobody is a rogue here: the rogue answer exists only to DENY
+            // the defense state on a dodge, and Riposte reads that same state,
+            // so saying no costs a Riposte holder nothing and hands Revenge
+            // back to everyone.
             case CLASS_CONTEXT_ABILITY_REACTIVE:
+                if (playerClass == CLASS_ROGUE)
+                    return false;
+                if (playerClass == CLASS_HUNTER)
+                {
+                    if (sClasslessMgr->IsExempt(const_cast<Player*>(player)))
+                        return std::nullopt;
+                    return OwnsCounterattack(player);
+                }
                 break;
             // Runes, and only the Death Knight question, and only when Death
             // Knight content is switched on.
@@ -144,9 +183,17 @@ public:
             // Tied to IncludeDeathKnight so a realm that does not use Death
             // Knight abilities pays neither the allocation nor the per-tick
             // rune loop.
+            // This context is not only the rune question. LootHandler asks it
+            // three times as `IsClass(CLASS_ROGUE, CLASS_CONTEXT_ABILITY)`
+            // before it will let anyone pick a pocket, which is why a Hero was
+            // told they had no permission to loot. The other uses are all safe
+            // to answer yes to: the shaman one scales a weapon totem enchant,
+            // the paladin one removes Righteous Fury on a spec switch, and the
+            // priest one is gated again on actually holding Spirit of
+            // Redemption. Only the Death Knight answer has to stay conditional.
             case CLASS_CONTEXT_ABILITY:
                 if (playerClass != CLASS_DEATH_KNIGHT)
-                    return std::nullopt;
+                    break;
                 // From the character's own snapshot, NOT the live config: this
                 // same question gates both the one-time InitRunes allocation
                 // and the per-tick loop that reads the block it allocates. If
@@ -179,8 +226,14 @@ public:
                 if (sClasslessMgr->IsExempt(const_cast<Player*>(player)))
                     return std::nullopt;
                 Pet* pet = player->GetPet();
+                // With no pet there is nothing to read a type from, and this is
+                // exactly when taming asks: Spell::EffectTameCreature and
+                // EffectCreateTamedPet both check before the pet exists.
+                // Falling through to the chassis meant the tame finished and
+                // silently produced nothing. A Hero may keep any class's pet,
+                // so with none the answer is yes.
                 if (!pet || !pet->GetCreatureTemplate())
-                    return std::nullopt;
+                    return true;
                 uint32 const creatureType = pet->GetCreatureTemplate()->type;
                 switch (playerClass)
                 {
@@ -290,6 +343,13 @@ public:
         sClasslessMgr->EnforceChassis(player);
 
         sClasslessMgr->HandleLogin(player);
+
+        // InitTalentForLevel hands out (ceiling - used) free points whenever the
+        // core recalculates, and it recalculates on login. Spending them is
+        // refused by OnPlayerCanLearnTalent, but the number itself should read
+        // zero, so take them straight back.
+        if (cfg.suppressTalentPoints && !sClasslessMgr->IsExempt(player))
+            player->SetFreeTalentPoints(0);
 
         // A Hero may keep an undead pet, so let them see one.
         //
@@ -501,18 +561,46 @@ public:
     {
         if (sClasslessMgr->cfg.enabled)
             sClasslessMgr->HandleLevelUp(player, oldLevel);
+        // a level-up recalculates the points, so put them back to zero
+        if (sClasslessMgr->cfg.enabled && sClasslessMgr->cfg.suppressTalentPoints
+            && !sClasslessMgr->IsExempt(player))
+            player->SetFreeTalentPoints(0);
     }
 
     // Talents flow through the module — suppress the native talent frame
     // economy (except for exempt bot/system accounts, which play vanilla).
+    //
+    // Report the points the Hero has ALREADY SPENT, not zero. Two things
+    // depend on it:
+    //
+    //   * InitTalentForLevel does `if (m_usedTalentCount > talentPointsForLevel)
+    //     resetTalents(true)` — with zero here, the first talent the module
+    //     records would wipe every talent the character owns on the next
+    //     level-up or login.
+    //   * The other branch is `SetFreeTalentPoints(talentPointsForLevel -
+    //     m_usedTalentCount)`, which is what SuppressTalentPoints exists to
+    //     keep at zero.
+    //
+    // The exact used count would satisfy both at once, but m_usedTalentCount is
+    // protected and the module cannot read it; deriving it from the module's own
+    // state would be a guess that costs a character every talent it owns if the
+    // two ever disagree by one — at login, mid-respec, or in any order the core
+    // decides to call this. So report a ceiling no Hero can reach, which makes
+    // the reset branch unreachable, and put the free points back to zero
+    // wherever the module can reach them (below, and after every grant). The
+    // stock frame is refused by OnPlayerCanLearnTalent regardless, so the worst
+    // case is a number in a window the module replaces.
+    static constexpr uint32 TALENT_POINT_CEILING = 500;
+
     void OnPlayerCalculateTalentsPoints(Player const* player, uint32& talentPointsForLevel) override
     {
         if (!sClasslessMgr->cfg.enabled || !sClasslessMgr->cfg.suppressTalentPoints)
             return;
         if (sClasslessMgr->IsExempt(const_cast<Player*>(player)))
             return;
-        talentPointsForLevel = 0;
+        talentPointsForLevel = TALENT_POINT_CEILING;
     }
+
 
     bool OnPlayerCanLearnTalent(Player* player, TalentEntry const* /*talent*/, uint32 /*rank*/) override
     {

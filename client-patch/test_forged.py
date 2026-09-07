@@ -50,6 +50,13 @@ def recipe_key(key):
     return re.sub(r"_(companion|pet\d+)$", "", key)
 
 
+def is_line(key):
+    """A forged ability line, as opposed to a Hero talent rank. Talents live in
+    the same spell list and the same manifest, but they are not lines: they
+    have no recipe, no rank chain and no skill-line row."""
+    return not key.startswith("talent_")
+
+
 
 def check(label, ok, detail=""):
     print("  [%s] %s%s" % ("ok  " if ok else "FAIL", label, ("  -- " + detail) if detail else ""))
@@ -253,6 +260,7 @@ def main():
         # opened once, here, because more than one rule reads them and a handle
         # created below the rule that uses it is how the last no-op happened
         _vis2 = _Dbc(_os.path.join(_dbc_dir, "SpellVisual.dbc"))
+        _sp = _Dbc(_os.path.join(_dbc_dir, "Spell.dbc"))
         _icon = _Dbc(_os.path.join(_dbc_dir, "SpellIcon.dbc"))
         # a recombined visual's cast kit is its base's unless the recipe
         # overrode slot 2, so resolve it the same way the installer will
@@ -268,6 +276,14 @@ def main():
             for _f in (3, 23, 24, 25):
                 _d = _vis2.u(_b, _f) if _b is not None else 0
                 appended_kits[(vv["id"], _f)] = int(vv.get("kits", {}).get(str(_f), _d))
+    # The generated SQL and the two C++ files, read once here beside the DBC
+    # handles. A rule that opens its own source below the rule that needs it is
+    # how three no-ops have started in this file.
+    sql_all = io.open(SQL, encoding="utf-8").read()
+    cpp_addon = io.open(os.path.join(MODULE, "src", "ClasslessAddon.cpp"),
+                        encoding="utf-8").read()
+    cpp = io.open(os.path.join(MODULE, "src", "ClasslessForgedScripts.cpp"),
+                  encoding="utf-8").read()
     if not _dbc_ok:
         # everything below reads it. Stopping here reports one honest
         # failure instead of a page of checks that looked at nothing.
@@ -281,10 +297,206 @@ def main():
     check("every row has the 234-field layout",
           all(len(s["values"]) == 234 for s in spells))
 
-    bad_family = [s["id"] for s in spells if s["values"][208] != 0]
-    check("no row keeps its donor's SpellFamilyName", not bad_family,
-          "a copied family would let that class's talents modify a classless spell; "
-          "offenders: %s" % bad_family[:5])
+    # ---- the Hero talent tab --------------------------------------------------
+    # A talent reaches a line through the ordinary spell-mod path, so three
+    # things have to hold or it silently does nothing (or far too much).
+    from gen_forged_spells import (TALENTS, HERO_TALENT_TAB, TALENT_ID_BASE,
+                                   HERO_TAB_CLASSMASK)
+    tal_rows = [s for s in spells if s["key"].startswith("talent_")]
+    # what each talent SHOULD reach, resolved from its own recipe
+    from gen_forged_spells import affect_mask as _affect_mask
+    # A spell-mod talent must name exactly the lines its recipe lists; a dummy
+    # talent names none, because nothing matches against it -- C++ finds it by
+    # family and icon instead.
+    _tal_by_key = {tal["key"]: ((0, 0, 0) if tal.get("dummy")
+                                else _affect_mask(tal["affects"]))
+                   for tal in TALENTS}
+    _tal_dummy = {tal["key"] for tal in TALENTS if tal.get("dummy")}
+    tal_bad = []
+    for s in tal_rows:
+        v = s["values"]
+        # A talent rank is a passive. Without ATTR0 PASSIVE the module would
+        # hand the Hero an uncastable spell instead of an applied aura.
+        if not (v[F["Attributes"]] & 0x40):
+            tal_bad.append("%s is not passive" % s["key"])
+        stem = s["key"].rsplit("_r", 1)[0][len("talent_"):]
+        want_aura = (4,) if stem in _tal_dummy else (107, 108)
+        if v[F["Effect"]] != 6 or v[F["EffectApplyAuraName"]] not in want_aura:
+            tal_bad.append("%s applies aura %d, wanted one of %s"
+                           % (s["key"], v[F["EffectApplyAuraName"]], want_aura))
+        # The mask must name EXACTLY the lines the recipe lists. Zero is not
+        # "no spells" -- IsAffected reads it as every spell in the family -- and
+        # "not zero" is not enough either: the nine columns are grouped by word
+        # then effect, so a transposed index still lands word A in the right
+        # column and only goes wrong for a line whose bit sits in word B. So
+        # this resolves the recipe's own `affects` list and compares.
+        # effect 0's three words are the FIRST three columns: the array is
+        # effect-major (see build_row, and the stock check below)
+        mask = tuple(v[F["EffectSpellClassMask"] + i] for i in range(3))
+        want = _tal_by_key.get(stem)
+        if want is None:
+            tal_bad.append("%s has no recipe" % s["key"])
+        elif mask != want:
+            tal_bad.append("%s reaches %s, recipe says %s" % (s["key"], mask, want))
+        # every other column of the nine belongs to an effect this spell does
+        # not have, and must be clear
+        stray = [i for i in range(3, 9) if v[F["EffectSpellClassMask"] + i]]
+        if stray:
+            tal_bad.append("%s wrote a mask into effect %d, which is empty"
+                           % (s["key"], stray[0] // 3))
+        if v[208] != 14:
+            tal_bad.append("%s is not on the Hero family, so it matches nothing"
+                           % s["key"])
+    check("every talent rank is a passive modifier that names its lines",
+          not tal_bad, "%d rank spell(s); %s" % (len(tal_rows), sorted(set(tal_bad))[:3]))
+
+    # ---- the class-mask layout, pinned to stock data -------------------------
+    # EffectSpellClassMask is EFFECT-major: the core declares
+    # `std::array<flag96, MAX_SPELL_EFFECTS>` and reads `[effIndex]`, so the
+    # nine columns are effect0's three words, then effect1's, then effect2's.
+    # The SQL column names (A_1 A_2 A_3 B_1 ...) read the other way round and
+    # I have already followed them once by mistake, which put every talent's
+    # word 1 into effect 1's slot.
+    #
+    # Improved Thunder Clap settles it and cannot drift: it holds
+    # [128,0,0, 128,0,0, 128,0,0] and all three of its effects modify Thunder
+    # Clap, whose own class flag is [128,0,0]. Read effect-major every effect
+    # gets that mask; read word-major, effects 1 and 2 get nothing and the
+    # damage and slow it grants would do nothing at all.
+    _itc = _sp.row_of(12287)          # Improved Thunder Clap
+    _tc = _sp.row_of(6343)            # Thunder Clap
+    layout = []
+    if _itc is None or _tc is None:
+        layout.append("the stock spells this is pinned to are missing")
+    else:
+        base = F["EffectSpellClassMask"]
+        want = tuple(_sp.u(_tc, 209 + i) for i in range(3))
+        for e in range(3):
+            got = tuple(_sp.u(_itc, base + e * 3 + i) for i in range(3))
+            if got != want:
+                layout.append("effect %d of Improved Thunder Clap reads %s, "
+                              "Thunder Clap's own flags are %s" % (e, got, want))
+    check("the effect class-mask layout is effect-major, as the core reads it",
+          not layout,
+          "reading it word-major puts a talent's mask in another effect's slot; %s"
+          % layout[:2])
+
+    # A dummy talent is located from C++ by GetDummyAuraEffect(family, icon,
+    # effIndex). Family is 14 for all of them, so the ICON is the whole key: two
+    # dummy talents on one icon are the same talent as far as any script can
+    # tell, and each would answer for the other.
+    import collections as _c2
+    _dicons = _c2.Counter(tal["icon"] for tal in TALENTS if tal.get("dummy"))
+    shared_icon = ["icon %d is on %d dummy talents" % (i, n)
+                   for i, n in sorted(_dicons.items()) if n > 1]
+    # The C++ finds each scripted talent by a hard-coded icon number. If the
+    # generator moves an icon and the script does not, GetDummyAuraEffect finds
+    # nothing and the talent silently does nothing at all -- it would still be
+    # buyable, still show in the tree, and simply never fire.
+    cpp_icons = set(int(x) for x in
+                    re.findall(r"constexpr uint32 ICON_\w+ = (\d+);", cpp))
+    want_icons = {tal["icon"] for tal in TALENTS if tal.get("dummy")}
+    icon_drift = []
+    if cpp_icons != want_icons:
+        icon_drift.append("generator has %s, the scripts have %s"
+                          % (sorted(want_icons), sorted(cpp_icons)))
+    check("the scripted talents' icons match the numbers the C++ looks for",
+          not icon_drift,
+          "a mismatch makes GetDummyAuraEffect find nothing and the talent do "
+          "nothing; %s" % icon_drift)
+
+    check("every scripted talent has an icon of its own",
+          not shared_icon,
+          "GetDummyAuraEffect keys on family and icon, and the family is shared; %s"
+          % shared_icon[:3])
+
+    # the two DBC tables, and the ids in them
+    have = {s["id"] for s in spells}
+    tab_bad = []
+    if ("(%d, 'Hero', " % HERO_TALENT_TAB) not in sql_all:
+        tab_bad.append("no talenttab_dbc row for tab %d" % HERO_TALENT_TAB)
+    # the addon puts a tab on a class page by the FIRST set bit of its mask,
+    # and its Hero page is 12; ClasslessAddon must walk far enough to see it
+    first_bit = (HERO_TAB_CLASSMASK & -HERO_TAB_CLASSMASK).bit_length()
+    if first_bit != 12:
+        tab_bad.append("ClassMask %d reports class %d, not the addon's Hero page"
+                       % (HERO_TAB_CLASSMASK, first_bit))
+    if "for (uint8 c = 1; c <= 12; ++c)" not in cpp_addon:
+        tab_bad.append("SendTalentTabs stops before class 12, so the Hero tab "
+                       "would be reported as a Warrior tree")
+    cells, ids = set(), set()
+    for n, tal in enumerate(TALENTS):
+        tid = TALENT_ID_BASE + n
+        row = re.search(r"\(%d, %d, (\d+), (\d+), ([\d, ]+?)\)" % (tid, HERO_TALENT_TAB),
+                        sql_all)
+        if not row:
+            tab_bad.append("no talent_dbc row for %s" % tal["key"])
+            continue
+        if (row.group(1), row.group(2)) in cells:
+            tab_bad.append("%s shares a cell with another talent" % tal["key"])
+        cells.add((row.group(1), row.group(2)))
+        ids.add(tid)
+        ranks = [int(x) for x in row.group(3).split(",")[:5] if int(x)]
+        if len(ranks) != tal["ranks"]:
+            tab_bad.append("%s lists %d rank spells, recipe says %d"
+                           % (tal["key"], len(ranks), tal["ranks"]))
+        for sid in ranks:
+            if sid not in have:
+                tab_bad.append("%s names spell %d, which is not written" % (tal["key"], sid))
+    check("the Hero talent tab and its talents are written whole",
+          not tab_bad, "%d talent(s); %s" % (len(TALENTS), sorted(set(tab_bad))[:3]))
+
+    # ---- the Hero family, and one class bit per line -------------------------
+    # SpellFamilyNames 2, 14 and 16 are unused by every class, and the forged
+    # set claims 14. That is what lets a Hero talent modify these spells --
+    # SpellInfo::IsAffected matches the modifier's family against this one and
+    # then its EffectSpellClassMask against this spell's own class flags. A
+    # class family would hand these spells to that class's talents; family 0
+    # would make EVERY modifier in the game affect them, because IsAffected
+    # returns true outright when the modifier's family is 0.
+    bad_family = [s["id"] for s in spells if s["values"][208] != 14]
+    check("every row is on the Hero spell family", not bad_family,
+          "family must be %d: a class family hands these spells to that class's "
+          "talents and 0 makes every modifier in the game apply; offenders: %s"
+          % (14, bad_family[:5]))
+
+    # Every donor row carried its own class flags -- Makeshift Strike held
+    # Sinister Strike's 8388610 -- inert only while the family was 0 and live
+    # the moment it is not. One deliberate bit per line, shared by that line's
+    # companion and pet spells so a talent naming a line reaches all of it.
+    import collections as _cl
+    linebit = _cl.defaultdict(set)
+    for s in spells:
+        if s["key"].startswith("talent_"):
+            continue          # a talent is not a line and owns no line bit
+        base = s["key"].split("_pet")[0]
+        if base.endswith("_companion"):
+            base = base[:-len("_companion")]
+        linebit[base].add(tuple(s["values"][209:212]))
+    bitbad = []
+    seen_masks = {}
+    for line, masks in sorted(linebit.items()):
+        if len(masks) != 1:
+            bitbad.append("%s: its parts carry %d different masks" % (line, len(masks)))
+            continue
+        mask = masks.pop()
+        ones = sum(bin(w).count("1") for w in mask)
+        if ones != 1:
+            bitbad.append("%s: mask has %d bits set, want exactly 1" % (line, ones))
+            continue
+        if mask in seen_masks:
+            bitbad.append("%s and %s share a class bit" % (line, seen_masks[mask]))
+        seen_masks[mask] = line
+    check("every line owns exactly one class bit, and no two share",
+          not bitbad, "%d line(s); %s" % (len(linebit), bitbad[:3]))
+
+    # A spell mod cannot reach a spell that refuses caster modifiers, and
+    # IsAffectedBySpellMod tests this first, so a donor's bit would make a
+    # talent silently do nothing.
+    unmoddable = [s["name"] for s in spells if s["values"][7] & 0x20000000]
+    check("no row refuses caster modifiers", not unmoddable,
+          "ATTR3 IGNORE_CASTER_MODIFIERS makes every Hero talent a no-op on it; %s"
+          % sorted(set(unmoddable))[:4])
 
     ids = [s["id"] for s in spells]
     check("ids are unique", len(ids) == len(set(ids)))
@@ -311,8 +523,9 @@ def main():
     # ---- levels -------------------------------------------------------------
     lines = {}
     for s in spells:
-        # hidden halves and pet abilities are not lines of their own
-        if recipe_key(s["key"]) != s["key"]:
+        # hidden halves and pet abilities are not lines of their own, and a
+        # talent rank is not a line at all
+        if recipe_key(s["key"]) != s["key"] or not is_line(s["key"]):
             continue
         lines.setdefault(s["key"], []).append(s)
     ok_first, ok_order, ok_cap = True, True, True
@@ -340,6 +553,8 @@ def main():
             parent_rank[(s["key"], s["level"])] = s["rank"]
     off, checked = [], 0
     for s in spells:
+        if not is_line(s["key"]):
+            continue          # a talent's numbers are literals, not a curve
         key = recipe_key(s["key"])
         recipe = by_key[key]
         effects = effects_for(recipe, s["key"])
@@ -541,7 +756,6 @@ def main():
     # not marginal: Holy Nova's 3154 is 24 of 26, Circle of Healing's 165 is 7
     # of 118, Sprint's 395 is 2 of 100.
     CASTER_AREA = {(22, 15), (22, 30), (22, 7), (18, 31), (22, 45)}
-    _sp = _Dbc(_os.path.join(_dbc_dir, "Spell.dbc"))
     _castkit = {_vis2.u(_r, 0): _vis2.u(_r, 2) for _r in range(_vis2.rows)}
     _tally = {}
     for _r in range(_sp.rows):
@@ -645,7 +859,6 @@ def main():
     # ---- every summon has a creature, and that creature has a model ---------
     # Models live in creature_template_model, not creature_template. A creature
     # with no row there spawns invisible: the spell works and nothing appears.
-    sql_all = io.open(SQL, encoding="utf-8").read()
     missing = []
     for sp in spells:
         for i in range(3):
@@ -667,6 +880,8 @@ def main():
     # fails. Charge brought Battle Stance and Psychic Scream brought Shadowform.
     inherited = []
     for sp in spells:
+        if not is_line(sp["key"]):
+            continue          # a talent rank is a passive by design
         v = sp["values"]
         who = "%s r%d" % (sp["name"], sp["rank"])
         if v[12] or v[14]:
@@ -757,7 +972,9 @@ def main():
             if v[F["RangeIndex"]] == 1 and 6 in (tgt, tgtb):
                 coherence.append("%s: effect %d targets an enemy at self range"
                                  % (sp["name"], i))
-        if has_aura and not v[F["DurationIndex"]]:
+        # A talent's passive has no duration on purpose: it lasts as long as
+        # the talent is owned. Everything else that applies an aura needs one.
+        if has_aura and not v[F["DurationIndex"]] and is_line(sp["key"]):
             coherence.append("%s: applies an aura with no duration" % sp["name"])
     check("effects, targets and durations agree", not coherence,
           "%d row(s) checked; %s" % (len(spells), coherence[:3]))
@@ -767,8 +984,6 @@ def main():
     # effect at that index is something else the hook is never called, the spell
     # quietly loses the half that made it interesting, and nothing logs it.
     # Read from the C++ rather than assumed, so moving an effect breaks this.
-    cpp = io.open(os.path.join(MODULE, "src", "ClasslessForgedScripts.cpp"),
-                  encoding="utf-8").read()
     E_CONST = {"SPELL_EFFECT_SCHOOL_DAMAGE": 2, "SPELL_EFFECT_DUMMY": 3,
                "SPELL_EFFECT_APPLY_AURA": 6, "SPELL_EFFECT_HEAL": 10,
                "SPELL_EFFECT_PERSISTENT_AREA_AURA": 27, "SPELL_EFFECT_SUMMON": 28,
@@ -955,6 +1170,8 @@ def main():
     RANGED_OK = {"Ricochet Shot"}
     stuck = []
     for sp in spells:
+        if not is_line(sp["key"]):
+            continue          # a talent rank IS a passive, on purpose
         v = sp["values"]
         for col, bit, nm in STUCK_BITS:
             if v[col] & bit:
@@ -1021,7 +1238,6 @@ def main():
     # becoming a point-blank swing. Both were invisible until the shape was
     # compared with the shipped spells that do the same thing.
     unknown_shape = []
-    _sp = _Dbc(_os.path.join(_dbc_dir, "Spell.dbc"))
     _sla = _Dbc(_os.path.join(_dbc_dir, "SkillLineAbility.dbc"))
     _skl = _Dbc(_os.path.join(_dbc_dir, "SkillLine.dbc"))
     if _sp is not None:
@@ -1148,6 +1364,51 @@ def main():
 
     # ---- the SQL ------------------------------------------------------------
     sql = io.open(SQL, encoding="utf-8").read()
+    # ---- every INSERT names as many columns as it writes values --------------
+    # This whole set opened with "Unknown column 'type' in 'field list'" on a
+    # realm, and the talent table shipped 24 values into 23 columns before this
+    # rule existed. MySQL refuses the whole file either way, so one miscount
+    # takes the migration down with it.
+    def _top_level_values(body):
+        """Count comma-separated values, ignoring commas inside quotes."""
+        depth, count, instr, prev = 0, 1, False, ""
+        for ch in body:
+            if instr:
+                if ch == "'" and prev != "\\":
+                    instr = False
+            elif ch == "'":
+                instr = True
+            elif ch == "(":
+                depth += 1
+            elif ch == ")":
+                depth -= 1
+            elif ch == "," and depth == 0:
+                count += 1
+            prev = ch
+        return count
+
+    arity, table, ncols = [], None, 0
+    for line in sql_all.splitlines():
+        head = re.match(r"INSERT INTO `(\w+)` \((.*)\) VALUES", line.strip())
+        if head:
+            table = head.group(1)
+            ncols = _top_level_values(head.group(2))
+            continue
+        if not table:
+            continue
+        row = line.strip()
+        if row.startswith("(") and row.rstrip(",;").endswith(")"):
+            got = _top_level_values(row.rstrip(",;")[1:-1])
+            if got != ncols:
+                arity.append("%s: a row writes %d values into %d columns"
+                             % (table, got, ncols))
+                table = None
+        elif row and not row.startswith("--"):
+            table = None
+    check("every INSERT writes one value per column it names",
+          not arity, "MySQL refuses the whole file on a miscount; %s"
+          % sorted(set(arity))[:3])
+
     check("the Hero skill line row is written",
           re.search(r"INSERT INTO `skillline_dbc`", sql) is not None
           and ("(%d, 7, 0, 'Hero'" % HERO_LINE) in sql,

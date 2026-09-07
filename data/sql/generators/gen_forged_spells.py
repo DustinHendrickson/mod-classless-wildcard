@@ -26,6 +26,7 @@ hand against a named spell and recorded in the recipe's `compare` field.
 """
 import argparse
 import hashlib
+import collections as _collections
 import io
 import json
 import re
@@ -281,6 +282,44 @@ POWER = {"mana": 0, "rage": 1, "energy": 3}
 # tooltip, which is exactly how it went unnoticed. Nearly every caster spell in
 # WotLK prices itself this way -- Fireball is 8%, Flash Heal 18%, Chain
 # Lightning 26% -- and the median across every band is 12 to 18%.
+# SpellFamilyNames 2, 14 and 16 are unused by every class in WotLK. Claiming
+# 14 for the forged set is what lets a Hero talent modify these spells the way
+# Blizzard's own talents modify their class's: SpellInfo::IsAffected matches
+# the modifier's family against this one, then the modifier's
+# EffectSpellClassMask against this spell's SpellClassMask. Family 0 would have
+# meant "affects everything" for any modifier, and a class family would have
+# handed these spells to that class's talents -- which is why they were 0.
+HERO_FAMILY = 14
+# Columns 209-211 are this spell's own class flags, 96 bits across three.
+# Every line takes the bit of its pinned index, and a line's companion and pet
+# spells take the same one, so a talent that names a line reaches all of it.
+SPELL_CLASS_MASK = 209
+
+# ---- the Hero talent tab ------------------------------------------------
+# TalentTab 990, the same number the Hero skill line uses. ClassMask 2048 is
+# bit 11: ClasslessAddon::SendTalentTabs reports a tab's class as its first set
+# bit, and the addon has always known CLASS_HERO = 12 and drawn a Hero button
+# for it. Neither the stock tabs nor the stock talents are touched -- a
+# `_dbc` world table adds and overrides by id, it does not replace the file.
+HERO_TALENT_TAB = 990
+HERO_TAB_CLASSMASK = 1 << 11          # bit 11 -> classId 12, the addon's Hero page
+HERO_TAB_ICON = 3411                  # Ability_Hunter_FocusedAim, the Hero line's own
+TALENT_ID_BASE = 9000                 # stock Talent.dbc ends at 2285
+TALENT_SPELL_BASE = 961600            # blocks 50+, past the 33 lines and inside BLOCK_END
+TALENT_SPELL_STRIDE = 8               # five ranks and room to spare
+
+# SpellModOp, from SpellDefines.h. A talent effect's EffectMiscValue is the op
+# it modifies and its EffectSpellClassMask says which lines it reaches.
+MOD_DAMAGE, MOD_DURATION, MOD_RANGE, MOD_RADIUS = 0, 1, 5, 6
+MOD_CRIT, MOD_ALL_EFFECTS, MOD_CASTING_TIME, MOD_COOLDOWN = 7, 8, 10, 11
+MOD_EFFECT2, MOD_COST, MOD_JUMP_TARGETS = 12, 14, 17
+A_DUMMY = 4                           # read by C++ through GetDummyAuraEffect
+A_ADD_FLAT_MODIFIER = 107
+A_ADD_PCT_MODIFIER = 108
+# Spell Impact: passive, one APPLY_AURA of ADD_PCT_MODIFIER, no cost, no
+# duration. Everything else in the row is overwritten.
+TALENT_DONOR = 11242
+
 MANA_COST_PCT = 204
 # AttributesEx7 is column 11, and bit 16 is the core's "Can restore secondary
 # power". See build_row: without it a power-restoring effect is a no-op on any
@@ -1184,6 +1223,142 @@ RECIPES = [
 #
 # RECIPES above is free to be in whatever order reads best. This is the order
 # that must never change.
+# =====================================================================
+# THE HERO TALENT TAB
+#
+# A talent reaches a forged line through the ordinary spell-mod path: its
+# effect names a SpellModOp in EffectMiscValue and the lines it touches in
+# EffectSpellClassMask, and SpellInfo::IsAffected matches this file's
+# SpellFamilyName (14) and then that mask against each line's own class bit.
+# No script, no hook -- the same machinery every class tree runs on.
+#
+# `affects` is a list of recipe keys. Their bits are resolved at build time
+# from ID_ORDER, so a talent can never point at a line that does not exist.
+# =====================================================================
+MARKERS = ["cairn", "waystone", "signal_fire", "bulwark_anchor",
+           "rally_point", "reclaimed_sentry"]
+CONTROL = ["kick_dirt", "vertigo", "hush", "draw_attention", "rattle"]
+RESERVES = ["brace", "ward_off", "second_nature", "adrenaline"]
+
+TALENTS = [
+    # ---- column 0: improvisation, the pools feeding each other -------------
+    dict(key="improvised_arsenal", name="Improvised Arsenal", row=0, col=0, ranks=5,
+         icon=2185, affects=["makeshift_strike", "hurl"],
+         op=MOD_DAMAGE, pct=True, values=[4, 8, 12, 16, 20],
+         desc="Increases the damage of Makeshift Strike and Hurl by $s1%."),
+    dict(key="field_repairs", name="Field Repairs", row=1, col=0, ranks=3,
+         icon=1997, affects=["second_nature", "adrenaline"],
+         op=MOD_ALL_EFFECTS, pct=True, values=[10, 20, 30],
+         desc="Second Nature and Adrenaline restore $s1% more."),
+    dict(key="deep_pockets", name="Deep Pockets", row=2, col=0, ranks=2,
+         icon=3397, affects=["brace", "ward_off"],
+         op=MOD_DURATION, pct=False, values=[3000, 6000],
+         desc="Increases the duration of Brace and Ward Off by $/1000;s1 sec."),
+    dict(key="thrift", name="Thrift", row=3, col=0, ranks=3,
+         icon=3184, affects=RESERVES + ["quicksilver"],
+         op=MOD_COST, pct=True, values=[-10, -20, -30],
+         desc="Reduces the cost of Brace, Ward Off, Second Nature, Adrenaline and "
+              "Quicksilver by $s1%."),
+    dict(key="overdraw", name="Overdraw", row=4, col=0, ranks=3,
+         icon=2899, affects=["adrenaline", "quickening", "second_nature"],
+         op=MOD_COOLDOWN, pct=True, values=[-10, -20, -30],
+         desc="Reduces the cooldown of Adrenaline, Quickening and Second Nature by $s1%."),
+
+    # ---- column 1: the things you put on the ground ------------------------
+    dict(key="scavengers_eye", name="Scavenger's Eye", row=0, col=1, ranks=3,
+         icon=442, affects=MARKERS,
+         op=MOD_DURATION, pct=False, values=[3000, 6000, 9000],
+         desc="Everything you place lasts $/1000;s1 sec longer."),
+    dict(key="wider_net", name="Wider Net", row=1, col=1, ranks=2,
+         icon=2034, affects=MARKERS,
+         op=MOD_RADIUS, pct=True, values=[10, 20],
+         desc="Increases the radius of everything you place by $s1%."),
+    # "Pack Mule" is a stock spell name (62076) and the client keys tooltips by
+    # name in places, so it takes one of its own.
+    dict(key="pack_mule", name="Beast Handler", row=2, col=1, ranks=3,
+         icon=1630, affects=["venom_beetle", "reclaimed_sentry"],
+         op=MOD_DAMAGE, pct=True, values=[10, 20, 30],
+         desc="Your Venom Beetle and Reclaimed Sentry deal $s1% more damage."),
+    dict(key="quick_deploy", name="Quick Deploy", row=3, col=1, ranks=3,
+         icon=2629, affects=MARKERS,
+         op=MOD_COOLDOWN, pct=True, values=[-10, -20, -30],
+         desc="Reduces the cooldown of everything you place by $s1%."),
+    dict(key="standing_stones", name="Standing Stones", row=4, col=1, ranks=2,
+         icon=3506, affects=MARKERS,
+         op=MOD_COST, pct=True, values=[-20, -40],
+         desc="Reduces the cost of everything you place by $s1%."),
+
+    # ---- column 2: breadth, the classless payoff ---------------------------
+    dict(key="field_study", name="Field Study", row=0, col=2, ranks=3,
+         icon=1468, affects=["emberfeed", "bleed_over"],
+         op=MOD_DAMAGE, pct=True, values=[5, 10, 15],
+         desc="Increases the damage of Emberfeed and Bleed Over by $s1%. Both heal "
+              "you for what they deal, so both heal for more."),
+    dict(key="opportunist", name="Opportunist", row=1, col=2, ranks=5,
+         icon=350, affects=CONTROL,
+         op=MOD_COOLDOWN, pct=True, values=[-4, -8, -12, -16, -20],
+         desc="Reduces the cooldown of Pocket Sand, Vertigo, Hush, Draw Attention "
+              "and Rattle by $s1%."),
+    dict(key="weave", name="Weave", row=2, col=2, ranks=3,
+         icon=2458, affects=["crossdraw", "antipode_blast", "wildcard_surge"],
+         op=MOD_DAMAGE, pct=True, values=[6, 12, 18],
+         desc="Increases the damage of Crossdraw, Antipode Blast and Wildcard Surge "
+              "by $s1%."),
+    dict(key="wide_swing", name="Wide Swing", row=3, col=2, ranks=2,
+         icon=2847, affects=["wide_arc", "kick_dirt", "vertigo", "overflow", "sinkhole"],
+         op=MOD_RADIUS, pct=True, values=[15, 30],
+         desc="Increases the radius of Wide Arc, Pocket Sand, Vertigo, Overflow and "
+              "Sinkhole by $s1%."),
+    dict(key="ricochet_chamber", name="Ricochet Chamber", row=4, col=2, ranks=2,
+         icon=2242, affects=["ricochet_shot"],
+         op=MOD_EFFECT2, pct=False, values=[1, 2],
+         desc="Ricochet Shot bounces $s1 additional time."),
+
+    # ---- column 3: what a Hero has that no class does ----------------------
+    dict(key="long_reach", name="Long Reach", row=2, col=3, ranks=2,
+         icon=251, affects=["hurl", "ricochet_shot", "overflow", "quicksilver",
+                            "sinkhole", "reclaimed_sentry", "rattle"],
+         op=MOD_RANGE, pct=True, values=[10, 20],
+         desc="Increases the range of your ranged Hero abilities by $s1%."),
+    dict(key="sharpened", name="Sharpened", row=3, col=3, ranks=3,
+         icon=2982, affects=["makeshift_strike", "hurl", "wide_arc", "crossdraw",
+                             "emberfeed", "antipode_blast", "vanguard_rush",
+                             "ricochet_shot", "wildcard_surge"],
+         op=MOD_CRIT, pct=False, values=[3, 6, 9],
+         desc="Increases the critical strike chance of your damaging Hero abilities "
+              "by $s1%."),
+    dict(key="encore", name="Encore", row=5, col=3, ranks=3,
+         icon=2615, affects=["repertoire"],
+         op=MOD_DURATION, pct=False, values=[4000, 8000, 12000],
+         desc="Increases the duration of Repertoire by $/1000;s1 sec."),
+    # ---- the four a modifier cannot express -------------------------------
+    # These carry SPELL_AURA_DUMMY and are read by C++ through
+    # GetDummyAuraEffect(family, icon, 0). The icon is the key, so each of the
+    # four wears one no other Hero talent does.
+    dict(key="adrenal_surge", name="Adrenal Surge", row=5, col=0, ranks=2,
+         icon=1904, dummy=True, values=[10, 20],
+         desc="Increases the maximum bonus of Quickening by $s1%."),
+    # "Overcharge" is a stock spell name (37104, 64218), so this takes its own.
+    dict(key="overcharge", name="Overclocked", row=6, col=1, ranks=1,
+         icon=2303, dummy=True, values=[50],
+         desc="Your Reclaimed Sentry fires twice as often."),
+    dict(key="two_schools", name="Two Schools", row=7, col=2, ranks=5,
+         icon=2215, dummy=True, values=[2, 4, 6, 8, 10],
+         desc="Whenever you deal damage of a different school than your last, that "
+              "damage is increased by $s1%."),
+    dict(key="jack_of_all_trades", name="Jack of All Trades", row=8, col=3, ranks=5,
+         icon=2590, dummy=True, values=[1, 2, 3, 4, 5],
+         desc="Increases your damage and healing by $s1% for every 3 different "
+              "classes you have an ability from."),
+
+    dict(key="broad_strokes", name="Broad Strokes", row=6, col=3, ranks=2,
+         icon=1871, affects=["overflow", "cairn", "rally_point", "signal_fire"],
+         op=MOD_ALL_EFFECTS, pct=True, values=[15, 30],
+         desc="Increases the healing and benefit of Overflow, Cairn, Rally Point and "
+              "Signal Fire by $s1%."),
+]
+
+
 ID_ORDER = [
     "makeshift_strike", "second_nature", "emberfeed", "antipode_blast",
     "overflow", "vanguard_rush", "hush", "vertigo", "sinkhole",
@@ -1223,6 +1398,59 @@ def pinned_index(key):
 
 def block_of(index):
     return SPELL_BASE + index * PER_RECIPE
+
+
+def affect_mask(keys):
+    """The three 32-bit words naming the lines a talent reaches.
+
+    A key that is not a line is a hard error rather than a silently empty
+    mask: an EffectSpellClassMask of zero means "affects every spell in the
+    family", which is every forged ability at once.
+    """
+    words = [0, 0, 0]
+    for key in keys:
+        bit = pinned_index(key)          # exits if the key is not a real line
+        words[bit // 32] |= 1 << (bit % 32)
+    assert any(words), "a talent must name at least one line"
+    return tuple(words)
+
+
+def build_talents(spell):
+    """One passive spell per talent rank, plus the rows the two tables need."""
+    rows, meta = [], []
+    for n, tal in enumerate(TALENTS):
+        assert len(tal["values"]) == tal["ranks"], tal["key"]
+        # A dummy talent is read by C++ rather than matched by the spell-mod
+        # system, so it names no lines and carries no mask at all.
+        mask = (0, 0, 0) if tal.get("dummy") else affect_mask(tal["affects"])
+        level = 10 + tal["row"] * 5
+        ranks = []
+        for r in range(tal["ranks"]):
+            sid = TALENT_SPELL_BASE + n * TALENT_SPELL_STRIDE + r
+            rec = dict(
+                key="talent_%s" % tal["key"], name=tal["name"], passive=True,
+                ranks=tal["ranks"], donor=TALENT_DONOR, school=1,
+                icon=tal["icon"], visual=0,
+                power=("mana", 0), range_idx=RANGE_SELF, cast_idx=CAST_INSTANT,
+                cooldown_ms=0,
+                effects=[dict(
+                    eff=E_APPLY_AURA,
+                    aura=(A_DUMMY if tal.get("dummy") else
+                          (A_ADD_PCT_MODIFIER if tal["pct"] else A_ADD_FLAT_MODIFIER)),
+                    base=tal["values"][r], tgt=T_SELF,
+                    misc=0 if tal.get("dummy") else tal["op"], affect_mask=mask)],
+                desc=tal["desc"],
+            )
+            row, donor = build_row(spell, rec, r, level, sid, None, None)
+            rows.append(dict(id=sid, first=TALENT_SPELL_BASE + n * TALENT_SPELL_STRIDE,
+                             rank=r + 1, level=level,
+                             key="talent_%s_r%d" % (tal["key"], r + 1), values=row,
+                             base=TALENT_DONOR, fields=overrides_of(row, donor),
+                             visual=0, icon=tal["icon"], sla=None))
+            ranks.append(sid)
+        meta.append(dict(id=TALENT_ID_BASE + n, key=tal["key"], name=tal["name"],
+                         row=tal["row"], col=tal["col"], ranks=ranks))
+    return rows, meta
 
 
 def check_blocks(spells, visuals):
@@ -1274,11 +1502,21 @@ def build_row(spell, recipe, rank_index, level, spell_id, next_id, companion_id)
     setf("Id", spell_id)
     # A copied row carries the donor's family, which would let that class's
     # talents modify a spell no class owns. Cut it and the class mask with it.
-    v[208] = 0                                  # SpellFamilyName
+    v[208] = recipe.get("family", HERO_FAMILY)   # SpellFamilyName
     for off in range(3):
         setf("EffectSpellClassMask", 0, off * 3)
         setf("EffectSpellClassMask", 0, off * 3 + 1)
         setf("EffectSpellClassMask", 0, off * 3 + 2)
+    # This row's OWN class flags. The donor's survive otherwise -- every forged
+    # row was carrying one (Makeshift Strike held Sinister Strike's 8388610),
+    # inert only because the family was 0, and live the moment it is not.
+    v[SPELL_CLASS_MASK] = v[SPELL_CLASS_MASK + 1] = v[SPELL_CLASS_MASK + 2] = 0
+    if "class_bit" in recipe:
+        bit = recipe["class_bit"]
+        v[SPELL_CLASS_MASK + bit // 32] = 1 << (bit % 32)
+    # A spell mod cannot reach a spell that refuses caster modifiers, and
+    # SpellInfo::IsAffectedBySpellMod checks this before anything else.
+    v[7] &= ~0x20000000                         # ATTR3 IGNORE_CASTER_MODIFIERS
     v[1] = 0                                    # Category
     v[49] = 0                                   # StackAmount
     # ProcFlags say WHEN this spell's proc aura fires. None of these spells has
@@ -1303,8 +1541,14 @@ def build_row(spell, recipe, rank_index, level, spell_id, next_id, companion_id)
               | 0x00010000   # NOT_SHAPESHIFTED
               | 0x00004000   # ONLY_INDOORS
               | 0x00008000   # ONLY_OUTDOORS
-              | 0x00020000   # ONLY_STEALTHED
-              | 0x00000040)  # PASSIVE
+              | 0x00020000)  # ONLY_STEALTHED
+    # PASSIVE is cleared for an ability -- a donor's passive bit would leave it
+    # uncastable -- but a talent rank IS a passive, and 0x80 keeps it off the
+    # buff bar the way every stock talent passive is.
+    if recipe.get("passive"):
+        v[4] |= 0x00000040 | 0x00000080
+    else:
+        v[4] &= ~0x00000040
     # Hand of Freedom is castable while stunned on purpose; six spells that
     # copied its row inherited that and became defensive and offensive
     # cooldowns a stun could not answer. Nothing in this set is meant to beat
@@ -1381,6 +1625,23 @@ def build_row(spell, recipe, rank_index, level, spell_id, next_id, companion_id)
         setf("EffectChainTarget", chain, slot)
         setf("EffectMiscValue", 0, slot)
         setf("EffectMiscValueB", (e.get("miscb", 0) if e else 0), slot)
+        # Which spells this effect's modifier reaches, matched against the
+        # target spell's own class flags.
+        #
+        # The layout is EFFECT-major, not word-major: the core declares
+        # `std::array<flag96, MAX_SPELL_EFFECTS> EffectSpellClassMask` and
+        # reads `EffectSpellClassMask[effIndex]`, so the nine columns are
+        # effect0's three words, then effect1's, then effect2's. The SQL names
+        # (A_1 A_2 A_3 B_1 ...) read the other way round and are a trap: going
+        # by them puts word 1 into effect 1's column.
+        #
+        # Stock proof, checked in test_forged.py so this cannot flip again:
+        # Improved Thunder Clap (12287) holds [128,0,0, 128,0,0, 128,0,0] and
+        # Thunder Clap's own flags are [128,0,0]. Effect-major gives all three
+        # of its effects that mask -- cost, damage and slow, which is what the
+        # talent does. Word-major would leave effects 1 and 2 with nothing.
+        for word, val in enumerate(e.get("affect_mask", (0, 0, 0)) if e else (0, 0, 0)):
+            setf("EffectSpellClassMask", val, slot * 3 + word)
         setf("EffectDieSides", 1 if e else 0, slot)
         setf("EffectRealPointsPerLevel", 0.0, slot)
         setf("EffectPointsPerComboPoint", 0.0, slot)
@@ -1452,6 +1713,10 @@ def build(spell, only=None):
         if only and recipe["key"] not in only:
             continue
         index = pinned_index(recipe["key"])
+        # the line's own class-flag bit, stable for the life of the line because
+        # ID_ORDER is. A companion and a pet spell inherit it with the rest of
+        # the recipe, so a talent that names a line reaches every part of it.
+        recipe = dict(recipe, class_bit=index)
         first = block_of(index)
         if recipe.get("visual_kits"):
             vid = VISUAL_BASE + index
@@ -1510,7 +1775,15 @@ def build(spell, only=None):
         lines.append(dict(key=recipe["key"], first=first, rarity=recipe["rarity"],
                           type=recipe.get("type", 255), name=recipe["name"], ids=ids))
         meta.append(dict(key=recipe["key"], compare=recipe["compare"]))
-    return spells, lines, meta, visuals
+    # The Hero talent tab. Its rank spells ride in the same list as everything
+    # else, so they reach the client through the one installer and the one
+    # manifest; `sla` is None, so none of them gets a skill-line row.
+    if not only:
+        trows, tmeta = build_talents(spell)
+        spells.extend(trows)
+    else:
+        tmeta = []
+    return spells, lines, meta, visuals, tmeta
 
 
 def generation_id(spells, visuals=(), creatures=()):
@@ -1581,7 +1854,7 @@ def table_sql(table, columns, comment):
 
 
 # ---- output -----------------------------------------------------------------
-def write_sql(spells, lines, gen, path):
+def write_sql(spells, lines, gen, path, talents=()):
     L = ["-- mod-classless-wildcard: forged spells, generated by",
          "-- data/sql/generators/gen_forged_spells.py. Do not hand-edit.",
          "-- Requires a worldserver restart.",
@@ -1633,6 +1906,12 @@ def write_sql(spells, lines, gen, path):
     # neither, and a row here would make the server treat each as a line of its
     # own. `sla is None` is the same test that keeps them out of the tab.
     ranked = [s for s in spells if s["sla"] is not None]
+    # A LINE of one rank is not a chain, and SpellMgr::LoadSpellRanks logs
+    # "There is only 1 spell rank for identifier ... entry is not needed!" for
+    # every one of them at startup. Ten forged lines have a single rank, so ten
+    # of those lines were ours.
+    _per_line = _collections.Counter(s["first"] for s in ranked)
+    ranked = [s for s in ranked if _per_line[s["first"]] > 1]
     L.append("INSERT INTO `spell_ranks` (`first_spell_id`, `spell_id`, `rank`) VALUES")
     for n, s in enumerate(ranked):
         end = ";" if n == len(ranked) - 1 else ","
@@ -1741,6 +2020,41 @@ def write_sql(spells, lines, gen, path):
             L.append("(%d, %d, %d, 12340)%s" % (entry, idx, sid, end))
         L.append("")
 
+    if talents:
+        L.append("-- The Hero talent tab. `talenttab_dbc` and `talent_dbc` are world-table")
+        L.append("-- overrides: DBCDatabaseLoader::Load ADDS and overrides by id, so the")
+        L.append("-- stock 33 tabs and 892 talents are untouched. Column order is the DBC")
+        L.append("-- field order, one column per character of the core's format string.")
+        L.append("DELETE FROM `talenttab_dbc` WHERE `ID` = %d;" % HERO_TALENT_TAB)
+        L.append("INSERT INTO `talenttab_dbc` (`ID`, `Name_Lang_enUS`, `Name_Lang_Mask`, "
+                 "`SpellIconID`, `RaceMask`, `ClassMask`, `PetTalentMask`, `OrderIndex`, "
+                 "`BackgroundFile`) VALUES")
+        # ClassMask bit 11 -> the addon's CLASS_HERO page, which already has a
+        # button and an icon and only ever lacked a tree.
+        L.append("(%d, 'Hero', 16712190, %d, 0, %d, 0, 0, '');"
+                 % (HERO_TALENT_TAB, HERO_TAB_ICON, HERO_TAB_CLASSMASK))
+        L.append("")
+        first_id = TALENT_ID_BASE
+        last_id = TALENT_ID_BASE + len(TALENTS) - 1
+        L.append("DELETE FROM `talent_dbc` WHERE `ID` BETWEEN %d AND %d;" % (first_id, last_id))
+        L.append("INSERT INTO `talent_dbc` (`ID`, `TabID`, `TierID`, `ColumnIndex`, "
+                 "`SpellRank_1`, `SpellRank_2`, `SpellRank_3`, `SpellRank_4`, `SpellRank_5`, "
+                 "`SpellRank_6`, `SpellRank_7`, `SpellRank_8`, `SpellRank_9`, "
+                 "`PrereqTalent_1`, `PrereqTalent_2`, `PrereqTalent_3`, "
+                 "`PrereqRank_1`, `PrereqRank_2`, `PrereqRank_3`, `Flags`, "
+                 "`RequiredSpellID`, `CategoryMask_1`, `CategoryMask_2`) VALUES")
+        for n, t in enumerate(talents):
+            end = ";" if n == len(talents) - 1 else ","
+            ranks = list(t["ranks"]) + [0] * (5 - len(t["ranks"]))
+            # 23 columns: ID, TabID, TierID, ColumnIndex, SpellRank_1..9,
+            # PrereqTalent_1..3, PrereqRank_1..3, Flags, RequiredSpellID and
+            # CategoryMask_1..2. That is 4 + 5 written ranks + 14 zeros.
+            L.append("(%d, %d, %d, %d, %s, %s)%s"
+                     % (t["id"], HERO_TALENT_TAB, t["row"], t["col"],
+                        ", ".join(str(x) for x in ranks),
+                        ", ".join(["0"] * 14), end))
+        L.append("")
+
     L.append("INSERT INTO `cw_forged_spells` (`first_spell`, `recipe`, `rarity`, `type`, `enabled`) "
              "VALUES")
     for n, ln in enumerate(lines):
@@ -1798,7 +2112,7 @@ def main(argv=None):
                  % spell.fields)
 
     only = {k.strip() for k in args.only.split(",") if k.strip()} or None
-    spells, lines, meta, visuals = build(spell, only)
+    spells, lines, meta, visuals, talents = build(spell, only)
     check_blocks(spells, visuals)
     # the whole run, so a round that only changes a look or a model still
     # moves the stamp a realm compares against
@@ -1818,7 +2132,7 @@ def main(argv=None):
             print("   %-18s first spell %d" % (ln["key"], ln["first"]))
 
     run_desc = "only=%s" % (args.only or "all data-only recipes")
-    write_sql(spells, lines, gen, args.out_sql)
+    write_sql(spells, lines, gen, args.out_sql, talents)
     write_manifest(spells, lines, visuals, gen, args.out_manifest, run_desc)
     print("\nwrote %s\n      %s" % (args.out_sql, args.out_manifest))
 

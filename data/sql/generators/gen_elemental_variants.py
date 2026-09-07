@@ -34,7 +34,7 @@ import json
 import os
 import struct
 import sys
-from collections import defaultdict
+from collections import Counter, defaultdict
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 OUT_SQL = os.path.join(HERE, os.pardir, "db-world", "cw_spells_elemental.sql")
@@ -628,9 +628,14 @@ def write_sql(variants, path, run_desc):
             L.append("(%s)%s" % (", ".join(str(x) for x in v["sla"]), end))
         L.append("")
 
+    # A one-rank line is not a chain: SpellMgr::LoadSpellRanks logs
+    # "There is only 1 spell rank for identifier ... entry is not needed!" for
+    # each one at startup, and most of that wall of red was ours.
+    _per_line = Counter(v["first"] for v in variants)
+    chained = [v for v in variants if _per_line[v["first"]] > 1]
     L.append("INSERT INTO `spell_ranks` (`first_spell_id`, `spell_id`, `rank`) VALUES")
-    for n, v in enumerate(variants):
-        end = ";" if n == len(variants) - 1 else ","
+    for n, v in enumerate(chained):
+        end = ";" if n == len(chained) - 1 else ","
         L.append("(%d, %d, %d)%s" % (v["first"], v["id"], v["rank"], end))
     L.append("")
 
