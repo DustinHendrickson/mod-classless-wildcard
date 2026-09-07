@@ -183,7 +183,6 @@ public:
     // Weighted pick of a rank above `fromRank`, rarer the higher it goes.
     uint8 RollTalentRank(ClasslessWildcard::TalentPoolEntry const& t, uint8 fromRank) const;
     uint32 RollWeight(ClasslessWildcard::Rarity rarity, uint32 overrideWeight) const;
-    uint32 SpentTalentRanksInTab(ClasslessWildcard::CharState const& st, uint32 tabId) const;
 
 private:
     ClasslessMgr() = default;
@@ -226,7 +225,8 @@ private:
     // repaired in place.
     void SyncRequiredForms(Player* player);
     // Clear the class tool (totem/relic item) requirement from every library
-    // spell -- see Config::ignoreSpellTools.
+    // spell. The client patch clears the same two columns and the two must
+    // agree, so this is not conditional.
     void StripSpellTools();
     // The deadline has passed with no path chosen: put the Hero on the realm
     // default and deal a starting hand if that is Wildcard. Returns true if it
@@ -252,7 +252,7 @@ private:
 
     std::map<uint32, ClasslessWildcard::AbilityEntry> _abilities;      // firstSpellId -> entry
     std::map<uint32, ClasslessWildcard::TalentPoolEntry> _talents;     // talentId -> entry
-    // ability talents taken off the Talents list (ReplaceAbilityTalents):
+    // ability talents taken off the Talents list, their line standing in:
     // kept aside for prerequisite checks, tree point counts and migration
     std::map<uint32, ClasslessWildcard::TalentPoolEntry> _replacedTalents;
     std::map<uint32, ClasslessWildcard::Archetype> _archetypes;

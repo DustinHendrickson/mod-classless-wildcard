@@ -100,10 +100,11 @@ appear on a category-7 (class) `SkillLineAbility` row:
 
 A Hero draws spells from every class and is handed no class's tools, so
 Stoneskin Totem arrives with a red `Tools: Earth Totem` line and will not cast.
-The server clears the same two fields on its own `SpellInfo`
-(`ClasslessWildcard.IgnoreSpellTools`); the client copy is what removes the
-tooltip line and stops the client refusing the cast before it is ever sent, so
-both halves are needed. Profession recipes keep their hammer and their skinning
+The server clears the same two fields on its own `SpellInfo`, always and not
+optionally; the client copy is what removes the tooltip line and stops the
+client refusing the cast before it is ever sent, so both halves are needed and
+neither is a setting — a server that kept the requirement would disagree with
+every client on the realm. Profession recipes keep their hammer and their skinning
 knife — around 2190 rows still require a tool after the pass. Reagents are a
 different mechanism and are untouched.
 

@@ -119,7 +119,7 @@ namespace
             AddGossipItemFor(player, GOSSIP_ICON_INTERACT_1, "My abilities (unlearn)", GOSSIP_SENDER_MAIN, BASE_MY_ABILITIES_PG);
             if (!sClasslessMgr->Archetypes().empty())
                 AddGossipItemFor(player, GOSSIP_ICON_TABARD, "Apply a starter archetype...", GOSSIP_SENDER_MAIN, ACT_ARCHETYPES);
-            AddGossipItemFor(player, GOSSIP_ICON_MONEY_BAG, Acore::StringFormat("Respec everything ({} gold)", cfg.respecCostGold), GOSSIP_SENDER_MAIN, ACT_RESPEC);
+            AddGossipItemFor(player, GOSSIP_ICON_INTERACT_1, "Unlearn everything (free)", GOSSIP_SENDER_MAIN, ACT_RESPEC);
         }
         else // Wildcard
         {
@@ -229,7 +229,7 @@ namespace
                     uint32(arch.abilities.size()), ranks),
                 GOSSIP_SENDER_MAIN, BASE_ARCHETYPE + id,
                 Acore::StringFormat("Follow the {} archetype? It replaces your build: abilities are unlearned and refunded, "
-                    "and if you own talents the respec fee applies. Its abilities and talents are then bought for you "
+                    "and your talents are reset with them. Its abilities and talents are then bought for you "
                     "as you level.", arch.name), 0, false);
         }
         if (following)
@@ -565,8 +565,8 @@ public:
                 break;
             case ACT_RESPEC:
                 ClearGossipMenuFor(player);
-                AddGossipItemFor(player, GOSSIP_ICON_MONEY_BAG,
-                    Acore::StringFormat("|cffff0000Confirm|r: unlearn everything for {} gold", sClasslessMgr->cfg.respecCostGold),
+                AddGossipItemFor(player, GOSSIP_ICON_INTERACT_1,
+                    "|cffff0000Confirm|r: unlearn every ability and talent, essence refunded",
                     GOSSIP_SENDER_MAIN, ACT_RESPEC_CONFIRM);
                 AddGossipItemFor(player, GOSSIP_ICON_TALK, "<- Back", GOSSIP_SENDER_MAIN, ACT_MAIN);
                 SendGossipMenuFor(player, DEFAULT_GOSSIP_MESSAGE, creature->GetGUID());

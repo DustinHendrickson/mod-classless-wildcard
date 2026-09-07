@@ -117,7 +117,7 @@ public:
     Optional<bool> OnPlayerIsClass(Player const* player, Classes playerClass, ClassContext context) override
     {
         Config const& cfg = sClasslessMgr->cfg;
-        if (!cfg.enabled || !cfg.classlessClassChecks)
+        if (!cfg.enabled)
             return std::nullopt;
 
         // Decide on the context BEFORE looking the character up. IsClass runs
@@ -273,7 +273,7 @@ public:
                                                  CreatureTemplate const* cinfo, PetType& petType) override
     {
         Config const& cfg = sClasslessMgr->cfg;
-        if (!cfg.enabled || !cfg.classlessClassChecks || !player || !guardian || !cinfo)
+        if (!cfg.enabled || !player || !guardian || !cinfo)
             return;
         if (sClasslessMgr->IsExempt(player))
             return;
@@ -348,7 +348,7 @@ public:
         // core recalculates, and it recalculates on login. Spending them is
         // refused by OnPlayerCanLearnTalent, but the number itself should read
         // zero, so take them straight back.
-        if (cfg.suppressTalentPoints && !sClasslessMgr->IsExempt(player))
+        if (!sClasslessMgr->IsExempt(player))
             player->SetFreeTalentPoints(0);
 
         // A Hero may keep an undead pet, so let them see one.
@@ -361,7 +361,7 @@ public:
         // would let that refusal fire while a ghoul is already out and block
         // the next pet from loading. Setting it makes the check moot in the
         // right direction and shows the ghoul on the login screen besides.
-        if (cfg.classlessClassChecks && !sClasslessMgr->IsExempt(player))
+        if (!sClasslessMgr->IsExempt(player))
             player->SetShowDKPet(true);
 
         // Restore the saved main-bar choice once the login stat pass has
@@ -562,8 +562,7 @@ public:
         if (sClasslessMgr->cfg.enabled)
             sClasslessMgr->HandleLevelUp(player, oldLevel);
         // a level-up recalculates the points, so put them back to zero
-        if (sClasslessMgr->cfg.enabled && sClasslessMgr->cfg.suppressTalentPoints
-            && !sClasslessMgr->IsExempt(player))
+        if (sClasslessMgr->cfg.enabled && !sClasslessMgr->IsExempt(player))
             player->SetFreeTalentPoints(0);
     }
 
@@ -578,8 +577,8 @@ public:
     //     records would wipe every talent the character owns on the next
     //     level-up or login.
     //   * The other branch is `SetFreeTalentPoints(talentPointsForLevel -
-    //     m_usedTalentCount)`, which is what SuppressTalentPoints exists to
-    //     keep at zero.
+    //     m_usedTalentCount)`, and free points have to stay at zero or the
+    //     stock frame runs a second talent economy beside this one.
     //
     // The exact used count would satisfy both at once, but m_usedTalentCount is
     // protected and the module cannot read it; deriving it from the module's own
@@ -594,7 +593,7 @@ public:
 
     void OnPlayerCalculateTalentsPoints(Player const* player, uint32& talentPointsForLevel) override
     {
-        if (!sClasslessMgr->cfg.enabled || !sClasslessMgr->cfg.suppressTalentPoints)
+        if (!sClasslessMgr->cfg.enabled)
             return;
         if (sClasslessMgr->IsExempt(const_cast<Player*>(player)))
             return;
@@ -604,7 +603,7 @@ public:
 
     bool OnPlayerCanLearnTalent(Player* player, TalentEntry const* /*talent*/, uint32 /*rank*/) override
     {
-        if (!sClasslessMgr->cfg.enabled || !sClasslessMgr->cfg.suppressTalentPoints)
+        if (!sClasslessMgr->cfg.enabled)
             return true;
         return sClasslessMgr->IsExempt(player);
     }
@@ -618,7 +617,7 @@ public:
         using namespace ClasslessWildcard;
 
         Config const& cfg = sClasslessMgr->cfg;
-        if (!cfg.enabled || !cfg.blockOutsideSpellSources)
+        if (!cfg.enabled)
             return;
         if (sClasslessMgr->IsApplyingGrant())
             return; // our own grant

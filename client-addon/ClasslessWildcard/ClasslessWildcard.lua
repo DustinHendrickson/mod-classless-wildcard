@@ -843,7 +843,7 @@ archFly.title = archFly:CreateFontString(nil, "OVERLAY", "GameFontNormal")
 archFly.title:SetPoint("TOP", 0, -12)
 archFly.title:SetText("Starter Archetypes")
 
-archFly.INTRO = "An archetype is a build you follow from level 1 to 80. Choosing one replaces your build: your abilities are unlearned and refunded, and if you own talents the respec fee applies. From then on its abilities and talents are bought for you as each becomes available. Stop following at any time; what you own stays."
+archFly.INTRO = "An archetype is a build you follow from level 1 to 80. Choosing one replaces your build: your abilities are unlearned and refunded, and your talents are reset with them. From then on its abilities and talents are bought for you as each becomes available. Stop following at any time; what you own stays."
 archFly.intro = archFly:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
 archFly.intro:SetPoint("TOPLEFT", 14, -30)
 archFly.intro:SetWidth(432)
@@ -1162,8 +1162,8 @@ local function BuildHelpText()
 "   |cffffd100Talent Essence (TE)|r  buys talent ranks, one point per rank.",
 "You start with |cff00ff003 AE|r and earn |cff00ff00+1 AE every level from 4|r, the pace a class learns its abilities at. |cff00ff00Talent Essence arrives from level 10, +1 a level|r: 71 by 80, a full talent build.",
 "Abilities are priced by rarity -- |cff9d9d9d1|r / |cff1eff002|r / |cff0070dd3|r / |cffa335ee5|r / |cffff80008|r AE from common to legendary. Talents cost Talent Essence per rank and respect their tree's prerequisites and tier rules -- ranking one to 5 costs 5 TE, so pick your capstones carefully.",
-"Unlearning an ability refunds what you paid, |cffffd100Respec|r reshuffles your talents for gold, and every ability line you own |cff00ff00ranks up on its own|r as you level. Talents that teach a spell (Pyroblast, Mortal Strike, Mangle) are not in the talent trees here: the spell is in the Abilities list instead, with every rank, and owning it counts as that talent for prerequisites and tree points.",
-"|cffffd100Archetypes|r are builds you follow from level 1 to 80. Pick one from the |cffffd100Archetypes|r button on this panel or at the Hero Advancement NPC: it replaces your build (abilities refunded, the respec fee if you own talents) and from then on buys its abilities and talents for you as each becomes available. Everything it buys is a normal purchase, and you can stop following it at any time.",
+"Unlearning an ability refunds what you paid, |cffffd100Respec|r unlearns everything at once, free, and every ability line you own |cff00ff00ranks up on its own|r as you level. Talents that teach a spell (Pyroblast, Mortal Strike, Mangle) are not in the talent trees here: the spell is in the Abilities list instead, with every rank, and owning it counts as that talent for prerequisites and tree points.",
+"|cffffd100Archetypes|r are builds you follow from level 1 to 80. Pick one from the |cffffd100Archetypes|r button on this panel or at the Hero Advancement NPC: it replaces your build (abilities and talents refunded, free) and from then on buys its abilities and talents for you as each becomes available. Everything it buys is a normal purchase, and you can stop following it at any time.",
 "",
 "|cffff8800==  WILDCARD  --  the dice choose  ==|r",
 "The server rolls abilities and talents for you on a fixed schedule:",
@@ -4416,6 +4416,26 @@ local function HandleMessage(msg)
         RenderList()
         if hand:IsShown() then CW.RenderHand() end
 
+    elseif kind == "SC" then
+        -- what a spell really costs once the Hero's talents are counted; the
+        -- client cannot work this out for talents outside its own class
+        if not CW._collectingFix then
+            CW.spellFix, CW.spellFixByName, CW._collectingFix = {}, {}, true
+        end
+        for _, f in ipairs(ParseEntries(p[2], 5)) do
+            local id = tonumber(f[1])
+            if id then
+                CW.spellFix[id] = { cost = tonumber(f[2]), cast = tonumber(f[3]),
+                                    cd = tonumber(f[4]), dmg = tonumber(f[5]) }
+                local name, rank = GetSpellInfo(id)
+                if name then
+                    CW.spellFixByName[name .. "|" .. (rank or "")] = id
+                end
+            end
+        end
+    elseif kind == "SCE" then
+        CW._collectingFix = false
+
     elseif kind == "OT" then
         if not CW._collectingOwnedT then
             CW.ownedT = {}
@@ -4530,6 +4550,147 @@ local function HandleMessage(msg)
 end
 
 -- ---------------------------------------------------------------------------
+-- Tooltip corrections
+--
+-- A Hero's talents come from every class, and the client will not apply their
+-- modifiers to a spell tooltip: SMSG_SET_FLAT_SPELL_MODIFIER carries a
+-- class-mask bit and no family, and the client only ever expected its own
+-- class's talents. Thunder Clap kept reading 20 Rage with Improved Thunder
+-- Clap at 3/3 while the server charged 16.
+--
+-- So the server sends the numbers (SC records) and this puts them on screen.
+-- The cost line is rewritten in place; everything else is appended, because
+-- rewriting a cooldown or a cast time by pattern would be guessing at formats
+-- that change with locale and magnitude.
+-- ---------------------------------------------------------------------------
+do
+    CW.spellFix = CW.spellFix or {}
+    CW.spellFixByName = CW.spellFixByName or {}
+
+    -- the client's own power names, so the cost line is found without matching
+    -- English. Anything absent is simply skipped.
+    local POWER_WORDS = {}
+    for _, g in ipairs({ "MANA", "RAGE", "ENERGY", "FOCUS", "RUNIC_POWER", "HEALTH", "RUNES" }) do
+        local w = _G[g]
+        if type(w) == "string" and w ~= "" then POWER_WORDS[#POWER_WORDS + 1] = w end
+    end
+
+    local function fixFor(spellId)
+        return spellId and CW.spellFix[spellId] or nil
+    end
+
+    -- Swap the leading number on the line that names a power, leaving the
+    -- localised unit word untouched.
+    local function rewriteCost(tip, cost)
+        if not cost then return end
+        for i = 2, 4 do
+            local line = _G[tip:GetName() .. "TextLeft" .. i]
+            local text = line and line:GetText()
+            if text then
+                for _, word in ipairs(POWER_WORDS) do
+                    if text:find(word, 1, true) and text:match("^%s*%d") then
+                        line:SetText((text:gsub("^(%s*)%d+", "%1" .. cost, 1)))
+                        return
+                    end
+                end
+            end
+        end
+    end
+
+    local function decorate(tip, spellId)
+        local fix = fixFor(spellId)
+        if not fix then return end
+        rewriteCost(tip, fix.cost)
+
+        local bits = {}
+        if fix.cd and fix.cd > 0 then
+            bits[#bits + 1] = string.format("%.3g sec cooldown", fix.cd / 1000)
+        end
+        if fix.cast and fix.cast > 0 then
+            bits[#bits + 1] = string.format("%.3g sec cast", fix.cast / 1000)
+        end
+        if fix.dmg and fix.dmg ~= 0 then
+            bits[#bits + 1] = string.format("%+d%% damage", fix.dmg)
+        end
+        if #bits > 0 then
+            tip:AddLine("With your talents: " .. table.concat(bits, ", "), 0.4, 0.8, 1)
+            tip:Show()
+        end
+    end
+
+    -- exposed so the harness can drive it: this is the one piece whose output
+    -- the player reads directly, and its cost rewrite is easy to get subtly wrong
+    CW.ApplyTooltipFix = decorate
+
+    -- The spellbook hands us a book slot, the action bar an action slot; both
+    -- resolve to a spell name and rank, and CW.spellFixByName is keyed on that
+    -- because 3.3.5 gives no way to read a spell id back off a tooltip.
+    local function idFromBook(slot, book)
+        local name, rank = GetSpellName(slot, book)
+        if not name then return nil end
+        return CW.spellFixByName[name .. "|" .. (rank or "")]
+    end
+
+    if GameTooltip and hooksecurefunc then
+        hooksecurefunc(GameTooltip, "SetSpell", function(self, slot, book)
+            decorate(self, idFromBook(slot, book))
+        end)
+        hooksecurefunc(GameTooltip, "SetAction", function(self, slot)
+            local kind, id = GetActionInfo(slot)
+            if kind ~= "spell" or not id or id == 0 then return end
+            local name, rank = GetSpellName(id, BOOKTYPE_SPELL)
+            if not name then return end
+            decorate(self, CW.spellFixByName[name .. "|" .. (rank or "")])
+        end)
+    end
+end
+
+-- ---------------------------------------------------------------------------
+-- The login unlearn spam
+--
+-- A Hero keeps only what it earned here, so StripUnearnedSpells takes back the
+-- class-library spells the chassis handed out for free -- Holy Light, Seal of
+-- Righteousness and the rest of the paladin starter kit. Anything bought or
+-- rolled through the system is in the earned set and is never touched.
+--
+-- The server cannot silence the line. It sends SMSG_REMOVED_SPELL and the
+-- client prints ERR_SPELL_UNLEARNED_S itself, so this is a chat filter. It is
+-- deliberately narrow: only that one message, and only for a few seconds after
+-- entering the world, which is the only time the stripping runs. Unlearn an
+-- ability yourself from the panel later and you still get told.
+-- ---------------------------------------------------------------------------
+do
+    local QUIET_FOR = 8            -- seconds after entering the world
+    local quietUntil = 0
+
+    -- Built from the global string, not typed out, so it still matches when
+    -- the client is not English. Escape the magic characters, then let %s be
+    -- the spell name.
+    local pattern
+    local raw = _G.ERR_SPELL_UNLEARNED_S
+    if type(raw) == "string" then
+        -- escape the magic characters, then let the %s placeholder stand for
+        -- the spell name. The second gsub pattern is "%%s": %% matches one
+        -- literal per cent, so it finds the %s that the first gsub left alone
+        -- (per cent is not a magic character and is not escaped above).
+        pattern = raw:gsub("([%^%$%(%)%.%[%]%*%+%-%?])", "%%%1"):gsub("%%s", ".+")
+    end
+
+    function CW.QuietUnlearnsForLogin()
+        quietUntil = GetTime() + QUIET_FOR
+    end
+
+    if pattern and ChatFrame_AddMessageEventFilter then
+        ChatFrame_AddMessageEventFilter("CHAT_MSG_SYSTEM", function(_, _, msg)
+            if msg and GetTime() < quietUntil and msg:match(pattern) then
+                return true          -- swallowed
+            end
+            return false
+        end)
+    end
+end
+
+-- ---------------------------------------------------------------------------
 -- events & slash
 -- ---------------------------------------------------------------------------
 local events = CreateFrame("Frame")
@@ -4545,6 +4706,8 @@ events:SetScript("OnEvent", function(self, event, arg1, arg2, arg3, arg4)
     elseif event == "CINEMATIC_STOP" then
         CW.RefreshPanelArt()
     elseif event == "PLAYER_ENTERING_WORLD" then
+        -- the server strips the chassis's free class spells about now
+        if CW.QuietUnlearnsForLogin then CW.QuietUnlearnsForLogin() end
         CW.RefreshPanelArt()
         CW.LoadBrowseChoices()
         CW.RestoreBarsPosition()

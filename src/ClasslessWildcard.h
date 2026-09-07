@@ -222,7 +222,6 @@ namespace ClasslessWildcard
         // (Pyroblast, Mortal Strike, Mangle) leaves the Talents list; the
         // ability line stands in for it, and owning the ability meets any
         // prerequisite on the talent and counts as a point in its tree.
-        bool   replaceAbilityTalents = true;
         bool   includeRacials = false;
         bool   includePassives = true;
         std::unordered_set<uint32> excludedSpells;
@@ -243,7 +242,6 @@ namespace ClasslessWildcard
 
         // clean-slate start: strip the chassis class's default spells at
         // creation and hand out the neutral Hero kit instead
-        bool   stripStartingSpells = true;
         bool   starterKitEnable = true;
         // strip EVERY piece of default gear the shell class was created with,
         // so the Hero starts bare and the kit armour actually equips (the old
@@ -273,11 +271,9 @@ namespace ClasslessWildcard
         std::vector<std::string> exemptAccountPrefixes;
 
         // native talent suppression
-        bool   suppressTalentPoints = true;
 
         // revert class-library spells learned outside the module (class
         // trainers, quest rewards) so essence/rolls stay the only path
-        bool   blockOutsideSpellSources = true;
 
         // A shapeshift form or a warrior stance is useless on its own: a Hero
         // who draws Bear Form and nothing else cannot attack in it. Gaining one
@@ -288,7 +284,6 @@ namespace ClasslessWildcard
         // contexts where classless means every class at once: equipping any
         // relic, shields, and the reactive-ability aura states. Off = the
         // chassis class decides, which is the stock behaviour.
-        bool   classlessClassChecks = true;
 
         // Spellbook tabs. The client files a spell under a tab by its skill
         // line, and only for skill lines the character HAS -- so a Hero saw one
@@ -296,7 +291,6 @@ namespace ClasslessWildcard
         //   0 = off (stock behaviour)
         //   1 = a tab for every skill line the Hero owns spells in
         //   2 = a tab for every class skill line, present from the start
-        uint8  spellbookTabs = 1;
 
         bool   formKitsEnable = true;
 
@@ -304,7 +298,6 @@ namespace ClasslessWildcard
         // Totem, Runeforging needs a runeforge. A Hero owns spells from every
         // class and is handed no class's tools, so the requirement comes off
         // every spell in the library. Reagents are untouched.
-        bool   ignoreSpellTools = true;
 
         // elemental ability variants (cw_ability_variants, generated): a
         // variant is registered one rarity tier above its base
@@ -338,9 +331,7 @@ namespace ClasslessWildcard
         // what you buy, so each rank is paid for. (The "rank 5 for one point"
         // rule belongs to Wildcard, where the roll hands you the rank free.)
         bool   talentFlatCost = false;
-        bool   enforceTalentRows = false;      // tier point totals; the tier LEVEL is respectLevelReqs
         bool   refundOnUnlearn = true;
-        uint32 respecCostGold = 50;
 
         // wildcard
         uint32 wcStartingAbilities = 4;
@@ -397,7 +388,6 @@ namespace ClasslessWildcard
         // Rage and energy are layered on top by the universal-resource code
         // below. A rage or energy chassis is refused at load: mana is never
         // synthesised, so such a Hero could not pay for a single mana spell.
-        bool   chassisEnable = true;
         uint8  chassisClass = 2;          // CLASS_PALADIN
 
         // Universal resources: every Hero maintains mana, rage AND energy pools

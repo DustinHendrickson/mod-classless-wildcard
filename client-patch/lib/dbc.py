@@ -345,7 +345,7 @@ def clear_spell_tools(data: bytes, class_spells):
     tools handed to one class and to nobody else. A Hero draws spells from
     every class and is handed no class's tools, so those spells arrive with a
     red "Tools:" line and refuse to cast. The server clears the same two
-    columns on its own copy (ClasslessWildcard.IgnoreSpellTools); clearing them
+    columns on its own copy, unconditionally; clearing them
     here is what takes the line out of the tooltip and stops the client
     refusing the cast before the server ever sees it.
 

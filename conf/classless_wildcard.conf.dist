@@ -91,18 +91,19 @@ ClasslessWildcard.ExemptAccountPrefixes = "rndbot"
 #    class chosen at creation is then nothing but the model and the name, and
 #    the name reads "Hero" once the client patch is installed.
 #
+#    The chassis is Paladin and neither it nor the conversion is a setting.
+#    It has to be a class with a real mana pool -- a Hero casts whatever it
+#    learns and a great many of those spells cost mana or a percentage of base
+#    mana -- and Paladin is the one the module is built around: real base mana,
+#    spirit regeneration, plate base armour, and no forms, stances or runes to
+#    suppress. Rage and energy are layered on top by section 10, so a Hero
+#    still pays rage for Bloodthirst and energy for Sinister Strike. Changing
+#    either would re-convert every character and shift their base stats, so
+#    there is nothing here to change.
+#
 #    Characters are converted at creation, and existing characters convert on
 #    their next login. Accounts matched by ExemptAccountPrefixes keep their
 #    real class.
-
-#    ClasslessWildcard.Chassis.Enable
-#        Force every character onto the Hero chassis (Paladin: real base mana,
-#        spirit regeneration, plate base armour, and no forms, stances or runes
-#        to suppress). Off returns the module to
-#        per-class behaviour, where a character's class still affects its
-#        stats and resources.
-#        Default: 1
-ClasslessWildcard.Chassis.Enable = 1
 
 
 ########################################################################
@@ -176,21 +177,6 @@ ClasslessWildcard.TrainerTaughtOnly = 1
 #        lost.
 #        Default: 1
 ClasslessWildcard.RespectLevelRequirements = 1
-
-#    ClasslessWildcard.ReplaceAbilityTalents
-#        Some talents teach a spell rather than a passive: Pyroblast, Mortal
-#        Strike, Mangle, Devastate, Aimed Shot, Hemorrhage, Ice Barrier. The
-#        ability pool already carries those spells as full rank lines, so with
-#        this on such talents leave the Talents list and the ability is the one
-#        way to get the spell. Owning the ability satisfies any prerequisite on
-#        the old talent and counts as a point in its tree.
-#
-#        A Hero still holding one of those talents gets the ability instead at
-#        their next login, with the Talent Essence refunded on the Classless
-#        path. With this off the talents stay, and taking one grants the
-#        ability line so the spell still ranks up with level.
-#        Default: 1
-ClasslessWildcard.ReplaceAbilityTalents = 1
 
 ########################################################################
 # 4  Ability rarity
@@ -353,24 +339,10 @@ ClasslessWildcard.Classless.TalentCostPerRank = 1
 #        Default: 0
 ClasslessWildcard.Classless.TalentFlatCost = 0
 
-#    ClasslessWildcard.Classless.EnforceTalentRows
-#        Require the points-spent-in-tree total a talent row demands in a class
-#        tree (5 per row). Off: a Hero drawing from every tree at once would
-#        never reach a deep row otherwise. The tier's LEVEL still applies
-#        under RespectLevelReqs.
-#        Default: 0
-ClasslessWildcard.Classless.EnforceTalentRows = 0
-
 #    ClasslessWildcard.Classless.RefundOnUnlearn
 #        Refund the essence paid when an ability is unlearned.
 #        Default: 1
 ClasslessWildcard.Classless.RefundOnUnlearn = 1
-
-#    ClasslessWildcard.Classless.RespecCostGold
-#        Gold cost of a full talent respec, which also clears and refunds every
-#        ability.
-#        Default: 50
-ClasslessWildcard.Classless.RespecCostGold = 50
 
 ########################################################################
 # 7  Wildcard path: rolls, rerolls and scrolls
@@ -576,13 +548,6 @@ ClasslessWildcard.Wildcard.ScrollBuyPerLevelCopper = 500
 # 8  Character creation: strip, starter kit, proficiencies, riding
 ########################################################################
 
-#    ClasslessWildcard.StripStartingSpells
-#        Remove the chassis class's default abilities at first login, so a Hero
-#        gets everything through essence or rolls. Racials, languages and
-#        Attack are untouched.
-#        Default: 1
-ClasslessWildcard.StripStartingSpells = 1
-
 #    ClasslessWildcard.StarterKit.Enable
 #        Give the neutral Hero kit at creation.
 #        Default: 1
@@ -632,11 +597,6 @@ ClasslessWildcard.TeachProficiencies = 1
 #                 wands, both Shoots, Throw and dual wield
 ClasslessWildcard.ProficiencySpells = "9078,9077,8737,750,9116,201,202,196,197,198,199,200,227,1180,15590,264,266,5011,2567,5009,5019,3018,2764,674"
 
-#    ClasslessWildcard.SuppressTalentPoints
-#        Zero out native talent points, since talents flow through the module.
-#        Default: 1
-ClasslessWildcard.SuppressTalentPoints = 1
-
 #    ClasslessWildcard.Riding.Enable
 #        Train the riding skill for every Hero, free, as they reach the level
 #        for it. Riding is not class power: it is not in the library, it never
@@ -664,59 +624,6 @@ ClasslessWildcard.Riding.Grants = "33388:20,33391:40,34090:60,54197:68,34091:70"
 # 9  Class rules the module answers for a Hero
 ########################################################################
 
-#    ClasslessWildcard.BlockOutsideSpellSources
-#        Class trainers, and the odd quest or item reward, would let a player
-#        learn class spells for gold and bypass the essence and roll economy.
-#        With this on, any library spell learned outside the module is reverted
-#        with a hint pointing at the Hero Advancement system, and gold taken in
-#        the same tick is refunded. Profession and secondary trainers are
-#        unaffected.
-#        Default: 1
-ClasslessWildcard.BlockOutsideSpellSources = 1
-
-#    ClasslessWildcard.ClasslessClassChecks
-#        The core asks "is this player a <class>?" wherever behaviour is
-#        class-specific, and by default the chassis answers, so a Hero inherits
-#        the chassis's restrictions. With this on the module answers YES where
-#        classless should mean every class at once:
-#
-#          * equipping ANY relic. Libram, Idol, Totem, Sigil and the warlock
-#            relic share slot 17, but the core gives that slot to one class
-#            each. On the Paladin chassis a Hero could wear a Libram and
-#            nothing else, however much druid or shaman its build had bought.
-#          * shields, which the core limits to Paladin, Warrior and Shaman.
-#          * the reactive-ability aura states behind Overpower, Revenge,
-#            Riposte and Counterattack, which the core sets only for the class
-#            each belongs to.
-#          * pets. Pet::Create types a pet from its owner's class, so on one
-#            chassis every summoned pet came out untyped. The module types it
-#            from the pet instead, and answers the warlock pet question so a
-#            demon counts as permanent.
-#
-#        The Death Knight pet question is left alone on purpose: LoadPetFromDB
-#        refuses to load a pet for a Death Knight without the Master of Ghouls
-#        flag, so answering it would stop pets loading at all. Everything else
-#        keeps answering with the real chassis class, because Death Knight rune
-#        handling and the stat and talent math break if a character claims to
-#        be every class at once.
-#        Default: 1
-ClasslessWildcard.ClasslessClassChecks = 1
-
-#    ClasslessWildcard.SpellbookTabs
-#        Which spellbook tab a spell lands under is decided by the CLIENT, from
-#        SkillLineAbility.dbc, and is handled by the client patch and the
-#        addon. This setting is the SERVER half: it keeps a Hero's class skill
-#        lines in step with what they know. The core re-adds the chassis
-#        class's lines every login and auto-teaches their starter spells with
-#        them, so a line the Hero has nothing in is taken away, and lines they
-#        do have something in are added so the core's skill bookkeeping stays
-#        consistent.
-#          0 = off, the chassis lines stay and their starter spells return
-#          1 = keep lines in step with what the Hero owns
-#          2 = every class line present from the start
-#        Default: 1
-ClasslessWildcard.SpellbookTabs = 1
-
 #    ClasslessWildcard.FormStarterKits
 #        A form or stance does nothing on its own. With this on, gaining one
 #        hands over the basic spells that go with it, free and immediately:
@@ -738,21 +645,6 @@ ClasslessWildcard.SpellbookTabs = 1
 #        it.
 #        Default: 1
 ClasslessWildcard.FormStarterKits = 1
-
-#    ClasslessWildcard.IgnoreSpellTools
-#        Some spells demand a class tool before they may be cast: Stoneskin
-#        Totem needs an Earth Totem, Runeforging a runeforge. Those tools are
-#        given to one class each, so the spell arrives with a red "Tools:" line
-#        and refuses to cast however it was earned. With this on the tool
-#        requirement is cleared from every spell in the library. Reagents are
-#        untouched, because those are vendor goods anyone can buy.
-#
-#        The client keeps its own copy of the requirement, so the client patch
-#        clears the same two columns. Without it the tooltip keeps the red line
-#        and the client refuses the cast before the server sees it.
-#        [RESTART REQUIRED]
-#        Default: 1
-ClasslessWildcard.IgnoreSpellTools = 1
 
 #    ClasslessWildcard.CallPetSpell
 #        The spell a hunter pet needs in order to be out. Used only as a

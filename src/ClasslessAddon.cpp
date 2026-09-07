@@ -25,6 +25,8 @@
 #include "Player.h"
 #include "ScriptMgr.h"
 #include "SharedDefines.h"
+#include "SpellDefines.h"
+#include "SpellInfo.h"
 #include "SpellMgr.h"
 #include "StringConvert.h"
 #include "StringFormat.h"
@@ -250,10 +252,25 @@ namespace
         SendAddon(player, "TBE|");
     }
 
+    // Which rank's spell a talent should be DESCRIBED by. Always sending
+    // rankSpells[0] meant the tooltip read rank 1's numbers whatever the Hero
+    // owned: Improved Thunder Clap at 3/3 said "reduces the cost by 1 rage
+    // point", which is rank 1's text -- rank 3 says four. A talent's identity
+    // is its talentId, a separate field, so this only moves what is READ: own
+    // a rank and you are told that rank, own none and you are told rank 1,
+    // which is the one you would buy next.
+    static uint32 DescribedRank(ClasslessWildcard::TalentPoolEntry const& t, uint8 owned)
+    {
+        uint8 const idx = (owned && owned <= t.maxRank) ? uint8(owned - 1) : 0;
+        return t.rankSpells[idx] ? t.rankSpells[idx] : t.rankSpells[0];
+    }
+
     // TAL <tab> <page> [sort] [scope]. scope 1 keeps only the tiers the Hero's
     // level has opened, 0 the whole tree. Each record:
-    // talent:rank1spell:rarity:owned:max:row:active (active = the talent's
-    // rank-1 spell is something you cast, not a passive)
+    // talent:describedspell:rarity:owned:max:row:active. The spell is the rank
+    // the Hero OWNS, so the tooltip matches what they have; rank 1 when they own
+    // none, which is the rank they would buy. (active = that spell is something
+    // you cast, not a passive)
     void SendTalentPage(Player* player, uint32 tabId, uint32 page, uint32 sort, uint32 levelScope)
     {
         CharState& st = sClasslessMgr->GetState(player);
@@ -306,7 +323,8 @@ namespace
             uint8 owned = 0;
             if (auto itr = st.talents.find(t->talentId); itr != st.talents.end())
                 owned = itr->second;
-            body += Acore::StringFormat("{}:{}:{}:{}:{}:{}:{};", t->talentId, t->rankSpells[0],
+            body += Acore::StringFormat("{}:{}:{}:{}:{}:{}:{};", t->talentId,
+                DescribedRank(*t, owned),
                 uint32(t->rarity), owned, t->maxRank, t->row, list[i].active ? 1 : 0);
         }
         SendAddon(player, body);
@@ -333,6 +351,69 @@ namespace
         SendAddon(player, "OAE|");
     }
 
+    // ---- what a spell really costs, casts and waits ------------------------
+    //
+    // SC|id:cost:castms:cooldownms:dmgpct; one record per spell whose numbers a
+    // talent actually moves. The client cannot work these out for a Hero: the
+    // modifier packets it receives carry a class-mask bit and no family, and it
+    // only ever expected its own class's talents. These come from the core's
+    // own arithmetic, which matches on family and is right for all ten.
+    void SendSpellCorrections(Player* player)
+    {
+        std::string body = "SC|";
+        for (auto const& [spellId, playerSpell] : player->GetSpellMap())
+        {
+            if (!playerSpell || playerSpell->State == PLAYERSPELL_REMOVED
+                || !playerSpell->Active || !playerSpell->IsInSpec(player->GetActiveSpec()))
+                continue;
+            SpellInfo const* info = sSpellMgr->GetSpellInfo(spellId);
+            if (!info || info->IsPassive())
+                continue;
+
+            // ONLY the spell-mod contribution. CalcPowerCost and CalcCastTime
+            // fold in haste and cost auras as well, and the client already
+            // shows those -- correcting for them again would be wrong twice
+            // over and would put every cast-time spell in this list.
+            int32 baseCost = int32(info->ManaCost);
+            if (info->ManaCostPercentage && player->GetCreateMana())
+                baseCost = int32(CalculatePct(player->GetCreateMana(), info->ManaCostPercentage));
+            int32 cost = baseCost;
+            player->ApplySpellMod(spellId, SPELLMOD_COST, cost);
+            // rage and runic power are stored times ten and shown divided
+            int32 const div = (info->PowerType == POWER_RAGE || info->PowerType == POWER_RUNIC_POWER) ? 10 : 1;
+
+            int32 const baseCastMs = info->CastTimeEntry ? int32(info->CastTimeEntry->CastTime) : 0;
+            int32 castMs = baseCastMs;
+            if (castMs)
+                player->ApplySpellMod(spellId, SPELLMOD_CASTING_TIME, castMs);
+
+            int32 const baseCdMs = int32(info->RecoveryTime);
+            int32 cdMs = baseCdMs;
+            player->ApplySpellMod(spellId, SPELLMOD_COOLDOWN, cdMs);
+
+            // Damage as a percentage: the tooltip's own number is built from
+            // base points plus attack and spell power, which is not reproducible
+            // here, but the multiplier is exact.
+            int32 probe = 10000;
+            player->ApplySpellMod(spellId, SPELLMOD_DAMAGE, probe);
+            int32 const dmgPct = (probe - 10000) / 100;
+
+            if (cost == baseCost && castMs == baseCastMs && cdMs == baseCdMs && !dmgPct)
+                continue;
+
+            std::string piece = Acore::StringFormat("{}:{}:{}:{}:{};",
+                spellId, cost / div, castMs, cdMs, dmgPct);
+            if (body.size() + piece.size() > MAX_BODY)
+            {
+                SendAddon(player, body);
+                body = "SC|";
+            }
+            body += piece;
+        }
+        SendAddon(player, body);
+        SendAddon(player, "SCE|");
+    }
+
     void SendOwnedTalents(Player* player)
     {
         CharState& st = sClasslessMgr->GetState(player);
@@ -347,7 +428,8 @@ namespace
             // base rarity instead left My Build showing every talent in the
             // colour of its tree row, so a rank 5 read as common.
             std::string piece = Acore::StringFormat("{}:{}:{}:{}:{};", talentId,
-                t->rankSpells[0], uint32(sClasslessMgr->RankRarity(*t, rank)), rank, t->maxRank);
+                DescribedRank(*t, rank), uint32(sClasslessMgr->RankRarity(*t, rank)),
+                rank, t->maxRank);
             if (body.size() + piece.size() > MAX_BODY)
             {
                 SendAddon(player, body);
@@ -429,10 +511,10 @@ namespace
         // that tuned them. Appended rather than inserted, so an addon that
         // predates them keeps working on the fields it knows.
         float strMeleeAP = 0.0f, agiMeleeAP = 0.0f, agiRangedAP = 0.0f;
-        ChassisAPRates(cfg.chassisEnable ? cfg.chassisClass : player->getClass(),
+        ChassisAPRates(cfg.chassisClass,
                        strMeleeAP, agiMeleeAP, agiRangedAP);
         float critPerAgi = 0.0f, spellCritPerInt = 0.0f, mp5PerSpi = 0.0f, hp5PerSpi = 0.0f;
-        ChassisTableRates(player, cfg.chassisEnable ? cfg.chassisClass : player->getClass(),
+        ChassisTableRates(player, cfg.chassisClass,
                           critPerAgi, spellCritPerInt, mp5PerSpi, hp5PerSpi);
         SendAddon(player, Acore::StringFormat("ST|{}|{}|{}|{}|{}|{}|{}|{}|{}|{}|{}|{}|{}|{}|{}|{}|{}|{}|{}|{}",
             budget, budget > spent ? budget - spent : 0, cfg.statValuePerPoint,
@@ -478,7 +560,10 @@ namespace
         std::string err;
 
         if (cmd == "HELLO" || cmd == "STATE")
+        {
             SendState(player);
+            SendSpellCorrections(player);
+        }
         else if (cmd == "ABIL")
             SendAbilityPage(player, uint8(argNum(1)), argNum(2), argNum(3), argNum(4), argNum(5));
         else if (cmd == "TABS")
@@ -488,7 +573,11 @@ namespace
         else if (cmd == "OWN")
             SendOwnedAbilities(player);
         else if (cmd == "OWNT")
+        {
             SendOwnedTalents(player);
+            // the build just changed, so the numbers may have too
+            SendSpellCorrections(player);
+        }
         else if (cmd == "ARCH")
             SendArchetypes(player);
         else if (cmd == "STATS")

@@ -140,13 +140,11 @@ void ClasslessMgr::LoadConfig(bool /*reload*/)
     cfg.modeChoiceDeadline = sConfigMgr->GetOption<uint8>("ClasslessWildcard.ModeChoiceDeadline", 5);
 
     cfg.includeDeathKnight = sConfigMgr->GetOption<bool>("ClasslessWildcard.IncludeDeathKnight", true);
-    cfg.replaceAbilityTalents = sConfigMgr->GetOption<bool>("ClasslessWildcard.ReplaceAbilityTalents", true);
     cfg.includeRacials = sConfigMgr->GetOption<bool>("ClasslessWildcard.IncludeRacials", false);
     cfg.includePassives = sConfigMgr->GetOption<bool>("ClasslessWildcard.IncludePassives", true);
     cfg.respectLevelReqs = sConfigMgr->GetOption<bool>("ClasslessWildcard.RespectLevelRequirements", true);
     cfg.trainerTaughtOnly = sConfigMgr->GetOption<bool>("ClasslessWildcard.TrainerTaughtOnly", true);
 
-    cfg.stripStartingSpells = sConfigMgr->GetOption<bool>("ClasslessWildcard.StripStartingSpells", true);
     cfg.starterKitEnable = sConfigMgr->GetOption<bool>("ClasslessWildcard.StarterKit.Enable", true);
     cfg.starterKitStripEquipped = sConfigMgr->GetOption<bool>("ClasslessWildcard.StarterKit.StripEquipped", true);
     cfg.starterKitBag = sConfigMgr->GetOption<uint32>("ClasslessWildcard.StarterKit.Bag", 5573);
@@ -204,12 +202,7 @@ void ClasslessMgr::LoadConfig(bool /*reload*/)
         // Shoot wand (5019), Shoot bow/gun/crossbow (3018), Throw (2764), dual wield
         "9078,9077,8737,750,9116,201,202,196,197,198,199,200,227,1180,15590,264,266,5011,2567,5009,5019,3018,2764,674"));
 
-    cfg.suppressTalentPoints = sConfigMgr->GetOption<bool>("ClasslessWildcard.SuppressTalentPoints", true);
-    cfg.blockOutsideSpellSources = sConfigMgr->GetOption<bool>("ClasslessWildcard.BlockOutsideSpellSources", true);
-    cfg.classlessClassChecks = sConfigMgr->GetOption<bool>("ClasslessWildcard.ClasslessClassChecks", true);
-    cfg.spellbookTabs = uint8(sConfigMgr->GetOption<uint32>("ClasslessWildcard.SpellbookTabs", 1));
     cfg.formKitsEnable = sConfigMgr->GetOption<bool>("ClasslessWildcard.FormStarterKits", true);
-    cfg.ignoreSpellTools = sConfigMgr->GetOption<bool>("ClasslessWildcard.IgnoreSpellTools", true);
     cfg.elementalEnable = sConfigMgr->GetOption<bool>("ClasslessWildcard.Elemental.Enable", true);
     cfg.forgedEnable = sConfigMgr->GetOption<bool>("ClasslessWildcard.Forged.Enable", true);
     cfg.elementalRarityBump = sConfigMgr->GetOption<uint32>("ClasslessWildcard.Elemental.RarityBump", 1);
@@ -234,9 +227,7 @@ void ClasslessMgr::LoadConfig(bool /*reload*/)
              cfg.talentEssencePerLevel, uint32(cfg.talentEssenceStartLevel));
     cfg.talentCostPerRank = sConfigMgr->GetOption<uint32>("ClasslessWildcard.Classless.TalentCostPerRank", 1);
     cfg.talentFlatCost = sConfigMgr->GetOption<bool>("ClasslessWildcard.Classless.TalentFlatCost", false);
-    cfg.enforceTalentRows = sConfigMgr->GetOption<bool>("ClasslessWildcard.Classless.EnforceTalentRows", false);
     cfg.refundOnUnlearn = sConfigMgr->GetOption<bool>("ClasslessWildcard.Classless.RefundOnUnlearn", true);
-    cfg.respecCostGold = sConfigMgr->GetOption<uint32>("ClasslessWildcard.Classless.RespecCostGold", 50);
 
     {
         std::vector<uint32> costs = ParseUintList(sConfigMgr->GetOption<std::string>(
@@ -323,7 +314,6 @@ void ClasslessMgr::LoadConfig(bool /*reload*/)
     cfg.urRageDealtPct = sConfigMgr->GetOption<uint32>("ClasslessWildcard.UniversalResources.RageFromDealtPct", 100);
     cfg.urRageTakenPct = sConfigMgr->GetOption<uint32>("ClasslessWildcard.UniversalResources.RageFromTakenPct", 100);
 
-    cfg.chassisEnable = sConfigMgr->GetOption<bool>("ClasslessWildcard.Chassis.Enable", true);
     // Not a setting. The chassis must own a real mana pool -- Heroes cast
     // whatever they learn and a great many of those spells cost mana or a
     // percentage of base mana -- and changing it re-converts every character
@@ -484,7 +474,7 @@ void ClasslessMgr::BuildLibrary()
                     // is part of the talent and belongs to the talent tree.
                     // Admitting Primal Fury, Spirit Weapons and Tree of Life
                     // here would make each of them an ability line, which
-                    // takes the talent off the tree (ReplaceAbilityTalents)
+                    // takes the talent off the tree, the ability stands in
                     // and strands everything that depends on it.
                     if (GetTalentSpellCost(sid))
                         continue;
@@ -702,7 +692,7 @@ void ClasslessMgr::BuildLibrary()
             // it -- Polymorph: Pig, from its mage quest -- leaves the library
             // altogether rather than sitting here disabled. Disabled is the
             // worst of both: the Hero can never roll or buy it, AND
-            // BlockOutsideSpellSources takes it back off them when the quest
+            // the outside-source block takes it back off them when the quest
             // hands it over, so the reward silently does nothing. Dropping the
             // line puts it back outside the module, where the quest teaches it
             // like it does on any realm. Lines that a trainer or the class
@@ -1343,29 +1333,28 @@ void ClasslessMgr::ResolveTalentAbilityLines()
             ++resolved;
     }
 
-    // With ReplaceAbilityTalents on, those talents leave the list altogether:
-    // the ability line is the one way to the spell, and the entry is kept
-    // aside so a talent that depended on it can be met by owning the ability.
+    // Those talents leave the list altogether: the ability line is the one way
+    // to the spell, and the entry is kept aside so a talent that depended on it
+    // can be met by owning the ability instead.
+    //
+    // Not optional. Leaving them in place would put a spell like Mortal Strike
+    // in the pool twice -- once as a talent that teaches it and once as a full
+    // rank line -- at two different prices, with a prerequisite either one
+    // could satisfy. That ambiguity is what this exists to remove.
     _replacedTalents.clear();
-    if (cfg.replaceAbilityTalents)
+    for (auto itr = _talents.begin(); itr != _talents.end();)
     {
-        for (auto itr = _talents.begin(); itr != _talents.end();)
+        if (itr->second.abilityLines.empty())
         {
-            if (itr->second.abilityLines.empty())
-            {
-                ++itr;
-                continue;
-            }
-            _replacedTalents.emplace(itr->first, std::move(itr->second));
-            itr = _talents.erase(itr);
+            ++itr;
+            continue;
         }
-        LOG_INFO("module.classless",
-                 "mod-classless-wildcard: {} ability talents taken off the Talents list; their ability lines stand in for them",
-                 _replacedTalents.size());
-        return;
+        _replacedTalents.emplace(itr->first, std::move(itr->second));
+        itr = _talents.erase(itr);
     }
     LOG_INFO("module.classless",
-             "mod-classless-wildcard: {} talents teach an ability line and grant it outright", resolved);
+             "mod-classless-wildcard: {} ability talents taken off the Talents list; their ability lines stand in for them ({} resolved)",
+             _replacedTalents.size(), resolved);
 }
 
 // Whether a Hero owns an ability that stands in for a talent taken off the
@@ -1525,15 +1514,15 @@ bool ClasslessMgr::ApplyArchetype(Player* player, uint32 archetypeId, std::strin
     Archetype const& arch = itr->second;
 
     // An archetype replaces the build. Abilities come off with a full refund,
-    // exactly as unlearning them one by one would. Talents can only be reset
-    // by a respec, so a Hero who owns talents pays the respec fee; that respec
-    // also clears and refunds every ability.
+    // exactly as unlearning them one by one would. Talents are only reset in
+    // bulk, so a Hero who owns talents goes through a respec, which clears and
+    // refunds every ability too. It costs nothing.
     if (!st.talents.empty())
     {
         std::string why;
         if (!Respec(player, &why))
         {
-            if (err) *err = "Following a new archetype resets your talents, which is a respec. " + why;
+            if (err) *err = "Following a new archetype resets your talents. " + why;
             return false;
         }
     }
@@ -2179,7 +2168,7 @@ void ClasslessMgr::TeachProficiencies(Player* player)
 // was installed convert on their next login.
 bool ClasslessMgr::EnforceChassis(Player* player)
 {
-    if (!cfg.enabled || !cfg.chassisEnable || !player)
+    if (!cfg.enabled || !player)
         return false;
     if (IsExempt(player))          // bots/system accounts keep vanilla classes
         return false;
@@ -2268,8 +2257,7 @@ void ClasslessMgr::HandleFirstLogin(Player* player)
 
     // clean slate: a Hero starts with NO class abilities — everything comes
     // through essences (classless) or rolls (wildcard)
-    if (cfg.stripStartingSpells)
-        StripUnearnedSpells(player);
+    StripUnearnedSpells(player);
 
     // With the chassis spells gone there is nothing left under the chassis
     // class's own tab, so take the tab away too. This is the one moment it
@@ -2397,7 +2385,7 @@ void ClasslessMgr::HandleLogin(Player* player)
     // logged out
     ClearStaleLocks(player);
 
-    // A talent that has since left the list (ReplaceAbilityTalents) turns
+    // A talent that has since left the list turns
     // into the ability it stood for: the line is granted at no cost, the
     // Talent Essence comes back on the Classless path, and the talent row goes.
     {
@@ -2429,9 +2417,10 @@ void ClasslessMgr::HandleLogin(Player* player)
         }
     }
 
-    // With ReplaceAbilityTalents off, an ability talent owned from before
-    // talents handed over their line gets the line now, so the spell starts
-    // ranking up like everyone else's.
+    // A talent still on the list that carries an ability line hands it over
+    // now, so the spell starts ranking up like everyone else's. Ability
+    // talents themselves left the list at load and are migrated above; this
+    // catches anything that kept its line.
     {
         std::vector<std::pair<TalentPoolEntry const*, uint32>> due;
         for (auto const& [talentId, rank] : st.talents)
@@ -2455,8 +2444,7 @@ void ClasslessMgr::HandleLogin(Player* player)
     // then takes back.
     SyncSpellbookTabs(player, true);
 
-    if (cfg.stripStartingSpells)
-        if (uint32 removed = StripUnearnedSpells(player))
+    if (uint32 removed = StripUnearnedSpells(player))
             LOG_DEBUG("module.classless",
                       "mod-classless-wildcard: removed {} unearned spell(s) from {} at login",
                       removed, player->GetName());
@@ -2652,11 +2640,6 @@ void ClasslessMgr::GrantAbilityInternal(Player* player, AbilityEntry const& e, G
     // the line. Holy Light and Seal of Righteousness are both AcquireMethod 2
     // on line 594, so a Hero who rolls Holy Light is handed Seal of
     // Righteousness with it.
-    //
-    // Repeated here rather than left to SyncSpellbookTabs above, which does
-    // nothing at all when spellbook tabs are switched off.
-    if (cfg.stripStartingSpells && !cfg.spellbookTabs)
-        StripUnearnedSpells(player);
 }
 
 // Some abilities do nothing on their own: a Hero who draws Bear Form without
@@ -2871,9 +2854,10 @@ void ClasslessMgr::DismissOrphanedSummons(Player* player)
 // agrees with the server.
 void ClasslessMgr::StripSpellTools()
 {
-    if (!cfg.ignoreSpellTools)
-        return;
-
+    // Not optional. The client patch clears the same two columns, so a server
+    // that kept them would disagree with every client on the realm: the
+    // tooltip would show no "Tools:" line and the client would send the cast,
+    // and the server would refuse it.
     uint32 cleared = 0;
     auto strip = [&cleared](uint32 spellId)
     {
@@ -3101,7 +3085,7 @@ uint32 ClasslessMgr::StripUnearnedSpells(Player* player)
 // out, whichever direction it arrived from.
 void ClasslessMgr::SyncSpellbookTabs(Player* player, bool clearChassisLines)
 {
-    if (!cfg.spellbookTabs || _classSkillLines.empty())
+    if (_classSkillLines.empty())
         return;
     CharState& st = GetState(player);
     if (st.exempt)
@@ -3165,14 +3149,14 @@ void ClasslessMgr::SyncSpellbookTabs(Player* player, bool clearChassisLines)
     //
     // Only ever for lines with nothing earned in them, so the unlearn cascade
     // SetSkill performs has nothing to take.
-    if (clearChassisLines && cfg.spellbookTabs < 2)
+    if (clearChassisLines)
         for (uint16 line : _classSkillLines)
             if (!want.count(line) && player->HasSkill(line))
                 player->SetSkill(line, 0, 0, 0);
 
     // Then a tab for each school they actually know. The Hero line rides
-    // along in either mode: it is in `want` exactly when a forged spell is owned.
-    std::set<uint16> give = (cfg.spellbookTabs >= 2) ? _classSkillLines : want;
+    // along too: it is in `want` exactly when a forged spell is owned.
+    std::set<uint16> give = want;
     if (want.count(uint16(HERO_SKILL_LINE)))
         give.insert(uint16(HERO_SKILL_LINE));
     for (uint16 line : give)
@@ -3191,8 +3175,7 @@ void ClasslessMgr::SyncSpellbookTabs(Player* player, bool clearChassisLines)
     // spell's own line for it whenever that line says AcquireMethod 2, so by
     // the time this runs the line can already be present and the free spells
     // already in the book, with nothing for this function to notice.
-    if (cfg.stripStartingSpells)
-        StripUnearnedSpells(player);
+    StripUnearnedSpells(player);
 }
 
 void ClasslessMgr::UpdateAbilityRanks(Player* player)
@@ -3339,20 +3322,6 @@ bool ClasslessMgr::UnlearnTalent(Player* player, uint32 talentId, std::string* e
     return true;
 }
 
-uint32 ClasslessMgr::SpentTalentRanksInTab(CharState const& st, uint32 tabId) const
-{
-    uint32 total = 0;
-    for (auto const& [talentId, rank] : st.talents)
-        if (TalentPoolEntry const* t = GetTalent(talentId))
-            if (t->tabId == tabId)
-                total += rank;
-    // an ability standing in for a talent of this tree counts as its point
-    for (auto const& [talentId, t] : _replacedTalents)
-        if (t.tabId == tabId && OwnsReplacedTalent(st, talentId))
-            ++total;
-    return total;
-}
-
 bool ClasslessMgr::BuyTalentRank(Player* player, uint32 talentId, std::string* err)
 {
     CharState& st = GetState(player);
@@ -3404,11 +3373,12 @@ bool ClasslessMgr::BuyTalentRank(Player* player, uint32 talentId, std::string* e
             return false;
         }
     }
-    if (cfg.enforceTalentRows && SpentTalentRanksInTab(st, t->tabId) < t->row * 5)
-    {
-        if (err) *err = Acore::StringFormat("You need {} points in this tree to unlock that tier.", t->row * 5);
-        return false;
-    }
+    // No points-in-tree gate. A class character banks points in one tree and
+    // walks down it; a Hero draws from all thirty at once and can never bank
+    // them, so the rule can only ever lock deep rows away forever. It was a
+    // setting defaulting to off, which meant a realm carrying an older conf
+    // kept enforcing it. The tier's LEVEL below is the gate that makes sense
+    // and it stays.
     // The tier's own level, the rule the browser labels rows with and the
     // Wildcard roll pool applies: tier R opens at level 10 + 5R. The essence
     // schedule already lands there on its own; this keeps it true whatever
@@ -3434,14 +3404,12 @@ bool ClasslessMgr::Respec(Player* player, std::string* err)
         return false;
     }
 
-    int32 costCopper = int32(cfg.respecCostGold) * GOLD;
-    if (!player->HasEnoughMoney(costCopper))
-    {
-        if (err) *err = Acore::StringFormat("Respec costs {} gold.", cfg.respecCostGold);
-        return false;
-    }
-    player->ModifyMoney(-costCopper);
-
+    // Free, and deliberately so. A Classless Hero can already unlearn every
+    // ability and every talent one at a time, each with a full refund, so this
+    // reaches a state they could reach for nothing by clicking twenty times.
+    // Charging for the fast path would price convenience, not power. Rebirth
+    // still costs, because a Wildcard Hero cannot unlearn at all and it is the
+    // only way out of a build.
     std::vector<uint32> ownedAbilities;
     for (auto const& [firstSpell, owned] : st.abilities)
         ownedAbilities.push_back(firstSpell);
