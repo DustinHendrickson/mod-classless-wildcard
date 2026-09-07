@@ -311,12 +311,8 @@ for i, classId in ipairs(CLASS_ORDER) do
         -- tree, so both panes are showing the same class. The Hero page has one
         -- of its own now -- the server reports the Hero talent tab as class 12
         -- -- so it takes the same path as every other button.
-        for idx, t in ipairs(CW.tabs) do
-            if t.class == classId then
-                CW.tabIndex = idx
-                RequestTal(0)
-                break
-            end
+        if CW.SyncTalentTabToClass and CW.SyncTalentTabToClass() then
+            RequestTal(0)
         end
     end)
     b:SetScript("OnEnter", function(self)
@@ -328,6 +324,32 @@ for i, classId in ipairs(CLASS_ORDER) do
     classButtons[i] = b
 end
 CW.classButtons = classButtons
+
+-- Point the Talents pane at the selected class's first tree.
+--
+-- classIndex and tabIndex default to 1 independently, and tab 1 is whichever
+-- tree has the lowest TalentTab id -- a Mage tree -- so the panel opened
+-- showing Warrior abilities beside Mage talents. Clicking a class button
+-- always reconciled them; nothing did at load, because the tab list arrives
+-- over the addon channel after the first render.
+--
+-- Only moves the pane when the tree on screen belongs to a DIFFERENT class, so
+-- paging to Warrior tree 2 and reopening the panel keeps tree 2.
+-- Returns whether the pane is showing the selected class once this is done,
+-- so a caller can tell "nothing to refresh" from "that class has no trees".
+function CW.SyncTalentTabToClass()
+    local want = CLASS_ORDER[CW.classIndex]
+    if not want or not CW.tabs or #CW.tabs == 0 then return false end
+    local current = CW.tabs[CW.tabIndex]
+    if current and current.class == want then return true end
+    for idx, t in ipairs(CW.tabs) do
+        if t.class == want then
+            CW.tabIndex = idx
+            return true
+        end
+    end
+    return false          -- that class has no trees (Death Knight switched off)
+end
 
 -- Position the strip over the buttons that are actually visible, so hiding the
 -- Death Knight one leaves the rest centred instead of gapped.
@@ -4391,7 +4413,10 @@ local function HandleMessage(msg)
             tinsert(CW.tabs, { id = f[1], class = f[2] })
         end
     elseif kind == "TBE" then
-        -- tabs just arrived: fill the Talents pane with the current tree
+        -- tabs just arrived: point the pane at the selected class before asking
+        -- for a page, or the panel opens showing one class's abilities beside
+        -- another class's talents
+        if CW.SyncTalentTabToClass then CW.SyncTalentTabToClass() end
         RequestTal(0)
 
     elseif kind == "TL" then
@@ -4634,6 +4659,13 @@ do
     if GameTooltip and hooksecurefunc then
         hooksecurefunc(GameTooltip, "SetSpell", function(self, slot, book)
             decorate(self, idFromBook(slot, book))
+        end)
+        -- Every tooltip the panel itself raises goes through SetHyperlink
+        -- ("spell:<id>"), which hands us the id outright -- no name matching.
+        -- Missing this hook is why the Abilities list still read 20 Rage.
+        hooksecurefunc(GameTooltip, "SetHyperlink", function(self, link)
+            local id = link and tonumber(link:match("^spell:(%d+)"))
+            if id then decorate(self, id) end
         end)
         hooksecurefunc(GameTooltip, "SetAction", function(self, slot)
             local kind, id = GetActionInfo(slot)

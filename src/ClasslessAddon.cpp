@@ -363,8 +363,13 @@ namespace
         std::string body = "SC|";
         for (auto const& [spellId, playerSpell] : player->GetSpellMap())
         {
+            // Active is deliberately NOT required. A lower rank stays in the map
+            // as inactive once a higher one is learned, and the Abilities list
+            // shows a line by its FIRST rank -- so Thunder Clap rank 1 is what
+            // the panel puts on screen while the Hero casts rank 9. Its cost is
+            // modified just the same, and skipping it left that tooltip wrong.
             if (!playerSpell || playerSpell->State == PLAYERSPELL_REMOVED
-                || !playerSpell->Active || !playerSpell->IsInSpec(player->GetActiveSpec()))
+                || !playerSpell->IsInSpec(player->GetActiveSpec()))
                 continue;
             SpellInfo const* info = sSpellMgr->GetSpellInfo(spellId);
             if (!info || info->IsPassive())
