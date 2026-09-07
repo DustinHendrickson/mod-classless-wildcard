@@ -1365,6 +1365,29 @@ local function RenderAbilPane()
     CW.ShowEmptyNote(CW.abilEmpty, CW.abilRows[1], CW.abilScope, "abilities")
 end
 
+-- Talent tree names, read out of the client's own TalentTab.dbc.
+--
+-- The server cannot send these: TalentTabEntry drops the name column in both
+-- the struct and the DBC format string, so the core never loads it. The client
+-- has the strings, and the addon runs on the client, so the table lives here.
+-- 990 is the module's own Hero tab. Names repeat across classes -- two Holys,
+-- two Protections, two Frosts -- which is why the class stays in the label.
+CW.TREE_NAMES = {
+    [41]  = "Fire",          [61]  = "Frost",         [81]  = "Arcane",
+    [161] = "Arms",          [163] = "Protection",    [164] = "Fury",
+    [181] = "Combat",        [182] = "Assassination", [183] = "Subtlety",
+    [201] = "Discipline",    [202] = "Holy",          [203] = "Shadow",
+    [261] = "Elemental",     [262] = "Restoration",   [263] = "Enhancement",
+    [281] = "Feral Combat",  [282] = "Restoration",   [283] = "Balance",
+    [301] = "Destruction",   [302] = "Affliction",    [303] = "Demonology",
+    [361] = "Beast Mastery", [362] = "Survival",      [363] = "Marksmanship",
+    [381] = "Retribution",   [382] = "Holy",          [383] = "Protection",
+    [398] = "Blood",         [399] = "Frost",         [400] = "Unholy",
+    [990] = "Hero",
+}
+
+CW.treeText = treeText        -- exposed so the harness can read the header
+
 local function RenderTalPane()
     local s = CW.state
     local tabInfo = CW.tabs[CW.tabIndex]
@@ -1377,8 +1400,17 @@ local function RenderTalPane()
                 if idx == CW.tabIndex then within = count end
             end
         end
-        treeText:SetText("|cffffd100" .. (CLASS_NAMES[tabInfo.class] or "?")
-            .. " tree " .. within .. " of " .. count .. "|r")
+        local className = CLASS_NAMES[tabInfo.class] or "?"
+        local treeName = CW.TREE_NAMES[tabInfo.id]
+        -- "Hero: Hero" would be silly, and the Hero page has one tree anyway
+        if treeName == className then treeName = nil end
+        if treeName then
+            treeText:SetText("|cffffd100" .. className .. ": " .. treeName
+                .. "|r  |cffaaaaaa(" .. within .. " of " .. count .. ")|r")
+        else
+            treeText:SetText("|cffffd100" .. className
+                .. " tree " .. within .. " of " .. count .. "|r")
+        end
     else
         treeText:SetText("No trees loaded")
     end

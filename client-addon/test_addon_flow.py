@@ -1740,6 +1740,45 @@ def test_layering(h):
                 % (name, STRATA[s], STRATA[panel]))
 
 
+def test_tree_header(h):
+    """The Talents header names the tree, not just whose tree it is."""
+    print("--- Talents: which tree am I looking at")
+    CW = h.CW
+    h.rt.execute("wipe(ClasslessWildcard_API.tabs)")
+
+    # the server sends tabs in id order, so a Mage tree is always first
+    h.recv("TB|41:8;61:8;81:8;161:1;163:1;164:1;990:12;")
+    h.recv("TBE|")
+    h.recv("TL|0|0|1|1:100:0:0:5:1;")
+    head = lambda: str(CW.treeText["__text"])
+
+    h.check("Warrior: Arms" in head(),
+            "TBE points the pane at the selected class and names its tree: %r" % head())
+    h.check("(1 of 3)" in head(), "and still says where it sits among that class's trees")
+
+    h.rt.execute("ClasslessWildcard_API.tabIndex = 5")
+    h.recv("TL|0|0|1|1:100:0:0:5:1;")
+    h.check("Warrior: Protection" in head() and "(2 of 3)" in head(),
+            "paging on names the next tree: %r" % head())
+
+    h.rt.execute("ClasslessWildcard_API.tabIndex = 7")
+    h.recv("TL|0|0|1|1:100:0:0:5:1;")
+    h.check("Hero" in head() and "Hero: Hero" not in head(),
+            "the Hero page does not repeat itself: %r" % head())
+
+    # a tab id the table does not know -- a realm's own tree -- still reads
+    h.rt.execute("ClasslessWildcard_API.tabs[1].id = 12345")
+    h.rt.execute("ClasslessWildcard_API.tabIndex = 1")
+    h.recv("TL|0|0|1|1:100:0:0:5:1;")
+    h.check("Mage tree 1 of 3" in head(),
+            "an unknown tab id falls back to counting: %r" % head())
+
+    # leave the pane as the rest of the suite expects to find it
+    h.rt.execute("wipe(ClasslessWildcard_API.tabs)")
+    h.recv("TB|161:1;")
+    h.recv("TBE|")
+
+
 def main():
     try:
         h = Harness()
@@ -1767,6 +1806,7 @@ def main():
     test_default_scope(h)
     test_spellbook(h)
     test_talent_unlearn(h)
+    test_tree_header(h)
     if h.failures:
         print("\n%d check(s) FAILED" % h.failures)
         return 1
