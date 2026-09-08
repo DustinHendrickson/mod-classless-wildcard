@@ -3279,108 +3279,133 @@ rvFX.PANEL_MIN, rvFX.PANEL_MAX = 344, 480
 -- shadow is. This is the tooltip treatment -- near-black plate, hairline border
 -- in the rarity's colour -- drawn on BACKGROUND/BORDER so the OVERLAY font
 -- strings of this same frame stay on top of it without any reparenting.
-rvFX.panel = reveal:CreateTexture(nil, "BACKGROUND", nil, 5)
-rvFX.panel:SetTexture(0, 0, 0)
-rvFX.panel:SetAlpha(0.86)
-rvFX.panel:SetWidth(344)
-rvFX.panel:Hide()
+-- One plate, built for whichever frame asks for it. The reveal has had one
+-- since it was written; the starting hand wants the same thing under its row,
+-- and two copies of this would drift apart the first time either changed.
+--
+-- Returns an object with its own panel, border and rows. `anchor` is the region
+-- the first row hangs from -- the sub-line in both cases -- so the caller keeps
+-- control of the column above it.
+function rvFX.MakeInfo(parent, anchor)
+    local info = { rows = {}, edges = {} }
 
-rvFX.edges = {}
-for i = 1, 4 do
-    local e = reveal:CreateTexture(nil, "BORDER")
-    e:SetTexture(1, 1, 1)
-    e:Hide()
-    rvFX.edges[i] = e
-end
-rvFX.edges[1]:SetPoint("TOPLEFT", rvFX.panel, "TOPLEFT", 0, 0)
-rvFX.edges[1]:SetPoint("TOPRIGHT", rvFX.panel, "TOPRIGHT", 0, 0)
-rvFX.edges[1]:SetHeight(1)
-rvFX.edges[2]:SetPoint("BOTTOMLEFT", rvFX.panel, "BOTTOMLEFT", 0, 0)
-rvFX.edges[2]:SetPoint("BOTTOMRIGHT", rvFX.panel, "BOTTOMRIGHT", 0, 0)
-rvFX.edges[2]:SetHeight(1)
-rvFX.edges[3]:SetPoint("TOPLEFT", rvFX.panel, "TOPLEFT", 0, 0)
-rvFX.edges[3]:SetPoint("BOTTOMLEFT", rvFX.panel, "BOTTOMLEFT", 0, 0)
-rvFX.edges[3]:SetWidth(1)
-rvFX.edges[4]:SetPoint("TOPRIGHT", rvFX.panel, "TOPRIGHT", 0, 0)
-rvFX.edges[4]:SetPoint("BOTTOMRIGHT", rvFX.panel, "BOTTOMRIGHT", 0, 0)
-rvFX.edges[4]:SetWidth(1)
+    -- A real panel behind the text. Both frames float over the world, and a
+    -- shadow alone is not a background: small text on grass is unreadable
+    -- however hard its shadow is. This is the tooltip treatment -- near-black
+    -- plate, hairline border in the rarity's colour -- drawn on BACKGROUND and
+    -- BORDER so the OVERLAY font strings of the same frame stay on top of it
+    -- without any reparenting.
+    info.panel = parent:CreateTexture(nil, "BACKGROUND", nil, 5)
+    info.panel:SetTexture(0, 0, 0)
+    info.panel:SetAlpha(0.86)
+    info.panel:SetWidth(344)
+    info.panel:Hide()
 
--- One row per tooltip line, laid out like the tooltip itself: a left-justified
--- string and a right-justified one sharing the same box, so "10 Rage" and
--- "Melee Range" sit at opposite ends of the same line. Rows chain downward from
--- the one above, so a wrapped description pushes what follows it. The reveal
--- frame is NOT resized around them -- nothing clips children here, so the block
--- simply extends below it and the buttons are re-anchored under whatever it
--- came to.
-rvFX.info = {}
-for i = 1, rvFX.INFO_LINES do
-    local row = {}
-    row.left = reveal:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
-    row.left:SetWidth(304)
-    row.left:SetJustifyH("LEFT")
-    row.left:SetJustifyV("TOP")
-    row.left:SetShadowColor(0, 0, 0, 1)
-    row.left:SetShadowOffset(1, -1)
-    if i == 1 then
-        row.left:SetPoint("TOP", rvSub, "BOTTOM", 0, -10)
-    else
-        row.left:SetPoint("TOP", rvFX.info[i - 1].left, "BOTTOM", 0, -2)
+    for i = 1, 4 do
+        local e = parent:CreateTexture(nil, "BORDER")
+        e:SetTexture(1, 1, 1)
+        e:Hide()
+        info.edges[i] = e
     end
-    row.right = reveal:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
-    row.right:SetAllPoints(row.left)
-    row.right:SetJustifyH("RIGHT")
-    row.right:SetJustifyV("TOP")
-    row.right:SetShadowColor(0, 0, 0, 1)
-    row.right:SetShadowOffset(1, -1)
-    local face = row.left:GetFont()
-    if face then
-        row.left:SetFont(face, 14)
-        row.right:SetFont(face, 14)
-    end
-    row.left:Hide(); row.right:Hide()
-    rvFX.info[i] = row
-end
+    info.edges[1]:SetPoint("TOPLEFT", info.panel, "TOPLEFT", 0, 0)
+    info.edges[1]:SetPoint("TOPRIGHT", info.panel, "TOPRIGHT", 0, 0)
+    info.edges[1]:SetHeight(1)
+    info.edges[2]:SetPoint("BOTTOMLEFT", info.panel, "BOTTOMLEFT", 0, 0)
+    info.edges[2]:SetPoint("BOTTOMRIGHT", info.panel, "BOTTOMRIGHT", 0, 0)
+    info.edges[2]:SetHeight(1)
+    info.edges[3]:SetPoint("TOPLEFT", info.panel, "TOPLEFT", 0, 0)
+    info.edges[3]:SetPoint("BOTTOMLEFT", info.panel, "BOTTOMLEFT", 0, 0)
+    info.edges[3]:SetWidth(1)
+    info.edges[4]:SetPoint("TOPRIGHT", info.panel, "TOPRIGHT", 0, 0)
+    info.edges[4]:SetPoint("BOTTOMRIGHT", info.panel, "BOTTOMRIGHT", 0, 0)
+    info.edges[4]:SetWidth(1)
 
--- Every tooltip row is held to the plate's inner width, so a long description
--- wraps inside it rather than running past the edge.
-function rvFX.SetRowWidth(w)
+    -- One row per tooltip line, laid out like the tooltip itself: a
+    -- left-justified string and a right-justified one sharing the same box, so
+    -- "10 Rage" and "Melee Range" sit at opposite ends of the same line. Rows
+    -- chain downward from the one above, so a wrapped description pushes what
+    -- follows it. Neither frame is resized around them -- nothing clips
+    -- children here, so the block extends below and the buttons are re-anchored
+    -- under whatever it came to.
     for i = 1, rvFX.INFO_LINES do
-        rvFX.info[i].left:SetWidth(w)
-    end
-end
-
-function rvFX.HideInfo()
-    rvFX.panel:Hide()
-    for _, e in ipairs(rvFX.edges) do e:Hide() end
-    for i = 1, rvFX.INFO_LINES do
-        rvFX.info[i].left:SetText(""); rvFX.info[i].right:SetText("")
-        rvFX.info[i].left:Hide(); rvFX.info[i].right:Hide()
-    end
-end
-
--- Fill the block from a spell's own tooltip and return how tall it came out.
-function rvFX.ShowInfo(spellId)
-    local lines = rvFX.ScanSpell(spellId)
-    local height, last = 0, nil
-    for i = 1, rvFX.INFO_LINES do
-        local row, line = rvFX.info[i], lines[i]
-        if line then
-            row.left:SetText(line.left or "")
-            row.right:SetText(line.right or "")
-            row.left:SetTextColor(line.r, line.g, line.b)
-            row.right:SetTextColor(line.r, line.g, line.b)
-            row.left:Show(); row.right:Show()
-            height = height + (tonumber(row.left:GetStringHeight()) or 12) + 2
-            last = row.left
+        local row = {}
+        row.left = parent:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
+        row.left:SetWidth(304)
+        row.left:SetJustifyH("LEFT")
+        row.left:SetJustifyV("TOP")
+        row.left:SetShadowColor(0, 0, 0, 1)
+        row.left:SetShadowOffset(1, -1)
+        if i == 1 then
+            row.left:SetPoint("TOP", anchor, "BOTTOM", 0, -10)
         else
-            -- blank as well as hidden: a hidden string keeps its old height and
-            -- would still push the row below it
+            row.left:SetPoint("TOP", info.rows[i - 1].left, "BOTTOM", 0, -2)
+        end
+        row.right = parent:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
+        row.right:SetAllPoints(row.left)
+        row.right:SetJustifyH("RIGHT")
+        row.right:SetJustifyV("TOP")
+        row.right:SetShadowColor(0, 0, 0, 1)
+        row.right:SetShadowOffset(1, -1)
+        local face = row.left:GetFont()
+        if face then
+            row.left:SetFont(face, 14)
+            row.right:SetFont(face, 14)
+        end
+        row.left:Hide(); row.right:Hide()
+        info.rows[i] = row
+    end
+
+    -- Every row is held to the plate's inner width, so a long description wraps
+    -- inside it rather than running past the edge.
+    function info:SetRowWidth(w)
+        for i = 1, rvFX.INFO_LINES do
+            self.rows[i].left:SetWidth(w)
+        end
+    end
+
+    function info:Clear()
+        self.panel:Hide()
+        for _, e in ipairs(self.edges) do e:Hide() end
+        for i = 1, rvFX.INFO_LINES do
+            local row = self.rows[i]
             row.left:SetText(""); row.right:SetText("")
             row.left:Hide(); row.right:Hide()
         end
     end
-    return height, last
+
+    -- Fill the block from a spell's own tooltip and return how tall it came out.
+    function info:Fill(spellId)
+        local lines = rvFX.ScanSpell(spellId)
+        local height, last = 0, nil
+        for i = 1, rvFX.INFO_LINES do
+            local row, line = self.rows[i], lines[i]
+            if line then
+                row.left:SetText(line.left or "")
+                row.right:SetText(line.right or "")
+                row.left:SetTextColor(line.r, line.g, line.b)
+                row.right:SetTextColor(line.r, line.g, line.b)
+                row.left:Show(); row.right:Show()
+                height = height + (tonumber(row.left:GetStringHeight()) or 12) + 2
+                last = row.left
+            else
+                -- blank as well as hidden: a hidden string keeps its old height
+                -- and would still push the row below it
+                row.left:SetText(""); row.right:SetText("")
+                row.left:Hide(); row.right:Hide()
+            end
+        end
+        return height, last
+    end
+
+    return info
 end
+
+-- The reveal's own, and the names the rest of the file has always called it by.
+rvFX.reveal = rvFX.MakeInfo(reveal, rvSub)
+rvFX.panel, rvFX.edges, rvFX.info = rvFX.reveal.panel, rvFX.reveal.edges, rvFX.reveal.rows
+function rvFX.SetRowWidth(w) rvFX.reveal:SetRowWidth(w) end
+function rvFX.HideInfo() rvFX.reveal:Clear() end
+function rvFX.ShowInfo(spellId) return rvFX.reveal:Fill(spellId) end
 
 -- These are the only two things on the reveal you can act on, and they were
 -- smaller than the buttons on the panel behind it.
@@ -4013,14 +4038,13 @@ for i = 1, HAND_SLOTS do
             end
         end
     end)
+    -- The plate under the row says what this is, so no tooltip covers the
+    -- cards. Nothing on OnLeave: the last card you looked at stays described,
+    -- which is calmer than a panel that empties every time the mouse moves.
+    slot.index = i
     slot:SetScript("OnEnter", function(self)
-        if self.spellId then
-            GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
-            GameTooltip:SetHyperlink("spell:" .. self.spellId)
-            GameTooltip:Show()
-        end
+        if self.spellId and CW.ShowHandCard then CW.ShowHandCard(self.index) end
     end)
-    slot:SetScript("OnLeave", function() GameTooltip:Hide() end)
     slot:Hide()
     handSlots[i] = slot
 end
@@ -4045,6 +4069,113 @@ local handKeep = CreateFrame("Button", nil, hand, "UIPanelButtonTemplate")
 handKeep:SetWidth(150); handKeep:SetHeight(26)
 handKeep:SetPoint("BOTTOMRIGHT", -40, 20)
 handKeep:SetText("Keep Abilities")
+
+
+-- What the card in front of you actually is.
+--
+-- The row used to deal in silence: four icons appeared and you found out what
+-- you had been given by hovering them one at a time. This is the reveal's own
+-- plate, from the same factory, hung under the row -- it names the ability in
+-- its rarity's colour as the die reaches it, with everything its tooltip would
+-- say, and afterwards follows whichever card you point at.
+--
+-- It hangs BELOW the frame rather than inside it, and the buttons move down to
+-- meet it, because the alternative is growing the frame and shifting the cards
+-- on screen every time the plate changes size -- during the deal, while they
+-- are landing.
+do   -- own scope: the main chunk is at Lua 5.1's 200-local ceiling
+    -- The name's centre, from the hand's centre. The cards' own art reaches 50
+    -- below it (44px buttons wearing a 74px Quickslot frame), and the plate's
+    -- top edge lands at this plus half a line plus the padding -- so -80 puts
+    -- the plate just clear of the row instead of clipping the bottom of it.
+    local HAND_NAME_Y = -80
+
+    local handName = hand:CreateFontString(nil, "OVERLAY", "GameFontNormalLarge")
+    handName:SetPoint("CENTER", 0, HAND_NAME_Y)
+    handName:SetJustifyH("CENTER")
+    handName:Hide()
+
+    local handSub = hand:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+    handSub:SetPoint("TOP", handName, "BOTTOM", 0, -rvFX.NAME_GAP)
+    handSub:SetJustifyH("CENTER")
+    handSub:Hide()
+
+    -- the same soft darkening the reveal puts under its plate: small text over
+    -- grass is unreadable on a shadow alone
+    local handPlateScrim = hand:CreateTexture(nil, "BACKGROUND", nil, -6)
+    handPlateScrim:SetTexture("Interface\\AddOns\\ClasslessWildcard\\shadow")
+    handPlateScrim:SetAlpha(0.9)
+    handPlateScrim:Hide()
+
+    local handInfo = rvFX.MakeInfo(hand, handSub)
+    CW.handInfo = handInfo   -- exposed for tests
+
+    local function HandButtonsHome()
+        handRoll:ClearAllPoints(); handKeep:ClearAllPoints()
+        handRoll:SetPoint("BOTTOMLEFT", 40, 20)
+        handKeep:SetPoint("BOTTOMRIGHT", -40, 20)
+    end
+
+    function CW.ClearHandCard()
+        CW.handShown = nil
+        handName:Hide(); handSub:Hide()
+        handPlateScrim:Hide()
+        handInfo:Clear()
+        HandButtonsHome()
+    end
+
+    function CW.ShowHandCard(i)
+        local slot = handSlots[i]
+        if not slot or not slot.spellId then return end
+        CW.handShown = i
+
+        local rarity = math.min(slot.rarity or 0, 4)
+        local rgb = RARITY_RGB[rarity] or RARITY_RGB[0]
+        handName:SetText(SpellLabel(slot.spellId, rarity))
+        handSub:SetText(RARITY_NAMES[rarity] or "")
+        handName:Show(); handSub:Show()
+
+        -- Width first, because a wrapped line is taller and the height depends on
+        -- it. GetStringWidth reports what the text WANTS, not what it was given.
+        local wide = math.max(tonumber(handName:GetStringWidth()) or 0,
+                              tonumber(handSub:GetStringWidth()) or 0)
+        local panelW = math.max(rvFX.PANEL_MIN,
+            math.min(rvFX.PANEL_MAX, wide + rvFX.SIDE * 2))
+        local inner = panelW - rvFX.SIDE * 2
+        handInfo.panel:SetWidth(panelW)
+        handName:SetWidth(inner)
+        handSub:SetWidth(inner)
+        handInfo:SetRowWidth(inner)
+
+        local infoH = handInfo:Fill(slot.spellId)
+        local nameH = tonumber(handName:GetStringHeight()) or 20
+        local subH = tonumber(handSub:GetStringHeight()) or 14
+        local blockH = rvFX.PAD + nameH + rvFX.NAME_GAP + subH
+            + (infoH > 0 and (rvFX.INFO_GAP + infoH) or 0) + rvFX.PAD
+        local blockTop = HAND_NAME_Y + nameH / 2 + rvFX.PAD
+
+        handInfo.panel:ClearAllPoints()
+        handInfo.panel:SetPoint("TOP", hand, "CENTER", 0, blockTop)
+        handInfo.panel:SetHeight(blockH)
+        handInfo.panel:Show()
+        for _, e in ipairs(handInfo.edges) do
+            e:SetVertexColor(rgb[1], rgb[2], rgb[3], 0.85)
+            e:Show()
+        end
+
+        handPlateScrim:SetWidth(panelW + 140)
+        handPlateScrim:SetHeight(blockH + 96)
+        handPlateScrim:ClearAllPoints()
+        handPlateScrim:SetPoint("CENTER", 0, blockTop - blockH / 2 - 24)
+        handPlateScrim:Show()
+
+        -- and the buttons sit under the plate, not under whichever text row
+        -- happened to be last
+        handRoll:ClearAllPoints(); handKeep:ClearAllPoints()
+        handRoll:SetPoint("TOPRIGHT", handInfo.panel, "BOTTOM", -8, -14)
+        handKeep:SetPoint("TOPLEFT", handInfo.panel, "BOTTOM", 8, -14)
+    end
+end
 
 -- keep every surviving (e.g. locked) card in its exact slot across rerolls;
 -- replacements drop into the slots that were vacated
@@ -4167,6 +4298,18 @@ local function RenderHand()
             if i <= n then rvFX.CardFX(handSlots[i], handSlots[i].rarity, 0) end
         end
     end
+
+    -- Whatever the plate was describing may have just been rerolled away. Keep
+    -- it on the same slot when that slot still holds something -- the card
+    -- changed, so the description should -- and fall back to the first card
+    -- rather than leaving an empty shelf under the row.
+    if n > 0 then
+        local want = CW.handShown
+        if not want or not handSlots[want] or not handSlots[want].spellId then want = 1 end
+        if not CW.handAnim then CW.ShowHandCard(want) end
+    else
+        CW.ClearHandCard()
+    end
 end
 CW.RenderHand = RenderHand
 
@@ -4242,6 +4385,9 @@ hand:SetScript("OnUpdate", function(self, elapsed)
                     pcall(PlaySound, fx.snd)
                     if fx.snd2 then pcall(PlaySound, fx.snd2) end
                 end
+                -- and the plate names it while its glow is still burning, so
+                -- the deal reads as four reveals rather than four icons
+                if CW.ShowHandCard then CW.ShowHandCard(i) end
             end
         end
     end
@@ -4300,6 +4446,7 @@ hand:SetScript("OnShow", function()
     CW.revealAnim.phase = "idle"
     frame:Hide() -- one thing at a time: the hand has the stage
     CW.handOrder = nil -- fresh layout for a fresh look at the hand
+    CW.ClearHandCard() -- the deal fills it, one card at a time
     CW.handAnimatePending = true -- deal the opening hand in with the die spin
     Send("OWN")
 end)
