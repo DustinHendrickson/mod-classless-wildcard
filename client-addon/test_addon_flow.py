@@ -1821,12 +1821,32 @@ def test_spellbook(h):
     b.__getitem__("__scripts")["OnDragStart"](b)
     h.check(rt.eval("PICKED[#PICKED]") == 233, "dragging an overlay picks up its spell slot")
 
-    # combat: a secure button cannot be shown or retargeted, so it waits
+    # combat: a secure button cannot be shown or retargeted, so it waits --
+    # and the book is held where the armed buttons point. Turning the page
+    # under them would leave a button showing one spell and casting another,
+    # which is the only way a spell in this book can be "wrong".
     rt.execute("function InCombatLockdown() return true end")
+    armed = str(sb.overlays[1]["__attributes"]["spell"])
     rt.execute("SPELLBOOK_PAGENUMBERS[12] = 1")
     sb.update()
     h.check(sb.stale is True, "in combat the overlays are left alone and marked stale")
+    h.check(h.rt.eval("SPELLBOOK_PAGENUMBERS[12]") == 2,
+            "and the page is put back to the one the buttons are armed for (page %s)"
+            % h.rt.eval("SPELLBOOK_PAGENUMBERS[12]"))
+    h.check(str(sb.overlays[1]["__attributes"]["spell"]) == armed,
+            "so the button still casts what it shows (%s)"
+            % sb.overlays[1]["__attributes"]["spell"])
+
+    # leaving the tab entirely is the same hazard: the overlays cannot be
+    # hidden in combat, so they would sit on top of a Blizzard tab's buttons
+    rt.execute("SpellBookFrame.selectedSkillLine = 3")
+    sb.update()
+    h.check(h.rt.eval("SpellBookFrame.selectedSkillLine") == 12,
+            "and the tab too, so the overlays never cover a tab they do not own (%s)"
+            % h.rt.eval("SpellBookFrame.selectedSkillLine"))
+
     rt.execute("function InCombatLockdown() return false end")
+    rt.execute("SPELLBOOK_PAGENUMBERS[12] = 1")
     sb.update()
     h.check(sb.stale is None and len([i for i in range(1, 13) if sb.overlays[i]["__shown"]]) == 11,
             "and they catch up when combat ends")

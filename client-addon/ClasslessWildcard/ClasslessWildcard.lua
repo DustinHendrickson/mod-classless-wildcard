@@ -2915,9 +2915,36 @@ do
         local ours = spellBook and selected > BLIZZ_TABS and selected <= lines
         if InCombatLockdown and InCombatLockdown() then
             sb.stale = true
+            -- A secure button cannot be re-armed in combat, and the book can
+            -- still be paged and re-tabbed: the icons move and the buttons on
+            -- top of them do not, so a click shows one spell and casts the one
+            -- that used to be there. That is what "his spells became wrong"
+            -- looks like, and it is the only place it can happen -- Blizzard's
+            -- own buttons on tabs 1 to 8 read their slot at click time.
+            --
+            -- We cannot move the buttons, so move the book back to them.
+            local armed = sb.armed
+            if armed and not sb.pinning then
+                local page = (SPELLBOOK_PAGENUMBERS and SPELLBOOK_PAGENUMBERS[selected]) or 1
+                if selected ~= armed.line or page ~= armed.page then
+                    SpellBookFrame.selectedSkillLine = armed.line
+                    if SPELLBOOK_PAGENUMBERS then
+                        SPELLBOOK_PAGENUMBERS[armed.line] = armed.page
+                    end
+                    -- re-entrant: this is a hook ON SpellBookFrame_Update. The
+                    -- flag is what stops the second pass pinning again.
+                    sb.pinning = true
+                    if SpellBookFrame_Update then SpellBookFrame_Update() end
+                    sb.pinning = nil
+                end
+            end
             return
         end
         sb.stale = nil
+        -- where the buttons are pointing, so combat can put the book back here
+        sb.armed = ours and { line = selected,
+                              page = (SPELLBOOK_PAGENUMBERS and SPELLBOOK_PAGENUMBERS[selected]) or 1 }
+                        or nil
         for i = 1, PER_PAGE do
             local b = overlayFor(i)
             local slot, shown = nil, nil
