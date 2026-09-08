@@ -41,6 +41,11 @@ public:
     std::map<uint32, ClasslessWildcard::TalentPoolEntry> const& Talents() const { return _talents; }
     // resolve any spell id (any rank) to its library entry, nullptr if not in library
     ClasslessWildcard::AbilityEntry const* FindAbilityBySpell(uint32 spellId) const;
+    // A forged line by the recipe name cw_forged_spells stores, so a script
+    // can name Hurl without knowing where the generator put it. 0 if the
+    // line is not registered, which is what a realm with Forged.Enable off
+    // looks like.
+    uint32 ForgedLine(std::string const& recipe) const;
 
     // ------- per-character state -------
     ClasslessWildcard::CharState& GetState(Player* player);
@@ -255,6 +260,9 @@ private:
 
     std::map<uint32, ClasslessWildcard::AbilityEntry> _abilities;      // firstSpellId -> entry
     std::map<uint32, ClasslessWildcard::TalentPoolEntry> _talents;     // talentId -> entry
+    // forged lines by recipe name, for the scripts that reach across lines:
+    std::unordered_map<std::string, uint32> _forgedByRecipe;
+
     // ability talents taken off the Talents list, their line standing in:
     // kept aside for prerequisite checks, tree point counts and migration
     std::map<uint32, ClasslessWildcard::TalentPoolEntry> _replacedTalents;

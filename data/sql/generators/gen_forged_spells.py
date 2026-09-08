@@ -141,7 +141,7 @@ PET_CREATURES = {
         # Scarab (15462) in Ahn'Qiraj and six other live creatures. The old
         # 2730 was Creature\Scorpion\Scorpion.mdx -- a scorpion, and the
         # commonest hunter pet look there is.
-        (990117, 15464, 3, 1.0, 1.0),
+        (990117, 15464, 4, 1.0, 1.0),
     ],
 }
 ALL_CLASSES = 0x5FF
@@ -384,6 +384,7 @@ def heal(mult):
 RECIPES = [
     dict(
         key="makeshift_strike", name="Makeshift Strike", rarity=0, type=1,
+        script=True,
         first_level=1, ranks=7, step=12, donor=1752, school=1,
         icon=2185, visual=253, visual_kits=dict(impact=4551), power=("energy", 40),
         range_idx=RANGE_MELEE, cast_idx=CAST_INSTANT, cooldown_ms=0,
@@ -414,6 +415,7 @@ RECIPES = [
     ),
     dict(
         key="second_nature", name="Second Nature", rarity=0, type=0,
+        script="spell_cw_reserve_break",
         first_level=6, ranks=6, step=14, donor=29166, school=8,
         # Innervate's: a precast, a cast and an impact kit, no missile, and it
         # is the game's own picture of reserves coming back. The icon is
@@ -451,6 +453,7 @@ RECIPES = [
     ),
     dict(
         key="emberfeed", name="Emberfeed", rarity=1, type=3,
+        script=True,
         first_level=10, ranks=6, step=12, donor=133, school=4,
         icon=183, visual=67, visual_kits=dict(caster_impact=2730), power=("mana", 12), power_is_pct=True,
         speed=SPEED_BOLT,   # a fire bolt, at Fireball's speed
@@ -492,6 +495,7 @@ RECIPES = [
     ),
     dict(
         key="overflow", name="Overflow", rarity=2, type=4,
+        script=True,
         first_level=24, ranks=5, step=12, donor=2061, school=2,
         icon=1871,
         # Circle of Healing's, whose own effect shape is (HEAL, TargetA 63,
@@ -563,6 +567,7 @@ RECIPES = [
     ),
     dict(
         key="vertigo", name="Vertigo", rarity=2, type=0, mechanic=2,   # disoriented
+        script="spell_cw_area_control",
         first_level=38, ranks=4, step=11, donor=8122, school=32,
         icon=2875, visual=346, visual_kits=dict(target_impact=3394), power=("mana", 12), power_is_pct=True,
         range_idx=RANGE_SELF, cast_idx=CAST_INSTANT, cooldown_ms=30000,
@@ -581,6 +586,7 @@ RECIPES = [
     ),
     dict(
         key="sinkhole", name="Sinkhole", rarity=3, type=3, mechanic=11,  # snare
+        script="spell_cw_area_control",
         first_level=46, ranks=4, step=11, donor=5740, school=32,
         # 9352 draws NOTHING: every attachment column on that kit is zero and
         # all it carries is a sound and a screen shake, so the sinkhole itself
@@ -752,6 +758,7 @@ RECIPES = [
     ),
     dict(
         key="kick_dirt", name="Pocket Sand", rarity=0, type=0, mechanic=11,  # snare
+        script="spell_cw_area_control",
         first_level=9, ranks=5, step=13, donor=2094, school=1,
         # Sand Blast's look: a cast kit and an impact kit, no missile, and the
         # impact plays on every unit a cone reaches. Blind's had a cast kit and
@@ -778,6 +785,7 @@ RECIPES = [
     ),
     dict(
         key="adrenaline", name="Adrenaline", rarity=0, type=0,
+        script="spell_cw_reserve_break",
         first_level=12, ranks=5, step=13, donor=1044, school=64,
         icon=1997, visual=1588, visual_kits=dict(instant_area=1005),
         power=("mana", 12), power_is_pct=True,
@@ -872,6 +880,7 @@ RECIPES = [
     ),
     dict(
         key="ward_off", name="Ward Off", rarity=0, type=0,
+        script=True,
         first_level=17, ranks=5, step=13, donor=17, school=2,
         icon=65, visual=784, visual_kits=dict(instant_area=9159),
         power=("mana", 14), power_is_pct=True,
@@ -1060,6 +1069,29 @@ RECIPES = [
                  # aura, which is what PetAI knows how to autocast
                  effects=[dict(eff=E_APPLY_AURA, aura=A_MOD_DECREASE_SPEED, base=-40,
                                tgt=T_ENEMY)]),
+            # Talent only: Medicinal Venom teaches it, and nothing else can.
+            # SpellLevel 255 is above every pet level there is, so
+            # Pet::InitLevelupSpellsForLevel unlearns rather than learns it --
+            # which the PetScript refuses for a Hero who owns the talent. The
+            # creature_template_spell row is still written, so the id sits in
+            # m_spells[3] where the script reads it without knowing a number,
+            # and the three spells the beetle learns for itself keep slots 0-2.
+            #
+            # Its numbers are built at 50 -- the talent opens at 30 and is
+            # carried to 80, so the middle is where it is least wrong -- and
+            # only the row's SpellLevel is 255. Half a heal anchor on a twenty
+            # second cooldown: a top-up between fights, not a healer.
+            #
+            # Venom Spit's visual for the missile (model 675, the green gob the
+            # beetle already spits) with Rejuvenation's impact kit instead of
+            # the poison splash, so the same slime lands as medicine.
+            dict(name="Healing Spit", level=50, spell_level=255,
+                 donor=5730, school=8, icon=197,
+                 visual=809, visual_kits=dict(impact=56), speed=SPEED_SPIT,
+                 range_idx=RANGE_30, cast_idx=CAST_INSTANT, cooldown_ms=20000,
+                 power=("mana", 0), script="spell_cw_healing_spit",
+                 desc="Spits a healing salve at a wounded ally, healing them for $s1.",
+                 effects=[dict(eff=E_HEAL, base=("heal", 0.5), tgt=T_TARGET_ALLY)]),
         ],
         desc=("Summons a Venom Beetle to fight at your side. It knows Venom Bite, and learns "
               "Weakening Spit at level 30 and Spore Wash at level 50."),
@@ -1242,18 +1274,25 @@ RESERVES = ["brace", "ward_off", "second_nature", "adrenaline"]
 
 TALENTS = [
     # ---- column 0: improvisation, the pools feeding each other -------------
+    # Read by C++: spell_cw_makeshift_strike cuts Hurl's cooldown by this much
+    # every time the strike lands. Makeshift Strike has no cooldown of its own
+    # and Hurl has six seconds, so the two improvised weapons feed each other
+    # instead of sitting in the same bar doing the same thing.
     dict(key="improvised_arsenal", name="Improvised Arsenal", row=0, col=0, ranks=5,
-         icon=2185, affects=["makeshift_strike", "hurl"],
-         op=MOD_DAMAGE, pct=True, values=[4, 8, 12, 16, 20],
-         desc="Increases the damage of Makeshift Strike and Hurl by $s1%."),
-    dict(key="field_repairs", name="Field Repairs", row=1, col=0, ranks=3,
-         icon=1997, affects=["second_nature", "adrenaline"],
-         op=MOD_ALL_EFFECTS, pct=True, values=[10, 20, 30],
-         desc="Second Nature and Adrenaline restore $s1% more."),
-    dict(key="deep_pockets", name="Deep Pockets", row=2, col=0, ranks=2,
-         icon=3397, affects=["brace", "ward_off"],
-         op=MOD_DURATION, pct=False, values=[3000, 6000],
-         desc="Increases the duration of Brace and Ward Off by $/1000;s1 sec."),
+         icon=2185, dummy=True, values=[500, 1000, 1500, 2000, 2500],
+         desc="Each time Makeshift Strike deals damage, the remaining cooldown of "
+              "Hurl drops by $/1000;s1 sec."),
+    # One point, one clear promise. Restoring your reserves while rooted was
+    # the moment both of these spells felt pointless.
+    dict(key="field_repairs", name="Field Repairs", row=1, col=0, ranks=1,
+         icon=1997, dummy=True, values=[1],
+         desc="Second Nature and Adrenaline also free you from snares and roots."),
+    # A shield that is fully spent was cast at the right moment; one that
+    # falls off unused was not. This pays for the first and ignores the second.
+    dict(key="last_reserve", name="Last Reserve", row=2, col=0, ranks=2,
+         icon=3397, dummy=True, values=[50, 100],
+         desc="When Ward Off's shield is absorbed to the last point, $s1% of its "
+              "cooldown is refunded."),
     dict(key="thrift", name="Thrift", row=3, col=0, ranks=3,
          icon=3184, affects=RESERVES + ["quicksilver"],
          op=MOD_COST, pct=True, values=[-10, -20, -30],
@@ -1275,35 +1314,45 @@ TALENTS = [
          desc="Increases the radius of everything you place by $s1%."),
     # "Pack Mule" is a stock spell name (62076) and the client keys tooltips by
     # name in places, so it takes one of its own.
-    dict(key="pack_mule", name="Beast Handler", row=2, col=1, ranks=3,
-         icon=1630, affects=["venom_beetle", "reclaimed_sentry"],
-         op=MOD_DAMAGE, pct=True, values=[10, 20, 30],
-         desc="Your Venom Beetle and Reclaimed Sentry deal $s1% more damage."),
+    # The beetle's alone. The Sentry is a fixed turret with its own talent
+    # (Overclocked) and no business in a talent about a beast.
+    dict(key="venom_handler", name="Venom Handler", row=2, col=1, ranks=3,
+         icon=1630, dummy=True, values=[1, 2, 3],
+         desc="When an enemy dies with your Venom Beetle's poison on it, the beetle "
+              "plants that poison on up to $s1 enemies near the body."),
     dict(key="quick_deploy", name="Quick Deploy", row=3, col=1, ranks=3,
          icon=2629, affects=MARKERS,
          op=MOD_COOLDOWN, pct=True, values=[-10, -20, -30],
          desc="Reduces the cooldown of everything you place by $s1%."),
-    dict(key="standing_stones", name="Standing Stones", row=4, col=1, ranks=2,
-         icon=3506, affects=MARKERS,
-         op=MOD_COST, pct=True, values=[-20, -40],
-         desc="Reduces the cost of everything you place by $s1%."),
+    # The beetle's second talent, and the only healing a Hero gets out of a
+    # summon. One point: it either knows the spell or it does not.
+    dict(key="medicinal_venom", name="Medicinal Venom", row=4, col=1, ranks=1,
+         icon=2101, dummy=True, values=[1],
+         desc="Your Venom Beetle learns Healing Spit, and spits it at whichever "
+              "of your party is hurt worst."),
 
     # ---- column 2: breadth, the classless payoff ---------------------------
+    # An order to press them in, rather than a number on both. Bleed Over is
+    # instant and Emberfeed is a two second cast, so the combo costs a global
+    # and pays for the nuke that follows.
     dict(key="field_study", name="Field Study", row=0, col=2, ranks=3,
-         icon=1468, affects=["emberfeed", "bleed_over"],
-         op=MOD_DAMAGE, pct=True, values=[5, 10, 15],
-         desc="Increases the damage of Emberfeed and Bleed Over by $s1%. Both heal "
-              "you for what they deal, so both heal for more."),
+         icon=1468, dummy=True, values=[40, 70, 100],
+         desc="Emberfeed refunds $s1% of its cost when its target is already "
+              "bleeding from your Bleed Over."),
+    # The three area controls only. Hush and Draw Attention are single target
+    # and would collect the same energy for catching one thing, which is what
+    # this is meant to stop being worth doing.
     dict(key="opportunist", name="Opportunist", row=1, col=2, ranks=5,
-         icon=350, affects=CONTROL,
-         op=MOD_COOLDOWN, pct=True, values=[-4, -8, -12, -16, -20],
-         desc="Reduces the cooldown of Pocket Sand, Vertigo, Hush, Draw Attention "
-              "and Rattle by $s1%."),
+         icon=350, dummy=True, values=[2, 4, 6, 8, 10],
+         desc="Pocket Sand, Vertigo and Sinkhole restore $s1 energy for every enemy "
+              "they catch, up to five."),
+    # Counted in cw_forged_watcher, which already sees every cast. The refund
+    # is scheduled a tick late on purpose: Spell::cast calls the script hook
+    # BEFORE TakePower, so paying it back at the hook would simply be paid
+    # again a few lines later.
     dict(key="weave", name="Weave", row=2, col=2, ranks=3,
-         icon=2458, affects=["crossdraw", "antipode_blast", "wildcard_surge"],
-         op=MOD_DAMAGE, pct=True, values=[6, 12, 18],
-         desc="Increases the damage of Crossdraw, Antipode Blast and Wildcard Surge "
-              "by $s1%."),
+         icon=2458, dummy=True, values=[5, 4, 3],
+         desc="Every $s1 Hero abilities you cast, the last one refunds its cost."),
     dict(key="wide_swing", name="Wide Swing", row=3, col=2, ranks=2,
          icon=2847, affects=["wide_arc", "kick_dirt", "vertigo", "overflow", "sinkhole"],
          op=MOD_RADIUS, pct=True, values=[15, 30],
@@ -1351,11 +1400,12 @@ TALENTS = [
          desc="Increases your damage and healing by $s1% for every 3 different "
               "classes you have an ability from."),
 
-    dict(key="broad_strokes", name="Broad Strokes", row=6, col=3, ranks=2,
-         icon=1871, affects=["overflow", "cairn", "rally_point", "signal_fire"],
-         op=MOD_ALL_EFFECTS, pct=True, values=[15, 30],
-         desc="Increases the healing and benefit of Overflow, Cairn, Rally Point and "
-              "Signal Fire by $s1%."),
+    # Overflow spills around the ally it lands on, so healing someone across
+    # the room healed you for nothing. This puts you in the spill wherever you
+    # are standing, which is what makes it worth casting on someone else.
+    dict(key="broad_strokes", name="Broad Strokes", row=6, col=3, ranks=1,
+         icon=1871, dummy=True, values=[1],
+         desc="Overflow's spill also reaches you, however far away its target is."),
 ]
 
 
@@ -1385,6 +1435,19 @@ assert len(ID_ORDER) == len(set(ID_ORDER)), "ID_ORDER has a duplicate"
 # disagree. Their C++ lives in src/ClasslessForgedScripts.cpp, and the spell
 # ids it needs are the `first` of each line below.
 SCRIPTED = [r["key"] for r in RECIPES if r.get("script")]
+# `script` is normally True, meaning "spell_cw_<key>". Given a string instead it
+# names the script, so several lines can share one -- Second Nature and
+# Adrenaline both answer to the talent that breaks snares, and there is no
+# reason for two identical classes.
+SCRIPT_NAMES = {r["key"]: (r["script"] if isinstance(r["script"], str)
+                           else "spell_cw_%s" % r["key"])
+                for r in RECIPES if r.get("script")}
+# A pet spell can name one too. Its key is <recipe>_pet<n>, which is what the
+# spell rows are written under, so the two maps are read the same way.
+for _r in RECIPES:
+    for _i, _ps in enumerate(_r.get("pet_spells", [])):
+        if _ps.get("script"):
+            SCRIPT_NAMES["%s_pet%d" % (_r["key"], _i)] = _ps["script"]
 
 
 def pinned_index(key):
@@ -1767,6 +1830,11 @@ def build(spell, only=None):
             ps["ranks"] = 1
             pid = first + 16 + n
             prow, pdonor = build_row(spell, ps, 0, min(unlock, 80), pid, None, None)
+            # A pet spell that must never be learned on its own says so here,
+            # after the numbers are built: SpellLevel is what
+            # Pet::InitLevelupSpellsForLevel reads, and nothing else.
+            if "spell_level" in petspell:
+                prow[F["SpellLevel"]] = petspell["spell_level"]
             spells.append(dict(id=pid, first=pid, rank=1, level=min(unlock, 80),
                                key=recipe["key"] + "_pet%d" % n, values=prow,
                                base=ps["donor"], fields=overrides_of(prow, pdonor),
@@ -1929,11 +1997,13 @@ def write_sql(spells, lines, gen, path, talents=()):
     def script_name(key):
         if key.endswith("_companion"):
             return "spell_cw_%s_bounce" % key[:-len("_companion")]
-        return "spell_cw_%s" % key
+        return SCRIPT_NAMES.get(key, "spell_cw_%s" % key)
 
+    pet_scripted = {k for k in SCRIPT_NAMES if "_pet" in k}
     scripted = [s for s in spells
                 if (s["key"] in SCRIPTED and not s["key"].endswith("_companion"))
-                or (s["key"].endswith("_companion") and s["key"][:-len("_companion")] in bounce)]
+                or (s["key"].endswith("_companion") and s["key"][:-len("_companion")] in bounce)
+                or s["key"] in pet_scripted]
     if scripted:
         L.append("DELETE FROM `spell_script_names` WHERE `spell_id` BETWEEN %d AND %d;"
                  % (SPELL_BASE, BLOCK_END))
@@ -1958,18 +2028,26 @@ def write_sql(spells, lines, gen, path, talents=()):
     L.append("  (`entry`, `name`, `subname`, `minlevel`, `maxlevel`, `faction`, `npcflag`, "
              "`unit_class`,")
     L.append("   `unit_flags`, `type`, `type_flags`, `RegenHealth`, `flags_extra`, "
+             "`speed_walk`, `speed_run`, "
              "`DamageModifier`, `HealthModifier`, `ScriptName`, `VerifiedBuild`)")
     L.append("VALUES")
     for n, (entry, cname, _display, pet, dmg, hp) in enumerate(creatures):
         end = ";" if n == len(creatures) - 1 else ","
         if pet:
             # a real guardian: attackable, mobile, a beast, and it fights
-            L.append("(%d, '%s', '', 1, 80, 35, 0, 1, 0, %d, 0, 1, %d, %.2f, %.2f, '', 12340)%s"
+            # 1.0 is a running player's speed: a scarab at a pet's usual pace
+            # scuttled in fast-forward. The row is the statement of intent --
+            # Pet.cpp writes 1.15f over speed_run for every pet before anyone
+            # sees it, so cw_forged_pet_model is what actually holds the beetle
+            # to this number.
+            L.append("(%d, '%s', '', 1, 80, 35, 0, 1, 0, %d, 0, 1, %d, 1.0, 1.0, "
+                     "%.2f, %.2f, '', 12340)%s"
                      % (entry, cname, CREATURE_TYPE_BEAST, 0x00000040, dmg, hp, end))
         else:
             # ScriptName is what binds a CreatureScript, and an emplacement that
             # acts needs one. Everything else keeps the empty name it had.
-            L.append("(%d, '%s', '', 1, 80, 35, 0, 1, %d, %d, 0, 1, %d, 1.00, 1.00, '%s', 12340)%s"
+            L.append("(%d, '%s', '', 1, 80, 35, 0, 1, %d, %d, 0, 1, %d, 1.0, 1.14286, "
+                     "1.00, 1.00, '%s', 12340)%s"
                      % (entry, cname, UNIT_FLAGS_MARKER, CREATURE_TYPE_TOTEM,
                         EXTRA_FLAGS_MARKER, CREATURE_SCRIPT.get(entry, ""), end))
     L.append("")

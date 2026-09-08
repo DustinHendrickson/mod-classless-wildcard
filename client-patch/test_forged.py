@@ -993,6 +993,13 @@ def main():
     A_CONST = {"SPELL_AURA_MOD_DAMAGE_PERCENT_DONE": 79, "SPELL_AURA_PERIODIC_DAMAGE": 3,
                "SPELL_AURA_MOD_MELEE_RANGED_HASTE": 192, "SPELL_AURA_DUMMY": 4,
                "SPELL_AURA_MOD_CASTING_SPEED_NOT_STACK": 65}
+    # Implicit targets a target-select hook can name, from the table in
+    # SpellInfo.cpp. A name that is not here fails rather than being skipped.
+    T_CONST = {"TARGET_UNIT_TARGET_ENEMY": 6, "TARGET_UNIT_SRC_AREA_ENEMY": 15,
+               "TARGET_UNIT_DEST_AREA_ENEMY": 16, "TARGET_UNIT_TARGET_ALLY": 21,
+               "TARGET_SRC_CASTER": 22, "TARGET_UNIT_SRC_AREA_ALLY": 30,
+               "TARGET_UNIT_DEST_AREA_ALLY": 31, "TARGET_DEST_TARGET_ANY": 63,
+               "TARGET_DEST_DEST": 87}
     sql_scripts = io.open(SQL, encoding="utf-8").read()
     bound = {}
     for m in re.finditer(r"^\((\d+), '(spell_cw_[a-z_]+)'\)", sql_scripts, re.M):
@@ -1021,6 +1028,21 @@ def main():
                 elif want in A_CONST and (got_e != 6 or got_a != A_CONST[want]):
                     mismatch.append("%s hooks EFFECT_%d as %s but %d has aura %d"
                                     % (cls, idx, want, sid, got_a))
+        # A target-select hook names the implicit target as well as the index,
+        # and AC drops the handler if either disagrees with the row.
+        for mm in re.finditer(r"EFFECT_(\d)\s*,\s*(TARGET_[A-Z_0-9]+)", body):
+            idx, want = int(mm.group(1)), mm.group(2)
+            if want not in T_CONST:
+                mismatch.append("%s names %s, which this check does not know: "
+                                "add it to T_CONST" % (cls, want))
+                continue
+            for sid in ids:
+                v = by_sid[sid]["values"]
+                got = (v[F["EffectImplicitTargetA"] + idx],
+                       v[F["EffectImplicitTargetB"] + idx])
+                if T_CONST[want] not in got:
+                    mismatch.append("%s hooks EFFECT_%d as %s but %d targets %s"
+                                    % (cls, idx, want, sid, got))
         for idx in {int(x) for x in re.findall(r"Effects\[EFFECT_(\d)\]", body)}:
             for sid in ids:
                 if not by_sid[sid]["values"][F["Effect"] + idx]:
@@ -1459,16 +1481,57 @@ def main():
 
     scripted_keys = {r["key"] for r in RECIPES if r.get("script")}
     bounce_keys = {r["key"] for r in RECIPES if r.get("companion_script")}
+    # A pet spell can name a script of its own: Healing Spit is bound to one so
+    # the beetle aims it at whoever is hurt worst.
+    pet_keys = {"%s_pet%d" % (r["key"], i)
+                for r in RECIPES
+                for i, ps in enumerate(r.get("pet_spells", []))
+                if ps.get("script")}
     want_rows = sum(1 for sp in doc["spells"]
                     if (sp["key"] in scripted_keys and not sp["key"].endswith("_companion"))
-                    or (sp["key"].endswith("_companion") and sp["key"][:-len("_companion")] in bounce_keys))
+                    or (sp["key"].endswith("_companion") and sp["key"][:-len("_companion")] in bounce_keys)
+                    or sp["key"] in pet_keys)
     got_rows = re.findall(r"^\((\d+), 'spell_cw_([a-z_]+)'\)", sql, re.M)
     check("every rank of a scripted line binds to its script",
           len(got_rows) == want_rows and want_rows > 0,
           "%d row(s) for %d scripted rank(s); a missing rank loses its script silently"
           % (len(got_rows), want_rows))
-    unscripted = [i for i, name in got_rows
-                  if (name[:-len("_bounce")] if name.endswith("_bounce") else name) not in scripted_keys]
+    # Which LINE each script row is on, resolved by spell id: a shared script
+    # name (Second Nature and Adrenaline both answer to spell_cw_reserve_break)
+    # is not the recipe key and never was meant to be.
+    _line_of = {}
+    for sp in doc["spells"]:
+        key = sp["key"]
+        if key.endswith("_companion"):
+            key = key[:-len("_companion")]
+        _line_of[str(sp["id"])] = key
+    unscripted = [i for i, _name in got_rows
+                  if _line_of.get(i) not in scripted_keys | bounce_keys | pet_keys]
+
+    # A spell_script_names row naming a class that does not exist is not an
+    # error anywhere: the spell simply loads without the script and the talent
+    # that depended on it does nothing. Every name the SQL writes has to be a
+    # class this build registers.
+    _names = sorted({name if not name.endswith("_bounce")
+                     else name for _i, name in got_rows})
+    missing_class = [n for n in _names
+                     if ("RegisterSpellScript(spell_cw_%s);" % n) not in cpp]
+    check("every script name in the SQL is a class the C++ registers",
+          not missing_class,
+          "a spell_script_names row naming no class loads silently and does "
+          "nothing; %s" % missing_class)
+
+    # And the mirror: a script class that nothing binds to. Writing the C++ and
+    # forgetting `script=True` on the recipe leaves a talent that reads well,
+    # buys fine, and never runs -- with nothing anywhere to say so.
+    _bound = {"spell_cw_%s" % name for _i, name in got_rows}
+    orphan_scripts = sorted(n for n in
+                            set(re.findall(r"RegisterSpellScript\((spell_cw_\w+)\);", cpp))
+                            if n not in _bound)
+    check("every script class the C++ registers has spells bound to it",
+          not orphan_scripts,
+          "a registered class with no spell_script_names row never runs; %s"
+          % orphan_scripts)
     # ---- an emplacement that acts needs a script AND a spell ------------------
     # Reclaimed Sentry's turret has an AI only because creature_template names
     # one, and it knows what to fire only because creature_template_spell puts
@@ -1502,6 +1565,39 @@ def main():
             emplacement.append("creature %d has no slot-0 row for spell %d" % (entry, want))
     check("every scripted emplacement carries its script and its spell",
           not emplacement, "%s" % sorted(set(emplacement))[:4])
+
+    # ---- a talent-only pet spell ---------------------------------------------
+    # It is reached from C++ by slot and gated by SpellLevel, and both of those
+    # are silent when wrong: the wrong slot teaches the wrong spell, and a
+    # SpellLevel a pet can reach teaches it to every pet for nothing.
+    petslot = []
+    _slot_m = re.search(r"constexpr uint8 \w*SLOT\w* = (\d+);", cpp)
+    for r in RECIPES:
+        for i, ps in enumerate(r.get("pet_spells", [])):
+            if not ps.get("script"):
+                continue
+            if _slot_m is None:
+                petslot.append("no slot constant in the C++ for %s" % ps["name"])
+            elif int(_slot_m.group(1)) != i:
+                petslot.append("%s is pet_spells[%d] but the C++ reads slot %s"
+                               % (ps["name"], i, _slot_m.group(1)))
+            sp = next((x for x in doc["spells"]
+                       if x["key"] == "%s_pet%d" % (r["key"], i)), None)
+            if not sp:
+                petslot.append("%s has no spell row" % ps["name"])
+                continue
+            if sp["values"][F["SpellLevel"]] <= 80:
+                petslot.append("%s has SpellLevel %d, which every pet reaches: it is "
+                               "no longer talent-only"
+                               % (ps["name"], sp["values"][F["SpellLevel"]]))
+            if re.search(r"INSERT INTO `creature_template_spell`[^;]*\(\d+, %d, %d, 12340\)"
+                         % (i, sp["id"]), sql_all, re.S) is None:
+                petslot.append("%s is not in creature_template_spell at index %d"
+                               % (ps["name"], i))
+    check("a talent-only pet spell sits where the C++ looks and no pet can learn it",
+          not petslot,
+          "the talent would teach the wrong spell, or every pet would get it "
+          "free; %s" % petslot)
 
     check("no unscripted line was given a script row", not unscripted,
           "offenders %s" % unscripted[:4])

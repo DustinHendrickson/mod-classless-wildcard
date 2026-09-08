@@ -1062,6 +1062,7 @@ void ClasslessMgr::LoadForgedSpells()
     if (!cfg.forgedEnable)
         return;
 
+    _forgedByRecipe.clear();
     QueryResult result = WorldDatabase.Query(
         "SELECT first_spell, recipe, rarity, type FROM cw_forged_spells WHERE enabled = 1");
     if (!result)
@@ -1091,6 +1092,7 @@ void ClasslessMgr::LoadForgedSpells()
         }
 
         _abilities.erase(firstSpell);
+        _forgedByRecipe[recipe] = firstSpell;
 
         AbilityEntry e;
         e.firstSpellId = firstSpell;
@@ -1822,6 +1824,12 @@ AbilityEntry const* ClasslessMgr::FindAbilityBySpell(uint32 spellId) const
     return itr != _spellToFirst.end() ? GetAbility(itr->second) : nullptr;
 }
 
+uint32 ClasslessMgr::ForgedLine(std::string const& recipe) const
+{
+    auto itr = _forgedByRecipe.find(recipe);
+    return itr != _forgedByRecipe.end() ? itr->second : 0;
+}
+
 uint32 ClasslessMgr::AbilityCost(AbilityEntry const& e) const
 {
     return e.cost ? e.cost : cfg.abilityCostByRarity[uint8(e.rarity)];
@@ -2414,6 +2422,39 @@ void ClasslessMgr::HandleLogin(Player* player)
                 Msg(player, Acore::StringFormat("{} is an ability now. It is in your build{}.",
                     SpellName(t.abilityLines[0]),
                     st.mode == Mode::Classless ? ", and its Talent Essence is back" : ""));
+        }
+    }
+
+    // A talent that lost ranks since the character bought it. The tree is
+    // authored data and a redesign can shorten one; when that happens the rank
+    // spell they hold was deleted with it, so the talent reads as owned and
+    // does nothing at all. Clamp to what the talent offers now, which re-grants
+    // the top rank it does have, and give back what the missing ranks cost on
+    // the path where they cost something.
+    {
+        std::vector<std::pair<uint32, uint8>> shrunk;
+        for (auto const& [talentId, rank] : st.talents)
+            if (TalentPoolEntry const* t = GetTalent(talentId); t && t->maxRank && rank > t->maxRank)
+                shrunk.emplace_back(talentId, rank);
+        for (auto const& [talentId, rank] : shrunk)
+        {
+            TalentPoolEntry const* t = GetTalent(talentId);
+            if (!t)
+                continue;
+            GrantTalentRankInternal(player, *t, t->maxRank, true);
+
+            uint32 refunded = 0;
+            if (st.mode == Mode::Classless && cfg.refundOnUnlearn && !cfg.talentFlatCost)
+            {
+                refunded = cfg.talentCostPerRank * uint32(rank - t->maxRank);
+                st.talentEssence += refunded;
+            }
+            std::string line = Acore::StringFormat(
+                "{} now has {} rank{}, so yours is set to {}.",
+                SpellName(t->rankSpells[0]), t->maxRank, t->maxRank == 1 ? "" : "s", t->maxRank);
+            if (refunded)
+                line += Acore::StringFormat(" {} Talent Essence is back.", refunded);
+            Msg(player, line);
         }
     }
 

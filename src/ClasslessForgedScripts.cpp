@@ -30,7 +30,9 @@
  */
 
 #include "ClasslessMgr.h"
+#include "Duration.h"      // the 1ms the Weave refund is scheduled by
 #include "GameTime.h"
+#include "Group.h"          // Healing Spit reads the party
 #include "Player.h"
 #include "ScriptMgr.h"
 #include "SpellAuraEffects.h"
@@ -79,10 +81,27 @@ namespace
     constexpr uint32 ICON_OVERCLOCKED = 2303;     // the sentry's firing rate
     constexpr uint32 ICON_TWO_SCHOOLS = 2215;     // a school other than the last
     constexpr uint32 ICON_JACK_OF_ALL = 2590;     // breadth of the build
+    constexpr uint32 ICON_IMPROVISED_ARSENAL = 2185;  // the strike shortens the throw
+    constexpr uint32 ICON_FIELD_REPAIRS = 1997;   // reserves also break snares
+    constexpr uint32 ICON_LAST_RESERVE = 3397;    // a shield spent to the last point
+    constexpr uint32 ICON_OPPORTUNIST = 350;      // energy for each enemy caught
+    constexpr uint32 ICON_WEAVE = 2458;           // every Nth Hero ability is free
+    constexpr uint32 ICON_VENOM_HANDLER = 1630;   // the beetle's poison outlives its host
+
+    // How far a Venom Handler poison reaches from the body it came off.
+    // Eight yards is what the game's own spreading effects use.
+    constexpr float VENOM_SPREAD_RANGE = 8.0f;
+    constexpr uint32 ICON_FIELD_STUDY = 1468;     // Emberfeed paid for by a bleed
+    constexpr uint32 ICON_BROAD_STROKES = 1871;   // Overflow spills back to you
+    constexpr uint32 ICON_MEDICINAL_VENOM = 2101; // the beetle learns to heal
 
     // Two Schools: the school mask of the last damage this character dealt.
     // A pure cache like the two below -- losing it costs one hit's bonus.
     std::unordered_map<ObjectGuid::LowType, uint32> _lastDamageSchool;
+
+    // Weave: Hero abilities cast since the last free one. Also a cache; losing
+    // it costs one cycle of counting, never a refund already given.
+    std::unordered_map<ObjectGuid::LowType, uint32> _weaveCount;
 
     // Returns the talent's amount, or 0 when the Hero does not own it.
     int32 HeroTalentAmount(Unit const* unit, uint32 icon)
@@ -207,6 +226,29 @@ public:
         if (IsDamagingSpellCast(info))
             _lastDamagingCastMs[guid] = uint32(GameTime::GetGameTimeMS().count());
 
+        // Weave: every Nth Hero ability gives its cost back. Family 14 is what
+        // makes a spell a Hero ability, so nothing else is counted.
+        //
+        // The refund is scheduled a tick out rather than paid here, and that is
+        // not tidiness: Spell::cast runs this hook BEFORE TakePower, so handing
+        // the power back now would only see it taken again a few lines later.
+        if (info->SpellFamilyName == HERO_FAMILY && !info->IsPassive())
+            if (int32 const every = HeroTalentAmount(player, ICON_WEAVE))
+            {
+                uint32& cast = _weaveCount[guid];
+                if (++cast >= uint32(every))
+                {
+                    cast = 0;
+                    int32 const cost = spell->GetPowerCost();
+                    Powers const power = Powers(info->PowerType);
+                    if (cost > 0)
+                        player->m_Events.AddEventAtOffset([player, power, cost]()
+                        {
+                            player->ModifyPower(power, cost);
+                        }, 1ms);
+                }
+            }
+
         // Repertoire counts DISTINCT abilities, so a repeat is free to ignore.
         // The set is created when the aura goes up and dropped when it comes
         // down, so an absent entry means the buff is not running.
@@ -228,6 +270,7 @@ public:
         _lastDamagingCastMs.erase(guid);
         _lastDamageSchool.erase(guid);
         _repertoireUsed.erase(guid);
+        _weaveCount.erase(guid);
     }
 };
 
@@ -522,18 +565,106 @@ class spell_cw_wildcard_surge : public SpellScript
 // good. This corrects our own entries as they enter the world, so a beetle
 // summoned before the model changed fixes itself on the next summon.
 // =====================================================================
-class cw_forged_pet_model : public PetScript
+// Medicinal Venom's spell lives in the beetle's creature_template_spell at
+// slot 3 with SpellLevel 255, so Pet::InitLevelupSpellsForLevel never hands it
+// out and this file never holds a spell id. What the talent does is teach it,
+// and stop the level-up pass taking it away again.
+namespace
 {
-public:
-    cw_forged_pet_model() : PetScript("cw_forged_pet_model", { PETHOOK_ON_PET_ADD_TO_WORLD }) { }
+    constexpr uint8 HEALING_SPIT_SLOT = 3;
 
-    void OnPetAddToWorld(Pet* pet) override
+    // A scarab at a pet's 1.15 run speed scuttles in fast-forward. One is a
+    // running player's speed, which is what it spends its life following.
+    //
+    // It has to be set from a script: Pet.cpp writes 1.15f over
+    // creature_template.speed_run for every pet there is, and
+    // Guardian::InitStatsForLevel comes back and does it again on every level
+    // change. The row still carries the number so the data says what it means.
+    constexpr float BEETLE_RUN_SPEED = 1.0f;
+
+    void SlowForgedPet(Unit* pet)
     {
         if (!pet)
             return;
         uint32 const entry = pet->GetEntry();
         if (entry < FORGED_CREATURE_FIRST || entry > FORGED_CREATURE_LAST)
             return;
+        // Unit::SetSpeed returns early when the rate already matches, so this
+        // is safe to call as often as the hooks fire.
+        pet->SetSpeed(MOVE_RUN, BEETLE_RUN_SPEED);
+    }
+
+    // The spell the beetle would learn from the talent, or 0 for any other pet.
+    uint32 TalentPetSpell(Pet const* pet)
+    {
+        if (!pet)
+            return 0;
+        uint32 const entry = pet->GetEntry();
+        if (entry < FORGED_CREATURE_FIRST || entry > FORGED_CREATURE_LAST)
+            return 0;
+        uint32 const spellId = pet->m_spells[HEALING_SPIT_SLOT];
+        return sSpellMgr->GetSpellInfo(spellId) ? spellId : 0;
+    }
+
+    bool OwnerHasMedicinalVenom(Pet const* pet)
+    {
+        Unit* owner = pet ? pet->GetOwner() : nullptr;
+        Player* player = owner ? owner->ToPlayer() : nullptr;
+        return player && HeroTalentAmount(player, ICON_MEDICINAL_VENOM) > 0;
+    }
+}
+
+class cw_forged_pet_model : public PetScript
+{
+public:
+    cw_forged_pet_model() : PetScript("cw_forged_pet_model", {
+        PETHOOK_ON_PET_ADD_TO_WORLD,
+        PETHOOK_CAN_UNLEARN_SPELL_DEFAULT,
+        PETHOOK_ON_INIT_STATS_FOR_LEVEL
+    }) { }
+
+    // Stat init is where the core writes 1.15 over the row's speed, and it runs
+    // again on every level change, so this runs after it every time.
+    void OnInitStatsForLevel(Guardian* guardian, uint8 /*petlevel*/) override
+    {
+        SlowForgedPet(guardian);
+    }
+
+    // Pet::InitLevelupSpellsForLevel unlearns every default spell whose
+    // SpellLevel is above the pet's, which Healing Spit's 255 always is. For a
+    // Hero who owns the talent, that is the one spell it must not take.
+    [[nodiscard]] bool CanUnlearnSpellDefault(Pet* pet, SpellInfo const* spellInfo) override
+    {
+        if (!spellInfo || spellInfo->Id != TalentPetSpell(pet))
+            return true;
+        return !OwnerHasMedicinalVenom(pet);
+    }
+
+    void OnPetAddToWorld(Pet* pet) override
+    {
+        if (!pet)
+            return;
+        SlowForgedPet(pet);
+        uint32 const entry = pet->GetEntry();
+        if (entry < FORGED_CREATURE_FIRST || entry > FORGED_CREATURE_LAST)
+            return;
+
+        // The talent's spell, handed over or taken back. Both directions, so
+        // unlearning the talent takes the beetle's heal with it rather than
+        // leaving a pet that keeps casting something nothing paid for.
+        if (uint32 const spit = TalentPetSpell(pet))
+        {
+            bool const wanted = OwnerHasMedicinalVenom(pet);
+            bool const known = pet->HasSpell(spit);
+            if (wanted && !known)
+            {
+                pet->learnSpell(spit);
+                if (SpellInfo const* info = sSpellMgr->GetSpellInfo(spit))
+                    pet->ToggleAutocast(info, true);
+            }
+            else if (!wanted && known)
+                pet->unlearnSpell(spit, false);
+        }
         CreatureTemplate const* tmpl = sObjectMgr->GetCreatureTemplate(entry);
         if (!tmpl)
             return;
@@ -603,6 +734,7 @@ struct npc_cw_reclaimed_sentry : public NullCreatureAI
         if (int32 const faster = HeroTalentAmount(owner, ICON_OVERCLOCKED))
             _timer = std::max<uint32>(200, SENTRY_SHOT_MS - CalculatePct(SENTRY_SHOT_MS, faster));
 
+
         std::list<Unit*> nearby;
         Acore::AnyUnfriendlyUnitInObjectRangeCheck check(me, owner, SENTRY_RANGE);
         Acore::UnitListSearcher<Acore::AnyUnfriendlyUnitInObjectRangeCheck> searcher(me, nearby, check);
@@ -654,6 +786,294 @@ public:
 };
 
 // =====================================================================
+// Improvised Arsenal -- the strike shortens the throw.
+//
+// Makeshift Strike has no cooldown and Hurl has six seconds, so before this
+// they were two buttons doing the same job at different speeds. Now landing
+// the cheap one brings the expensive one back, and the pair reads as one
+// improvised kit rather than two spells that happen to share a talent.
+//
+// Hurl is found by recipe name rather than by id: this file deliberately holds
+// no generated spell ids, and the recipe string is the one name the generator
+// and the server already share.
+// =====================================================================
+class spell_cw_makeshift_strike : public SpellScript
+{
+    PrepareSpellScript(spell_cw_makeshift_strike);
+
+    void ShortenHurl()
+    {
+        Player* caster = GetCaster() ? GetCaster()->ToPlayer() : nullptr;
+        if (!caster || !GetHitUnit())
+            return;
+
+        int32 const ms = HeroTalentAmount(caster, ICON_IMPROVISED_ARSENAL);
+        if (ms <= 0)
+            return;
+
+        uint32 const first = sClasslessMgr->ForgedLine("hurl");
+        if (!first)
+            return;                     // forged spells are off on this realm
+        ClasslessWildcard::AbilityEntry const* line = sClasslessMgr->GetAbility(first);
+        if (!line)
+            return;
+
+        // Every rank, because only the one they hold is ever on cooldown and
+        // ModifySpellCooldown returns silently for the rest.
+        for (uint32 rank : line->ranks)
+            caster->ModifySpellCooldown(rank, -ms);
+    }
+
+    void Register() override
+    {
+        AfterHit += SpellHitFn(spell_cw_makeshift_strike::ShortenHurl);
+    }
+};
+
+// =====================================================================
+// Field Repairs -- getting your reserves back is no use if you cannot move.
+//
+// One point, and it turns Second Nature and Adrenaline from "press when empty"
+// into the answer to being kited or rooted. Bound to both, so the two can
+// never drift apart on what the talent does.
+// =====================================================================
+class spell_cw_reserve_break : public SpellScript
+{
+    PrepareSpellScript(spell_cw_reserve_break);
+
+    void FreeMovement()
+    {
+        Player* caster = GetCaster() ? GetCaster()->ToPlayer() : nullptr;
+        if (!caster)
+            return;
+        if (!HeroTalentAmount(caster, ICON_FIELD_REPAIRS))
+            return;
+        caster->RemoveMovementImpairingAuras(true);   // roots included
+    }
+
+    void Register() override
+    {
+        AfterCast += SpellCastFn(spell_cw_reserve_break::FreeMovement);
+    }
+};
+
+// =====================================================================
+// Last Reserve -- a shield spent to the last point pays for itself.
+//
+// The test is the absorb's own remaining amount, not the removal mode: an
+// absorb that runs out is removed by whatever spell finished it, while one
+// that simply expires still has points left. Reading the amount is the only
+// answer that means "you timed this right" in both cases.
+// =====================================================================
+class spell_cw_ward_off : public AuraScript
+{
+    PrepareAuraScript(spell_cw_ward_off);
+
+    void Spent(AuraEffect const* aurEff, AuraEffectHandleModes /*mode*/)
+    {
+        Player* owner = GetUnitOwner() ? GetUnitOwner()->ToPlayer() : nullptr;
+        if (!owner || aurEff->GetAmount() > 0)
+            return;
+
+        int32 const pct = HeroTalentAmount(owner, ICON_LAST_RESERVE);
+        int32 const cooldown = int32(GetSpellInfo()->RecoveryTime);
+        if (pct <= 0 || cooldown <= 0)
+            return;
+
+        owner->ModifySpellCooldown(GetId(), -CalculatePct(cooldown, pct));
+    }
+
+    void Register() override
+    {
+        AfterEffectRemove += AuraEffectRemoveFn(spell_cw_ward_off::Spent, EFFECT_0,
+                                                SPELL_AURA_SCHOOL_ABSORB,
+                                                AURA_EFFECT_HANDLE_REAL);
+    }
+};
+
+// =====================================================================
+// Opportunist -- catching a crowd pays, catching one thing does not.
+//
+// AfterHit runs once per unit the spell reached, so the count is the number of
+// enemies actually caught rather than the number aimed at. Capped, because a
+// pull of twenty should not refill the bar on its own.
+// =====================================================================
+class spell_cw_area_control : public SpellScript
+{
+    PrepareSpellScript(spell_cw_area_control);
+
+    static constexpr uint8 MAX_PAID = 5;
+
+    void Caught()
+    {
+        Player* caster = GetCaster() ? GetCaster()->ToPlayer() : nullptr;
+        if (!caster || !GetHitUnit() || _paid >= MAX_PAID)
+            return;
+
+        int32 const energy = HeroTalentAmount(caster, ICON_OPPORTUNIST);
+        if (energy <= 0)
+            return;
+
+        ++_paid;
+        caster->ModifyPower(POWER_ENERGY, energy);
+    }
+
+    void Register() override
+    {
+        AfterHit += SpellHitFn(spell_cw_area_control::Caught);
+    }
+
+private:
+    uint8 _paid = 0;
+};
+
+// =====================================================================
+// Healing Spit -- the beetle spits at whoever is hurt worst.
+//
+// PetAI offers a positive spell each ally in turn and casts on the first one
+// the spell accepts (Spell::CanAutoCast runs the cast check), so "hurt worst"
+// is enforced by refusing everyone else. Nobody hurt means nobody accepted and
+// the beetle simply does not cast, which is what keeps a twenty second
+// cooldown for the moment it is worth something.
+// =====================================================================
+class spell_cw_healing_spit : public SpellScript
+{
+    PrepareSpellScript(spell_cw_healing_spit);
+
+    static constexpr float HURT_ENOUGH = 90.0f;   // per cent of health
+
+    SpellCastResult CheckWounded()
+    {
+        Unit* caster = GetCaster();
+        Unit* target = GetExplTargetUnit();
+        if (!caster || !target)
+            return SPELL_FAILED_BAD_TARGETS;
+
+        Unit* owner = caster->GetOwner();
+        Player* player = owner ? owner->ToPlayer() : nullptr;
+        if (!player)
+            return SPELL_FAILED_BAD_TARGETS;
+
+        float const range = GetSpellInfo()->GetMaxRange(true);
+        Unit* worst = nullptr;
+        float worstPct = HURT_ENOUGH;
+
+        auto consider = [&](Unit* ally)
+        {
+            if (!ally || !ally->IsAlive() || !caster->IsWithinDistInMap(ally, range))
+                return;
+            float const pct = ally->GetHealthPct();
+            if (pct >= worstPct)
+                return;
+            worst = ally;
+            worstPct = pct;
+        };
+
+        consider(player);
+        consider(caster);                       // the beetle counts as one of you
+        if (Group const* group = player->GetGroup())
+            for (GroupReference const* itr = group->GetFirstMember(); itr; itr = itr->next())
+                if (Player* member = itr->GetSource())
+                    if (member != player)
+                        consider(member);
+
+        return worst == target ? SPELL_CAST_OK : SPELL_FAILED_BAD_TARGETS;
+    }
+
+    void Register() override
+    {
+        OnCheckCast += SpellCheckCastFn(spell_cw_healing_spit::CheckWounded);
+    }
+};
+
+// =====================================================================
+// Field Study -- a bleed pays for the bolt.
+//
+// Emberfeed is a two second cast that heals you for part of what it deals, and
+// Bleed Over is an instant leech. Separately they are two damage spells that
+// happen to feed you; in this order they are a rotation, and the cost of the
+// slow one comes back.
+//
+// The refund is taken in AfterCast, which Spell::cast reaches AFTER TakePower,
+// so the power really has been paid by the time it is handed back. (The Weave
+// talent cannot do this: its hook runs before the cost is taken at all.)
+// =====================================================================
+class spell_cw_emberfeed : public SpellScript
+{
+    PrepareSpellScript(spell_cw_emberfeed);
+
+    void PayBack()
+    {
+        Player* caster = GetCaster() ? GetCaster()->ToPlayer() : nullptr;
+        Unit* target = GetExplTargetUnit();
+        if (!caster || !target)
+            return;
+
+        int32 const pct = HeroTalentAmount(caster, ICON_FIELD_STUDY);
+        if (pct <= 0)
+            return;
+
+        uint32 const first = sClasslessMgr->ForgedLine("bleed_over");
+        if (!first)
+            return;
+        ClasslessWildcard::AbilityEntry const* line = sClasslessMgr->GetAbility(first);
+        if (!line)
+            return;
+
+        // Any rank, and only this caster's: someone else's bleed is not your
+        // setup and should not pay you.
+        bool bleeding = false;
+        for (uint32 rank : line->ranks)
+            if (target->GetAura(rank, caster->GetGUID()))
+            {
+                bleeding = true;
+                break;
+            }
+        if (!bleeding)
+            return;
+
+        int32 const cost = GetSpell() ? GetSpell()->GetPowerCost() : 0;
+        if (cost <= 0)
+            return;
+        caster->ModifyPower(Powers(GetSpellInfo()->PowerType), CalculatePct(cost, pct));
+    }
+
+    void Register() override
+    {
+        AfterCast += SpellCastFn(spell_cw_emberfeed::PayBack);
+    }
+};
+
+// =====================================================================
+// Broad Strokes -- the spill reaches the one who cast it.
+//
+// Overflow heals a friendly target and spills to allies around THEM, so
+// healing someone on the far side of a fight healed the caster for nothing at
+// all. Adding the caster to the spill's target list is the whole talent: no
+// second heal, no new spell, just one more name on the list the effect was
+// always going to run down.
+// =====================================================================
+class spell_cw_overflow : public SpellScript
+{
+    PrepareSpellScript(spell_cw_overflow);
+
+    void IncludeCaster(std::list<WorldObject*>& targets)
+    {
+        Unit* caster = GetCaster();
+        if (!caster || !HeroTalentAmount(caster, ICON_BROAD_STROKES))
+            return;
+        if (std::find(targets.begin(), targets.end(), caster) == targets.end())
+            targets.push_back(caster);
+    }
+
+    void Register() override
+    {
+        OnObjectAreaTargetSelect += SpellObjectAreaTargetSelectFn(
+            spell_cw_overflow::IncludeCaster, EFFECT_1, TARGET_UNIT_DEST_AREA_ALLY);
+    }
+};
+
+// =====================================================================
 // Two Schools and Jack of All Trades.
 //
 // Neither belongs to an ability, so neither can be a spell modifier: they
@@ -666,7 +1086,8 @@ public:
     cw_forged_talents() : UnitScript("cw_forged_talents", true, {
         UNITHOOK_MODIFY_MELEE_DAMAGE,
         UNITHOOK_MODIFY_SPELL_DAMAGE_TAKEN,
-        UNITHOOK_MODIFY_HEAL_RECEIVED
+        UNITHOOK_MODIFY_HEAL_RECEIVED,
+        UNITHOOK_ON_UNIT_DEATH
     }) { }
 
     void ModifyMeleeDamage(Unit* /*target*/, Unit* attacker, uint32& damage) override
@@ -690,6 +1111,62 @@ public:
         ApplyHeroTalentBonus(healer, 0, amount, true);
         heal = uint32(std::max<int32>(0, amount));
     }
+
+    // Venom Handler: a poison that outlives what it killed.
+    //
+    // Only a Hero pet's own aura qualifies, which family 14 settles without
+    // holding a spell id: the beetle's poisons are forged spells and nothing
+    // else a pet casts is. The aura is read out of the corpse BEFORE anything
+    // is cast, because casting into a live aura map is how iterators die.
+    void OnUnitDeath(Unit* unit, Unit* /*killer*/) override
+    {
+        if (!unit || !unit->IsInWorld())
+            return;
+
+        Creature* beetle = nullptr;
+        Player* owner = nullptr;
+        uint32 poison = 0;
+        int32 spread = 0;
+        for (auto const& pair : unit->GetAppliedAuras())
+        {
+            Aura* aura = pair.second ? pair.second->GetBase() : nullptr;
+            if (!aura || aura->GetSpellInfo()->SpellFamilyName != HERO_FAMILY)
+                continue;
+            Unit* caster = aura->GetCaster();
+            if (!caster || !caster->IsCreature() || !caster->IsPet())
+                continue;
+            Unit* master = caster->GetOwner();
+            Player* player = master ? master->ToPlayer() : nullptr;
+            if (!player)
+                continue;
+            spread = HeroTalentAmount(player, ICON_VENOM_HANDLER);
+            if (spread <= 0)
+                continue;
+            beetle = caster->ToCreature();
+            owner = player;
+            poison = aura->GetId();
+            break;
+        }
+        if (!beetle || !owner || !poison)
+            return;
+
+        std::list<Unit*> nearby;
+        Acore::AnyUnfriendlyUnitInObjectRangeCheck check(unit, owner, VENOM_SPREAD_RANGE);
+        Acore::UnitListSearcher<Acore::AnyUnfriendlyUnitInObjectRangeCheck> searcher(unit, nearby, check);
+        Cell::VisitObjects(unit, searcher, VENOM_SPREAD_RANGE);
+
+        for (Unit* next : nearby)
+        {
+            if (spread <= 0)
+                break;
+            if (next == unit || !next->IsAlive() || next->HasAura(poison, beetle->GetGUID()))
+                continue;
+            if (!owner->IsValidAttackTarget(next))
+                continue;
+            beetle->CastSpell(next, poison, TRIGGERED_FULL_MASK, nullptr, nullptr, owner->GetGUID());
+            --spread;
+        }
+    }
 };
 
 void AddClasslessForgedScripts()
@@ -704,4 +1181,11 @@ void AddClasslessForgedScripts()
     RegisterSpellScript(spell_cw_quickening);
     RegisterSpellScript(spell_cw_repertoire);
     RegisterSpellScript(spell_cw_wildcard_surge);
+    RegisterSpellScript(spell_cw_makeshift_strike);
+    RegisterSpellScript(spell_cw_reserve_break);
+    RegisterSpellScript(spell_cw_ward_off);
+    RegisterSpellScript(spell_cw_area_control);
+    RegisterSpellScript(spell_cw_emberfeed);
+    RegisterSpellScript(spell_cw_overflow);
+    RegisterSpellScript(spell_cw_healing_spit);
 }
