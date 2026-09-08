@@ -400,8 +400,6 @@ namespace ClasslessWildcard
         // classless build. Only the numbers below are tunable.
         uint32 urMaxRage = 1000;           // internal units (1000 = 100 rage)
         uint32 urMaxEnergy = 100;
-        uint32 urRageDealtPct = 100;       // % of warrior-formula rage gained when dealing melee damage
-        uint32 urRageTakenPct = 100;       // % of warrior-formula rage gained when taking damage
 
         // Universal stat layer: fills the gaps the chassis math leaves so EVERY
         // stat is worth allocating on a classless Hero:

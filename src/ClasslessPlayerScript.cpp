@@ -73,6 +73,7 @@ public:
         PLAYERHOOK_ON_MONEY_CHANGED,
         PLAYERHOOK_ON_AFTER_UPDATE_MAX_POWER,
         PLAYERHOOK_ON_PLAYER_IS_CLASS,
+        PLAYERHOOK_ON_PLAYER_HAS_ACTIVE_POWER_TYPE,
         PLAYERHOOK_ON_BEFORE_GUARDIAN_INIT_STATS_FOR_LEVEL,
         PLAYERHOOK_ON_UPDATE
     }) { }
@@ -112,6 +113,47 @@ public:
             if (player->HasSpell(id))
                 return true;
         return false;
+    }
+
+    // Does this character have that power at all?
+    //
+    // The core asks this before every rage grant there is, and its own answer
+    // is `getPowerType() == power` -- the bar on screen. A Hero has mana, rage
+    // and energy at once and shows one of them, so the honest answer for all
+    // three is yes, and the five rage paths this module cannot hook (damage
+    // taken, absorbed damage, block, dodge and parry, and EffectEnergize for
+    // every rage-granting spell in the game) start working.
+    //
+    // Returning false is not "no": it hands the question back to the core,
+    // whose answer is the displayed bar.
+    //
+    // Nothing is asked of the character's state until it is in the world.
+    // Player::Create asks this while building a brand new character, and the
+    // state is loaded with database queries -- so before then the core's own
+    // answer stands, which is what it was doing anyway.
+    bool OnPlayerHasActivePowerType(Player const* player, Powers power) override
+    {
+        if (!sClasslessMgr->cfg.enabled || !player || !player->IsInWorld())
+            return false;
+        // bots and system accounts keep vanilla resource rules. In the world
+        // the state is already loaded, so this is a map lookup.
+        if (sClasslessMgr->IsExempt(const_cast<Player*>(player)))
+            return false;
+
+        switch (power)
+        {
+            // the three UniversalResources gives every Hero a real maximum in
+            case POWER_MANA:
+            case POWER_RAGE:
+            case POWER_ENERGY:
+                return true;
+            // Runes are per character and opt-in, so this one is read rather
+            // than assumed.
+            case POWER_RUNIC_POWER:
+                return sClasslessMgr->GetState(const_cast<Player*>(player)).runes;
+            default:
+                return false;
+        }
     }
 
     Optional<bool> OnPlayerIsClass(Player const* player, Classes playerClass, ClassContext context) override
@@ -687,76 +729,8 @@ public:
 //   * Had it worked it would have been a hole: every off-chassis ability would
 //     have been castable on an empty pool, which is most of a classless build.
 
-// Rage generation for non-rage chassis: the core only rewards rage when the
-// DISPLAYED power type is rage, so a Mage chassis swinging a sword would never
-// fill its rage pool. Mirror the warrior formulas here for everyone else.
-class ClasslessUnitScript : public UnitScript
-{
-public:
-    ClasslessUnitScript() : UnitScript("ClasslessUnitScript", true, {
-        UNITHOOK_MODIFY_MELEE_DAMAGE,
-        UNITHOOK_ON_DAMAGE
-    }) { }
-
-    static float RageConversion(uint8 level)
-    {
-        return 0.0091107836f * level * level + 3.225598133f * level + 4.2652911f;
-    }
-
-    static bool WantsCustomRage(Unit* unit)
-    {
-        Config const& cfg = sClasslessMgr->cfg;
-        if (!cfg.enabled)
-            return false;
-        if (!unit || !unit->IsPlayer() || !unit->IsAlive())
-            return false;
-        if (sClasslessMgr->IsExempt(unit->ToPlayer()))
-            return false; // bots/system accounts stay vanilla
-        if (unit->getPowerType() == POWER_RAGE) // native rage gen already applies
-            return false;
-        return unit->GetMaxPower(POWER_RAGE) > 0;
-    }
-
-    // rage from dealing melee damage (fires per swing, melee only)
-    //
-    // Player::RewardRage is
-    //   (damage / rageconversion * 7.5 + weaponSpeedHitFactor) / 2
-    // and the halving is not optional: without it a Hero earned roughly twice
-    // the rage a warrior does for the same swing, which is not what
-    // "% of warrior-formula rage" says on the tin. The weapon-speed term needs
-    // the attack type the core has and this hook does not, so it is left out
-    // and the small amount it adds is simply not granted.
-    void ModifyMeleeDamage(Unit* /*target*/, Unit* attacker, uint32& damage) override
-    {
-        if (!damage || !WantsCustomRage(attacker))
-            return;
-        Config const& cfg = sClasslessMgr->cfg;
-        if (!cfg.urRageDealtPct)
-            return;
-        float addRage = float(damage) / RageConversion(attacker->GetLevel()) * 7.5f / 2.0f;
-        addRage *= sWorld->getRate(RATE_POWER_RAGE_INCOME);
-        addRage = addRage * float(cfg.urRageDealtPct) / 100.0f;
-        attacker->ModifyPower(POWER_RAGE, int32(addRage * 10.0f));
-    }
-
-    // rage from taking damage (any source)
-    void OnDamage(Unit* /*attacker*/, Unit* victim, uint32& damage) override
-    {
-        if (!damage || !WantsCustomRage(victim))
-            return;
-        Config const& cfg = sClasslessMgr->cfg;
-        if (!cfg.urRageTakenPct)
-            return;
-        float addRage = float(damage) / RageConversion(victim->GetLevel()) * 2.5f;
-        addRage *= sWorld->getRate(RATE_POWER_RAGE_INCOME);
-        addRage = addRage * float(cfg.urRageTakenPct) / 100.0f;
-        victim->ModifyPower(POWER_RAGE, int32(addRage * 10.0f));
-    }
-};
-
 void AddClasslessPlayerScripts()
 {
     new ClasslessWorldScript();
     new ClasslessPlayerScript();
-    new ClasslessUnitScript();
 }

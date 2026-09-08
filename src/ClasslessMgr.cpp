@@ -311,8 +311,6 @@ void ClasslessMgr::LoadConfig(bool /*reload*/)
 
     cfg.urMaxRage = sConfigMgr->GetOption<uint32>("ClasslessWildcard.UniversalResources.MaxRage", 1000);
     cfg.urMaxEnergy = sConfigMgr->GetOption<uint32>("ClasslessWildcard.UniversalResources.MaxEnergy", 100);
-    cfg.urRageDealtPct = sConfigMgr->GetOption<uint32>("ClasslessWildcard.UniversalResources.RageFromDealtPct", 100);
-    cfg.urRageTakenPct = sConfigMgr->GetOption<uint32>("ClasslessWildcard.UniversalResources.RageFromTakenPct", 100);
 
     // Not a setting. The chassis must own a real mana pool -- Heroes cast
     // whatever they learn and a great many of those spells cost mana or a

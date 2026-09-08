@@ -693,13 +693,12 @@ ClasslessWildcard.UniversalResources.MaxRage = 1000
 #        Default: 100
 ClasslessWildcard.UniversalResources.MaxEnergy = 100
 
-#    ClasslessWildcard.UniversalResources.RageFromDealtPct
-#    ClasslessWildcard.UniversalResources.RageFromTakenPct
-#        Percentage of the warrior rage-gain formulas applied when the chassis
-#        is not natively a rage class, for damage dealt and damage taken.
-#        Default: 100 and 100
-ClasslessWildcard.UniversalResources.RageFromDealtPct = 100
-ClasslessWildcard.UniversalResources.RageFromTakenPct = 100
+#    Rage is the core's own, not this module's. Every Hero answers yes to
+#    "do you have rage", so damage dealt, damage taken, blocks, dodges,
+#    parries and every rage-granting spell all work through the warrior
+#    formulas whichever bar is on screen. To hand out more or less of it, set
+#    Rate.Rage.Income in worldserver.conf: on a realm where everyone is a Hero
+#    it is the same lever, and it is the one the core actually reads.
 
 ########################################################################
 # 11  Universal stats
