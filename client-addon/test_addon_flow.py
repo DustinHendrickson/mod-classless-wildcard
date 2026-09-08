@@ -909,8 +909,8 @@ def test_starting_hand(h):
 
 
 def test_hand_info(h):
-    """The hand names what it dealt, instead of leaving you to hover four icons."""
-    print("--- starting hand: the plate under the row")
+    """Every card in the hand is a reveal: its own die, name, tier and plate."""
+    print("--- starting hand: four reveals, not four icons")
     CW, g = h.CW, h.g
     hand = CW.handFrame
 
@@ -937,24 +937,55 @@ def test_hand_info(h):
     h.recv(state(1, level=3))
     hand["__shown"] = True
     hand["__scripts"]["OnShow"](hand)
-    h.check(CW.handShown is None, "nothing is described before the first card lands")
 
-    # four cards, one of them epic, and let the die roll the whole way
+    # four cards, the first of them epic
     h.recv("OA|133:3:0:1;772:0:0:1;1752:0:0:1;686:0:1:1;")
     h.recv("OAE|")
     for dt in (0.6, 1.0, 0.4, 0.6):
         h.rt.execute("NOW = NOW + %r" % dt)
         hand["__scripts"]["OnUpdate"](hand, dt)
 
-    info = CW.handInfo
-    h.check(info.panel["__shown"] is True, "the plate is up once the deal has run")
-    h.check(str(info.rows[1].left["__text"]) == "30 Mana"
-            and str(info.rows[1].right["__text"]) == "35 yd range",
-            "it carries the ability's own tooltip lines (%s / %s)"
-            % (info.rows[1].left["__text"], info.rows[1].right["__text"]))
-    h.check(str(info.rows[3].left["__text"]).startswith("Hurls a fiery ball"),
-            "description included")
-    # A shorter ability after a longer one: the rows it does not need have to be
+    slots = [CW.handSlots[i] for i in range(1, 5)]
+
+    # each card carries its own plate, filled from its own ability
+    up = [i for i, s_ in enumerate(slots, 1) if s_.info.panel["__shown"] is True]
+    h.check(len(up) == 4, "all four cards have a plate of their own (%s)" % up)
+    h.check(str(slots[0].info.rows[1].left["__text"]) == "30 Mana"
+            and str(slots[0].info.rows[1].right["__text"]) == "35 yd range",
+            "a plate carries that ability's own tooltip lines (%s / %s)"
+            % (slots[0].info.rows[1].left["__text"], slots[0].info.rows[1].right["__text"]))
+    h.check(str(slots[3].info.rows[3].left["__text"]).startswith("Hurls a fiery ball"),
+            "the fourth card is filled in too, not just the first")
+
+    # the die wears the rarity's face, exactly as the reveal's does
+    epic, common = slots[0].die["__coord"], slots[1].die["__coord"]
+    h.check(epic is not None and common is not None and list(epic.values()) != list(common.values()),
+            "an epic card and a common card land on different die faces")
+    h.check(str(slots[0].die["__tex"][1]).endswith("die_reveal"),
+            "and it is the reveal's own atlas (%s)" % slots[0].die["__tex"][1])
+
+    # named, in the rarity's colour, under its own die
+    h.check("Spell 133" in str(slots[0].name["__text"]),
+            "the card names its ability (%s)" % slots[0].name["__text"])
+    h.check(str(slots[0].sub["__text"]) != "" and str(slots[1].sub["__text"]) != "",
+            "and says which tier it is")
+
+    # a row, one column apart. SetPoint("TOP", hand, "TOP", x, y) records five
+    # values, so the offset is the fourth.
+    xs = [[v for v in s_["__point"].values()][3] for s_ in slots]
+    gaps = {round(xs[i + 1] - xs[i]) for i in range(3)}
+    h.check(len(gaps) == 1 and gaps.pop() > 0,
+            "the four sit one column apart, in order (%s)" % xs)
+
+    # A re-render with no deal behind it -- clicking a padlock -- lays the row
+    # out on its own, so it has to place the cards itself rather than leaning on
+    # wherever the deal animation left them.
+    h.clear_sent()
+    h.click(slots[1])
+    xs2 = [[v for v in s_["__point"].values()][3] for s_ in slots]
+    h.check(xs2 == xs, "a re-render puts the cards back in the same four places (%s)" % xs2)
+
+    # a shorter ability after a longer one: the rows it does not need have to be
     # emptied, not merely hidden. A hidden font string keeps its height and goes
     # on pushing everything under it down.
     h.rt.execute("""
@@ -965,34 +996,24 @@ def test_hand_info(h):
             GetTextColor = function() return 1, 1, 1 end,
         }
     """)
-    CW.handSlots[2]["__scripts"]["OnEnter"](CW.handSlots[2])
-    h.check(str(info.rows[1].left["__text"]) == "Passive", "a shorter ability refills the block")
-    h.check(str(info.rows[3].left["__text"]) == "" and info.rows[3].left["__shown"] is False,
+    h.recv("OA|133:3:0:1;772:0:0:1;1752:0:0:1;686:0:1:1;")
+    h.recv("OAE|")
+    h.check(str(slots[0].info.rows[1].left["__text"]) == "Passive",
+            "a shorter ability refills the plate")
+    h.check(str(slots[0].info.rows[3].left["__text"]) == ""
+            and slots[0].info.rows[3].left["__shown"] is False,
             "and the rows it does not need are blanked, not just hidden (%r)"
-            % str(info.rows[3].left["__text"]))
+            % str(slots[0].info.rows[3].left["__text"]))
     h.rt.execute("""
         local tip = ClasslessWildcardScanTip
         tip.NumLines = function() return 4 end
     """)
 
-    # hovering a card moves the plate to it
-    CW.handSlots[2]["__scripts"]["OnEnter"](CW.handSlots[2])
-    h.check(int(CW.handShown) == 2, "hovering a card describes that card (%s)" % CW.handShown)
-    CW.handSlots[1]["__scripts"]["OnEnter"](CW.handSlots[1])
-    h.check(int(CW.handShown) == 1, "and moving to another moves the plate")
-
-    # the buttons follow the plate down rather than staying under a row that
-    # now has a plate hanging off it
-    pt = CW.handRoll["__point"]
-    h.check(pt is not None and str(pt[1]) == "TOPRIGHT",
-            "Roll Abilities re-anchors under the plate (%s)"
-            % (pt and str(pt[1]) or "not moved"))
-
-    # an empty hand has nothing to describe
+    # an empty hand leaves no plate hanging under an empty row
     h.recv("OA|")
     h.recv("OAE|")
-    h.check(CW.handShown is None and info.panel["__shown"] is False,
-            "with no cards the plate is put away")
+    h.check(slots[0].info.panel["__shown"] is False and slots[0]["__shown"] is False,
+            "with no cards the plates are put away")
 
     hand["__shown"] = False
 

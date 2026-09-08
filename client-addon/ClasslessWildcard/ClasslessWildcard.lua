@@ -3909,28 +3909,30 @@ end
 -- frameless, Ascension-style: icons float in a blue burst of light, padlocks
 -- above each one, Roll/Keep beneath
 local hand = CreateFrame("Frame", "ClasslessWildcardHand", UIParent)
-hand:SetWidth(460); hand:SetHeight(210)
-hand:SetPoint("CENTER", 0, 120)
+-- Four reveal cards across, and each card is a die, a name, a tier line and a
+-- tooltip plate. 236 to a column, 150 of that the die.
+hand:SetWidth(980); hand:SetHeight(500)
+hand:SetPoint("CENTER", 0, 30)
 hand:SetFrameStrata("FULLSCREEN_DIALOG")
 hand:EnableMouse(true)
 hand:Hide()
 
 local handShadow = hand:CreateTexture(nil, "BACKGROUND")
-handShadow:SetWidth(560); handShadow:SetHeight(340)
+handShadow:SetWidth(1080); handShadow:SetHeight(620)
 handShadow:SetPoint("CENTER", 0, 0)
 handShadow:SetTexture("Interface\\AddOns\\ClasslessWildcard\\shadow")
 
 -- extra darkening under the title and the instruction line: over bright ground
 -- the shadow alone was not enough to read them against
 local handTextScrim = hand:CreateTexture(nil, "BACKGROUND", nil, -6)
-handTextScrim:SetWidth(520); handTextScrim:SetHeight(120)
+handTextScrim:SetWidth(980); handTextScrim:SetHeight(140)
 handTextScrim:SetPoint("TOP", 0, 22)
 handTextScrim:SetTexture("Interface\\AddOns\\ClasslessWildcard\\shadow")
 handTextScrim:SetAlpha(0.9)
 
 local handGlow = hand:CreateTexture(nil, "BORDER")
-handGlow:SetWidth(440); handGlow:SetHeight(230)
-handGlow:SetPoint("CENTER", 0, 8)
+handGlow:SetWidth(960); handGlow:SetHeight(420)
+handGlow:SetPoint("CENTER", 0, 40)
 handGlow:SetTexture("Interface\\AddOns\\ClasslessWildcard\\glow")
 handGlow:SetBlendMode("ADD")
 handGlow:SetVertexColor(0.35, 0.7, 1)
@@ -3949,7 +3951,6 @@ handHint:SetText("Click an ability to lock it in: |cffffd100gold ring + closed p
 -- of the starting hand, full stop. The server clamps StartingAbilities to the
 -- same number so it can never deal a card this screen would not draw.
 local HAND_SLOTS = 4
-local HAND_SPACING = 56
 local handSlots = {}
 
 -- Stacking, set out explicitly, because the defaults get both halves wrong.
@@ -3976,50 +3977,86 @@ handDie:SetPoint("CENTER", 0, 0)
 handDie:SetTexture("Interface\\AddOns\\ClasslessWildcard\\d20_spin")
 handDie:Hide()
 
+-- A card is the reveal, at the size four of them fit at.
+--
+-- The reveal draws a 280px rarity die with a 96px icon in its window; these are
+-- the same picture at 150 and 52, four across. Everything a card owns -- die,
+-- icon, padlock, name, tier line, plate -- is parented to the card itself, so
+-- one SetAlpha fades all of it in together as the travelling die reaches it,
+-- and the plate of one card can never be painted over by the glow of the next.
+-- One table, not five locals: the main chunk is at Lua 5.1's 200-local ceiling.
+local HG = {
+    die = 150,        -- the rarity die, the reveal's 280 brought down
+    icon = 52,        -- its window, in the same proportion
+    col = 236,        -- centre to centre
+    top = -78,        -- the die's top edge, from the frame's top
+    plate = 216,      -- a column's plate, narrower than the reveal's
+    gap = 12,         -- die to name
+}
+
 for i = 1, HAND_SLOTS do
     local slot = CreateFrame("Button", nil, hand)
-    slot:SetWidth(44); slot:SetHeight(44)
-    slot:SetPoint("TOPLEFT", 40 + (i - 1) * HAND_SPACING, -96)
+    slot:SetWidth(HG.die); slot:SetHeight(HG.die)
+    slot:SetPoint("TOP", hand, "TOP", (i - 2.5) * HG.col, HG.top)
+
     -- Tier dressing (see rvFX.CardFX). It lives on the shared layer under all
     -- the cards, not on this card, but stays anchored to this one so it
     -- follows the card as it rises into place.
     slot.rays = hand.fxLayer:CreateTexture(nil, "ARTWORK", nil, 0)
-    slot.rays:SetWidth(132); slot.rays:SetHeight(132)
+    slot.rays:SetWidth(HG.die * 1.35); slot.rays:SetHeight(HG.die * 1.35)
     slot.rays:SetPoint("CENTER", slot, "CENTER", 0, 0)
     slot.rays:SetTexture("Interface\\AddOns\\ClasslessWildcard\\rays")
     slot.rays:SetBlendMode("ADD")
     slot.rays:Hide()
     slot.glow = hand.fxLayer:CreateTexture(nil, "ARTWORK", nil, 1)
-    -- 140 for a 44px card on purpose: glow.tga puts nearly all its brightness
-    -- inside the middle third, and at 92 the card sat on top of exactly that,
-    -- leaving a halo too faint to read. At 140 the bright shoulder lands just
-    -- outside the card's edge, which is where it needs to be seen. rays.tga is
-    -- hollow to 17% of its width, so 132 puts its beams at the same edge.
-    slot.glow:SetWidth(140); slot.glow:SetHeight(140)
+    -- Sized off the reveal's own proportion (310 of glow around a 280 die),
+    -- not the old 44px card's 3x: at 150 the die no longer swallows the bright
+    -- middle of glow.tga, and anything wider reaches into the next column.
+    slot.glow:SetWidth(HG.die * 1.15); slot.glow:SetHeight(HG.die * 1.15)
     slot.glow:SetPoint("CENTER", slot, "CENTER", 0, 0)
     slot.glow:SetTexture("Interface\\AddOns\\ClasslessWildcard\\glow")
     slot.glow:SetBlendMode("ADD")
     slot.glow:Hide()
-    slot.icon = slot:CreateTexture(nil, "ARTWORK")
-    slot.icon:SetAllPoints(slot)
-    slot.icon:SetTexCoord(0.07, 0.93, 0.07, 0.93)
-    slot.frame = slot:CreateTexture(nil, "OVERLAY")
-    slot.frame:SetWidth(74); slot.frame:SetHeight(74)
-    slot.frame:SetPoint("CENTER", 0, -1)
-    slot.frame:SetTexture("Interface\\Buttons\\UI-Quickslot2")
-    -- gold ring = LOCKED IN (unmistakable)
-    slot.ring = slot:CreateTexture(nil, "OVERLAY")
-    slot.ring:SetWidth(76); slot.ring:SetHeight(76)
+
+    -- gold halo = LOCKED IN, said in light rather than in a border that would
+    -- fight the die's own frame
+    slot.ring = slot:CreateTexture(nil, "BACKGROUND", nil, 2)
+    slot.ring:SetWidth(HG.die * 1.25); slot.ring:SetHeight(HG.die * 1.25)
     slot.ring:SetPoint("CENTER", 0, 0)
-    slot.ring:SetTexture("Interface\\Buttons\\UI-ActionButton-Border")
+    slot.ring:SetTexture("Interface\\AddOns\\ClasslessWildcard\\glow")
     slot.ring:SetBlendMode("ADD")
     slot.ring:SetVertexColor(1, 0.82, 0.2)
+    slot.ring:SetAlpha(0.55)
     slot.ring:Hide()
-    -- big padlock ABOVE the icon: gold CLOSED = kept, grey OPEN = will reroll
-    slot.lock = slot:CreateTexture(nil, "OVERLAY")
-    slot.lock:SetWidth(26); slot.lock:SetHeight(26)
-    slot.lock:SetPoint("BOTTOM", slot, "TOP", 0, 4)
+
+    -- the icon sits in the die's window, and the die is drawn over it
+    slot.icon = slot:CreateTexture(nil, "ARTWORK")
+    slot.icon:SetWidth(HG.icon); slot.icon:SetHeight(HG.icon)
+    slot.icon:SetPoint("CENTER", 1, 3)
+    slot.icon:SetTexCoord(0.02, 0.98, 0.02, 0.98)
+    slot.die = slot:CreateTexture(nil, "OVERLAY")
+    slot.die:SetAllPoints(slot)
+    slot.die:SetTexture(REVEAL_ATLAS)
+
+    -- big padlock over the die: gold CLOSED = kept, grey OPEN = will reroll
+    slot.lock = slot:CreateTexture(nil, "OVERLAY", nil, 2)
+    slot.lock:SetWidth(28); slot.lock:SetHeight(28)
+    slot.lock:SetPoint("BOTTOM", slot, "TOP", 0, -6)
     slot.lock:SetTexture("Interface\\AddOns\\ClasslessWildcard\\lock_open")
+
+    slot.name = slot:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+    slot.name:SetPoint("TOP", slot, "BOTTOM", 0, -HG.gap)
+    slot.name:SetWidth(HG.plate - rvFX.SIDE * 2)
+    slot.name:SetJustifyH("CENTER")
+    slot.sub = slot:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+    slot.sub:SetPoint("TOP", slot.name, "BOTTOM", 0, -rvFX.NAME_GAP)
+    slot.sub:SetWidth(HG.plate - rvFX.SIDE * 2)
+    slot.sub:SetJustifyH("CENTER")
+
+    -- its own plate, from the same factory the reveal's comes from
+    slot.info = rvFX.MakeInfo(slot, slot.sub)
+    slot.info:SetRowWidth(HG.plate - rvFX.SIDE * 2)
+
     slot:SetScript("OnClick", function(self)
         if self.abilityId then
             -- Say which state we want, never "flip whatever you have". A flip
@@ -4038,15 +4075,46 @@ for i = 1, HAND_SLOTS do
             end
         end
     end)
-    -- The plate under the row says what this is, so no tooltip covers the
-    -- cards. Nothing on OnLeave: the last card you looked at stays described,
-    -- which is calmer than a panel that empties every time the mouse moves.
+    -- No tooltip: the card already says everything one would, in bigger type,
+    -- without covering the card next to it.
     slot.index = i
-    slot:SetScript("OnEnter", function(self)
-        if self.spellId and CW.ShowHandCard then CW.ShowHandCard(self.index) end
-    end)
     slot:Hide()
     handSlots[i] = slot
+end
+
+-- Fill one card from the ability it holds: the die's rarity face, the icon in
+-- its window, the name in the rarity's colour, the tier under it, and the
+-- plate under that. Everything below the die hangs off the name, so the plate
+-- is placed from the name's own measured height rather than a second guess.
+function hand.DressCard(slot)
+    local rarity = math.min(slot.rarity or 0, 4)
+    local rgb = RARITY_RGB[rarity] or RARITY_RGB[0]
+
+    -- 4x2 atlas of 256px frames, one per rarity (the client caps textures at
+    -- 1024), the same faces the reveal lands on
+    local col, row = rarity % 4, math.floor(rarity / 4)
+    slot.die:SetTexCoord(col / 4, (col + 1) / 4, row / 2, (row + 1) / 2)
+    slot.icon:SetTexture(SpellIcon(slot.spellId))
+
+    slot.name:SetText(SpellLabel(slot.spellId, rarity))
+    slot.sub:SetText(RARITY_NAMES[rarity] or "")
+
+    local infoH = slot.info:Fill(slot.spellId)
+    local nameH = tonumber(slot.name:GetStringHeight()) or 16
+    local subH = tonumber(slot.sub:GetStringHeight()) or 12
+    local blockH = rvFX.PAD + nameH + rvFX.NAME_GAP + subH
+        + (infoH > 0 and (rvFX.INFO_GAP + infoH) or 0) + rvFX.PAD
+
+    slot.info.panel:SetWidth(HG.plate)
+    slot.info.panel:ClearAllPoints()
+    -- 12 is the name's own gap from the die; the pad above it is the plate's
+    slot.info.panel:SetPoint("TOP", slot, "BOTTOM", 0, -HG.gap + rvFX.PAD)
+    slot.info.panel:SetHeight(blockH)
+    slot.info.panel:Show()
+    for _, e in ipairs(slot.info.edges) do
+        e:SetVertexColor(rgb[1], rgb[2], rgb[3], 0.85)
+        e:Show()
+    end
 end
 
 -- dressing < cards < die. Set here and again in OnShow: a frame's level can be
@@ -4069,113 +4137,6 @@ local handKeep = CreateFrame("Button", nil, hand, "UIPanelButtonTemplate")
 handKeep:SetWidth(150); handKeep:SetHeight(26)
 handKeep:SetPoint("BOTTOMRIGHT", -40, 20)
 handKeep:SetText("Keep Abilities")
-
-
--- What the card in front of you actually is.
---
--- The row used to deal in silence: four icons appeared and you found out what
--- you had been given by hovering them one at a time. This is the reveal's own
--- plate, from the same factory, hung under the row -- it names the ability in
--- its rarity's colour as the die reaches it, with everything its tooltip would
--- say, and afterwards follows whichever card you point at.
---
--- It hangs BELOW the frame rather than inside it, and the buttons move down to
--- meet it, because the alternative is growing the frame and shifting the cards
--- on screen every time the plate changes size -- during the deal, while they
--- are landing.
-do   -- own scope: the main chunk is at Lua 5.1's 200-local ceiling
-    -- The name's centre, from the hand's centre. The cards' own art reaches 50
-    -- below it (44px buttons wearing a 74px Quickslot frame), and the plate's
-    -- top edge lands at this plus half a line plus the padding -- so -80 puts
-    -- the plate just clear of the row instead of clipping the bottom of it.
-    local HAND_NAME_Y = -80
-
-    local handName = hand:CreateFontString(nil, "OVERLAY", "GameFontNormalLarge")
-    handName:SetPoint("CENTER", 0, HAND_NAME_Y)
-    handName:SetJustifyH("CENTER")
-    handName:Hide()
-
-    local handSub = hand:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
-    handSub:SetPoint("TOP", handName, "BOTTOM", 0, -rvFX.NAME_GAP)
-    handSub:SetJustifyH("CENTER")
-    handSub:Hide()
-
-    -- the same soft darkening the reveal puts under its plate: small text over
-    -- grass is unreadable on a shadow alone
-    local handPlateScrim = hand:CreateTexture(nil, "BACKGROUND", nil, -6)
-    handPlateScrim:SetTexture("Interface\\AddOns\\ClasslessWildcard\\shadow")
-    handPlateScrim:SetAlpha(0.9)
-    handPlateScrim:Hide()
-
-    local handInfo = rvFX.MakeInfo(hand, handSub)
-    CW.handInfo = handInfo   -- exposed for tests
-
-    local function HandButtonsHome()
-        handRoll:ClearAllPoints(); handKeep:ClearAllPoints()
-        handRoll:SetPoint("BOTTOMLEFT", 40, 20)
-        handKeep:SetPoint("BOTTOMRIGHT", -40, 20)
-    end
-
-    function CW.ClearHandCard()
-        CW.handShown = nil
-        handName:Hide(); handSub:Hide()
-        handPlateScrim:Hide()
-        handInfo:Clear()
-        HandButtonsHome()
-    end
-
-    function CW.ShowHandCard(i)
-        local slot = handSlots[i]
-        if not slot or not slot.spellId then return end
-        CW.handShown = i
-
-        local rarity = math.min(slot.rarity or 0, 4)
-        local rgb = RARITY_RGB[rarity] or RARITY_RGB[0]
-        handName:SetText(SpellLabel(slot.spellId, rarity))
-        handSub:SetText(RARITY_NAMES[rarity] or "")
-        handName:Show(); handSub:Show()
-
-        -- Width first, because a wrapped line is taller and the height depends on
-        -- it. GetStringWidth reports what the text WANTS, not what it was given.
-        local wide = math.max(tonumber(handName:GetStringWidth()) or 0,
-                              tonumber(handSub:GetStringWidth()) or 0)
-        local panelW = math.max(rvFX.PANEL_MIN,
-            math.min(rvFX.PANEL_MAX, wide + rvFX.SIDE * 2))
-        local inner = panelW - rvFX.SIDE * 2
-        handInfo.panel:SetWidth(panelW)
-        handName:SetWidth(inner)
-        handSub:SetWidth(inner)
-        handInfo:SetRowWidth(inner)
-
-        local infoH = handInfo:Fill(slot.spellId)
-        local nameH = tonumber(handName:GetStringHeight()) or 20
-        local subH = tonumber(handSub:GetStringHeight()) or 14
-        local blockH = rvFX.PAD + nameH + rvFX.NAME_GAP + subH
-            + (infoH > 0 and (rvFX.INFO_GAP + infoH) or 0) + rvFX.PAD
-        local blockTop = HAND_NAME_Y + nameH / 2 + rvFX.PAD
-
-        handInfo.panel:ClearAllPoints()
-        handInfo.panel:SetPoint("TOP", hand, "CENTER", 0, blockTop)
-        handInfo.panel:SetHeight(blockH)
-        handInfo.panel:Show()
-        for _, e in ipairs(handInfo.edges) do
-            e:SetVertexColor(rgb[1], rgb[2], rgb[3], 0.85)
-            e:Show()
-        end
-
-        handPlateScrim:SetWidth(panelW + 140)
-        handPlateScrim:SetHeight(blockH + 96)
-        handPlateScrim:ClearAllPoints()
-        handPlateScrim:SetPoint("CENTER", 0, blockTop - blockH / 2 - 24)
-        handPlateScrim:Show()
-
-        -- and the buttons sit under the plate, not under whichever text row
-        -- happened to be last
-        handRoll:ClearAllPoints(); handKeep:ClearAllPoints()
-        handRoll:SetPoint("TOPRIGHT", handInfo.panel, "BOTTOM", -8, -14)
-        handKeep:SetPoint("TOPLEFT", handInfo.panel, "BOTTOM", 8, -14)
-    end
-end
 
 -- keep every surviving (e.g. locked) card in its exact slot across rerolls;
 -- replacements drop into the slots that were vacated
@@ -4223,36 +4184,42 @@ local function OrderedHand()
     return list
 end
 
+-- x of card i's centre when n cards are shown, as an offset from the frame's
+-- own centre. Three cards centre on the middle one; four fill the row.
+local function HandCardX(i, n)
+    return (i - (n + 1) / 2) * HG.col
+end
+
 local function RenderHand()
     local list = OrderedHand()
-    -- center the shown cards
     local n = math.min(#list, HAND_SLOTS)
-    local rowWidth = n > 0 and (n * HAND_SPACING - (HAND_SPACING - 44)) or 0
-    local startX = (460 - rowWidth) / 2
 
     for i = 1, HAND_SLOTS do
         local slot = handSlots[i]
         local e = list[i]
         if e and i <= n then
-            slot:SetPoint("TOPLEFT", startX + (i - 1) * HAND_SPACING, -96)
+            slot:ClearAllPoints()
+            slot:SetPoint("TOP", hand, "TOP", HandCardX(i, n), HG.top)
             slot.abilityId = e.id
             slot.spellId = e.id
             slot.entryRef = e
             slot.rarity = e.rarity or 0
-            slot.icon:SetTexture(SpellIcon(e.id))
+            hand.DressCard(slot)
             slot.lock:Show()
             if e.locked == 1 then
-                -- closed GOLD padlock + gold ring = locked in
+                -- closed GOLD padlock + gold halo = locked in
                 slot.lock:SetTexture("Interface\\AddOns\\ClasslessWildcard\\lock_closed")
                 slot.lock:SetVertexColor(1, 1, 1, 1)
                 slot.ring:Show()
                 slot.icon:SetVertexColor(1, 1, 1)
+                slot.die:SetVertexColor(1, 1, 1)
             else
-                -- open grey padlock = will be rerolled
+                -- open grey padlock, and the card sits back a little
                 slot.lock:SetTexture("Interface\\AddOns\\ClasslessWildcard\\lock_open")
                 slot.lock:SetVertexColor(1, 1, 1, 0.8)
                 slot.ring:Hide()
-                slot.icon:SetVertexColor(0.8, 0.8, 0.8)
+                slot.icon:SetVertexColor(0.82, 0.82, 0.82)
+                slot.die:SetVertexColor(0.86, 0.86, 0.86)
             end
             slot:Show()
         else
@@ -4260,6 +4227,7 @@ local function RenderHand()
             slot.spellId = nil
             slot.entryRef = nil
             slot.glow:Hide(); slot.rays:Hide()
+            slot.info:Clear()
             slot:Hide()
         end
     end
@@ -4272,13 +4240,14 @@ local function RenderHand()
         CW.handAnimatePending = nil
         if n > 0 then
             -- x of each card's centre, as an offset from the frame's centre,
-            -- and the y the row sits at (frame is 460x210, cards 44 tall with
-            -- their top edge 96 down)
+            -- and the y the row sits on
             local xs = {}
-            for i = 1, n do xs[i] = startX + (i - 1) * HAND_SPACING + 22 - 230 end
+            for i = 1, n do xs[i] = HandCardX(i, n) end
             CW.handAnim = {
                 t0 = GetTime(), phase = "in", n = n, xs = xs, popped = {},
-                slotX = startX, rowY = -13, spin = 0,
+                -- the row's own line, from the frame's centre: the cards hang
+                -- HG.top from the top and are HG.die tall
+                rowY = hand:GetHeight() / 2 + HG.top - HG.die / 2, spin = 0,
                 fromX = xs[1] - 200,        -- off the left edge
                 toX = xs[n] + 200,          -- off the right edge
             }
@@ -4299,17 +4268,6 @@ local function RenderHand()
         end
     end
 
-    -- Whatever the plate was describing may have just been rerolled away. Keep
-    -- it on the same slot when that slot still holds something -- the card
-    -- changed, so the description should -- and fall back to the first card
-    -- rather than leaving an empty shelf under the row.
-    if n > 0 then
-        local want = CW.handShown
-        if not want or not handSlots[want] or not handSlots[want].spellId then want = 1 end
-        if not CW.handAnim then CW.ShowHandCard(want) end
-    else
-        CW.ClearHandCard()
-    end
 end
 CW.RenderHand = RenderHand
 
@@ -4385,9 +4343,6 @@ hand:SetScript("OnUpdate", function(self, elapsed)
                     pcall(PlaySound, fx.snd)
                     if fx.snd2 then pcall(PlaySound, fx.snd2) end
                 end
-                -- and the plate names it while its glow is still burning, so
-                -- the deal reads as four reveals rather than four icons
-                if CW.ShowHandCard then CW.ShowHandCard(i) end
             end
         end
     end
@@ -4405,7 +4360,8 @@ hand:SetScript("OnUpdate", function(self, elapsed)
             local e = 1 - (1 - q) * (1 - q)
             local lift = HAND_LIFT + fx.pop * 0.6
             slot:SetAlpha(e)
-            slot:SetPoint("TOPLEFT", a.slotX + (i - 1) * HAND_SPACING, -96 - (1 - e) * lift)
+            slot:ClearAllPoints()
+            slot:SetPoint("TOP", hand, "TOP", a.xs[i], HG.top - (1 - e) * lift)
             local boost = since and math.max(0, 1 - (now - since) / rvFX.cardFlash) or 0
             rvFX.CardFX(slot, slot.rarity, boost)
             -- the deal is not over until the last flash has burned down
@@ -4446,7 +4402,6 @@ hand:SetScript("OnShow", function()
     CW.revealAnim.phase = "idle"
     frame:Hide() -- one thing at a time: the hand has the stage
     CW.handOrder = nil -- fresh layout for a fresh look at the hand
-    CW.ClearHandCard() -- the deal fills it, one card at a time
     CW.handAnimatePending = true -- deal the opening hand in with the die spin
     Send("OWN")
 end)
