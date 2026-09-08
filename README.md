@@ -189,8 +189,9 @@ projected as you spend. Reallocating is free.</em>
   their own, plus a 23-talent Hero tree that rewards drawing on several classes at once. See
   [The Hero line](#the-hero-line).
 - **Elemental variants.** Twenty-seven weapon attacks each come in Fiery, Frozen, Earthen,
-  Venomous, Arcane, Shadow and Holy forms: the same swing, cost and cooldown, dealt as the element
-  with an extra hit that scales with spell power. See [Elemental variants](#elemental-variants).
+  Venomous, Arcane, Shadow and Holy forms: the same swing, cost and cooldown, dealt as the element,
+  and each element does something of its own on hit -- a burn, a snare, an attack-speed cut, a
+  healing cut, a bigger hit, lifesteal. See [Elemental variants](#elemental-variants).
 - **Talents are talents, and spells.** A talent you buy is recorded as a real talent, so the
   stock talent frame shows it at the rank you own, and granted as its underlying spell, so it is
   in your spellbook too. You spend Talent Essence rather than talent points: the native point
@@ -655,25 +656,32 @@ Twenty-seven physical weapon attacks exist in seven elemental forms each, every 
 **Fiery**, **Frozen**, **Earthen**, **Venomous**, **Arcane**, **Shadow** and **Holy**. A Fiery
 Sinister Strike has the same energy cost, swing, combo point and rank chain as Sinister Strike.
 
-What changes is the damage. It is dealt as the element instead of Physical, so armour does not
-reduce it and resistance does, and anything that increases your Fire damage increases a Fiery
-strike. The attack keeps 85% of its weapon multiplier (75% for Holy) and adds an elemental hit
-that grows with your spell power, so a variant rewards Intellect as well as attack power. Where
-the attack has a free effect slot it also carries one effect the element is known for:
+What changes is the damage, and what the strike does on top of it. The damage is dealt as the
+element instead of Physical, so armour does not reduce it and resistance does, and anything that
+increases your Fire damage increases a Fiery strike. The attack keeps 85% of its weapon
+multiplier (75% for Holy, which almost nothing resists), and the rest of its power goes into the
+element:
 
-| | Element | Extra effect on hit |
+| | Element | What the element does |
 | :-: | ------- | ------------------- |
-| <img src="docs/badges/fire.png" alt="" width="20"> | Fire | Burns the target for 6 seconds |
+| <img src="docs/badges/fire.png" alt="" width="20"> | Fire | Burns the target over 6 seconds |
 | <img src="docs/badges/frost.png" alt="" width="20"> | Frost | Slows the target's movement by 30% for 6 seconds |
 | <img src="docs/badges/earth.png" alt="" width="20"> | Earth | Slows the target's attacks by 10% for 6 seconds |
-| <img src="docs/badges/poison.png" alt="" width="20"> | Poison | Poisons the target for 12 seconds |
-| <img src="docs/badges/arcane.png" alt="" width="20"> | Arcane | None. The elemental hit is larger instead |
+| <img src="docs/badges/poison.png" alt="" width="20"> | Poison | Poisons the target over 12 seconds |
+| <img src="docs/badges/arcane.png" alt="" width="20"> | Arcane | An extra hit, half again as large as any other element's |
 | <img src="docs/badges/shadow.png" alt="" width="20"> | Shadow | Reduces healing the target receives by 20% for 6 seconds |
-| <img src="docs/badges/holy.png" alt="" width="20"> | Holy | Heals you for the elemental hit's value |
+| <img src="docs/badges/holy.png" alt="" width="20"> | Holy | Heals you for 25% of the damage the strike deals |
 
-Attacks that already use all three effect slots (every combo point builder, plus Maim, Mangle,
-Overpower, Mortal Strike, Aimed Shot, Whirlwind, Death Strike, Obliterate and Plague Strike)
-carry the elemental hit but not the extra effect. Mocking Blow and Deadly Throw have no variants.
+Fire, Poison and Arcane are damage; Frost, Earth and Shadow trade that damage for control; Holy
+trades it for sustain. Fire and Poison deal half again what Arcane's hit does, spread over their
+ticks, and like Arcane they grow with your spell power, so those four reward Intellect as well as
+attack power.
+
+A handful of attacks cannot take their element's effect, because a spell carries one duration and
+theirs is already spoken for: Overpower's lasts a millisecond, Maim's is bought with combo points
+and Mangle's is a minute. Those get Arcane's extra hit instead, and so do Shadow's Mortal Strike
+and Aimed Shot, which already cut healing on their own. Seventy-five of the 1,085 variants fall
+back this way. Mocking Blow and Deadly Throw have no variants at all.
 
 The attacks with variants: Sinister Strike, Backstab, Ambush, Hemorrhage, Heroic Strike, Cleave,
 Whirlwind, Overpower, Mortal Strike, Devastate, Raptor Strike, Multi-Shot, Aimed Shot, Kill Shot,

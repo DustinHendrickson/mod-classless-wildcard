@@ -2,8 +2,10 @@
 """Generate elemental variants of the pool's physical strikes.
 
 A variant is the base ability dealt as an element instead of Physical, at 85%
-of the base's own weapon multiplier, with a spell-power-scaled elemental add
-and, when a slot is free, one rider the element is known for. Its tooltip is
+of the base's own weapon multiplier, with the element's own signature in the
+second of the spell's three effect slots: a spell-power-scaled hit for Arcane,
+a lifesteal hit for Holy, a burn for Fire, a poison for Poison, a snare for
+Frost, an attack-speed cut for Earth, a healing cut for Shadow. Its tooltip is
 the base's own description, modified for the element. The shape is Blizzard's
 own Frost Strike; see PLAN-elemental-variants.md.
 
@@ -137,7 +139,8 @@ assert len(SPELL_DBC_COLUMNS) == 234, len(SPELL_DBC_COLUMNS)
 # ---- effects and auras (SharedDefines.h) -------------------------------------
 E_SCHOOL_DAMAGE = 2
 E_APPLY_AURA = 6
-E_HEAL = 10
+E_HEALTH_LEECH = 9
+E_HEAL = 10                             # unused since holy leeches instead
 E_WEAPON_DAMAGE_NOSCHOOL = 17
 E_WEAPON_PERCENT_DAMAGE = 31
 E_WEAPON_DAMAGE = 58
@@ -157,31 +160,70 @@ SKILL_CATEGORY_CLASS = 7
 DURATION_6S, DURATION_12S = 32, 29     # SpellDuration.dbc indices, verified
 
 # ---- the elements --------------------------------------------------------------
-# rider forms:
-#   ("dot",  amplitude_ms, duration_index)            periodic damage, ticks = add / 2
-#   ("aura", aura_name, basepoints, misc, duration)   one debuff effect
-#   ("heal",)                                         heal the CASTER for the add
+# The elemental slot -- the second of the three -- is what makes an element an
+# element, and every element gets one.
+#
+# It used to hold a flat elemental hit for everybody, and the element's own
+# signature only when a THIRD slot happened to be free. On 97 of the 155 bases
+# it is not free (Sinister Strike's combo point, Mortal Strike's wound, every
+# combo builder), so six of the seven elements collapsed into the same spell in
+# different colours: 85% weapon damage plus the same small hit, and nothing to
+# tell Fiery Sinister Strike from Shadow Sinister Strike but the damage school.
+#
+# The signature IS the elemental slot now. Nothing is dropped, no element needs
+# a slot that is already spoken for, and the seven read as seven things:
+#
+#   ("hit",)                                 a flat elemental hit; `add_mult`
+#                                            makes it bigger (arcane)
+#   ("leech", share)                         that hit, and it heals the caster
+#                                            for `share` of the WHOLE strike
+#   ("dot", amplitude_ms, duration_index)    DOT_MULT x that hit, over the ticks
+#   ("aura", aura, points, misc, duration)   a debuff, and no damage at all
+#
+# A damage-over-time keeps the spell power the flat hit had: the coefficient
+# below is split across the ticks, and the core reads it off the effect's own
+# BonusMultiplier for a DOT exactly as it does for a direct hit.
+DOT_MULT = 1.5          # a burn is worth more than the same number now: it can
+                        # be dispelled, it can be outlived, and it arrives late
+
+# A hit is part of the damage sentence: " ... as Fire damage plus 7 Fire
+# damage." A burn or a snare is a sentence of its own, because {payload} sits
+# mid-sentence in most templates and "causing X damage and poisons the target"
+# does not agree with its own subject. The heal sentence works the same way.
+HIT_TEXT = " plus $s2 {E} damage"
+
 ELEMENTS = [
     dict(key="fire",   idx=1, prefix="Fiery",    school=4,  word="Fire",   kit=728,
-         rider=("dot", 2000, DURATION_6S), coeff=None,
+         payload=("dot", 2000, DURATION_6S), coeff=None,
+         text="Burns the target for $o2 {E} damage over $d.",
          hue=(255, 96, 24), glyph="flame"),
     dict(key="frost",  idx=2, prefix="Frozen",   school=16, word="Frost",  kit=4991,
-         rider=("aura", A_MOD_DECREASE_SPEED, -31, 0, DURATION_6S), coeff=None,
+         payload=("aura", A_MOD_DECREASE_SPEED, -31, 0, DURATION_6S), coeff=None,
+         text="Slows the target's movement by $s2% for $d.",
          hue=(72, 196, 255), glyph="snowflake"),
     dict(key="earth",  idx=3, prefix="Earthen",  school=8,  word="Nature", kit=3055,
-         rider=("aura", A_MOD_MELEE_HASTE, -11, 0, DURATION_6S), coeff=None,
+         payload=("aura", A_MOD_MELEE_HASTE, -11, 0, DURATION_6S), coeff=None,
+         text="Increases the time between the target's attacks by $s2% for $d.",
          hue=(150, 100, 30), glyph="boulder"),
     dict(key="poison", idx=4, prefix="Venomous", school=8,  word="Nature", kit=3031,
-         rider=("dot", 3000, DURATION_12S), coeff=None,
+         payload=("dot", 3000, DURATION_12S), coeff=None,
+         text="Poisons the target for $o2 {E} damage over $d.",
          hue=(110, 255, 60), glyph="drop"),
+    # Arcane's identity is the raw number: no debuff, a hit half again as big.
     dict(key="arcane", idx=5, prefix="Arcane",   school=64, word="Arcane", kit=1005,
-         rider=None, coeff=None, add_mult=1.5,
+         payload=("hit",), coeff=None, add_mult=1.5, text=HIT_TEXT,
          hue=(255, 72, 232), glyph="star"),
     dict(key="shadow", idx=6, prefix="Shadow",   school=32, word="Shadow", kit=6898,
-         rider=("aura", A_MOD_HEALING_PCT, -21, 127, DURATION_6S), coeff=None,
+         payload=("aura", A_MOD_HEALING_PCT, -21, 127, DURATION_6S), coeff=None,
+         text="Reduces the effectiveness of healing on the target by $s2% for $d.",
          hue=(72, 36, 130), glyph="crescent"),
+    # Holy's is sustain, and it costs no slot: the hit is a HEALTH_LEECH, so the
+    # heal rides on the damage the whole strike lands. The core reads the share
+    # off EffectValueMultiplier (Spell.cpp, "xinef: health leech handling"), so
+    # a zero there would heal nothing. 25% is what the extra 10% of weapon
+    # damage holy gives up -- nothing resists it -- buys back.
     dict(key="holy",   idx=7, prefix="Holy",     school=2,  word="Holy",   kit=6359,
-         rider=("heal",), coeff=75,
+         payload=("leech", 0.25), coeff=75, text=HIT_TEXT,
          hue=(255, 210, 84), glyph="sun"),
 ]
 ELEMENT_BY_KEY = {e["key"]: e for e in ELEMENTS}
@@ -300,39 +342,41 @@ def candidates(spell, sla, skill, talent):
 
 
 # ---- text: each base's own description, modified for the element ---------------
-# Slot 1 is always the weapon percent, slot 2 the elemental add, slot 3 the
-# base's own extra effect (combo points, a debuff) or the element's rider.
-# {E} is the element word, {rider} the rider clause (empty when slot 3 is
-# taken). Tokens follow the client's tooltip grammar: $s1 the value of slot 1,
-# $o3 the total periodic damage of slot 3, $d the duration, $x1 chain targets.
+# Slot 1 is always the weapon percent, slot 2 the element's own payload, slot 3
+# the base's own extra effect (combo points, a wound) when it has one.
+# {E} is the element word and {payload} the clause for whatever that element
+# put in slot 2 -- a flat hit, a burn, a snare. Tokens follow the client's
+# tooltip grammar: $s1 the value of slot 1, $o2 the total periodic damage of
+# slot 2, $d the duration, $x1 chain targets. A negative aura value prints
+# without its sign, the way Frostbolt's -41 reads as 40%.
 DESCRIPTIONS = {
-    "Backstab": "Backstab the target, causing $s1% weapon damage as {E} damage plus $s2 {E} damage{rider}.  Must be behind the target.  Requires a dagger in the main hand.  Awards $s3 combo $lpoint:points;.",
-    "Heroic Strike": "A strong attack that deals $s1% weapon damage as {E} damage plus $s2 {E} damage{rider} and causes a high amount of threat.",
-    "Cleave": "A sweeping attack that deals $s1% weapon damage as {E} damage plus $s2 {E} damage{rider} to the target and its $?s58366[two nearest allies][nearest ally].",
-    "Claw": "Claw the enemy, causing $s1% weapon damage as {E} damage plus $s2 {E} damage{rider}.  Awards $s3 combo $lpoint:points;.",
-    "Whirlwind": "In a whirlwind of steel you attack up to $i enemies within $a1 yards, causing $s1% weapon damage as {E} damage plus $s2 {E} damage to each enemy{rider}.",
-    "Sinister Strike": "An instant strike that causes $s2 {E} damage in addition to $s1% of your normal weapon damage, dealt as {E} damage{rider}.  Awards $s3 combo $lpoint:points;.",
-    "Multi-Shot": "Fires several missiles, hitting $x1 targets for $s1% weapon damage as {E} damage plus $s2 {E} damage{rider}.",
-    "Raptor Strike": "A strong attack that deals $s1% weapon damage as {E} damage plus $s2 {E} damage{rider}.",
-    "Shred": "Shred the target, causing $s1% weapon damage as {E} damage plus $s2 {E} damage{rider}.  Must be behind the target.  Awards $s3 combo $lpoint:points;.",
-    "Ravage": "Ravage the target, causing $s1% weapon damage as {E} damage plus $s2 {E} damage{rider}.  Must be prowling and behind the target.  Awards $s3 combo $lpoint:points;.",
-    "Maul": "A strong attack that deals $s1% weapon damage as {E} damage plus $s2 {E} damage{rider} and causes a high amount of threat.",
-    "Overpower": "Instantly overpower the enemy, causing $s1% weapon damage as {E} damage plus $s2 {E} damage{rider}.  Only useable after the target dodges.  The Overpower cannot be blocked, dodged or parried.",
-    "Ambush": "Ambush the target, causing $s1% weapon damage as {E} damage plus $s2 {E} damage{rider}.  Must be stealthed and behind the target.  Requires a dagger in the main hand.  Awards $s3 combo $lpoint:points;.",
-    "Hemorrhage": "An instant strike that deals $s1% weapon damage as {E} damage plus $s2 {E} damage{rider} and causes the target to hemorrhage, increasing any Physical damage dealt to the target by up to $s3.  Lasts $n charges or $d.  Awards 1 combo point.",
-    "Mortal Strike": "A vicious strike that deals $s1% weapon damage as {E} damage plus $s2 {E} damage{rider} and wounds the target, reducing the effectiveness of any healing by $s3% for $d.",
-    "Maim": "Finishing move that deals $s1% weapon damage as {E} damage plus $s2 {E} damage{rider} and stuns the target for 1 sec per combo point.  Non-player victim spellcasting is also interrupted for $32747d.",
-    "Aimed Shot": "An aimed shot that deals $s1% weapon damage as {E} damage plus $s2 {E} damage{rider} and reduces healing done to that target by $s3%.  Lasts $d.",
-    "Devastate": "Sunder the target's armor causing the Sunder Armor effect.  In addition, deals $s1% weapon damage as {E} damage plus $s2 {E} damage for each application of Sunder Armor on the target{rider}.  The Sunder Armor effect can stack up to $u times.",
-    "Mangle (Cat)": "Mangle the target for $s1% weapon damage as {E} damage plus $s2 {E} damage{rider} and causes the target to take $s3% additional damage from bleed effects for $d.  Awards $34071s1 combo $lpoint:points;.",
-    "Mangle (Bear)": "Mangle the target for $s1% weapon damage as {E} damage plus $s2 {E} damage{rider} and causes the target to take $s3% additional damage from bleed effects for $d.",
-    "Plague Strike": "A vicious strike that deals $s1% weapon damage as {E} damage plus $s2 {E} damage{rider} and infects the target with Blood Plague, a disease dealing Shadow damage over time.",
-    "Blood Strike": "Instantly strike the enemy, causing $s1% weapon damage as {E} damage plus $s2 {E} damage{rider}, total damage increased by ${$m3/2}.1% for each of your diseases on the target.",
-    "Obliterate": "A brutal instant attack that deals $s1% weapon damage as {E} damage plus $s2 {E} damage{rider}, total damage increased ${$m3/2}.1% per each of your diseases on the target, but consumes the diseases.",
-    "Death Strike": "A deadly attack that deals $s1% weapon damage as {E} damage plus $s2 {E} damage{rider}, total damage increased for each of your diseases on the target.",
-    "Fan of Knives": "Instantly throw both weapons at all targets within $a1 yards, causing $s1% weapon damage as {E} damage plus $s2 {E} damage{rider}.",
-    "Kill Shot": "You attempt to finish the wounded target off, firing a long range attack dealing $s1% weapon damage as {E} damage plus $s2 {E} damage{rider}.  Kill Shot can only be used on enemies that have 20% or less health.",
-    "Swipe (Cat)": "Swipe nearby enemies, inflicting $s1% weapon damage as {E} damage plus $s2 {E} damage{rider}.",
+    "Backstab": "Backstab the target, causing $s1% weapon damage as {E} damage{payload}.  Must be behind the target.  Requires a dagger in the main hand.  Awards $s3 combo $lpoint:points;.",
+    "Heroic Strike": "A strong attack that deals $s1% weapon damage as {E} damage{payload} and causes a high amount of threat.",
+    "Cleave": "A sweeping attack that deals $s1% weapon damage as {E} damage to the target and its $?s58366[two nearest allies][nearest ally]{payload}.",
+    "Claw": "Claw the enemy, causing $s1% weapon damage as {E} damage{payload}.  Awards $s3 combo $lpoint:points;.",
+    "Whirlwind": "In a whirlwind of steel you attack up to $i enemies within $a1 yards, causing $s1% weapon damage as {E} damage to each enemy{payload}.",
+    "Sinister Strike": "An instant strike that causes $s1% of your normal weapon damage, dealt as {E} damage{payload}.  Awards $s3 combo $lpoint:points;.",
+    "Multi-Shot": "Fires several missiles, hitting $x1 targets for $s1% weapon damage as {E} damage{payload}.",
+    "Raptor Strike": "A strong attack that deals $s1% weapon damage as {E} damage{payload}.",
+    "Shred": "Shred the target, causing $s1% weapon damage as {E} damage{payload}.  Must be behind the target.  Awards $s3 combo $lpoint:points;.",
+    "Ravage": "Ravage the target, causing $s1% weapon damage as {E} damage{payload}.  Must be prowling and behind the target.  Awards $s3 combo $lpoint:points;.",
+    "Maul": "A strong attack that deals $s1% weapon damage as {E} damage{payload} and causes a high amount of threat.",
+    "Overpower": "Instantly overpower the enemy, causing $s1% weapon damage as {E} damage{payload}.  Only useable after the target dodges.  The Overpower cannot be blocked, dodged or parried.",
+    "Ambush": "Ambush the target, causing $s1% weapon damage as {E} damage{payload}.  Must be stealthed and behind the target.  Requires a dagger in the main hand.  Awards $s3 combo $lpoint:points;.",
+    "Hemorrhage": "An instant strike that deals $s1% weapon damage as {E} damage{payload} and causes the target to hemorrhage, increasing any Physical damage dealt to the target by up to $s3.  Lasts $n charges or $d.  Awards 1 combo point.",
+    "Mortal Strike": "A vicious strike that deals $s1% weapon damage as {E} damage{payload} and wounds the target, reducing the effectiveness of any healing by $s3% for $d.",
+    "Maim": "Finishing move that deals $s1% weapon damage as {E} damage{payload} and stuns the target for 1 sec per combo point.  Non-player victim spellcasting is also interrupted for $32747d.",
+    "Aimed Shot": "An aimed shot that deals $s1% weapon damage as {E} damage{payload} and reduces healing done to that target by $s3%.  Lasts $d.",
+    "Devastate": "Sunder the target's armor causing the Sunder Armor effect.  In addition, deals $s1% weapon damage as {E} damage for each application of Sunder Armor on the target{payload}.  The Sunder Armor effect can stack up to $u times.",
+    "Mangle (Cat)": "Mangle the target for $s1% weapon damage as {E} damage{payload} and causes the target to take $s3% additional damage from bleed effects for $d.  Awards $34071s1 combo $lpoint:points;.",
+    "Mangle (Bear)": "Mangle the target for $s1% weapon damage as {E} damage{payload} and causes the target to take $s3% additional damage from bleed effects for $d.",
+    "Plague Strike": "A vicious strike that deals $s1% weapon damage as {E} damage{payload} and infects the target with Blood Plague, a disease dealing Shadow damage over time.",
+    "Blood Strike": "Instantly strike the enemy, causing $s1% weapon damage as {E} damage{payload}, total damage increased by ${$m3/2}.1% for each of your diseases on the target.",
+    "Obliterate": "A brutal instant attack that deals $s1% weapon damage as {E} damage{payload}, total damage increased ${$m3/2}.1% per each of your diseases on the target, but consumes the diseases.",
+    "Death Strike": "A deadly attack that deals $s1% weapon damage as {E} damage{payload}, total damage increased for each of your diseases on the target.",
+    "Fan of Knives": "Instantly throw both weapons at all targets within $a1 yards, causing $s1% weapon damage as {E} damage{payload}.",
+    "Kill Shot": "You attempt to finish the wounded target off, firing a long range attack dealing $s1% weapon damage as {E} damage{payload}.  Kill Shot can only be used on enemies that have 20% or less health.",
+    "Swipe (Cat)": "Swipe nearby enemies, inflicting $s1% weapon damage as {E} damage{payload}.",
 }
 
 
@@ -348,8 +392,8 @@ def check_tokens(desc, slots, duration):
     return ""
 
 
-def build_variant(spell, sla, icon, visual, base_id, base_index, rank_index, elem,
-                  first_variant_id, coeff_pct, sp_coeff):
+def build_variant(spell, sla, icon, visual, durations, base_id, base_index, rank_index,
+                  elem, first_variant_id, coeff_pct, sp_coeff):
     row = spell.row_of(base_id)
     vals = spell_values(spell, row)
     base_name = vals[F["SpellName"]]
@@ -379,7 +423,7 @@ def build_variant(spell, sla, icon, visual, base_id, base_index, rank_index, ele
     if not weapon:
         return None, "no weapon effect"
     if len(other) > 1:
-        return None, "two non-weapon effects leave no room for the elemental add"
+        return None, "two non-weapon effects leave no room for the element"
     if base_name not in DESCRIPTIONS:
         return None, "no description template for this base"
 
@@ -389,10 +433,10 @@ def build_variant(spell, sla, icon, visual, base_id, base_index, rank_index, ele
     coeff = max(1, int(round(base_pct * keep / 100.0)))
     add_value = int(round((flat_add + 3 + lvl * 0.6) * elem.get("add_mult", 1.0)))
 
-    # -- lay the three slots out: weapon %, elemental add, [base other], [rider]
+    # -- lay the three slots out: weapon %, the element, [the base's own]
     # The base's own targeting for its weapon hit: a single enemy for a
     # strike, an area for Whirlwind, a chain for Cleave. The percent hit, the
-    # elemental add and any debuff rider all use it, so an area strike stays
+    # the element's hit, burn or debuff all use it, so an area strike stays
     # an area strike as a variant.
     w0 = weapon[0]
     hit_target = dict(TargetA=vals[F["EffectImplicitTargetA"] + w0],
@@ -402,10 +446,59 @@ def build_variant(spell, sla, icon, visual, base_id, base_index, rank_index, ele
     slots = []                        # list of dicts: effect fields for one slot
     slots.append(dict(Effect=E_WEAPON_PERCENT_DAMAGE, BasePoints=coeff - 1, DieSides=1,
                       Aura=0, Amplitude=0, Misc=0, MiscB=0, Trigger=0, Bonus=0.0,
-                      RealPerLevel=0.0, Mechanic=0, **hit_target))
-    slots.append(dict(Effect=E_SCHOOL_DAMAGE, BasePoints=add_value - 1, DieSides=1,
-                      Aura=0, Amplitude=0, Misc=0, MiscB=0, Trigger=0, Bonus=sp_coeff,
-                      RealPerLevel=0.0, Mechanic=0, **hit_target))
+                      RealPerLevel=0.0, Mechanic=0, ValueMult=0.0, **hit_target))
+
+    # -- slot 2: the element's own payload
+    #
+    # A spell carries ONE duration, so a burn or a snare has to live inside
+    # whatever the base's own effect already reserved. Almost every base
+    # reserves nothing and the element sets its own -- but Overpower's is 1ms,
+    # Maim's is 0 until combo points are spent, and Mangle's is a minute. A
+    # burn that cannot tick and a snare that lasts a minute are both worse than
+    # no element at all, so those fall back to the flat hit, which is exactly
+    # what they have always had.
+    payload = elem["payload"]
+    kind = payload[0]
+    fell_back = ""
+    duration = vals[F["DurationIndex"]]
+    if kind in ("dot", "aura"):
+        want = payload[2] if kind == "dot" else payload[4]
+        aura = A_PERIODIC_DAMAGE if kind == "dot" else payload[1]
+        if any(vals[F["EffectApplyAuraName"] + e] == aura for e in other):
+            # Mortal Strike and Aimed Shot already cut healing; a Shadow one
+            # would carry the same aura twice and say so twice.
+            kind, fell_back = "hit", "flat hit: the base already applies this aura itself"
+        elif not duration:
+            duration = want
+        elif not (durations.get(want, 0) <= durations.get(duration, 0) <= 3 * durations.get(want, 0)):
+            kind = "hit"
+            fell_back = ("flat hit: the base's own effect holds the spell at %d ms, and the "
+                         "element needs %d" % (durations.get(duration, 0), durations.get(want, 0)))
+
+    if kind == "dot":
+        amp = payload[1]
+        ticks = max(1, durations.get(duration, 0) // amp)
+        # DOT_MULT x the flat hit, spread evenly, and the spell power split the
+        # same way so a burn and a hit of the same size scale alike
+        slots.append(dict(Effect=E_APPLY_AURA, Aura=A_PERIODIC_DAMAGE,
+                          BasePoints=max(1, int(round(add_value * DOT_MULT / ticks))) - 1,
+                          DieSides=1, Amplitude=amp, Misc=0, MiscB=0, Trigger=0,
+                          Bonus=sp_coeff * DOT_MULT / ticks, RealPerLevel=0.0,
+                          Mechanic=0, ValueMult=0.0, **hit_target))
+    elif kind == "aura":
+        # control instead of damage: the strike keeps its weapon share and
+        # spends the elemental slot on the debuff
+        slots.append(dict(Effect=E_APPLY_AURA, Aura=payload[1], BasePoints=payload[2],
+                          DieSides=1, Amplitude=0, Misc=payload[3], MiscB=0, Trigger=0,
+                          Bonus=0.0, RealPerLevel=0.0, Mechanic=0, ValueMult=0.0,
+                          **hit_target))
+    else:
+        leech = payload[1] if kind == "leech" else 0.0
+        slots.append(dict(Effect=E_HEALTH_LEECH if leech else E_SCHOOL_DAMAGE,
+                          BasePoints=add_value - 1, DieSides=1, Aura=0, Amplitude=0,
+                          Misc=0, MiscB=0, Trigger=0, Bonus=sp_coeff, RealPerLevel=0.0,
+                          Mechanic=0, ValueMult=float(leech), **hit_target))
+
     for e in other:
         slots.append(dict(Effect=vals[F["Effect"] + e], BasePoints=vals[F["EffectBasePoints"] + e],
                           DieSides=vals[F["EffectDieSides"] + e],
@@ -418,28 +511,10 @@ def build_variant(spell, sla, icon, visual, base_id, base_index, rank_index, ele
                           Bonus=vals[F["EffectBonusMultiplier"] + e],
                           RealPerLevel=vals[F["EffectRealPointsPerLevel"] + e],
                           Mechanic=vals[F["EffectMechanic"] + e],
+                          ValueMult=vals[F["EffectValueMultiplier"] + e],
                           Radius=vals[F["EffectRadiusIndex"] + e],
                           Chain=vals[F["EffectChainTarget"] + e],
                           copied_from=e))
-    rider = elem["rider"]
-    rider_slot = None
-    duration = vals[F["DurationIndex"]]
-    if rider and len(slots) < 3:
-        r = dict(Effect=E_APPLY_AURA, BasePoints=0, DieSides=1, Aura=0, Amplitude=0,
-                 Misc=0, MiscB=0, Trigger=0, Bonus=0.0, RealPerLevel=0.0, Mechanic=0,
-                 **hit_target)
-        if rider[0] == "dot":
-            r.update(Aura=A_PERIODIC_DAMAGE, BasePoints=max(1, add_value // 2) - 1,
-                     Amplitude=rider[1])
-            duration = duration or rider[2]
-        elif rider[0] == "aura":
-            r.update(Aura=rider[1], BasePoints=rider[2], Misc=rider[3])
-            duration = duration or rider[4]
-        elif rider[0] == "heal":
-            r.update(Effect=E_HEAL, BasePoints=add_value - 1, TargetA=TARGET_UNIT_CASTER,
-                     TargetB=0, Radius=0, Chain=0)
-        rider_slot = len(slots)
-        slots.append(r)
     while len(slots) < 3:
         slots.append(None)
 
@@ -463,7 +538,7 @@ def build_variant(spell, sla, icon, visual, base_id, base_index, rank_index, ele
                 ("EffectMiscValueB", "MiscB"), ("EffectTriggerSpell", "Trigger"),
                 ("EffectBonusMultiplier", "Bonus"), ("EffectRealPointsPerLevel", "RealPerLevel"),
                 ("EffectMechanic", "Mechanic"), ("EffectRadiusIndex", "Radius"),
-                ("EffectChainTarget", "Chain")]
+                ("EffectValueMultiplier", "ValueMult"), ("EffectChainTarget", "Chain")]
         for fname, key in keys:
             setf(F[fname] + e, sl[key] if sl else (0.0 if F[fname] + e in FLOAT_FIELDS else 0))
         # spell class masks and combo scaling of a copied effect follow it; a
@@ -481,18 +556,15 @@ def build_variant(spell, sla, icon, visual, base_id, base_index, rank_index, ele
     name = "%s %s" % (elem["prefix"], base_name)
     rank_text = vals[F["Rank"]]
     word = elem["word"]
-    rider_text = ""
-    if rider_slot is not None:
-        n = rider_slot + 1
-        rider_text = {
-            "fire":   " and burns the target for $o%d %s damage over $d" % (n, word),
-            "frost":  " and slows the target's movement by $s%d%% for $d" % n,
-            "earth":  " and increases the time between the target's attacks by $s%d%% for $d" % n,
-            "poison": " and poisons the target for $o%d %s damage over $d" % (n, word),
-            "shadow": " and reduces the effectiveness of healing on the target by $s%d%% for $d" % n,
-            "holy":   " and heals you for $s%d" % n,
-        }[elem["key"]]
-    desc = DESCRIPTIONS[base_name].replace("{E}", word).replace("{rider}", rider_text)
+    # What actually went into slot 2 -- the element's own, unless the base
+    # pushed it back to a flat hit. A hit joins the damage sentence; anything
+    # else follows as one of its own.
+    inline = HIT_TEXT if kind in ("hit", "leech") else ""
+    desc = DESCRIPTIONS[base_name].replace("{E}", word)                                   .replace("{payload}", inline.replace("{E}", word))
+    if kind in ("dot", "aura"):
+        desc += "  " + elem["text"].replace("{E}", word)
+    elif kind == "leech":
+        desc += "  Heals you for %d%% of the damage dealt." % round(payload[1] * 100)
     bad = check_tokens(desc, slots, duration)
     if bad:
         return None, "description token %s has nothing behind it" % bad
@@ -529,7 +601,7 @@ def build_variant(spell, sla, icon, visual, base_id, base_index, rank_index, ele
         # instead of one tier above its base. A variant is rolled for: 0.
         sla_fields[9] = 0
 
-    lost = "rider dropped: no free slot" if (rider and rider_slot is None) else ""
+    lost = fell_back
     return dict(id=first_variant_id + rank_index, first=first_variant_id, base=base_id,
                 base_name=base_name, element=elem["key"], rank=rank_index + 1,
                 name=name, rank_text=rank_text, description=desc, values=new,
@@ -569,9 +641,10 @@ def write_sql(variants, path, run_desc):
     L.append("-- Do not hand-edit: regenerate with data/sql/generators/gen_elemental_variants.py.")
     L.append("--")
     L.append("-- Every physical strike in the pool dealt as an element instead: the same")
-    L.append("-- swing, cost and cooldown, at a reduced weapon coefficient, with an elemental")
-    L.append("-- add that scales with spell power and, where a slot allowed, one rider the")
-    L.append("-- element is known for. The shape is Frost Strike's. Design and every id block")
+    L.append("-- swing, cost and cooldown, at a reduced weapon coefficient, with the element's")
+    L.append("-- own signature in the second effect slot: a hit that scales with spell power,")
+    L.append("-- a burn, a poison, a snare, an attack-speed cut, a healing cut or lifesteal.")
+    L.append("-- The shape is Frost Strike's. Design and every id block")
     L.append("-- are in PLAN-elemental-variants.md.")
     L.append("--")
     L.append("-- The client patch appends the SAME rows to the player's Spell.dbc from")
@@ -652,7 +725,9 @@ def write_manifest(variants, path, run_desc):
     out = dict(version=1, run=run_desc, generation=generation_id(variants),
                spell_block=[SPELL_BASE, SPELL_BLOCK_END],
                elements=[dict(key=e["key"], idx=e["idx"], prefix=e["prefix"], school=e["school"],
-                              impact_kit=e["kit"], hue=e["hue"], glyph=e["glyph"])
+                              impact_kit=e["kit"], hue=e["hue"], glyph=e["glyph"],
+                              payload=e["payload"][0],
+                              leech=(e["payload"][1] if e["payload"][0] == "leech" else 0.0))
                          for e in ELEMENTS],
                variants=[])
     for v in variants:
@@ -687,6 +762,11 @@ def main(argv=None):
 
     spell, sla, skill, talent = dbc("Spell.dbc"), dbc("SkillLineAbility.dbc"), dbc("SkillLine.dbc"), dbc("Talent.dbc")
     icon, visual = dbc("SpellIcon.dbc"), dbc("SpellVisual.dbc")
+    # index -> milliseconds. A spell has ONE duration, so the elemental slot
+    # shares whatever the base's own effect already reserved, and this is how
+    # the generator tells a usable one from Overpower's 1ms.
+    span = dbc("SpellDuration.dbc")
+    durations = {ident: span.i(row, 1) for ident, row in span.index.items()}
     if spell.fields != 234:
         sys.exit("Spell.dbc has %d fields; this generator understands the 234-field 3.3.5a layout" % spell.fields)
 
@@ -713,8 +793,9 @@ def main(argv=None):
             first_id = SPELL_BASE + (base_index * 7 + elem["idx"] - 1) * 16
             line = []
             for rank_index, base_id in chosen:
-                v, why = build_variant(spell, sla, icon, visual, base_id, base_index, rank_index,
-                                       elem, first_id, args.coefficient, args.sp_coefficient)
+                v, why = build_variant(spell, sla, icon, visual, durations, base_id,
+                                       base_index, rank_index, elem, first_id,
+                                       args.coefficient, args.sp_coefficient)
                 if v is None:
                     skipped.append((base_name, elem["key"], why))
                     continue
@@ -747,13 +828,12 @@ def main(argv=None):
     print("  %d variant spell rows from %d base(s) x %d element(s)" % (len(variants), len(want_bases), len(want_elems)))
     for b, e, why in sorted(set(skipped)):
         print("  skipped %s / %s: %s" % (b, e, why))
-    no_rider = sorted({(v["base_name"], v["element"]) for v in variants if v["note"]})
-    if no_rider:
-        by_base = {}
-        for b, e in no_rider:
-            by_base.setdefault(b, []).append(e)
-        for b, es in sorted(by_base.items()):
-            print("  no rider (slots full) on %s: %s" % (b, ", ".join(es)))
+    by_reason = {}
+    for v in variants:
+        if v["note"]:
+            by_reason.setdefault((v["base_name"], v["note"]), set()).add(v["element"])
+    for (b, why), es in sorted(by_reason.items()):
+        print("  %s: %s -> %s" % (b, ", ".join(sorted(es)), why))
     for v in variants[:8]:
         print("\n  %d  %s  (%s)  base %d %s" % (v["id"], v["name"], v["rank_text"], v["base"], v["base_name"]))
         for e in range(3):

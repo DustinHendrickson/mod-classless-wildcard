@@ -2801,33 +2801,37 @@ do
         return tab
     end
 
-    -- The slot a stock button shows, exactly as SpellBook_GetSpellID works it
-    -- out; the second value is the highest-rank slot when ranks are hidden.
+    -- Which spell the stock button under overlay `i` is showing.
+    --
+    -- Blizzard's own function, not a copy of it. SpellBook_GetSpellID reads
+    -- SpellBookFrame.selectedSkillLineOffset and
+    -- SPELLBOOK_PAGENUMBERS[selectedSkillLine], and SpellButton_UpdateButton
+    -- has already set that offset for the button we are covering by the time
+    -- this runs -- our update is hooked onto the END of SpellBookFrame_Update.
+    -- So this returns the number that drew the icon, and the tooltip and the
+    -- cast cannot name a different spell than the picture.
+    --
+    -- This used to work the same arithmetic out again -- offset, page stride,
+    -- the highest-rank swap when ranks are hidden, the bounds check. Every one
+    -- of those is a chance to disagree with the book on a page the author never
+    -- had, and disagreeing by one is what a wrong tooltip IS.
+    --
+    -- Returns the known-rank slot (what the button draws and what a tooltip
+    -- wants) and the display slot (what the bound is measured in).
     local function slotFor(i, line)
-        -- GetSpellTabInfo returns SIX values, and the last two matter:
-        -- name, texture, offset, numSpells, highestRankOffset, highestRankNumSpells.
-        -- Blizzard never reads the raw pair directly -- SpellBook_GetTabInfo
-        -- swaps in the highest-rank pair whenever "Show All Ranks" is off, and
-        -- SpellButton_UpdateButton stores THAT in
-        -- SpellBookFrame.selectedSkillLineOffset, which is what
-        -- SpellBook_GetSpellID then adds. Reading the raw offset put every
-        -- overlay a few slots away from the stock button underneath it: the
-        -- icon was one spell and the tooltip and the drag were another, which
-        -- is exactly what "Blessing of Might shows Seal of Command" is.
-        local _, _, offset, num, hiOffset, hiNum = GetSpellTabInfo(line)
-        local allRanks = not GetCVarBool or GetCVarBool("ShowAllSpellRanks")
-        if not allRanks then
-            offset = hiOffset or offset
-            num = hiNum or num
+        if type(SpellBook_GetSpellID) ~= "function" then return nil end
+        local known, display = SpellBook_GetSpellID(i)
+        if not known then return nil end
+
+        -- and the same bound the button uses to disable itself:
+        -- SpellButton_UpdateButton hides everything past offset + numSpells,
+        -- which is where one tab's slots end and the next tab's begin.
+        if type(SpellBook_GetTabInfo) == "function" and display then
+            local _, _, offset, num = SpellBook_GetTabInfo(line)
+            offset, num = tonumber(offset) or 0, tonumber(num) or 0
+            if num > 0 and display > offset + num then return nil end
         end
-        offset, num = tonumber(offset) or 0, tonumber(num) or 0
-        local page = SPELLBOOK_PAGENUMBERS and SPELLBOOK_PAGENUMBERS[line] or 1
-        local slot = i + offset + PER_PAGE * (page - 1)
-        if slot > offset + num then return nil end
-        if not allRanks and GetKnownSlotFromHighestRankSlot then
-            return GetKnownSlotFromHighestRankSlot(slot) or slot, slot
-        end
-        return slot, slot
+        return known, display
     end
 
     local function overlayFor(i)
@@ -2934,6 +2938,10 @@ do
                 end
                 b:Show()
             else
+                -- and it stops naming a spell as well as going away: a hidden
+                -- secure button cannot be clicked, but leaving last page's
+                -- spell on it is a lie waiting for the next time it is shown
+                b:SetAttribute("spell", nil)
                 b:Hide()
             end
         end
@@ -3548,19 +3556,25 @@ rvFX.cardFlash = 0.55   -- seconds a dealt card flashes before settling
 -- turning for as long as the hand is open. `boost` is the extra flash as the
 -- card lands, decaying to nothing; what is left after that is the resting
 -- state, so a legendary in your hand still reads as one while you decide.
-function rvFX.CardFX(slot, rarity, boost)
+function rvFX.CardFX(slot, rarity, boost, fade)
     local fx = rvFX.Tier(rarity)
-    if fx.rays <= 0 and boost <= 0 then
-        slot.glow:Hide(); slot.rays:Hide()
-        return
-    end
+    fade = fade or 1
     local rgb = RARITY_RGB[math.min(rarity or 0, 4)] or RARITY_RGB[0]
+    -- Every card sits in a pool of its own colour, exactly as the reveal does:
+    -- rvGlow is 0.55 + rays * 0.35 there and is never switched off, so a common
+    -- is DIMMER than a legendary rather than unlit. This used to hide the glow
+    -- whenever the tier had no starburst, which is every common in the game.
+    --
+    -- `fade` is the card's own alpha during the deal. The glow lives on the
+    -- shared layer under all the cards, not on the card, so it does not follow
+    -- slot:SetAlpha and would otherwise light an empty space before the die
+    -- had reached it.
     slot.glow:SetVertexColor(rgb[1], rgb[2], rgb[3])
-    slot.glow:SetAlpha(fx.rays * 0.80 + boost * 0.9)
+    slot.glow:SetAlpha((0.55 + fx.rays * 0.35 + boost * 0.9) * fade)
     slot.glow:Show()
     if fx.rays >= 0.5 then          -- epic and legendary
         slot.rays:SetVertexColor(rgb[1], rgb[2], rgb[3])
-        slot.rays:SetAlpha(fx.rays * 0.55 + boost * 0.5)
+        slot.rays:SetAlpha((fx.rays * 0.55 + boost * 0.5) * fade)
         slot.spinRate = fx.spin
         slot.rays:Show()
     else
@@ -4111,6 +4125,7 @@ function hand.DressCard(slot)
     slot.info.panel:SetPoint("TOP", slot, "BOTTOM", 0, -HG.gap + rvFX.PAD)
     slot.info.panel:SetHeight(blockH)
     slot.info.panel:Show()
+    slot.blockH = blockH   -- the buttons go under the deepest of these
     for _, e in ipairs(slot.info.edges) do
         e:SetVertexColor(rgb[1], rgb[2], rgb[3], 0.85)
         e:Show()
@@ -4226,11 +4241,23 @@ local function RenderHand()
             slot.abilityId = nil
             slot.spellId = nil
             slot.entryRef = nil
+            slot.blockH = nil
             slot.glow:Hide(); slot.rays:Hide()
             slot.info:Clear()
             slot:Hide()
         end
     end
+
+    -- Under the deepest description on the row, not on the frame's bottom edge:
+    -- a plate is drawn on its own card, three frame levels above these buttons,
+    -- so a long description simply painted over them where they used to sit.
+    local deepest = 0
+    for i = 1, n do deepest = math.max(deepest, handSlots[i].blockH or 0) end
+    local y = HG.top - HG.die - HG.gap + rvFX.PAD - deepest - 18
+    handRoll:ClearAllPoints()
+    handKeep:ClearAllPoints()
+    handRoll:SetPoint("TOP", hand, "TOP", -84, y)
+    handKeep:SetPoint("TOP", hand, "TOP", 84, y)
 
     -- Deal-in animation. The die bounces in from off the left, rolls along the
     -- row, and each card appears as the die reaches it; past the last card the
@@ -4363,7 +4390,7 @@ hand:SetScript("OnUpdate", function(self, elapsed)
             slot:ClearAllPoints()
             slot:SetPoint("TOP", hand, "TOP", a.xs[i], HG.top - (1 - e) * lift)
             local boost = since and math.max(0, 1 - (now - since) / rvFX.cardFlash) or 0
-            rvFX.CardFX(slot, slot.rarity, boost)
+            rvFX.CardFX(slot, slot.rarity, boost, e)
             -- the deal is not over until the last flash has burned down
             if q < 1 or boost > 0 then settled = false end
         end

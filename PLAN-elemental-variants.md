@@ -3,8 +3,9 @@
 Every physical strike in the pool gets elemental siblings: **Fiery Sinister Strike**,
 **Frozen Heroic Strike**, **Venomous Backstab**. A variant keeps the base ability's cast,
 cooldown, cost, animation and rank chain, but deals its damage as the element instead of
-Physical, trades some weapon damage for an elemental add that scales with spell power, and
-carries one short rider the element is known for. Seven elements: Fire, Frost, Earth, Poison,
+Physical, and trades some weapon damage for the element's own signature: a hit that scales
+with spell power, a burn, a poison, a snare, an attack-speed cut, a healing cut or lifesteal.
+Seven elements: Fire, Frost, Earth, Poison,
 Arcane, Shadow and Holy. Variants roll and are bought like any other ability, one rarity tier
 above their base.
 
@@ -36,28 +37,67 @@ increases frost damage, coloured frost in the combat log. That is exactly an "el
 variant" of a strike, and Blizzard shipped it. Every variant we make is this shape with a
 different base and a different school.
 
-### 1.2 The riders: one existing aura per element
+### 1.2 The signatures: one existing effect per element
 
-Each element's signature debuff already exists as a plain aura effect on a stock spell. We
-copy the effect, not the spell.
+Each element's signature already exists as a plain effect on a stock spell. We copy the
+effect, not the spell -- and it goes in the SECOND of the three slots, the one that used to
+hold a flat elemental hit for every element alike. That is the whole design: a spell has three
+effect slots, the weapon percent takes one and the base's own effect (a combo point, a wound)
+often takes another, so a signature that needs a third slot is a signature 97 of the 155 bases
+never get. Putting it in the elemental slot costs nothing that was not already the element's,
+and no variant can be left as a recoloured copy of its neighbour.
 
-| Element | School (mask) | Rider, copied from | Effect |
+The flat hit does not disappear -- it is what Arcane is, at half again the size, and what any
+element falls back to when a base cannot hold its signature.
+
+| Element | School (mask) | Signature, copied from | Effect in the elemental slot |
 | ------- | ------------- | ------------------ | ------ |
-| Fire    | Fire (4)      | Deadly Poison 2818 shape | `PERIODIC_DAMAGE` (aura 3) every 2s for 6s: a burn |
+| Fire    | Fire (4)      | Deadly Poison 2818 shape | `PERIODIC_DAMAGE` (aura 3) every 2s for 6s: a burn worth 1.5x the flat hit |
 | Frost   | Frost (16)    | Frostbolt 116, effect 0  | `MOD_DECREASE_SPEED` (aura 33) -30% for 6s |
 | Earth   | Nature (8)    | Earth Shock 8042, effect 0 | `MOD_MELEE_HASTE` (aura 138) -10% attack speed for 6s |
-| Poison  | Nature (8)    | Deadly Poison 2818, effect 0 | `PERIODIC_DAMAGE` (aura 3) every 3s for 12s, weaker but longer than Fire |
-| Arcane  | Arcane (64)   | none                     | No rider. Arcane's identity is raw damage: larger elemental add instead |
+| Poison  | Nature (8)    | Deadly Poison 2818, effect 0 | `PERIODIC_DAMAGE` (aura 3) every 3s for 12s: the same 1.5x, slower |
+| Arcane  | Arcane (64)   | none                     | The flat `SCHOOL_DAMAGE` hit, at 1.5x. Arcane's identity is the raw number |
 | Shadow  | Shadow (32)   | Mortal Strike 12294, effect 0 | `MOD_HEALING_PCT` (aura 118, misc 127) -20% for 6s |
-| Holy    | Holy (2)      | none on the target       | `HEAL` (effect 10) on the caster for the elemental add's value: smite and mend |
+| Holy    | Holy (2)      | none, and none needed    | The elemental add IS a `HEALTH_LEECH` (effect 9) at `EffectValueMultiplier` 0.25: smite and mend |
 
 Earth and Poison both use the Nature school. That is how 3.3.5a is built (there is no Earth
 school) and it is fine: they are resisted the same way and differ in what they do on hit.
 
 Holy is the outlier for balance rather than mechanics: almost nothing in the game resists it,
 so a Holy variant loses nothing to armour and nothing to resistance. It gets a lower weapon
-coefficient than the others (2.1) and a self-heal rather than a debuff, so its identity is
+coefficient than the others (2.1) and sustain rather than a debuff, so its identity is
 sustain, not the biggest number.
+
+Holy's sustain costs no slot at all: the elemental slot holds a `HEALTH_LEECH` rather than a
+plain hit, so the heal rides on the damage the strike actually deals. This was the first of the
+signatures to move out of the third slot, and the reason the rest followed. A third-slot rider
+is one that 97 of the 155 bases never get: those Holy variants were dropping the heal and still
+charging the 10 points of weapon damage it was priced against, so a Holy Sinister Strike --
+which the module rates ONE RARITY ABOVE its base as "strictly the more interesting spell" --
+was 75% weapon damage where the base got 100%, and bought nothing with the difference.
+
+The core heals the caster for `damage actually dealt x EffectValueMultiplier` -- see
+`Spell::DoAllEffectOnTarget`, "xinef: health leech handling" -- so the heal is a share of the
+WHOLE strike (weapon percent included), not of the elemental hit, and a multiplier left at 0
+leeches nothing at all. 25% is the share: it reads as the quarter of weapon damage Holy gives
+up coming back as healing, and it is the number in the tooltip.
+
+### 1.2b One duration per spell, and what that costs
+
+`DurationIndex` belongs to the spell, not to an effect, so a burn or a snare in the elemental
+slot has to live inside whatever the base's own effect already reserved. Almost every base
+reserves nothing and the element sets its own. Six do not, and three of those are unusable:
+Overpower holds the spell at 1 ms, Maim's is 0 until combo points are spent, and Mangle's is a
+minute. A burn that cannot tick and a snare that lasts a minute are both worse than no element
+at all, so a base whose duration falls outside `[element, 3 x element]` drops back to the flat
+hit and says so in the manifest's `note`. Shadow does the same on Mortal Strike and Aimed Shot,
+which already carry `MOD_HEALING_PCT` of their own and would otherwise apply it twice and say
+so twice. 75 of the 1085 rows fall back; the other 1010 carry their element.
+
+A damage-over-time keeps the spell power a flat hit had. `Unit::SpellDamageBonusDone` reads the
+coefficient off the effect's own `BonusMultiplier` for `DOT` exactly as it does for a direct
+hit, and only `SPELL_DAMAGE_CLASS_NONE` spells are excluded -- these are melee and ranged. The
+generator divides the 0.15 across the ticks, so a burn and a hit of the same size scale alike.
 
 ### 1.3 The visuals: kits are separable
 
@@ -105,24 +145,26 @@ Phase 0.
 
 ### 2.1 Damage model
 
-A spell has three effect slots, and the base's weapon effects, its non-weapon effects (Sinister
-Strike's combo point, Mortal Strike's healing debuff), the elemental add and the rider all
-compete for them. The recipe, in priority order:
+A spell has three effect slots. Two of them are spoken for before the element gets a say --
+the weapon percent, and the base's own non-weapon effect where it has one -- so the element
+gets exactly one, and everything it is goes in there. The recipe:
 
 ```
 slot A:  WEAPON_PERCENT_DAMAGE (31), basepoints = CoefficientPct - 1, school = element
          REPLACES every weapon effect the base had. A base's flat weapon add (Sinister
-         Strike's +3, Mortal Strike's +85) is not lost: it moves into slot B.
-slot B:  SCHOOL_DAMAGE (2), basepoints = base's flat add + a per-level bonus,
-         EffectBonusMultiplier = SpellPowerCoefficient. Always present.
+         Strike's +3, Mortal Strike's +85) is not lost: it sizes slot B.
+slot B:  THE ELEMENT. A flat SCHOOL_DAMAGE hit (Arcane, and the fallback), a
+         HEALTH_LEECH hit (Holy), a PERIODIC_DAMAGE aura (Fire, Poison) or a
+         debuff aura (Frost, Earth, Shadow). Always present, always the element's.
 rest:    the base's own non-weapon effects, copied verbatim (they keep their slot).
-last:    the element's rider, only if a slot is still free.
 ```
 
-So Fiery Heroic Strike (base: one weapon effect) is 31 + 2 + burn. Fiery Sinister Strike
-(base: weapon + combo point) is 31 + 2 + combo point, and has no burn: the spell-power add
-outranks the rider because the add is the hybrid identity and the rider is flavour. The
-generator reports which variants lost their rider so the tooltip and the plan can say so.
+So Fiery Heroic Strike is 31 + burn, and Fiery Sinister Strike is 31 + burn + combo point.
+Both burn. Nothing is dropped for want of a slot, because nothing needs a third one.
+
+This is a change from the first design, which put a flat hit in slot B for everybody and the
+element's signature in slot C "if a slot is still free". On 97 of the 155 bases it never was,
+and six of the seven elements arrived as the same spell in a different colour.
 
 Replacing the weapon effects with a single 31 gives up `NORMALIZED_WEAPON_DMG`'s
 weapon-speed normalization. That is a deliberate simplification to win back a slot; Blizzard
@@ -214,8 +256,8 @@ One prefix per element, applied to the base name: **Fiery**, **Frozen**, **Earth
 has seen one can read all of them.
 
 Rarity is the base's rarity **plus one tier**, capped at legendary, because a variant is
-strictly more interesting than its base (a school change, a spell-power scaling add, and a
-rider). Roll weight follows rarity as usual, so variants are rarer rolls than their bases
+strictly more interesting than its base: a school change, and the element's own effect on
+top of the swing. Roll weight follows rarity as usual, so variants are rarer rolls than their bases
 without any special casing.
 
 Owning a base and its variant together is **allowed**. They share the base's spell category,
@@ -406,11 +448,11 @@ bases are eligible; Mocking Blow and Deadly Throw are skipped (two non-weapon ef
 no slot for the elemental hit), so **27 bases, 189 lines, 1,085 spell rows**, ids stable
 against the Phase 1 wave (its 462 ids did not move). The four Death Knight bases ship and
 register only on a realm with `IncludeDeathKnight` on; elsewhere `LoadVariants` skips them
-quietly and reports the count. Seventeen bases carry the elemental hit but no rider because
-their third slot is taken (combo points, Maim's stun, Mangle's bleed bonus, the DK strikes'
-disease effects, Whirlwind's off-hand trigger): Aimed Shot, Ambush, Backstab, Claw, Death
-Strike, Hemorrhage, Maim, both Mangles, Mortal Strike, Obliterate, Overpower, Plague Strike,
-Ravage, Shred, Sinister Strike, Whirlwind. Area and chain strikes keep the base's own
+quietly and reports the count. Six bases cannot hold every element's signature, because the
+spell's one duration is already reserved by their own effect: Overpower (1 ms), Maim (0 until
+combo points are spent), both Mangles (a minute), and -- for Poison's 12s specifically --
+Mortal Strike and Aimed Shot (10s), which also already cut healing and so take the flat hit
+for Shadow too. That is 75 rows of 1085; see 1.2b. Area and chain strikes keep the base's own
 targeting on every slot, so Fiery Whirlwind is still an area attack and Fiery Cleave still
 strikes two.
 
@@ -437,9 +479,11 @@ because every later addition should be checked the same way.
 **Phase 2, rank chains: done.** Every rank of every line, `spell_ranks`, `SupercededBySpell`
 walking the variant line.
 
-**Phase 3, riders and balance: riders done, balance open.** Every element's rider is in where
-a slot allows. The balance pass (the 85% coefficient, the 0.15 spell-power coefficient, the 15%
-roll weight, and whether any base wants a `cw_ability_override` row) needs play, not code.
+**Phase 3, signatures and balance: signatures done, balance open.** Every element's signature
+is in the elemental slot on every base that can hold it -- 1010 of the 1085 rows, and the other
+75 report why. The balance pass (the 85% coefficient, the 0.15 spell-power coefficient, the
+1.5x damage-over-time multiplier, the 15% roll weight, and whether any base wants a
+`cw_ability_override` row) needs play, not code.
 
 **Phase 4, the rest of the list: done except the decision.** Ranged, form-locked and Death
 Knight bases are in the shipped set. Talent-rooted lines (Mortal Strike, Devastate, Hemorrhage,
@@ -507,7 +551,7 @@ and the DBC appends, few enough to check by hand.
 **Phase 2, rank chains.** Every rank, `spell_ranks` rows, and the module's rank-up on level
 verified against a variant line. This is where the row count climbs to the hundreds.
 
-**Phase 3, riders and balance.** The element riders, the per-element coefficient
+**Phase 3, signatures and balance.** The element signatures, the per-element coefficient
 multipliers, a balance pass against the bases, `cw_ability_override` rows for anything that
 needs a nudge. Documentation: conf, README, addon Help.
 

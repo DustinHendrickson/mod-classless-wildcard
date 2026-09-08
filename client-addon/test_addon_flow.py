@@ -210,6 +210,26 @@ function GetSpellName(slot, book) return "Spell" .. tostring(slot), "Rank " .. t
 function GetSpellTexture(slot) if slot == 226 then return "" end return "Interface\\Icons\\Spell" .. tostring(slot) end
 function GetCVarBool(name) return true end
 function GetKnownSlotFromHighestRankSlot(slot) return slot end
+-- Blizzard's own two, because the overlay calls them rather than working the
+-- same sums out again. Copied from Interface\FrameXML\SpellBookFrame.lua.
+SPELLS_PER_PAGE = 12
+function SpellBook_GetTabInfo(line)
+    local name, texture, offset, num, hiOffset, hiNum = GetSpellTabInfo(line)
+    if not GetCVarBool("ShowAllSpellRanks") then
+        offset, num = hiOffset or offset, hiNum or num
+    end
+    return name, texture, offset, num
+end
+function SpellBook_GetSpellID(id)
+    local line = SpellBookFrame.selectedSkillLine or 1
+    local _, _, offset = SpellBook_GetTabInfo(line)
+    local page = (SPELLBOOK_PAGENUMBERS and SPELLBOOK_PAGENUMBERS[line]) or 1
+    local slot = id + (offset or 0) + SPELLS_PER_PAGE * (page - 1)
+    if not GetCVarBool("ShowAllSpellRanks") then
+        return GetKnownSlotFromHighestRankSlot(slot), slot
+    end
+    return slot, slot
+end
 PICKED = {}
 function PickupSpell(slot, book) PICKED[#PICKED + 1] = slot end
 '''
@@ -671,16 +691,19 @@ def test_hand_tiers(h):
                     "PVPTHROUGHQUEUE", "LEVELUPSOUND"],
             "each card played its own tier's sound (%s)" % snd)
 
-    h.check(slots[1].glow["__shown"] is False, "the common card settles plain")
+    # A common is DIMMER, not unlit: the reveal never switches its own glow off
+    # either, and a card with nothing behind it read as a hole in the row.
+    h.check(slots[1].glow["__shown"] is True and slots[1].rays["__shown"] is False,
+            "the common card is lit as well, just without a starburst")
     h.check(slots[2].glow["__shown"] is True and slots[2].rays["__shown"] is False,
             "the rare card keeps a glow but no starburst")
     h.check(slots[4].glow["__shown"] is True and slots[4].rays["__shown"] is True,
             "the legendary card keeps both")
     rgb = [round(v, 2) for v in slots[4].glow["__rgb"].values()]
     h.check(rgb == [1, 0.5, 0], "and wears the legendary colour (%s)" % rgb)
-    h.check(slots[4].glow["__alpha"] > slots[2].glow["__alpha"],
-            "brighter the better the card (%.2f vs %.2f)"
-            % (slots[4].glow["__alpha"], slots[2].glow["__alpha"]))
+    h.check(slots[4].glow["__alpha"] > slots[2].glow["__alpha"] > slots[1].glow["__alpha"],
+            "brighter the better the card (%.2f / %.2f / %.2f)"
+            % (slots[4].glow["__alpha"], slots[2].glow["__alpha"], slots[1].glow["__alpha"]))
 
     before = [round(v, 4) for v in slots[4].rays["__coord"].values()]
     step(0.25)
@@ -941,11 +964,22 @@ def test_hand_info(h):
     # four cards, the first of them epic
     h.recv("OA|133:3:0:1;772:0:0:1;1752:0:0:1;686:0:1:1;")
     h.recv("OAE|")
-    for dt in (0.6, 1.0, 0.4, 0.6):
+    slots = [CW.handSlots[i] for i in range(1, 5)]
+
+    # part way through the deal: the die has reached the first card and not the
+    # last. The glow lives on the shared layer under the cards, so it does not
+    # follow the card's own SetAlpha and has to be faded by hand -- otherwise it
+    # lights an empty space ahead of the die.
+    h.rt.execute("NOW = NOW + 0.6")
+    hand["__scripts"]["OnUpdate"](hand, 0.6)
+    h.check(slots[3].glow["__alpha"] < 0.1,
+            "a card the die has not reached yet is unlit (%.2f)" % slots[3].glow["__alpha"])
+
+    for dt in (1.0, 0.4, 0.6):
         h.rt.execute("NOW = NOW + %r" % dt)
         hand["__scripts"]["OnUpdate"](hand, dt)
-
-    slots = [CW.handSlots[i] for i in range(1, 5)]
+    h.check(slots[3].glow["__alpha"] >= 0.55,
+            "and lit once it lands (%.2f)" % slots[3].glow["__alpha"])
 
     # each card carries its own plate, filled from its own ability
     up = [i for i, s_ in enumerate(slots, 1) if s_.info.panel["__shown"] is True]
@@ -984,6 +1018,37 @@ def test_hand_info(h):
     h.click(slots[1])
     xs2 = [[v for v in s_["__point"].values()][3] for s_ in slots]
     h.check(xs2 == xs, "a re-render puts the cards back in the same four places (%s)" % xs2)
+
+    # The buttons live under the deepest description, not on the frame's bottom
+    # edge: a plate is drawn on its own card, three frame levels above them, so
+    # a long description used to paint straight over Roll Abilities.
+    def button_y():
+        p = [v for v in CW.handRoll["__point"].values()]
+        return p[4] if len(p) == 5 else None
+
+    deep = button_y()
+    cards_bottom = -78 - 150      # HG.top - HG.die
+    h.check(deep is not None and deep < cards_bottom,
+            "Roll Abilities sits below the cards, not among them (%s)" % deep)
+    h.rt.execute("""
+        local tip = ClasslessWildcardScanTip
+        tip.NumLines = function() return 9 end
+        for i = 5, 9 do
+            _G["ClasslessWildcardScanTipTextLeft" .. i] = {
+                GetText = function() return "another line of description" end,
+                GetTextColor = function() return 1, 1, 1 end,
+            }
+            _G["ClasslessWildcardScanTipTextRight" .. i] = { GetText = function() return nil end }
+        end
+    """)
+    h.click(slots[1])
+    h.check(button_y() < deep,
+            "and follows a longer one further down (%s -> %s)" % (deep, button_y()))
+    h.rt.execute("""
+        local tip = ClasslessWildcardScanTip
+        tip.NumLines = function() return 4 end
+    """)
+    h.click(slots[1])
 
     # a shorter ability after a longer one: the rows it does not need have to be
     # emptied, not merely hidden. A hidden font string keeps its height and goes
@@ -1715,6 +1780,23 @@ def test_spellbook(h):
             "on a tab past the eighth every FILLED slot gets a secure overlay (%s)" % shown)
     h.check(rt.eval("SPELLBOOK_PAGENUMBERS[12]") == 1,
             "and its page number is seeded, which is why the overlay is needed")
+    # The overlay must take the game's answer, not work one out that happens to
+    # agree today. Move SpellBook_GetSpellID somewhere no reimplementation would
+    # follow and the overlay has to go with it -- if it computes instead, it
+    # stays on 221 and the tooltip is for a spell the icon underneath is not.
+    rt.execute("""
+        CW_REAL_GETSPELLID = SpellBook_GetSpellID
+        -- still inside tab 12 (offset 220, 15 spells), so the bound keeps it
+        SpellBook_GetSpellID = function(id) return 230 + id, 230 + id end
+    """)
+    sb.update()
+    moved = str(sb.overlays[1]["__attributes"]["spell"])
+    rt.execute("SpellBook_GetSpellID = CW_REAL_GETSPELLID")
+    sb.update()
+    h.check(moved.startswith("Spell231"),
+            "the overlay asks the game which slot it covers rather than "
+            "computing one (%s)" % moved)
+
     b = sb.overlays[1]
     attr = b["__attributes"]
     h.check(attr is not None and str(attr["type"]) == "spell"
@@ -1728,6 +1810,13 @@ def test_spellbook(h):
     shown = [i for i in range(1, 13) if sb.overlays[i]["__shown"]]
     h.check(shown == [1, 2, 3],
             "the last page shows only its three, the rest staying Blizzard's empty squares (%s)" % shown)
+    # and the ones that went away stop naming last page's spell. A hidden secure
+    # button cannot be clicked, but a stale name on it is a lie waiting for the
+    # next time it is shown.
+    gone = sb.overlays[4]["__attributes"]
+    h.check(gone is None or gone["spell"] is None,
+            "an overlay that goes away drops its spell too (%s)"
+            % (gone and gone["spell"]))
 
     b.__getitem__("__scripts")["OnDragStart"](b)
     h.check(rt.eval("PICKED[#PICKED]") == 233, "dragging an overlay picks up its spell slot")

@@ -58,6 +58,14 @@ def main(argv=None):
 
     manifest = elemental.load_manifest(args.manifest)
     variants = [dict(v, fields=dict(v["fields"])) for v in manifest["variants"]]
+    # duration index -> milliseconds, so a burn can be checked against the room
+    # the spell actually has for it
+    dspan = read("SpellDuration.dbc")
+    dcount, dfields, drec, drecords, _ = rows_of(dspan)
+    durations = {}
+    for i in range(dcount):
+        ident, ms = struct.unpack_from("<Ii", drecords, i * drec)
+        durations[ident] = ms
     print("manifest: %d variant(s), %d element(s)" % (len(variants), len(manifest["elements"])))
     if not variants:
         sys.exit("nothing to test")
@@ -182,6 +190,63 @@ def main(argv=None):
                 bad_target += 1
     check("targeting: percent hit and elemental add use the base's targets, radius and chain",
           bad_target == 0, "%d slot(s) differ" % bad_target)
+
+    # ---- every element actually does its element ----------------------------
+    # The second effect slot is the element. It used to hold a flat hit for
+    # everybody and the element's own signature only when a THIRD slot happened
+    # to be free, which on 97 of the 155 bases it is not -- so six of the seven
+    # elements were the same spell in different colours, and Holy was charged
+    # 10 points of weapon damage for a heal it never got. Now the signature IS
+    # that slot, and the only way to lose it is a base whose own effect holds
+    # the spell at a duration the element cannot live in (Overpower's 1 ms,
+    # Mangle's minute) or already applies the same aura. Every one of those
+    # says so in `note`; a row that quietly has neither is the old bug back.
+    AURA_OF = {"fire": 3, "poison": 3, "frost": 33, "shadow": 118, "earth": 138}
+    kinds = {e["key"]: e.get("payload", "hit") for e in manifest["elements"]}
+    leeching = {e["key"]: round(float(e.get("leech", 0)), 4) for e in manifest["elements"]}
+    wrong, fallbacks = [], 0
+    for v in variants:
+        f = v["fields"]
+        eff = int(f.get("72", 0))                    # Effect_2
+        aura = int(f.get("96", 0))                   # EffectAura_2
+        mult = round(float(f.get("102", 0)), 4)      # EffectMultipleValue_2
+        kind, note = kinds.get(v["element"], "hit"), (v.get("note") or "")
+        if kind in ("dot", "aura") and note.startswith("flat hit"):
+            kind, fallbacks = "hit", fallbacks + 1
+        if kind == "dot":
+            ok = eff == 6 and aura == 3 and int(f.get("99", 0)) > 0 and float(f.get("230", 0)) > 0
+        elif kind == "aura":
+            ok = eff == 6 and aura == AURA_OF[v["element"]] and int(f.get("81", 0)) < 0
+        elif kind == "leech":
+            ok = eff == 9 and mult == leeching[v["element"]] and mult > 0
+        else:
+            ok = eff == 2 and aura == 0 and mult == 0
+        if not ok:
+            wrong.append("%s %s: slot 2 is effect %d/aura %d/mult %s, wanted a %s"
+                         % (v["name"], v["rank_text"] or "-", eff, aura, mult, kind))
+    check("elements: every variant carries its element's own effect, or says why not",
+          not wrong, "; ".join(wrong[:3]) + (" ... and %d more" % (len(wrong) - 3)
+                                             if len(wrong) > 3 else "")
+          or "%d row(s), %d on the flat-hit fallback" % (len(variants), fallbacks))
+
+    # A burn needs a duration, and a duration the base is holding has to fit a
+    # whole number of ticks. This is what the fallback exists to prevent: the
+    # rule above is satisfied by an effect being present, this one by it being
+    # able to do anything.
+    dead = []
+    for v in variants:
+        f = v["fields"]
+        if int(f.get("72", 0)) != 6:
+            continue
+        amp, dur = int(f.get("99", 0)), int(f.get("40", 0))
+        if not dur:
+            dead.append("%s has an aura in slot 2 and no duration" % v["name"])
+        elif amp and durations.get(dur, 0) < amp:
+            dead.append("%s ticks every %d ms inside a %d ms aura"
+                        % (v["name"], amp, durations.get(dur, 0)))
+    check("elements: no aura is written into a spell that cannot hold it",
+          not dead, "; ".join(dead[:3]) or "%d aura slot(s) checked"
+          % sum(1 for v in variants if int(v["fields"].get("72", 0)) == 6))
 
     # ---- rank chains --------------------------------------------------------
     # Every line's SkillLineAbility rows must supersede along the VARIANT line
