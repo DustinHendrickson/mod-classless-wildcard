@@ -33,6 +33,36 @@ Essence, or let the server roll for you in Wildcard mode.
 
 ---
 
+> [!IMPORTANT]
+> **What it runs on, and what it changes.**
+>
+> **A stock 3.3.5a client, patched by this module.** There is no custom client build, no
+> launcher and no third-party patch to find. The installer in [`client-patch`](client-patch/)
+> adds `Data/patch-Z.MPQ` and `Data/<locale>/patch-<locale>-Z.MPQ`, patches `Wow.exe` to accept
+> custom interface files, and installs the ClasslessWildcard addon. The client's own archives are
+> never edited, the edits ride in those two new ones, the executable is backed up before it is
+> patched, and `--uninstall` returns the client to stock. Client and server must be installed
+> from the same version of the module: the patch carries spell data the server loads too, and a
+> mismatch shows wrong tooltips or fails casts.
+>
+> **Server SQL, and not only in this module's own tables.** The DB updater applies it on startup.
+> It writes to `item_template`, `quest_template_addon`, `playercreateinfo`,
+> `playercreateinfo_action`, `creature_template` and `npc_vendor`, and to the DBC override tables
+> `spell_dbc`, `spell_ranks`, `talent_dbc`, `talenttab_dbc`, `skillline_dbc`,
+> `skilllineability_dbc` and `skillraceclassinfo_dbc`. Original values are copied into backup
+> tables first and the [uninstall](#uninstall) scripts put them back, but take your own backup of
+> the world and characters databases before the first start.
+>
+> **No UI addon is guaranteed to work.** Every character is a single shared class that reads as
+> Hero, one spellbook holds spells from all ten classes across extra tabs, the talent trees are
+> served by this module rather than the client's own, and the resource bars show mana, rage and
+> energy on a character the client thinks has one of them. An addon that keys off class, the
+> spellbook, the talent frames, the paper doll or the power type can misread all of it, and some
+> will throw Lua errors. The bundled ClasslessWildcard addon is the supported interface. Others
+> may work, may look wrong, or may break, and none of them is tested here.
+
+---
+
 ## What it is
 
 `mod-classless-wildcard` removes the class system from WotLK 3.3.5a. Every character is a
