@@ -74,6 +74,9 @@ StubMT.__index = function(self, k)
     if k == "SetAlpha" then return function(s, v) rawset(s, "__alpha", v) end end
     if k == "GetAlpha" then return function(s) return rawget(s, "__alpha") or 1 end end
     if k == "SetFrameLevel" then return function(s, v) rawset(s, "__level", v) end end
+    if k == "SetID" then return function(s, v) rawset(s, "__id", v) end end
+    if k == "EnableMouse" then return function(s, v) rawset(s, "__mouse", v and true or false) end end
+    if k == "GetID" then return function(s) return rawget(s, "__id") or 0 end end
     if k == "SetFrameStrata" then return function(s, v) rawset(s, "__strata", v) end end
     if k == "GetFrameStrata" then return function(s) return rawget(s, "__strata") or "MEDIUM" end end
     if k == "SetToplevel" then return function(s, v) rawset(s, "__toplevel", v and true or false) end end
@@ -230,6 +233,17 @@ function SpellBook_GetSpellID(id)
     end
     return slot, slot
 end
+-- Interface\FrameXML\SpellBookFrame.xml gives every spell button a NAME and
+-- an ID, and they are not the same number. The names run down the left column
+-- and then the right; the IDs run in spell order. They agree only on 1 and 12,
+-- and SpellButton_OnEnter/_OnClick pass the ID, never the name's number.
+SPELL_BUTTON_ID = { 1, 7, 2, 8, 3, 9, 4, 10, 5, 11, 6, 12 }
+for i = 1, 12 do
+    local b = Stub("Button", "SpellButton" .. i)
+    b:SetID(SPELL_BUTTON_ID[i])
+    _G["SpellButton" .. i] = b
+end
+
 PICKED = {}
 function PickupSpell(slot, book) PICKED[#PICKED + 1] = slot end
 '''
@@ -1732,6 +1746,40 @@ STRATA = ["BACKGROUND", "LOW", "MEDIUM", "HIGH", "DIALOG", "FULLSCREEN",
           "FULLSCREEN_DIALOG", "TOOLTIP"]
 
 
+def test_stats(h):
+    """The stat panel: solid to the mouse, and the button carries the count."""
+    print("--- stats: a panel that stops the mouse, and a button that counts")
+    CW = h.CW
+    h.recv(state(0, level=80))
+    # ST: budget, unspent, per point, the five allocations, enabled, then rates
+    h.recv("ST|162|3|1|40|30|50|20|19|1|1|1|1|0.5|2|1|0|0|0|0|0")
+
+    h.check(CW.statFly["__mouse"] is True,
+            "the stat panel takes mouse input, so nothing behind it can be hovered "
+            "through it (%s)" % CW.statFly["__mouse"])
+
+    h.click(CW.statsBtn)
+    h.check(CW.statFly["__shown"] is True, "the Stats button opens the panel")
+    h.check(str(CW.statsBtn["__text"]) == "Stats (3)",
+            "the button says how many points are waiting (%s)" % CW.statsBtn["__text"])
+
+    # spending one moves the button with the panel, so the two never disagree
+    row = CW.statRows[1]
+    row.plus["__scripts"]["OnClick"](row.plus)
+    h.check(str(CW.statsBtn["__text"]) == "Stats (2)",
+            "and it follows a point being spent (%s)" % CW.statsBtn["__text"])
+    h.check("|cff00ff002|r of 162 unspent" in str(CW.statTitle["__text"]),
+            "agreeing with the panel's own line (%s)" % CW.statTitle["__text"])
+
+    # all of them spent reads as (0), not as a bare "Stats"
+    h.rt.execute("ClasslessWildcard_API.stats.budget = 1")
+    CW.RenderStats()
+    h.check(str(CW.statsBtn["__text"]) == "Stats (0)",
+            "spent out, it says so rather than going quiet (%s)" % CW.statsBtn["__text"])
+
+    CW.statFly["__shown"] = False
+
+
 def test_spellbook(h):
     print("--- spellbook: Blizzard's tabs and pages, and a secure overlay past the eighth")
     CW = h.CW
@@ -1775,9 +1823,30 @@ def test_spellbook(h):
     rt.execute("SpellBookFrame.selectedSkillLine = 12")
     sb.update()
     shown = [i for i in range(1, 13) if sb.overlays[i]["__shown"]]
-    # offset 220, 15 spells: page one is slots 221-232, and 226 has no texture
-    h.check(shown == [1, 2, 3, 4, 5, 7, 8, 9, 10, 11, 12],
+    # offset 220, 15 spells: page one is slots 221-232, and 226 has no texture.
+    # Slot 226 is id 6, and id 6 is SpellButton11 -- the sixth square DOWN THE
+    # LEFT COLUMN, not the sixth frame by name.
+    h.check(shown == [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 12],
             "on a tab past the eighth every FILLED slot gets a secure overlay (%s)" % shown)
+
+    # The name of a spell button and its id are different numbers, and the
+    # overlay has to follow the id: SpellButton3 carries id 2, so the button
+    # under it is the SECOND spell of the page and the overlay on it must say
+    # so. Getting this wrong is invisible on the first square (name 1 is id 1)
+    # and wrong on every other one, which is what "the 2nd gets the tooltip of
+    # the 3rd" was.
+    wrong = []
+    for name_index, button_id in enumerate([1, 7, 2, 8, 3, 9, 4, 10, 5, 11, 6, 12], start=1):
+        ov = sb.overlays[name_index]
+        if not ov["__shown"]:
+            continue
+        want = "Spell%d" % (220 + button_id)
+        got = str(ov["__attributes"]["spell"])
+        if not got.startswith(want + "("):
+            wrong.append("SpellButton%d (id %d) named %s, wanted %s"
+                         % (name_index, button_id, got, want))
+    h.check(not wrong,
+            "each overlay follows its button's ID, not its name: %s" % "; ".join(wrong[:3]))
     h.check(rt.eval("SPELLBOOK_PAGENUMBERS[12]") == 1,
             "and its page number is seeded, which is why the overlay is needed")
     # The overlay must take the game's answer, not work one out that happens to
@@ -1808,7 +1877,9 @@ def test_spellbook(h):
     rt.execute("SPELLBOOK_PAGENUMBERS[12] = 2")
     sb.update()
     shown = [i for i in range(1, 13) if sb.overlays[i]["__shown"]]
-    h.check(shown == [1, 2, 3],
+    # three spells is ids 1, 2 and 3, which are SpellButton1, 3 and 5: the top
+    # three of the left column, exactly where the stock book draws them
+    h.check(shown == [1, 3, 5],
             "the last page shows only its three, the rest staying Blizzard's empty squares (%s)" % shown)
     # and the ones that went away stop naming last page's spell. A hidden secure
     # button cannot be clicked, but a stale name on it is a lie waiting for the
@@ -1820,6 +1891,34 @@ def test_spellbook(h):
 
     b.__getitem__("__scripts")["OnDragStart"](b)
     h.check(rt.eval("PICKED[#PICKED]") == 233, "dragging an overlay picks up its spell slot")
+
+    # the book moves without us -- another addon reskinning it and re-running
+    # its own update, an event we do not hook. A cached slot then names a spell
+    # that is no longer under the cursor, which is the wrong tooltip; Blizzard's
+    # own button asks at hover time and never has the problem.
+    rt.execute("""
+        TOOLTIP_SPELL = nil
+        GameTooltip.SetOwner = function() end
+        GameTooltip.SetSpell = function(_, slot) TOOLTIP_SPELL = slot end
+    """)
+    rt.execute("SPELLBOOK_PAGENUMBERS[12] = 1")  # moved behind our back
+    b.__getitem__("__scripts")["OnEnter"](b)
+    live = h.rt.eval("TOOLTIP_SPELL")
+    h.check(live == 221, "a hover asks where the button is NOW, not where it was (%s)" % live)
+    h.check(str(b["__attributes"]["spell"]).startswith("Spell221"),
+            "and the cast is re-armed to the same spell, so both agree (%s)"
+            % b["__attributes"]["spell"])
+    rt.execute("SPELLBOOK_PAGENUMBERS[12] = 2")
+    sb.update()
+
+    # a UI replacement skins the stock buttons after this addon built its
+    # overlays; anything that raises a button's frame level would leave the
+    # secure one underneath, where the click never reaches it
+    rt.execute("SpellButton1:SetFrameLevel(40)")
+    sb.update()
+    h.check((sb.overlays[1]["__level"] or 0) > 40,
+            "the overlay re-stacks above a button another addon raised (%s over %s)"
+            % (sb.overlays[1]["__level"], 40))
 
     # combat: a secure button cannot be shown or retargeted, so it waits --
     # and the book is held where the armed buttons point. Turning the page
@@ -2024,6 +2123,7 @@ def main():
     test_settings(h)
     test_layering(h)
     test_default_scope(h)
+    test_stats(h)
     test_spellbook(h)
     test_talent_unlearn(h)
     test_tree_header(h)

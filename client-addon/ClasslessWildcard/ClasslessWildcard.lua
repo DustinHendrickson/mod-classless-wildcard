@@ -684,6 +684,7 @@ local statsBtn = CreateFrame("Button", nil, frame, "UIPanelButtonTemplate")
 statsBtn:SetWidth(90); statsBtn:SetHeight(22)
 statsBtn:SetPoint("BOTTOMRIGHT", -212, 26)
 statsBtn:SetText("Stats")
+CW.statsBtn = statsBtn
 
 local respecBtn = CreateFrame("Button", nil, frame, "UIPanelButtonTemplate")
 respecBtn:SetWidth(90); respecBtn:SetHeight(22)
@@ -792,12 +793,20 @@ statFly:SetBackdrop({
     insets = { left = 4, right = 4, top = 4, bottom = 4 },
 })
 statFly:SetBackdropColor(0.03, 0.03, 0.05, 0.97) -- solid: the panes underneath must not show through
+-- and solid to the MOUSE as well, which is a separate thing. A frame that does
+-- not take mouse input passes it to whatever is under it however opaque it is
+-- drawn, so the ability rows behind this panel were still lighting up and
+-- showing their tooltips through it. Every other flyout here does this; this
+-- one was missed.
+statFly:EnableMouse(true)
 statFly:Hide()
 
 local statTitle = statFly:CreateFontString(nil, "OVERLAY", "GameFontNormal")
 statTitle:SetPoint("TOP", 0, -12)
+CW.statTitle = statTitle
 
 local statRows = {}
+CW.statRows = statRows
 for i = 1, 5 do
     local r = CreateFrame("Frame", nil, statFly)
     r:SetWidth(344); r:SetHeight(36)
@@ -1283,7 +1292,20 @@ local function LevelTag(lvl, playerLevel)
                                        or ("  |cffaaaaaaLv " .. lvl .. "|r")
 end
 
+-- The button carries the count, so the panel does not have to be open to see
+-- there are points waiting: "Stats (3)", and "Stats (0)" once they are spent.
+-- Counted from the pending allocation rather than the server's number, so it
+-- moves while points are being spent and always agrees with the panel's own
+-- "N of M unspent" line.
+local function UpdateStatsButton()
+    local unspent = (CW.stats.budget or 0) - PendingSpent()
+    if unspent < 0 then unspent = 0 end
+    statsBtn:SetText("Stats (" .. unspent .. ")")
+end
+CW.UpdateStatsButton = UpdateStatsButton
+
 local function UpdateStatus()
+    UpdateStatsButton()
     local s = CW.state
     local modeText = s.mode == 0 and "|cff00ccffClassless|r" or (s.mode == 1 and "|cffff8800Wildcard|r" or "|cffff0000Path not chosen|r")
     if s.mode == 0 then
@@ -1717,6 +1739,7 @@ local function RenderStats()
         r.minus:SetScript("OnEnter", function() ShowStatTooltip(r, i) end)
         r.minus:SetScript("OnLeave", function() GameTooltip:Hide() end)
     end
+    UpdateStatsButton()   -- the count moves as the points are spent
 end
 
 local function RenderList()
@@ -2834,6 +2857,30 @@ do
         return known, display
     end
 
+    -- The slot a button is over RIGHT NOW, not the one the last update left on
+    -- it. Blizzard's own SpellButton_OnEnter and _OnClick call
+    -- SpellBook_GetSpellID at the moment of the hover or the click, and that is
+    -- exactly why the stock book never shows the wrong tooltip: the page can
+    -- move between an update and a mouse-over -- another addon reskinning the
+    -- book and re-running its own update, an event we are not hooked to -- and
+    -- a cached slot then names a spell that is no longer under the cursor.
+    --
+    -- If it HAS moved, re-arm before answering, so the tooltip and the cast are
+    -- the same spell rather than merely both plausible. Only the secure cast
+    -- attribute has to be cached, and only combat stops it being re-armed --
+    -- and in combat the book is pinned to where the buttons already point.
+    local function liveSlot(b)
+        if not b.slot or not b.index then return b.slot end
+        local line = tonumber(SpellBookFrame and SpellBookFrame.selectedSkillLine) or 1
+        local slot = slotFor(b.index, line)
+        if slot and slot ~= b.slot and sb.update
+           and not (InCombatLockdown and InCombatLockdown()) then
+            sb.update()
+            slot = b.slot
+        end
+        return slot or b.slot
+    end
+
     local function overlayFor(i)
         local b = sb.overlays[i]
         if b then return b end
@@ -2853,24 +2900,28 @@ do
         b:SetAttribute("ctrl-type*", "none")
         b:SetAttribute("alt-type*", "none")
         b:SetScript("PostClick", function(self)
-            if not self.slot or not IsModifiedClick or not IsModifiedClick() then return end
+            local slot = liveSlot(self)
+            if not slot or not IsModifiedClick or not IsModifiedClick() then return end
             if IsModifiedClick("CHATLINK") then
-                local link = GetSpellLink and GetSpellLink(self.slot, BOOK)
+                local link = GetSpellLink and GetSpellLink(slot, BOOK)
                 if link and ChatEdit_InsertLink then ChatEdit_InsertLink(link) end
             elseif IsModifiedClick("PICKUPACTION") then
-                if PickupSpell then PickupSpell(self.slot, BOOK) end
+                if PickupSpell then PickupSpell(slot, BOOK) end
             end
         end)
         b:SetScript("OnDragStart", function(self)
-            if self.slot and PickupSpell then PickupSpell(self.slot, BOOK) end
+            local slot = liveSlot(self)
+            if slot and PickupSpell then PickupSpell(slot, BOOK) end
         end)
         b:SetScript("OnReceiveDrag", function(self)
-            if self.slot and PickupSpell then PickupSpell(self.slot, BOOK) end
+            local slot = liveSlot(self)
+            if slot and PickupSpell then PickupSpell(slot, BOOK) end
         end)
         b:SetScript("OnEnter", function(self)
-            if not self.slot then return end
+            local slot = liveSlot(self)
+            if not slot then return end
             GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
-            GameTooltip:SetSpell(self.slot, BOOK)
+            GameTooltip:SetSpell(slot, BOOK)
         end)
         b:SetScript("OnLeave", function() GameTooltip:Hide() end)
         b:Hide()
@@ -2947,9 +2998,34 @@ do
                         or nil
         for i = 1, PER_PAGE do
             local b = overlayFor(i)
+            -- Re-anchor and re-stack every time, not once at creation. A UI
+            -- replacement skins the stock spell buttons AFTER this addon has
+            -- built its overlays -- ElvUI is the common one -- and anything
+            -- that moves a button or raises its frame level leaves ours behind
+            -- it, where a click reaches the skin instead of the secure button
+            -- and the spell simply does not cast. Cheap to assert, and only
+            -- ever reached out of combat, where anchoring a secure frame is
+            -- still allowed.
+            local under = _G["SpellButton" .. i]
+            if under then
+                b:ClearAllPoints()
+                b:SetAllPoints(under)
+                b:SetFrameLevel((under:GetFrameLevel() or 0) + 2)
+            end
+            -- A spell button's NAME and its ID are different numbers.
+            -- SpellBookFrame.xml lays the names down the left column and then
+            -- the right (1, 3, 5 ... 2, 4, 6 ...) while the IDs run in spell
+            -- order, so SpellButton3 carries id 2 and SpellButton5 id 3. They
+            -- agree only on 1 and 12. Blizzard's own OnEnter and OnClick pass
+            -- self:GetID(); passing the name's number instead is why the
+            -- second spell in a column wore the third one's tooltip, the third
+            -- wore the fifth's, and it got worse down the page.
+            local id = (under and under.GetID and under:GetID()) or i
+            if not id or id < 1 then id = i end
+            b.index = id
             local slot, shown = nil, nil
             if ours then
-                slot, shown = slotFor(i, selected)
+                slot, shown = slotFor(id, selected)
                 if slot then
                     local texture = GetSpellTexture(slot, BOOK)
                     if not texture or texture == "" then slot = nil end
