@@ -23,6 +23,10 @@
 #include "Pet.h"
 #include "Player.h"
 #include "ScriptMgr.h"
+#include "SpellAuraEffects.h"
+#include "SpellDefines.h"   // SPELLVALUE_BASE_POINT0
+#include "SpellMgr.h"
+#include "SpellScript.h"
 #include "StringFormat.h"
 #include "World.h"
 
@@ -729,8 +733,112 @@ public:
 //   * Had it worked it would have been a hole: every off-chassis ability would
 //     have been castable on an empty pool, which is most of a classless build.
 
+
+// =====================================================================
+// Stock spells that ask which bar you are showing
+//
+// A Hero has mana, rage and energy at once and the client can only draw one of
+// them, so "what power type are you" is a question about a UI limit, not about
+// the character. Most of the core asks it through HasActivePowerType, which
+// this module answers; these two ask getPowerType() directly and hand back
+// nothing when the answer is not the one they wanted.
+//
+// Both are the core's own implementation with that one question replaced. The
+// module takes the spell_script_names binding over from the core script rather
+// than adding a second script, because CheckProc handlers are ANDed across
+// every script on an aura -- the core's `false` would veto the proc whatever a
+// second script said.
+// =====================================================================
+namespace
+{
+    // Stock ids, stable since 3.3.5.
+    constexpr uint32 SPELL_FRENZIED_REGENERATION_HEAL = 22845;
+    constexpr uint32 SPELL_JUDGEMENT_OF_WISDOM_MANA = 20268;
+
+    // Does this character use that resource? For a Hero the pool answers, not
+    // the bar. Anyone the module leaves alone keeps the core's own test, so a
+    // bot or an exempt character behaves exactly as it did.
+    bool UsesPower(Unit* unit, Powers power)
+    {
+        if (!unit)
+            return false;
+        if (Player* player = unit->ToPlayer())
+            if (sClasslessMgr->cfg.enabled && !sClasslessMgr->IsExempt(player))
+                return player->GetMaxPower(power) > 0;
+        return unit->getPowerType() == power;
+    }
+}
+
+// 22842 - Frenzied Regeneration
+class spell_cw_frenzied_regeneration : public AuraScript
+{
+    PrepareAuraScript(spell_cw_frenzied_regeneration);
+
+    void HandlePeriodic(AuraEffect const* aurEff)
+    {
+        Unit* target = GetTarget();
+        if (!UsesPower(target, POWER_RAGE))
+            return;
+
+        uint32 rage = target->GetPower(POWER_RAGE);
+        if (!rage)
+            return;
+
+        int32 const mod = std::min(static_cast<int32>(rage), 100);
+        int32 const points = GetSpellInfo()->Effects[EFFECT_1].CalcValue(target);
+        int32 const regen = CalculatePct(target->GetMaxHealth(), points * mod / 100.f);
+        target->CastCustomSpell(SPELL_FRENZIED_REGENERATION_HEAL, SPELLVALUE_BASE_POINT0,
+                                regen, target, true, nullptr, aurEff);
+        target->SetPower(POWER_RAGE, rage - mod);
+    }
+
+    void Register() override
+    {
+        OnEffectPeriodic += AuraEffectPeriodicFn(spell_cw_frenzied_regeneration::HandlePeriodic,
+                                                 EFFECT_0, SPELL_AURA_PERIODIC_DUMMY);
+    }
+};
+
+// 20186 - Judgement of Wisdom, the debuff that pays the attacker
+class spell_cw_judgement_of_wisdom : public AuraScript
+{
+    PrepareAuraScript(spell_cw_judgement_of_wisdom);
+
+    bool CheckProc(ProcEventInfo& eventInfo)
+    {
+        return UsesPower(eventInfo.GetActor(), POWER_MANA);
+    }
+
+    void HandleProc(AuraEffect const* aurEff, ProcEventInfo& eventInfo)
+    {
+        PreventDefaultAction();
+
+        Unit* attacker = eventInfo.GetActor();
+        if (!attacker)
+            return;
+
+        SpellInfo const* spellInfo = sSpellMgr->GetSpellInfo(SPELL_JUDGEMENT_OF_WISDOM_MANA);
+        if (!spellInfo)
+            return;
+
+        int32 bp = int32(CalculatePct(attacker->GetCreateMana(),
+                                      spellInfo->Effects[EFFECT_0].CalcValue()));
+        attacker->CastCustomSpell(attacker, SPELL_JUDGEMENT_OF_WISDOM_MANA, &bp, nullptr, nullptr,
+                                  true, nullptr, aurEff, GetCasterGUID());
+    }
+
+    void Register() override
+    {
+        DoCheckProc += AuraCheckProcFn(spell_cw_judgement_of_wisdom::CheckProc);
+        OnEffectProc += AuraEffectProcFn(spell_cw_judgement_of_wisdom::HandleProc,
+                                         EFFECT_0, SPELL_AURA_DUMMY);
+    }
+};
+
 void AddClasslessPlayerScripts()
 {
     new ClasslessWorldScript();
     new ClasslessPlayerScript();
+    RegisterSpellScript(spell_cw_frenzied_regeneration);
+    RegisterSpellScript(spell_cw_judgement_of_wisdom);
 }

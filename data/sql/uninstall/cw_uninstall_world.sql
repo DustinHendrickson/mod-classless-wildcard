@@ -98,6 +98,14 @@ DELETE FROM `skillraceclassinfo_dbc` WHERE `ID` BETWEEN 990000 AND 990999;
 -- cw_all_race_class.sql, for installs that predate it) — no-ops if absent
 DELETE FROM `charstartoutfit_dbc` WHERE `ID` >= 900000;
 
+-- the two stock spell scripts this module took over (cw_world_spell_scripts.sql),
+-- and the core's own rows put back
+DELETE FROM `spell_script_names` WHERE `ScriptName` IN
+    ('spell_cw_frenzied_regeneration', 'spell_cw_judgement_of_wisdom');
+INSERT IGNORE INTO `spell_script_names` (`spell_id`, `ScriptName`) VALUES
+(22842, 'spell_dru_frenzied_regeneration'),
+(20186, 'spell_pal_judgement_of_wisdom_mana');
+
 -- module DB-updater bookkeeping, so reinstalling later re-applies cleanly
 DELETE FROM `updates` WHERE `name` LIKE 'cw_%';
 
