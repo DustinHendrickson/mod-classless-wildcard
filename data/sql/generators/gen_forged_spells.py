@@ -1107,7 +1107,13 @@ RECIPES = [
     dict(
         key="crossdraw", name="Crossdraw", rarity=1, script=True, type=1,
         first_level=14, ranks=6, step=12, donor=1752, school=1,
-        icon=2458, visual=211, power=("energy", 45),
+        # Ambush and Backstab's stab, with an arcane flash where it lands.
+        # This was Inner Fire's row (211) for one release, and Inner Fire is a
+        # self-buff: its PRECAST kit raises the caster's hands and holds them
+        # there, so a melee strike played a spellcast animation and never
+        # swung. It was the only weapon-damage spell in the set with a precast
+        # kit at all. (Sinister Strike's own 253 is Makeshift Strike's donor.)
+        icon=2458, visual=155, visual_kits=dict(impact=1005), power=("energy", 45),
         range_idx=RANGE_MELEE, cast_idx=CAST_INSTANT, cooldown_ms=0,
         effects=[
             dict(eff=E_WEAPON_PERCENT, base=100, tgt=T_ENEMY),
@@ -1787,6 +1793,18 @@ def build(spell, only=None):
                                 kits={VISUAL_SLOT[k]: v
                                       for k, v in recipe["visual_kits"].items()}))
             recipe = dict(recipe, visual=vid)
+        # A companion has a look of its own, and may ask for its own kits. This
+        # read the recipe's `visual_kits` only, so a companion that asked was
+        # handed the raw donor row and none of the kits it named -- silently,
+        # because nothing downstream reads the key again. Its own block of ids
+        # so a line can recombine both halves.
+        _comp = recipe.get("companion")
+        if _comp and _comp.get("visual_kits"):
+            cvid = VISUAL_BASE + 100 + index
+            visuals.append(dict(id=cvid, base=_comp["visual"],
+                                kits={VISUAL_SLOT[k]: v
+                                      for k, v in _comp["visual_kits"].items()}))
+            recipe = dict(recipe, companion=dict(_comp, visual=cvid))
         companion_base = first + 16
         ids = []
         for r in range(recipe["ranks"]):

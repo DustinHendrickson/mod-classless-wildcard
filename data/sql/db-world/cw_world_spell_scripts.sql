@@ -19,7 +19,16 @@
 -- ANDs every script's CheckProc -- so leaving the core's script on 20186 would
 -- let its `false` veto the proc whatever this module answered.
 --
--- Reversible: cw_uninstall_world.sql puts the core's rows back.
+-- Expected side effect: with the core's rows gone, its scripts are compiled in
+-- but bound to nothing, and ScriptMgr says so once at startup --
+--
+--   Script named 'spell_dru_frenzied_regeneration' is not assigned in the database.
+--   Script named 'spell_pal_judgement_of_wisdom_mana' is not assigned in the database.
+--
+-- red, because it is LOG_ERROR("sql.sql"), and harmless. Seeing those two lines
+-- is how you know this file applied.
+--
+-- Reversible: data/sql/uninstall/cw_uninstall_world.sql puts the core's rows back.
 
 DELETE FROM `spell_script_names` WHERE `spell_id` = 22842 AND `ScriptName` = 'spell_dru_frenzied_regeneration';
 DELETE FROM `spell_script_names` WHERE `spell_id` = 20186 AND `ScriptName` = 'spell_pal_judgement_of_wisdom_mana';

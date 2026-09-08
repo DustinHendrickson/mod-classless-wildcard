@@ -742,6 +742,31 @@ def main():
           "no precast kit means the caster stands still through the cast bar; %s"
           % sorted(set(still))[:4])
 
+    # ---- and an instant strike swings, it does not cast ------------------------
+    # The other end of the same field. A precast kit is a CAST animation: the
+    # caster raises their hands and holds the pose. On a spell with no cast bar
+    # that deals weapon damage it replaces the swing, which is how Crossdraw
+    # spent a release wearing Inner Fire's row -- "character moving with hands
+    # up and do damage", as the report put it. Its siblings all had zero here.
+    WEAPON_EFF = {17, 31, 58, 121}
+    posing = []
+    for sp in spells:
+        if sp["sla"] is None:
+            continue
+        if _cast_ms.get(sp["values"][28], 0) > 0:
+            continue          # it has a cast bar; the rule above owns that case
+        if not ({int(sp["values"][F["Effect"] + e]) for e in range(3)} & WEAPON_EFF):
+            continue
+        vid = sp["values"][F["SpellVisual"]]
+        pre = appended_precast.get(vid)
+        if pre is None:
+            _row = _vis2.row_of(vid)
+            pre = _vis2.u(_row, 1) if _row is not None else 0
+        if pre:
+            posing.append("%s (visual %d, precast kit %d)" % (sp["name"], vid, pre))
+    check("no instant weapon strike plays a cast animation instead of swinging",
+          not posing, "; ".join(sorted(set(posing))[:4]))
+
     # ---- a look belongs to the shape it was drawn for ------------------------
     # Overflow wore Holy Nova's row for its expanding impact ring and painted a
     # nova on the caster for three rounds. The area kit was never the problem:

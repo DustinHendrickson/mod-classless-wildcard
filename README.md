@@ -292,6 +292,19 @@ cmake .. && make -j$(nproc)
 `data/sql/db-characters` on startup. It creates the module's tables, the NPC, the item catalogue
 and the vendor lists. Check the startup log to confirm the files applied.
 
+Two red lines in that log are expected once the SQL has applied, and mean it worked:
+
+```
+Script named 'spell_dru_frenzied_regeneration' is not assigned in the database.
+Script named 'spell_pal_judgement_of_wisdom_mana' is not assigned in the database.
+```
+
+Frenzied Regeneration and Judgement of Wisdom both ask which power bar you are *showing*, and a
+Hero shows one of three at a time, so the module replaces those two scripts with versions that
+ask the pool instead. The core's originals are still compiled in but no longer bound to a spell,
+and AzerothCore says so about any script it cannot bind. Nothing is broken; `data/sql/uninstall`
+puts the original rows back.
+
 **4. Configure.** Copy `conf/classless_wildcard.conf.dist` next to `worldserver.conf` as
 `classless_wildcard.conf` and edit it. See [Configuration](#configuration).
 
