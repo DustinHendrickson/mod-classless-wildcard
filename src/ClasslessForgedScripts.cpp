@@ -595,14 +595,23 @@ namespace
     }
 
     // The spell the beetle would learn from the talent, or 0 for any other pet.
+    //
+    // Read from the creature TEMPLATE, not from the pet. Pet declares its own
+    // m_spells -- a map of what it has learned -- which shadows the array of
+    // eight template slots Creature declares under the same name, so
+    // `pet->m_spells[3]` is a different container that does not even compile
+    // through a const pointer. creature_template_spell fills the template's
+    // array, and that is the one holding the id this talent wants.
     uint32 TalentPetSpell(Pet const* pet)
     {
+        static_assert(HEALING_SPIT_SLOT < MAX_CREATURE_SPELLS, "slot is out of the template");
         if (!pet)
             return 0;
         uint32 const entry = pet->GetEntry();
         if (entry < FORGED_CREATURE_FIRST || entry > FORGED_CREATURE_LAST)
             return 0;
-        uint32 const spellId = pet->m_spells[HEALING_SPIT_SLOT];
+        CreatureTemplate const* tmpl = pet->GetCreatureTemplate();
+        uint32 const spellId = tmpl ? tmpl->spells[HEALING_SPIT_SLOT] : 0;
         return sSpellMgr->GetSpellInfo(spellId) ? spellId : 0;
     }
 
