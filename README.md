@@ -20,6 +20,15 @@ a client patch every player runs. See [Requirements](#requirements) and [Install
 
 [What it is](#what-it-is) · [Features](#features) · [Install](#installation) · [Playerbots](#playerbots) · [Commands](#commands) · [Configuration](#configuration) · [Wildcard rolls](#how-wildcard-rolls-work) · [Hero line](#the-hero-line) · [Elemental variants](#elemental-variants) · [Uninstall](#uninstall)
 
+<br>
+
+### Support
+
+I build these as free, open source AzerothCore modules, and they stay free. If this one is
+useful to you, you can support the work:
+
+[![Buy me a coffee](https://img.shields.io/badge/Buy%20me%20a%20coffee-dustinhendrickson-ffdd00?style=flat-square&logo=buymeacoffee&logoColor=black)](https://buymeacoffee.com/dustinhendrickson)
+
 </div>
 
 ---

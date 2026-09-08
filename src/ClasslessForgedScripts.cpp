@@ -621,6 +621,38 @@ namespace
         Player* player = owner ? owner->ToPlayer() : nullptr;
         return player && HeroTalentAmount(player, ICON_MEDICINAL_VENOM) > 0;
     }
+
+    // The talent's spell, handed over or taken back. Both directions, so
+    // unlearning the talent takes the beetle's heal with it rather than
+    // leaving a pet that keeps casting something nothing paid for.
+    //
+    // Pet::learnSpell sends PetLearnedSpell and calls PetSpellInitialize, so
+    // the bar the player is looking at redraws with it.
+    void SyncTalentPetSpell(Pet* pet)
+    {
+        uint32 const spit = TalentPetSpell(pet);
+        if (!spit)
+            return;
+        bool const wanted = OwnerHasMedicinalVenom(pet);
+        bool const known = pet->HasSpell(spit);
+        if (wanted && !known)
+        {
+            pet->learnSpell(spit);
+            if (SpellInfo const* info = sSpellMgr->GetSpellInfo(spit))
+                pet->ToggleAutocast(info, true);
+        }
+        else if (!wanted && known)
+            pet->unlearnSpell(spit, false);
+    }
+}
+
+// Declared in ClasslessMgr.h. A talent bought while the beetle is already out
+// reached nothing: the summon hook below is the only other caller, and it has
+// long since run.
+void CW_SyncTalentPetSpell(Player* player)
+{
+    if (player)
+        SyncTalentPetSpell(player->GetPet());
 }
 
 class cw_forged_pet_model : public PetScript
@@ -658,22 +690,7 @@ public:
         if (entry < FORGED_CREATURE_FIRST || entry > FORGED_CREATURE_LAST)
             return;
 
-        // The talent's spell, handed over or taken back. Both directions, so
-        // unlearning the talent takes the beetle's heal with it rather than
-        // leaving a pet that keeps casting something nothing paid for.
-        if (uint32 const spit = TalentPetSpell(pet))
-        {
-            bool const wanted = OwnerHasMedicinalVenom(pet);
-            bool const known = pet->HasSpell(spit);
-            if (wanted && !known)
-            {
-                pet->learnSpell(spit);
-                if (SpellInfo const* info = sSpellMgr->GetSpellInfo(spit))
-                    pet->ToggleAutocast(info, true);
-            }
-            else if (!wanted && known)
-                pet->unlearnSpell(spit, false);
-        }
+        SyncTalentPetSpell(pet);
         CreatureTemplate const* tmpl = sObjectMgr->GetCreatureTemplate(entry);
         if (!tmpl)
             return;

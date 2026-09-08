@@ -306,6 +306,13 @@ private:
     };
 };
 
+// ClasslessForgedScripts.cpp. Medicinal Venom teaches the Venom Beetle its
+// heal, and the only place that happened was Pet::AddToWorld -- so buying the
+// talent with the beetle already out did nothing until the next summon, and
+// the talent's own text ("Your Venom Beetle learns Healing Spit") was a lie
+// until then. Called wherever a talent rank is granted or taken away.
+void CW_SyncTalentPetSpell(Player* player);
+
 #define sClasslessMgr ClasslessMgr::instance()
 
 #endif

@@ -3047,6 +3047,9 @@ void ClasslessMgr::GrantTalentRankInternal(Player* player, TalentPoolEntry const
     player->SendTalentsInfoData(false);
     // a talent that teaches a spell needs its tab now, not at next login
     SyncSpellbookTabs(player);
+    // and a talent that teaches the PET a spell has to reach a pet that is
+    // already standing there, not wait for the next summon
+    CW_SyncTalentPetSpell(player);
     st.talents[t.talentId] = newRank;
 
     // an ability talent hands over its whole ability line, so the spell keeps
@@ -3095,6 +3098,7 @@ void ClasslessMgr::RemoveTalentInternal(Player* player, TalentPoolEntry const& t
     player->InitTalentForLevel();
     player->SetFreeTalentPoints(0);
     player->SendTalentsInfoData(false);
+    CW_SyncTalentPetSpell(player);   // and the pet spell it handed over
 
     // the ability line the talent handed over goes with it
     for (uint32 first : t.abilityLines)
