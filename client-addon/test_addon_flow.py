@@ -277,7 +277,42 @@ function GetSpellCritChanceFromIntellect(unit) return 3.92 end
 function GetUnitManaRegenRateFromSpirit(unit) return 20.0 end
 function GetManaRegen() return 40.0, 12.0 end
 function PaperDollFrame_UpdateStats() end
+-- a GameTooltip that remembers what was drawn into it
+TIP = {}
+GameTooltip = Stub("GameTooltip", "GameTooltip")
+function GameTooltip:SetOwner(owner) TIP = {}; TIP.owner = owner end
+function GameTooltip:SetText(t) TIP[table.getn(TIP) + 1] = tostring(t) end
+function GameTooltip:AddLine(t) TIP[table.getn(TIP) + 1] = tostring(t) end
+function GameTooltip:AddDoubleLine(a, b) TIP[table.getn(TIP) + 1] = tostring(a) .. " " .. tostring(b) end
+function GameTooltip:Show() TIP.shown = true end
+function GameTooltip:Hide() TIP.shown = false end
+function TipText() return table.concat(TIP, " | ") end
+
+for i = 1, 6 do CreateFrame("Frame", "PlayerStatFrameLeft" .. i) end
+
+function PaperDollStatTooltip(self)
+    if not self.tooltip then return end
+    GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
+    GameTooltip:SetText(self.tooltip)
+    if self.tooltip2 then GameTooltip:AddLine(self.tooltip2) end
+    GameTooltip:Show()
+end
+
+function PaperDollFrame_SetAttackPower(statFrame)
+    statFrame.tooltip = "Attack Power"
+    statFrame.tooltip2 = "Increases damage."
+end
+
+function UpdatePaperdollStats(prefix, index)
+    if index == "PLAYERSTAT_BASE_STATS" then
+        for i = 1, 5 do PaperDollFrame_SetStat(_G[prefix .. i], i) end
+    else
+        PaperDollFrame_SetAttackPower(_G[prefix .. 3])
+    end
+end
+
 function PaperDollFrame_SetStat(statFrame, statIndex)
+    statFrame.tooltip = "Stat " .. statIndex
     if statIndex == 4 then
         if UnitHasMana("player") then
             statFrame.tooltip2 = format(DEFAULT_STAT4_TOOLTIP, 1190, 3.92)
@@ -1813,72 +1848,84 @@ STRATA = ["BACKGROUND", "LOW", "MEDIUM", "HIGH", "DIALOG", "FULLSCREEN",
 
 def test_paperdoll(h):
     """The stock character sheet, told in this realm's own numbers."""
-    print("--- character sheet: the stock stats say what they really do here")
+    print("--- character sheet: the stock stat rows carry the module's tooltip")
     CW, rt = h.CW, h.rt
     # CreateFrame, not Stub: Stub is a local of the stub chunk and a later
     # execute() would get the auto-stub the _G metatable makes for any unknown
-    # capitalised global, which carries no name -- and these frames are read
-    # back through GetName()
+    # capitalised global, which carries no name
     rt.execute("""
-        CW_STAT4 = CreateFrame("Frame", "CW_STAT4")
-        CW_STAT5 = CreateFrame("Frame", "CW_STAT5")
         CW_REGEN = CreateFrame("Frame", "CW_REGEN")
         CW_REGENStatText = CreateFrame("FontString", "CW_REGENStatText")
     """)
     h.recv(state(0, level=80))
-    # budget, unspent, per point, five allocations, enabled, then the rates:
-    # universal stats on, AP/agi 1, RAP/agi 1, SP/int 0.5, melee AP/str 2,
-    # melee AP/agi 1, ranged AP/agi 0, crit/agi 0, SPELL CRIT/int 0.006,
-    # mp5/spi 0, hp5/spi 0
-    h.recv("ST|162|3|1|0|0|0|0|0|1|1|1|1|0.5|2|1|0|0|0.006|0|0")
 
-    def redraw():
-        rt.execute("""
-            PaperDollFrame_SetStat(CW_STAT4, 4)
-            PaperDollFrame_SetStat(CW_STAT5, 5)
-            PaperDollFrame_SetManaRegen(CW_REGEN)
-        """)
+    def draw(index="PLAYERSTAT_BASE_STATS"):
+        rt.execute('UpdatePaperdollStats("PlayerStatFrameLeft", "%s")' % index)
 
-    # a character the module leaves alone keeps Blizzard's sheet exactly as it is
-    rt.execute("ClasslessWildcard_API.state.universalResources = 0")
-    redraw()
-    h.check(rt.eval("CW_STAT4.tooltip2") is None
-            and str(rt.eval("CW_REGENStatText.__text")) == "N/A",
-            "with no shared pools the stock sheet is not touched")
+    def hover(row):
+        rt.execute("PaperDollStatTooltip(PlayerStatFrameLeft%d)" % row)
+        return str(rt.eval("TipText()"))
 
+    # ---- before the rates arrive, Blizzard's sheet is left as it is, except
+    # for the one thing UnitHasMana threw away
     rt.execute("ClasslessWildcard_API.state.universalResources = 1")
-    redraw()
-    body = str(rt.eval("CW_STAT4.tooltip2"))
+    rt.execute("ClasslessWildcard_API.stats.have = nil")  # no ST packet yet
+    draw()
+    tip = hover(4)
+    h.check("Stat 4" in tip and "mana pool by 1190" in tip and "Each point" not in tip,
+            "with no rates yet the stock tooltip stands, with its mana line repaired (%s)" % tip)
 
-    # UnitHasMana answers from the bar being SHOWN, so on a Hero showing rage
-    # Blizzard sets this to nil outright and Intellect says nothing at all
-    h.check(body != "None" and "mana" in body,
-            "Intellect says what it does again (%s)" % body.replace(chr(10), " / "))
+    # ---- the rates land: universal stats on, AP/agi 1, RAP/agi 1, SP/int 0.5,
+    # melee AP/str 2, melee AP/agi 1, ranged AP/agi 0, crit/agi 0,
+    # spell crit/int 0.006, mp5/spi 0.473, hp5/spi 0.31
+    h.recv("ST|162|3|1|0|0|0|0|0|1|1|1|1|0.5|2|1|0|0|0.006|0.473|0.31")
+    draw()
+    tip = hover(4)
 
-    # and it says it in THIS realm's numbers: 0.5 spell power per point of
-    # Intellect past the first ten is a rule 3.3.5 has no line to print
-    h.check("+44 spell power" in body,
-            "including the spell power the stock sheet has no concept of (%s)"
-            % body.replace(chr(10), " / "))
+    # the module's own tooltip, the same one its Stats panel shows: what the
+    # stat is, what a point buys HERE, the total, and everything that total is
+    # worth -- not one line of Blizzard's
+    h.check("Mana, spell power" in tip, "the row explains the stat (%s)" % tip)
+    h.check("Each point" in tip and "spell power (past your first 10 Intellect)" in tip,
+            "and what a point of it buys on this realm (%s)" % tip)
+    h.check("Total Intellect 98" in tip, "and the character's total (%s)" % tip)
+    for want in ("+1190 mana", "+44 spell power", "+0.59% spell critical strike"):
+        h.check(want in tip, "and every effect that total is worth: %s" % want)
 
-    # 0.006 per point is the chassis' own gtChanceToSpellCrit ratio: 98 x that
-    # is 0.59%. The client would say 3.92%, of which 3.34 is the class's flat
-    # base out of gtChanceToSpellCritBase and none of it comes from Intellect.
-    h.check("+0.59% spell critical strike" in body,
-            "and Intellect's own share of spell crit, not the class base too (%s)"
-            % body.replace(chr(10), " / "))
+    # 0.006 per point is the chassis' own gtChanceToSpellCrit ratio, so 98 Int
+    # is 0.59%. The client says 3.92%, of which 3.34 is the class's flat base
+    # out of gtChanceToSpellCritBase and none of it comes from Intellect.
+    h.check("3.92" not in tip,
+            "with the class's flat crit base no longer counted as Intellect's")
 
-    h.check(str(rt.eval("CW_REGENStatText.__text")) == "200"
-            and "Mana regen 200, 60" in str(rt.eval("CW_REGEN.tooltip2")),
+    # Agility carries the module's melee AP and armour in the same tooltip
+    tip2 = hover(2)
+    # 1 melee AP per point from the chassis plus 1 from the module is 2, so 98
+    # Agility is +196 melee attack power -- a number the stock sheet cannot
+    # reach, since half of it is the module's
+    h.check("Total Agility 98" in tip2 and "+196 melee attack power" in tip2
+            and "+98 ranged attack power" in tip2 and "+196 armor" in tip2,
+            "Agility too, both halves of its attack power, and armour (%s)" % tip2)
+
+    # ---- the same six frames become Melee next, and row 3 must stop
+    # answering as Stamina
+    draw("PLAYERSTAT_MELEE_COMBAT")
+    tip3 = hover(3)
+    h.check("Attack Power" in tip3 and "Total Stamina" not in tip3,
+            "a row reused for Attack Power stops answering as a stat (%s)" % tip3)
+
+    # ---- and the Mana Regen row still stops reading N/A
+    rt.execute("PaperDollFrame_SetManaRegen(CW_REGEN)")
+    h.check(str(rt.eval("CW_REGENStatText.__text")) == "200",
             "and Mana Regen stops reading N/A (%s)" % rt.eval("CW_REGENStatText.__text"))
 
-    # the same lines whichever bar happens to be up: the sheet must not change
-    # its mind about Intellect when the player swaps to a mana spell
-    rt.execute("HAS_MANA = true")
-    redraw()
-    h.check(str(rt.eval("CW_STAT4.tooltip2")) == body,
-            "and it reads the same when the mana bar IS the one shown")
-    rt.execute("HAS_MANA = false")
+    # ---- a character the module leaves alone keeps the stock sheet exactly
+    rt.execute("ClasslessWildcard_API.state.universalResources = 0")
+    draw()
+    tip4 = hover(4)
+    h.check("Each point" not in tip4 and "Stat 4" in tip4,
+            "and a character with no shared pools sees Blizzard's own (%s)" % tip4)
+    rt.execute("ClasslessWildcard_API.state.universalResources = 1")
 
 
 def test_stats(h):

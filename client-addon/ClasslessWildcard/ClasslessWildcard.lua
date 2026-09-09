@@ -1687,6 +1687,8 @@ local function ShowStatTooltip(row, i)
     end
     GameTooltip:Show()
 end
+-- the stock character sheet shows this same tooltip; see the paper doll block
+CW.ShowStatTooltip = ShowStatTooltip
 
 -- The character's live total for a stat, and what it becomes if the pending
 -- edits are applied. UnitStat's second return is the total the character sheet
@@ -2496,6 +2498,14 @@ end
 -- keeps the stock sheet exactly as it is.
 -- ---------------------------------------------------------------------------
 do
+    -- frame -> stat index, and which frames the pass being drawn touched
+    local stamped, thisPass = {}, {}
+
+    local function HaveRates()
+        return CW.state and CW.state.universalResources == 1
+            and CW.stats and CW.stats.have and CW.ShowStatTooltip
+    end
+
     local function ManaIsHidden()
         return CW.state and CW.state.universalResources == 1
             and not (UnitHasMana and UnitHasMana("player"))
@@ -2506,25 +2516,12 @@ do
         local _, effective = UnitStat("player", statIndex)
         effective = tonumber(effective) or 0
 
-        -- What the stat is actually worth HERE, from the rates the server
-        -- sent for this character, and word for word what the module's own
-        -- Stats panel quotes. Two panels disagreeing about Intellect is worse
-        -- than either of them being terse, and the stock sheet cannot know
-        -- about spell power from Intellect at all: no such rule exists in
-        -- 3.3.5, so it has no line to print for it.
-        --
-        -- The crit numbers differ for a reason worth writing down. The client
-        -- says "Increases Spell Critical Hit by 3.92%", and 3.34 of that is
-        -- the CHASSIS CLASS's flat base out of gtChanceToSpellCritBase, which
-        -- no amount of Intellect changes. Intellect's own share is
-        -- 98 x 0.00006 x 100 = 0.59%, which is what this prints.
-        if CW.state and CW.state.universalResources == 1 and CW.StatEffects then
-            local lines = CW.StatEffects(statIndex, effective)
-            if lines and table.getn(lines) > 0 then
-                statFrame.tooltip2 = table.concat(lines, "\n")
-                return
-            end
-        end
+        -- Which stat this frame is showing, for the tooltip hook below. The
+        -- same six frames are reused for Melee, Ranged, Spell and Defenses, so
+        -- the stamp is cleared at the end of every pass and only survives on a
+        -- frame this pass actually stamped.
+        stamped[statFrame] = statIndex
+        thisPass[statFrame] = true
 
         -- Before the server's first packet there are no rates, so fall back to
         -- repairing only what UnitHasMana threw away.
@@ -2558,12 +2555,41 @@ do
 
     CW.FixPaperDollStat, CW.FixPaperDollManaRegen = FixStat, FixManaRegen
 
+    -- The sheet's own tooltip is one line of Blizzard's text. This is the
+    -- module's, the same one the Stats panel shows: what the stat is, what a
+    -- point of it buys HERE, the character's total, and every effect that
+    -- total is worth. One tooltip, in both places, from one function.
+    local function FullTooltip(statFrame)
+        local i = statFrame and stamped[statFrame]
+        if not i or not HaveRates() then return end
+        CW.ShowStatTooltip(statFrame, i)
+    end
+
+    -- A pass over the six rows is finished. UpdatePaperdollStats reuses the
+    -- same frames for Melee, Ranged, Spell and Defenses, so a row this pass did
+    -- NOT set as a stat is Attack Power or Dodge or Armor now, and must stop
+    -- answering as Agility.
+    local function ClearStamps(prefix)
+        if type(prefix) ~= "string" then return end
+        for i = 1, 6 do
+            local f = _G[prefix .. i]
+            if f and not thisPass[f] then stamped[f] = nil end
+        end
+        for f in pairs(thisPass) do thisPass[f] = nil end
+    end
+
     if hooksecurefunc then
         if type(PaperDollFrame_SetStat) == "function" then
             hooksecurefunc("PaperDollFrame_SetStat", FixStat)
         end
         if type(PaperDollFrame_SetManaRegen) == "function" then
             hooksecurefunc("PaperDollFrame_SetManaRegen", FixManaRegen)
+        end
+        if type(PaperDollStatTooltip) == "function" then
+            hooksecurefunc("PaperDollStatTooltip", FullTooltip)
+        end
+        if type(UpdatePaperdollStats) == "function" then
+            hooksecurefunc("UpdatePaperdollStats", ClearStamps)
         end
     end
 
@@ -4886,6 +4912,7 @@ local function HandleMessage(msg)
         s.spellCritPerInt = tonumber(p[19]) or 0
         s.mp5PerSpi = tonumber(p[20]) or 0
         s.hp5PerSpi = tonumber(p[21]) or 0
+        s.have = true   -- the rates are real now, not the shipped defaults
         -- the help panel quotes these rates, so rebuild it now they are known
         if CW.RefreshHelpText then CW.RefreshHelpText() end
         CW.statsPending = nil
