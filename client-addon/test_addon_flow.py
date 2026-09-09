@@ -277,6 +277,17 @@ function GetSpellCritChanceFromIntellect(unit) return 3.92 end
 function GetUnitManaRegenRateFromSpirit(unit) return 20.0 end
 function GetManaRegen() return 40.0, 12.0 end
 function GetDodgeChance() return 12.3456 end
+PET_HAPPY = false   -- not nil: assigning nil leaves the _G metatable to
+                    -- auto-stub a table on the next read, and a table is true
+function GetPetHappiness() if PET_HAPPY then return PET_HAPPY end return nil end
+function UnitExists(unit) return unit ~= "pet" or PET_HAPPY ~= false end
+function UnitRangedAttackPower() return 1000, 0, 0 end
+PET_BONUS_TOOLTIP_RANGED_ATTACK_POWER = "Increases your pet's attack power by %d."
+PET_BONUS_TOOLTIP_SPELLDAMAGE = "Increases your pet's spell damage by %d."
+function PaperDollFrame_SetRangedAttackPower(statFrame)
+    statFrame.tooltip = "Ranged Attack Power"
+    statFrame.tooltip2 = "Increases ranged damage."
+end
 function PaperDollFrame_UpdateStats() end
 -- a GameTooltip that remembers what was drawn into it
 TIP = {}
@@ -1950,6 +1961,30 @@ def test_paperdoll(h):
     # character stands instead of the bare word it used to be
     h.check("dodge (12.35% total)" in tip2,
             "and dodge carries a number rather than being a bare word (%s)" % tip2)
+
+    # ---- a tamed beast inherits from its owner, and the stock UI hides that
+    # from anyone whose class is not Warlock or Hunter
+    rt.execute("CW_RANGED = CreateFrame(\"Frame\", \"CW_RANGED\")")
+    rt.execute("PaperDollFrame_SetRangedAttackPower(CW_RANGED)")
+    h.check("pet" not in str(rt.eval("CW_RANGED.tooltip2")),
+            "with no pet the Ranged Attack Power row is left alone (%s)"
+            % rt.eval("CW_RANGED.tooltip2"))
+
+    rt.execute("PET_HAPPY = 3")           # happiness answers only for a tamed beast
+    rt.execute("PaperDollFrame_SetRangedAttackPower(CW_RANGED)")
+    ranged = str(rt.eval("CW_RANGED.tooltip2"))
+    # spell_hun_generic_scaling: 22% of the owner's ranged AP, and 12.87% of it
+    # as spell power. NOT the client's HUNTER_PET_BONUS, which this core does
+    # not use -- its Stamina share is 0.3 where the server gives 45%.
+    h.check("attack power by 220" in ranged and "spell damage by 128" in ranged,
+            "and with one it carries the server's own shares (%s)"
+            % ranged.replace(chr(10), " / "))
+
+    draw()                                # back to Base Stats for the Stamina row
+    tipS = hover(3)
+    h.check("+44 pet Stamina" in tipS,
+            "Stamina says what the pet takes from it, at the core's 45%% (%s)" % tipS)
+    rt.execute("PET_HAPPY = false")
 
     # ---- the rates are fetched at login, not the first time the Stats panel
     # is opened: a character sheet opened before that showed Blizzard's own

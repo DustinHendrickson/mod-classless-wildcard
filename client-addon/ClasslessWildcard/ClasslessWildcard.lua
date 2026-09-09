@@ -1660,6 +1660,30 @@ end
 -- useful when every character is the same class -- and the numbers below come
 -- from the server's own rates (sent on ST), not from hard-coded defaults, so
 -- they stay honest on a realm that tuned them.
+-- What a tamed beast inherits from its owner, from spell_hun_generic_scaling,
+-- which is bound to 34902-34904 in the world database and reads
+-- GetUnitOwner()->GetOwner() with no class test at all -- so a Hero's pet
+-- scales exactly as a Hunter's does.
+--
+-- These are NOT the client's numbers. Interface\FrameXML\PaperDollFrame.lua
+-- carries HUNTER_PET_BONUS with 0.3 for Stamina, and the core gives 45%; its
+-- ComputePetBonus is also hard-gated to Warlock and Hunter, so on any other
+-- chassis it answers 0 and the lines never appear. Ours come from the server's
+-- side of the same relationship.
+--
+-- Wild Hunt raises all three and cannot be seen from here, so these read as
+-- the floor rather than the exact number a specced pet gets.
+local PET_INHERITS = { STAMINA = 45, RANGED_AP = 22, SPELL_POWER = 12.87 }
+
+-- A tamed beast, as opposed to a summoned one: happiness is a hunter-pet
+-- concept and the API answers nil for anything else, which beats reading a
+-- localised creature family name.
+local function HasTamedPet()
+    if not (UnitExists and UnitExists("pet")) then return false end
+    return GetPetHappiness ~= nil and GetPetHappiness() ~= nil
+end
+CW.HasTamedPet, CW.PET_INHERITS = HasTamedPet, PET_INHERITS
+
 local STAT_DESC = {
     [1] = "Melee attack power and block value.",
     [2] = "Melee and ranged attack power, critical strike chance, dodge.",
@@ -1689,6 +1713,11 @@ local function ShowStatTooltip(row, i)
     end
     for _, line in ipairs(CW.StatEffects(i, total)) do
         GameTooltip:AddDoubleLine(" ", line, 1, 1, 1, 0.4, 1, 0.4)
+    end
+    -- and what the pet takes from it
+    if i == 3 and HasTamedPet() then
+        GameTooltip:AddDoubleLine(" ", "+" .. math.floor(total * PET_INHERITS.STAMINA / 100)
+            .. " pet Stamina", 1, 1, 1, 0.4, 1, 0.4)
     end
 
     if delta ~= 0 then
@@ -2581,7 +2610,32 @@ do
         statFrame:Show()
     end
 
+    -- Ranged Attack Power carries two pet lines in the stock UI, and
+    -- ComputePetBonus answers 0 for any chassis that is not Warlock or Hunter,
+    -- so a Hero with a tamed beast never saw them. The relationship is real --
+    -- spell_hun_generic_scaling gives the pet 22% of the owner's ranged attack
+    -- power and 12.87% of it as spell power, with no class test -- so this
+    -- writes the lines the row should have had, from the server's numbers.
+    local function FixRangedAP(statFrame)
+        if not statFrame or not (CW.state and CW.state.universalResources == 1) then return end
+        if not CW.HasTamedPet() then return end
+        local base, pos, neg = UnitRangedAttackPower("player")
+        local total = math.max(0, (tonumber(base) or 0) + (tonumber(pos) or 0)
+                                  + (tonumber(neg) or 0))
+        local ap = math.floor(total * CW.PET_INHERITS.RANGED_AP / 100)
+        local sp = math.floor(total * CW.PET_INHERITS.SPELL_POWER / 100)
+        local lines = { statFrame.tooltip2 }
+        if PET_BONUS_TOOLTIP_RANGED_ATTACK_POWER then
+            lines[#lines + 1] = format(PET_BONUS_TOOLTIP_RANGED_ATTACK_POWER, ap)
+        end
+        if PET_BONUS_TOOLTIP_SPELLDAMAGE then
+            lines[#lines + 1] = format(PET_BONUS_TOOLTIP_SPELLDAMAGE, sp)
+        end
+        statFrame.tooltip2 = table.concat(lines, "\n")
+    end
+
     CW.FixPaperDollStat, CW.FixPaperDollManaRegen = FixStat, FixManaRegen
+    CW.FixPaperDollRangedAP = FixRangedAP
 
     -- The sheet's own tooltip is one line of Blizzard's text. This is the
     -- module's, the same one the Stats panel shows: what the stat is, what a
@@ -2618,6 +2672,9 @@ do
         end
         if type(UpdatePaperdollStats) == "function" then
             hooksecurefunc("UpdatePaperdollStats", ClearStamps)
+        end
+        if type(PaperDollFrame_SetRangedAttackPower) == "function" then
+            hooksecurefunc("PaperDollFrame_SetRangedAttackPower", FixRangedAP)
         end
     end
 
