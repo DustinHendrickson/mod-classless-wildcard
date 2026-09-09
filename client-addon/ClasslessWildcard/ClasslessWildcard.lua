@@ -1077,6 +1077,7 @@ local function StatPerPoint(i)
         else
             ap = "+" .. Rate(ranged) .. " ranged attack power"
         end
+        ap = ap .. ", +" .. Rate(tonumber(ARMOR_PER_AGILITY) or 2) .. " armor"
         local per = PerPercent(s.critPerAgi)
         if per then
             return ap .. ", 1% critical strike per " .. per .. " Agility, plus dodge"
@@ -1148,6 +1149,13 @@ function CW.StatEffects(i, value, short)
         end
         if (s.critPerAgi or 0) > 0 then
             out[#out + 1] = string.format("+%.2f" .. CRIT, value * s.critPerAgi)
+        end
+        -- Armour is the one thing the stock character sheet said about Agility
+        -- that this did not, and the sheet reads these lines now. Long form
+        -- only: the row this feeds is 312px and the spelled-out Agility line
+        -- already runs to 369.
+        if not short then
+            out[#out + 1] = "+" .. math.floor(value * (tonumber(ARMOR_PER_AGILITY) or 2)) .. " armor"
         end
         out[#out + 1] = "dodge"
     elseif i == 3 then
@@ -2494,13 +2502,37 @@ do
     end
 
     local function FixStat(statFrame, statIndex)
-        if not statFrame or not ManaIsHidden() then return end
+        if not statFrame then return end
         local _, effective = UnitStat("player", statIndex)
         effective = tonumber(effective) or 0
+
+        -- What the stat is actually worth HERE, from the rates the server
+        -- sent for this character, and word for word what the module's own
+        -- Stats panel quotes. Two panels disagreeing about Intellect is worse
+        -- than either of them being terse, and the stock sheet cannot know
+        -- about spell power from Intellect at all: no such rule exists in
+        -- 3.3.5, so it has no line to print for it.
+        --
+        -- The crit numbers differ for a reason worth writing down. The client
+        -- says "Increases Spell Critical Hit by 3.92%", and 3.34 of that is
+        -- the CHASSIS CLASS's flat base out of gtChanceToSpellCritBase, which
+        -- no amount of Intellect changes. Intellect's own share is
+        -- 98 x 0.00006 x 100 = 0.59%, which is what this prints.
+        if CW.state and CW.state.universalResources == 1 and CW.StatEffects then
+            local lines = CW.StatEffects(statIndex, effective)
+            if lines and table.getn(lines) > 0 then
+                statFrame.tooltip2 = table.concat(lines, "\n")
+                return
+            end
+        end
+
+        -- Before the server's first packet there are no rates, so fall back to
+        -- repairing only what UnitHasMana threw away.
+        if not ManaIsHidden() then return end
         if statIndex == 4 then
             local base = math.min(20, effective)
             local body = format(_G["DEFAULT_STAT4_TOOLTIP"] or "",
-                                base + (effective - base) * (MANA_PER_INTELLECT or 0),
+                                base + (effective - base) * (tonumber(MANA_PER_INTELLECT) or 15),
                                 GetSpellCritChanceFromIntellect("player"))
             -- The body was nil'd, so anything still on the frame is the pet's
             -- Intellect line, which arrives already starting with a newline.

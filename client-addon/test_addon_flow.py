@@ -261,6 +261,8 @@ end
 -- Interface\FrameXML\PaperDollFrame.lua, the three branches that ask
 -- UnitHasMana("player") and go quiet when it says no.
 MANA_PER_INTELLECT = 15
+ARMOR_PER_AGILITY = 2
+BLOCK_PER_STRENGTH = 0.5
 DEFAULT_STAT4_TOOLTIP = "Increases your mana pool by %d and your spell critical strike chance by %.2f%%."
 MANA_REGEN_FROM_SPIRIT = "Grants %d mana every 5 sec."
 MANA_REGEN_TOOLTIP = "Mana regen %d, %d while casting."
@@ -612,9 +614,15 @@ def test_browser(h):
 
     h.check(eff(1, 20) == ["+40 melee attack power", "+10 block value"],
             "Strength: attack power and block value (%s)" % eff(1, 20))
+    # armour is core behaviour, not the module's, but the character sheet reads
+    # these lines now and dropping it would have lost something true
     h.check(eff(2, 20) == ["+20 melee attack power", "+40 ranged attack power",
-                           "+0.38% critical strike", "dodge"],
-            "Agility: chassis AND module attack power, plus crit and dodge (%s)" % eff(2, 20))
+                           "+0.38% critical strike", "+40 armor", "dodge"],
+            "Agility: chassis AND module attack power, plus crit, armour and dodge (%s)"
+            % eff(2, 20))
+    h.check("armor" not in " ".join([str(x) for x in CW.StatEffects(2, 20, True).values()]),
+            "and the short form the stat row uses leaves it out, having no room (%s)"
+            % [str(x) for x in CW.StatEffects(2, 20, True).values()])
     h.check(eff(3, 20) == ["+20 health"], "Stamina: the first 20 points are 1 health each")
     h.check(eff(3, 30) == ["+120 health"], "and every point past that is 10 (%s)" % eff(3, 30))
     h.check(eff(4, 30) == ["+170 mana", "+10 spell power", "+0.18% spell critical strike"],
@@ -626,7 +634,8 @@ def test_browser(h):
 
     # the universal layer off (an exempt character) drops only what it added
     h.recv("ST|10|4|1|0|0|0|0|0|1|0|1|1|0.5|2|0|1|0.0192|0.006|0.473|0.31")
-    h.check(eff(2, 20) == ["+20 ranged attack power", "+0.38% critical strike", "dodge"],
+    h.check(eff(2, 20) == ["+20 ranged attack power", "+0.38% critical strike",
+                           "+40 armor", "dodge"],
             "exempt: the chassis ranged AP and crit remain, the module's melee AP goes (%s)"
             % eff(2, 20))
     h.check(eff(4, 30) == ["+170 mana", "+0.18% spell critical strike"],
@@ -1803,8 +1812,8 @@ STRATA = ["BACKGROUND", "LOW", "MEDIUM", "HIGH", "DIALOG", "FULLSCREEN",
 
 
 def test_paperdoll(h):
-    """The stock character sheet, for a Hero who has every pool at once."""
-    print("--- character sheet: Intellect and Spirit still say what they do")
+    """The stock character sheet, told in this realm's own numbers."""
+    print("--- character sheet: the stock stats say what they really do here")
     CW, rt = h.CW, h.rt
     # CreateFrame, not Stub: Stub is a local of the stub chunk and a later
     # execute() would get the auto-stub the _G metatable makes for any unknown
@@ -1816,6 +1825,12 @@ def test_paperdoll(h):
         CW_REGEN = CreateFrame("Frame", "CW_REGEN")
         CW_REGENStatText = CreateFrame("FontString", "CW_REGENStatText")
     """)
+    h.recv(state(0, level=80))
+    # budget, unspent, per point, five allocations, enabled, then the rates:
+    # universal stats on, AP/agi 1, RAP/agi 1, SP/int 0.5, melee AP/str 2,
+    # melee AP/agi 1, ranged AP/agi 0, crit/agi 0, SPELL CRIT/int 0.006,
+    # mp5/spi 0, hp5/spi 0
+    h.recv("ST|162|3|1|0|0|0|0|0|1|1|1|1|0.5|2|1|0|0|0.006|0|0")
 
     def redraw():
         rt.execute("""
@@ -1831,26 +1846,38 @@ def test_paperdoll(h):
             and str(rt.eval("CW_REGENStatText.__text")) == "N/A",
             "with no shared pools the stock sheet is not touched")
 
-    # a Hero showing rage: the mana is there, the client just asked the bar
     rt.execute("ClasslessWildcard_API.state.universalResources = 1")
     redraw()
     body = str(rt.eval("CW_STAT4.tooltip2"))
-    h.check("mana pool by 1190" in body and "3.92" in body,
-            "Intellect says what it does again (%s)" % body)
-    spirit = str(rt.eval("CW_STAT5.tooltip2"))
-    h.check(spirit.startswith("Health regen line.") and "Grants 100 mana" in spirit,
-            "Spirit keeps its health line and gets its mana line back (%s)" % spirit)
+
+    # UnitHasMana answers from the bar being SHOWN, so on a Hero showing rage
+    # Blizzard sets this to nil outright and Intellect says nothing at all
+    h.check(body != "None" and "mana" in body,
+            "Intellect says what it does again (%s)" % body.replace(chr(10), " / "))
+
+    # and it says it in THIS realm's numbers: 0.5 spell power per point of
+    # Intellect past the first ten is a rule 3.3.5 has no line to print
+    h.check("+44 spell power" in body,
+            "including the spell power the stock sheet has no concept of (%s)"
+            % body.replace(chr(10), " / "))
+
+    # 0.006 per point is the chassis' own gtChanceToSpellCrit ratio: 98 x that
+    # is 0.59%. The client would say 3.92%, of which 3.34 is the class's flat
+    # base out of gtChanceToSpellCritBase and none of it comes from Intellect.
+    h.check("+0.59% spell critical strike" in body,
+            "and Intellect's own share of spell crit, not the class base too (%s)"
+            % body.replace(chr(10), " / "))
+
     h.check(str(rt.eval("CW_REGENStatText.__text")) == "200"
             and "Mana regen 200, 60" in str(rt.eval("CW_REGEN.tooltip2")),
-            "and Mana Regen stops reading N/A (%s / %s)"
-            % (rt.eval("CW_REGENStatText.__text"), rt.eval("CW_REGEN.tooltip2")))
+            "and Mana Regen stops reading N/A (%s)" % rt.eval("CW_REGENStatText.__text"))
 
-    # the bar being mana is Blizzard's own case, and it must be left alone
+    # the same lines whichever bar happens to be up: the sheet must not change
+    # its mind about Intellect when the player swaps to a mana spell
     rt.execute("HAS_MANA = true")
     redraw()
-    h.check(str(rt.eval("CW_STAT4.tooltip2")).count("mana pool by") == 1,
-            "when the mana bar IS shown nothing is written twice (%s)"
-            % rt.eval("CW_STAT4.tooltip2"))
+    h.check(str(rt.eval("CW_STAT4.tooltip2")) == body,
+            "and it reads the same when the mana bar IS the one shown")
     rt.execute("HAS_MANA = false")
 
 
