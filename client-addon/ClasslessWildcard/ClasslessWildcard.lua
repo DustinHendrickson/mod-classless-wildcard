@@ -2470,6 +2470,82 @@ function CW.UpdateBarsVisibility()
     end
 end
 
+-- ---------------------------------------------------------------------------
+-- The stock character sheet, for a Hero who carries every pool at once
+--
+-- Interface\FrameXML\PaperDollFrame.lua gates three things on
+-- UnitHasMana("player"), and that answers from the pool the client is SHOWING,
+-- not from the ones the character has. A Hero has mana, rage and energy
+-- together and shows one of them, so with the rage bar up the sheet says
+-- Intellect does nothing at all (tooltip2 is set to nil outright), drops
+-- Spirit's mana regen line, and prints "N/A" where Mana Regen goes. The mana
+-- was there the whole time; only the question was wrong.
+--
+-- Every number below comes from the client's own API, the same calls Blizzard
+-- makes on the other side of that `if`, so this restores what it would have
+-- written rather than offering a second opinion about it. Gated on the
+-- server's own universalResources flag, so a character the module leaves alone
+-- keeps the stock sheet exactly as it is.
+-- ---------------------------------------------------------------------------
+do
+    local function ManaIsHidden()
+        return CW.state and CW.state.universalResources == 1
+            and not (UnitHasMana and UnitHasMana("player"))
+    end
+
+    local function FixStat(statFrame, statIndex)
+        if not statFrame or not ManaIsHidden() then return end
+        local _, effective = UnitStat("player", statIndex)
+        effective = tonumber(effective) or 0
+        if statIndex == 4 then
+            local base = math.min(20, effective)
+            local body = format(_G["DEFAULT_STAT4_TOOLTIP"] or "",
+                                base + (effective - base) * (MANA_PER_INTELLECT or 0),
+                                GetSpellCritChanceFromIntellect("player"))
+            -- The body was nil'd, so anything still on the frame is the pet's
+            -- Intellect line, which arrives already starting with a newline.
+            statFrame.tooltip2 = body .. (statFrame.tooltip2 or "")
+        elseif statIndex == 5 then
+            local regen = math.floor((GetUnitManaRegenRateFromSpirit("player") or 0) * 5.0)
+            statFrame.tooltip2 = (statFrame.tooltip2 or "")
+                .. "\n" .. format(MANA_REGEN_FROM_SPIRIT or "", regen)
+        end
+    end
+
+    local function FixManaRegen(statFrame)
+        if not statFrame or not ManaIsHidden() then return end
+        local base, casting = GetManaRegen()
+        base = math.floor((tonumber(base) or 0) * 5.0)
+        casting = math.floor((tonumber(casting) or 0) * 5.0)
+        local text = statFrame.GetName and _G[(statFrame:GetName() or "") .. "StatText"]
+        if text then text:SetText(base) end
+        statFrame.tooltip = HIGHLIGHT_FONT_COLOR_CODE .. MANA_REGEN .. FONT_COLOR_CODE_CLOSE
+        statFrame.tooltip2 = format(MANA_REGEN_TOOLTIP or "", base, casting)
+        statFrame:Show()
+    end
+
+    CW.FixPaperDollStat, CW.FixPaperDollManaRegen = FixStat, FixManaRegen
+
+    if hooksecurefunc then
+        if type(PaperDollFrame_SetStat) == "function" then
+            hooksecurefunc("PaperDollFrame_SetStat", FixStat)
+        end
+        if type(PaperDollFrame_SetManaRegen) == "function" then
+            hooksecurefunc("PaperDollFrame_SetManaRegen", FixManaRegen)
+        end
+    end
+
+    -- universalResources is 0 until the server's first state packet lands, so
+    -- a sheet opened before it arrives was drawn from the wrong answer. Redraw
+    -- it once, when the answer changes.
+    function CW.RefreshPaperDoll()
+        if PaperDollFrame and PaperDollFrame:IsShown()
+           and type(PaperDollFrame_UpdateStats) == "function" then
+            PaperDollFrame_UpdateStats()
+        end
+    end
+end
+
 -- The tick lives on its own always-shown frame rather than on the bar frame.
 -- The bar frame hides itself when it has nothing to draw -- every row off, or
 -- only combo points and none on the target -- and a hidden frame gets no
@@ -4611,6 +4687,8 @@ local function HandleMessage(msg)
         -- a scroll bought from the reveal changes what its own button says
         if reveal:IsShown() and rvFX.SetRerollButton then rvFX.SetRerollButton() end
         CW.UpdateBarsVisibility()
+        -- the character sheet may have been drawn before we knew this
+        if CW.RefreshPaperDoll then CW.RefreshPaperDoll() end
         UpdateStatus()
         -- A level-up opens rows that the level filter was hiding, so ask for
         -- the page again rather than leaving a stale list behind.

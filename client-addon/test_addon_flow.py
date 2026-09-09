@@ -185,7 +185,21 @@ function GetCursorPosition() return 0, 0 end
 function GetScreenWidth() return 1024 end
 function GetScreenHeight() return 768 end
 function MicroButtonTooltipText(a) return tostring(a) end
-function hooksecurefunc() end
+-- The real thing, both call shapes: a post-hook that runs after the original
+-- and cannot change what it returned. It was a no-op here, which meant every
+-- hook the addon installs was untested -- including the one that repairs the
+-- character sheet, which has no other way to run.
+function hooksecurefunc(a, b, c)
+    local tbl, name, fn
+    if type(a) == "string" then tbl, name, fn = _G, a, b else tbl, name, fn = a, b, c end
+    local orig = rawget(tbl, name)
+    if type(orig) ~= "function" or type(fn) ~= "function" then return end
+    rawset(tbl, name, function(...)
+        local out = { orig(...) }
+        fn(...)
+        return unpack(out)
+    end)
+end
 SOUNDS = {}
 function PlaySound(name) table.insert(SOUNDS, name) end
 function StaticPopup_Show(which) LAST_POPUP = which end
@@ -242,6 +256,48 @@ for i = 1, 12 do
     local b = Stub("Button", "SpellButton" .. i)
     b:SetID(SPELL_BUTTON_ID[i])
     _G["SpellButton" .. i] = b
+end
+
+-- Interface\FrameXML\PaperDollFrame.lua, the three branches that ask
+-- UnitHasMana("player") and go quiet when it says no.
+MANA_PER_INTELLECT = 15
+DEFAULT_STAT4_TOOLTIP = "Increases your mana pool by %d and your spell critical strike chance by %.2f%%."
+MANA_REGEN_FROM_SPIRIT = "Grants %d mana every 5 sec."
+MANA_REGEN_TOOLTIP = "Mana regen %d, %d while casting."
+MANA_REGEN = "Mana Regen"
+NOT_APPLICABLE = "N/A"
+HIGHLIGHT_FONT_COLOR_CODE = "|cffffffff"
+FONT_COLOR_CODE_CLOSE = "|r"
+HAS_MANA = false
+function UnitHasMana(unit) return HAS_MANA end
+function UnitStat(unit, index) return 98, 98, 0, 0 end
+function GetSpellCritChanceFromIntellect(unit) return 3.92 end
+function GetUnitManaRegenRateFromSpirit(unit) return 20.0 end
+function GetManaRegen() return 40.0, 12.0 end
+function PaperDollFrame_UpdateStats() end
+function PaperDollFrame_SetStat(statFrame, statIndex)
+    if statIndex == 4 then
+        if UnitHasMana("player") then
+            statFrame.tooltip2 = format(DEFAULT_STAT4_TOOLTIP, 1190, 3.92)
+        else
+            statFrame.tooltip2 = nil
+        end
+    elseif statIndex == 5 then
+        statFrame.tooltip2 = "Health regen line."
+        if UnitHasMana("player") then
+            statFrame.tooltip2 = statFrame.tooltip2 .. "\n" .. format(MANA_REGEN_FROM_SPIRIT, 100)
+        end
+    end
+end
+function PaperDollFrame_SetManaRegen(statFrame)
+    local text = _G[statFrame:GetName() .. "StatText"]
+    if not UnitHasMana("player") then
+        if text then text:SetText(NOT_APPLICABLE) end
+        statFrame.tooltip = nil
+        statFrame.tooltip2 = nil
+        return
+    end
+    text:SetText(200)
 end
 
 PICKED = {}
@@ -1746,6 +1802,58 @@ STRATA = ["BACKGROUND", "LOW", "MEDIUM", "HIGH", "DIALOG", "FULLSCREEN",
           "FULLSCREEN_DIALOG", "TOOLTIP"]
 
 
+def test_paperdoll(h):
+    """The stock character sheet, for a Hero who has every pool at once."""
+    print("--- character sheet: Intellect and Spirit still say what they do")
+    CW, rt = h.CW, h.rt
+    # CreateFrame, not Stub: Stub is a local of the stub chunk and a later
+    # execute() would get the auto-stub the _G metatable makes for any unknown
+    # capitalised global, which carries no name -- and these frames are read
+    # back through GetName()
+    rt.execute("""
+        CW_STAT4 = CreateFrame("Frame", "CW_STAT4")
+        CW_STAT5 = CreateFrame("Frame", "CW_STAT5")
+        CW_REGEN = CreateFrame("Frame", "CW_REGEN")
+        CW_REGENStatText = CreateFrame("FontString", "CW_REGENStatText")
+    """)
+
+    def redraw():
+        rt.execute("""
+            PaperDollFrame_SetStat(CW_STAT4, 4)
+            PaperDollFrame_SetStat(CW_STAT5, 5)
+            PaperDollFrame_SetManaRegen(CW_REGEN)
+        """)
+
+    # a character the module leaves alone keeps Blizzard's sheet exactly as it is
+    rt.execute("ClasslessWildcard_API.state.universalResources = 0")
+    redraw()
+    h.check(rt.eval("CW_STAT4.tooltip2") is None
+            and str(rt.eval("CW_REGENStatText.__text")) == "N/A",
+            "with no shared pools the stock sheet is not touched")
+
+    # a Hero showing rage: the mana is there, the client just asked the bar
+    rt.execute("ClasslessWildcard_API.state.universalResources = 1")
+    redraw()
+    body = str(rt.eval("CW_STAT4.tooltip2"))
+    h.check("mana pool by 1190" in body and "3.92" in body,
+            "Intellect says what it does again (%s)" % body)
+    spirit = str(rt.eval("CW_STAT5.tooltip2"))
+    h.check(spirit.startswith("Health regen line.") and "Grants 100 mana" in spirit,
+            "Spirit keeps its health line and gets its mana line back (%s)" % spirit)
+    h.check(str(rt.eval("CW_REGENStatText.__text")) == "200"
+            and "Mana regen 200, 60" in str(rt.eval("CW_REGEN.tooltip2")),
+            "and Mana Regen stops reading N/A (%s / %s)"
+            % (rt.eval("CW_REGENStatText.__text"), rt.eval("CW_REGEN.tooltip2")))
+
+    # the bar being mana is Blizzard's own case, and it must be left alone
+    rt.execute("HAS_MANA = true")
+    redraw()
+    h.check(str(rt.eval("CW_STAT4.tooltip2")).count("mana pool by") == 1,
+            "when the mana bar IS shown nothing is written twice (%s)"
+            % rt.eval("CW_STAT4.tooltip2"))
+    rt.execute("HAS_MANA = false")
+
+
 def test_stats(h):
     """The stat panel: solid to the mouse, and the button carries the count."""
     print("--- stats: a panel that stops the mouse, and a button that counts")
@@ -2123,6 +2231,7 @@ def main():
     test_settings(h)
     test_layering(h)
     test_default_scope(h)
+    test_paperdoll(h)
     test_stats(h)
     test_spellbook(h)
     test_talent_unlearn(h)
