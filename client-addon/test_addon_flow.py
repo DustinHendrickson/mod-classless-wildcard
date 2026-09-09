@@ -276,6 +276,7 @@ function UnitStat(unit, index) return 98, 98, 0, 0 end
 function GetSpellCritChanceFromIntellect(unit) return 3.92 end
 function GetUnitManaRegenRateFromSpirit(unit) return 20.0 end
 function GetManaRegen() return 40.0, 12.0 end
+function GetDodgeChance() return 12.3456 end
 function PaperDollFrame_UpdateStats() end
 -- a GameTooltip that remembers what was drawn into it
 TIP = {}
@@ -652,7 +653,7 @@ def test_browser(h):
     # armour is core behaviour, not the module's, but the character sheet reads
     # these lines now and dropping it would have lost something true
     h.check(eff(2, 20) == ["+20 melee attack power", "+40 ranged attack power",
-                           "+0.38% critical strike", "+40 armor", "dodge"],
+                           "+0.38% critical strike", "+40 armor", "dodge (12.35% total)"],
             "Agility: chassis AND module attack power, plus crit, armour and dodge (%s)"
             % eff(2, 20))
     h.check("armor" not in " ".join([str(x) for x in CW.StatEffects(2, 20, True).values()]),
@@ -670,7 +671,7 @@ def test_browser(h):
     # the universal layer off (an exempt character) drops only what it added
     h.recv("ST|10|4|1|0|0|0|0|0|1|0|1|1|0.5|2|0|1|0.0192|0.006|0.473|0.31")
     h.check(eff(2, 20) == ["+20 ranged attack power", "+0.38% critical strike",
-                           "+40 armor", "dodge"],
+                           "+40 armor", "dodge (12.35% total)"],
             "exempt: the chassis ranged AP and crit remain, the module's melee AP goes (%s)"
             % eff(2, 20))
     h.check(eff(4, 30) == ["+170 mana", "+0.18% spell critical strike"],
@@ -1918,6 +1919,19 @@ def test_paperdoll(h):
     rt.execute("PaperDollFrame_SetManaRegen(CW_REGEN)")
     h.check(str(rt.eval("CW_REGENStatText.__text")) == "200",
             "and Mana Regen stops reading N/A (%s)" % rt.eval("CW_REGENStatText.__text"))
+
+    # dodge has no per-point rate to quote -- the core runs Agility through
+    # class and level diminishing returns -- so the line carries where the
+    # character stands instead of the bare word it used to be
+    h.check("dodge (12.35% total)" in tip2,
+            "and dodge carries a number rather than being a bare word (%s)" % tip2)
+
+    # ---- the rates are fetched at login, not the first time the Stats panel
+    # is opened: a character sheet opened before that showed Blizzard's own
+    del h.g.SENT[1:]
+    h.events["__scripts"]["OnEvent"](h.events, "PLAYER_ENTERING_WORLD")
+    sent = [str(x) for x in h.g.SENT.values()]
+    h.check("STATS" in sent, "entering the world asks for the stat rates (%s)" % sent)
 
     # ---- a character the module leaves alone keeps the stock sheet exactly
     rt.execute("ClasslessWildcard_API.state.universalResources = 0")

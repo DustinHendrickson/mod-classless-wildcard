@@ -1157,7 +1157,18 @@ function CW.StatEffects(i, value, short)
         if not short then
             out[#out + 1] = "+" .. math.floor(value * (tonumber(ARMOR_PER_AGILITY) or 2)) .. " armor"
         end
-        out[#out + 1] = "dodge"
+        -- Dodge is the one effect with no per-point number to give: the core
+        -- runs Agility through diminishing returns that depend on class and
+        -- level (Player::GetDodgeFromAgility), so there is no rate to quote and
+        -- no client call for Agility's share alone. What CAN be shown is where
+        -- the character stands, which is what the bare word "dodge" was not
+        -- saying. Labelled a total, because base and defence are in it too.
+        local dodge = GetDodgeChance and tonumber(GetDodgeChance())
+        if dodge and not short then
+            out[#out + 1] = string.format("dodge (%.2f%% total)", dodge)
+        else
+            out[#out + 1] = "dodge"
+        end
     elseif i == 3 then
         out[#out + 1] = "+" .. CW.Pooled(value, CW.POOL.HP_PER_STA) .. " health"
     elseif i == 4 then
@@ -5145,6 +5156,11 @@ events:SetScript("OnEvent", function(self, event, arg1, arg2, arg3, arg4)
         CW.LoadBrowseChoices()
         CW.RestoreBarsPosition()
         Send("HELLO")
+        -- The stat RATES, now rather than the first time the Stats panel is
+        -- opened. The character sheet quotes them, and a sheet opened before
+        -- they arrived showed Blizzard's own numbers until something else went
+        -- and fetched them.
+        Send("STATS")
         if CW.ClaimHotkey then CW.ClaimHotkey() end
         if CW.RefreshMicroTooltip then CW.RefreshMicroTooltip() end
     elseif event == "UPDATE_BINDINGS" then
