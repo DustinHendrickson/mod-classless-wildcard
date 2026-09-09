@@ -521,14 +521,30 @@ namespace
         float critPerAgi = 0.0f, spellCritPerInt = 0.0f, mp5PerSpi = 0.0f, hp5PerSpi = 0.0f;
         ChassisTableRates(player, cfg.chassisClass,
                           critPerAgi, spellCritPerInt, mp5PerSpi, hp5PerSpi);
-        SendAddon(player, Acore::StringFormat("ST|{}|{}|{}|{}|{}|{}|{}|{}|{}|{}|{}|{}|{}|{}|{}|{}|{}|{}|{}|{}",
+
+        // The character's REAL mana regeneration, gear and auras included, not
+        // just the share Spirit is responsible for.
+        //
+        // The client cannot read this for a Hero. GetManaRegen() reads
+        // UNIT_FIELD_POWER_REGEN_FLAT_MODIFIER at the slot for the power bar
+        // being SHOWN, and Player::UpdateManaRegen only ever writes the mana
+        // slot -- so a Hero showing rage reads slot 1, which nothing writes,
+        // and the Spell tab prints 0 next to a character regenerating nine
+        // mana a second. These are the same two numbers, straight off the
+        // fields the core just wrote, in the per-5-seconds the sheet uses.
+        float const manaRegen = player->GetFloatValue(
+            UNIT_FIELD_POWER_REGEN_FLAT_MODIFIER + uint32(POWER_MANA)) * 5.0f;
+        float const manaRegenCasting = player->GetFloatValue(
+            UNIT_FIELD_POWER_REGEN_INTERRUPTED_FLAT_MODIFIER + uint32(POWER_MANA)) * 5.0f;
+        SendAddon(player, Acore::StringFormat("ST|{}|{}|{}|{}|{}|{}|{}|{}|{}|{}|{}|{}|{}|{}|{}|{}|{}|{}|{}|{}|{}|{}",
             budget, budget > spent ? budget - spent : 0, cfg.statValuePerPoint,
             st.statAlloc[0], st.statAlloc[1], st.statAlloc[2], st.statAlloc[3], st.statAlloc[4],
             cfg.statsEnable ? 1 : 0,
             sClasslessMgr->IsExempt(player) ? 0 : 1,
             cfg.usMeleeAPPerAgi, cfg.usRangedAPPerAgi, cfg.usSpellPowerPerInt,
             strMeleeAP, agiMeleeAP, agiRangedAP,
-            critPerAgi, spellCritPerInt, mp5PerSpi, hp5PerSpi));
+            critPerAgi, spellCritPerInt, mp5PerSpi, hp5PerSpi,
+            manaRegen, manaRegenCasting));
     }
 
     // AR|id|name|description|abilities|talent ranks|following

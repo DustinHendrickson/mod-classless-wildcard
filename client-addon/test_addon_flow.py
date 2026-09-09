@@ -648,8 +648,13 @@ def test_browser(h):
     def eff(i, v):
         return [str(x) for x in CW.StatEffects(i, v).values()]
 
-    h.check(eff(1, 20) == ["+40 melee attack power", "+10 block value"],
-            "Strength: attack power and block value (%s)" % eff(1, 20))
+    # Player::GetShieldBlockValue is (Strength x 0.5 - 10) floored at zero, so
+    # 20 Strength buys no block value at all and 151 buys 65, not 75
+    h.check(eff(1, 20) == ["+40 melee attack power", "+0 block value"],
+            "Strength: attack power, and block value with the core's flat -10 (%s)"
+            % eff(1, 20))
+    h.check(eff(1, 151)[1] == "+65 block value",
+            "which is the number the core would give (%s)" % eff(1, 151)[1])
     # armour is core behaviour, not the module's, but the character sheet reads
     # these lines now and dropping it would have lost something true
     h.check(eff(2, 20) == ["+20 melee attack power", "+40 ranged attack power",
@@ -1879,7 +1884,9 @@ def test_paperdoll(h):
     # ---- the rates land: universal stats on, AP/agi 1, RAP/agi 1, SP/int 0.5,
     # melee AP/str 2, melee AP/agi 1, ranged AP/agi 0, crit/agi 0,
     # spell crit/int 0.006, mp5/spi 0.473, hp5/spi 0.31
-    h.recv("ST|162|3|1|0|0|0|0|0|1|1|1|1|0.5|2|1|0|0|0.006|0.473|0.31")
+    # ... and the last two are the character's real mana regen per 5 sec,
+    # not casting and casting, off the server's own field
+    h.recv("ST|162|3|1|0|0|0|0|0|1|1|1|1|0.5|2|1|0|0|0.006|0.473|0.31|44.8|0")
     draw()
     tip = hover(4)
 
@@ -1915,10 +1922,28 @@ def test_paperdoll(h):
     h.check("Attack Power" in tip3 and "Total Stamina" not in tip3,
             "a row reused for Attack Power stops answering as a stat (%s)" % tip3)
 
-    # ---- and the Mana Regen row still stops reading N/A
+    # ---- Mana Regen. The client reads a field indexed by the power bar it is
+    # SHOWING and the core writes only the mana slot, so GetManaRegen returns 0
+    # for a Hero showing rage. The server sends the real figure instead.
+    rt.execute("function GetManaRegen() return 0, 0 end")
     rt.execute("PaperDollFrame_SetManaRegen(CW_REGEN)")
-    h.check(str(rt.eval("CW_REGENStatText.__text")) == "200",
-            "and Mana Regen stops reading N/A (%s)" % rt.eval("CW_REGENStatText.__text"))
+    h.check(str(rt.eval("CW_REGENStatText.__text")) == "44",
+            "Mana Regen shows the server's own number, not the client's blind 0 (%s)"
+            % rt.eval("CW_REGENStatText.__text"))
+    h.check("Mana regen 44, 0" in str(rt.eval("CW_REGEN.tooltip2")),
+            "and the tooltip agrees with it (%s)" % rt.eval("CW_REGEN.tooltip2"))
+
+    # with no figure from either side, Blizzard's N/A stands: it is a better
+    # answer than a confident "0 mana regenerated every 5 sec"
+    rt.execute("ClasslessWildcard_API.stats.mp5 = 0")
+    rt.execute("ClasslessWildcard_API.stats.mp5Casting = 0")
+    rt.execute("PaperDollFrame_SetManaRegen(CW_REGEN)")
+    h.check(str(rt.eval("CW_REGENStatText.__text")) == "N/A"
+            and rt.eval("CW_REGEN.tooltip2") is None,
+            "and stays N/A rather than claiming zero when nobody has one (%s / %s)"
+            % (rt.eval("CW_REGENStatText.__text"), rt.eval("CW_REGEN.tooltip2")))
+    rt.execute("ClasslessWildcard_API.stats.mp5 = 44.8")
+    rt.execute("function GetManaRegen() return 40.0, 12.0 end")
 
     # dodge has no per-point rate to quote -- the core runs Agility through
     # class and level diminishing returns -- so the line carries where the

@@ -1067,7 +1067,8 @@ local function StatPerPoint(i)
     local s = CW.stats
     local uni = s.uniStats
     if i == 1 then
-        return "+" .. Rate(s.strMeleeAP or 2) .. " melee attack power, +0.5 block value"
+        return "+" .. Rate(s.strMeleeAP or 2)
+            .. " melee attack power, +0.5 block value (less a flat 10)"
     elseif i == 2 then
         local melee = (s.agiMeleeAP or 0) + (uni and (s.apPerAgi or 0) or 0)
         local ranged = (s.agiRangedAP or 1) + (uni and (s.rapPerAgi or 0) or 0)
@@ -1137,7 +1138,10 @@ function CW.StatEffects(i, value, short)
 
     if i == 1 then
         out[#out + 1] = "+" .. math.floor(value * (s.strMeleeAP or 2)) .. " melee" .. AP
-        out[#out + 1] = "+" .. math.floor(value * 0.5) .. " block value"
+        -- Player::GetShieldBlockValue is (base + Strength x 0.5 - 10), floored
+        -- at zero. The -10 is a flat offset the core applies once, and leaving
+        -- it out overstated this line by ten at every Strength there is.
+        out[#out + 1] = "+" .. math.max(0, math.floor(value * 0.5) - 10) .. " block value"
     elseif i == 2 then
         local melee = (s.agiMeleeAP or 0) + (uni and (s.apPerAgi or 0) or 0)
         local ranged = (s.agiRangedAP or 1) + (uni and (s.rapPerAgi or 0) or 0)
@@ -2554,9 +2558,22 @@ do
 
     local function FixManaRegen(statFrame)
         if not statFrame or not ManaIsHidden() then return end
-        local base, casting = GetManaRegen()
-        base = math.floor((tonumber(base) or 0) * 5.0)
-        casting = math.floor((tonumber(casting) or 0) * 5.0)
+        -- The server's own numbers first. GetManaRegen() reads a unit field
+        -- at the slot for the power bar being SHOWN, and the core only ever
+        -- writes the mana slot, so a Hero showing rage reads a slot nothing
+        -- writes and gets 0 -- next to a character regenerating nine mana a
+        -- second. These come straight off the field the core wrote.
+        local base, casting = CW.stats.mp5, CW.stats.mp5Casting
+        if base == nil then
+            base, casting = GetManaRegen()
+            base = (tonumber(base) or 0) * 5.0
+            casting = (tonumber(casting) or 0) * 5.0
+        end
+        base = math.floor(tonumber(base) or 0)
+        casting = math.floor(tonumber(casting) or 0)
+        -- and if there is still no figure, leave Blizzard's "N/A" alone: it is
+        -- a better answer than a confident "0 mana regenerated every 5 sec"
+        if base <= 0 and casting <= 0 then return end
         local text = statFrame.GetName and _G[(statFrame:GetName() or "") .. "StatText"]
         if text then text:SetText(base) end
         statFrame.tooltip = HIGHLIGHT_FONT_COLOR_CODE .. MANA_REGEN .. FONT_COLOR_CODE_CLOSE
@@ -4923,6 +4940,11 @@ local function HandleMessage(msg)
         s.spellCritPerInt = tonumber(p[19]) or 0
         s.mp5PerSpi = tonumber(p[20]) or 0
         s.hp5PerSpi = tonumber(p[21]) or 0
+        -- the character's real mana regeneration per 5 sec, gear and auras
+        -- included: the client reads this off a field indexed by the power bar
+        -- it is SHOWING, so on a Hero showing rage it sees nothing at all
+        s.mp5 = tonumber(p[22])
+        s.mp5Casting = tonumber(p[23])
         s.have = true   -- the rates are real now, not the shipped defaults
         -- the help panel quotes these rates, so rebuild it now they are known
         if CW.RefreshHelpText then CW.RefreshHelpText() end
