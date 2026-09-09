@@ -205,6 +205,13 @@ namespace ClasslessWildcard
         // which is smooth enough for a bar and stops it dominating the traffic.
         uint8  lastRunicBucket = 255;
         uint32 runeAcc = 0;
+        // Does this character own anything that SPENDS runes or runic power?
+        // The six rune pips and the runic bar are the tallest thing on the
+        // resource frame, and a Hero who has bought no Death Knight ability has
+        // no use for either. -1 is "not worked out yet"; the answer is
+        // recomputed at most once a second from the owned ability list.
+        int8   lastRuneOwn = -1;
+        uint32 runeOwnAcc = 0;
         bool loaded = false;
     };
 

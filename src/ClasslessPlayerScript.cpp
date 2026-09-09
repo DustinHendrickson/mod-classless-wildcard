@@ -492,7 +492,48 @@ public:
                 // Guarded by the character's own snapshot, which is exactly
                 // the condition under which InitRunes allocated the block --
                 // reading it otherwise would dereference a null pointer.
+                //
+                // And only for a Hero who has bought something that SPENDS
+                // them. Every Hero carries a rune block whether they use it or
+                // not, and six pips plus a runic bar is the tallest thing on
+                // the resource frame, so drawing it for all of them fills the
+                // frame with something most will never spend. Recomputed at
+                // most once a second: rolling an ability in or out is rare,
+                // and scanning the owned list every tick for every player
+                // online is not worth the answer.
                 if (cpSt.runes)
+                {
+                    cpSt.runeOwnAcc += p_time;
+                    if (cpSt.lastRuneOwn < 0 || cpSt.runeOwnAcc >= 1000)
+                    {
+                        cpSt.runeOwnAcc = 0;
+                        int8 own = 0;
+                        for (auto const& entry : cpSt.abilities)
+                        {
+                            SpellInfo const* info = sSpellMgr->GetSpellInfo(entry.first);
+                            if (info && (info->RuneCostID
+                                         || info->PowerType == POWER_RUNIC_POWER))
+                            {
+                                own = 1;
+                                break;
+                            }
+                        }
+                        if (own != cpSt.lastRuneOwn)
+                        {
+                            cpSt.lastRuneOwn = own;
+                            // turning ON: forget what was sent so the next
+                            // block below pushes the real state at once.
+                            // turning OFF: say so, or the row the addon has
+                            // already drawn stays until the next login.
+                            cpSt.lastRuneSig = 0xFFFFFFFF;
+                            cpSt.lastRunicBucket = 255;
+                            if (!own)
+                                PushAddon(player, "RU|0|0");
+                        }
+                    }
+                }
+
+                if (cpSt.runes && cpSt.lastRuneOwn > 0)
                 {
                     // Summarise first, send only if it actually changed. Rune
                     // cooldowns count down every frame, so comparing the

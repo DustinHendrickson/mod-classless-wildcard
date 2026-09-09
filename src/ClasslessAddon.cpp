@@ -568,6 +568,20 @@ namespace
         {
             SendState(player);
             SendSpellCorrections(player);
+            // Combo points and runes are pushed only when they CHANGE, which
+            // is right for the traffic and wrong for the first draw: the first
+            // push goes out on the first update tick after entering the world,
+            // which can beat the addon to being ready, and nothing sends it
+            // again while the character stands still with every rune up. The
+            // rune row then stayed blank until a rune was actually spent, and
+            // a /reload lost it the same way. Forgetting what was last sent
+            // makes the next tick send the current state, so the addon can ask.
+            CharState& st = sClasslessMgr->GetState(player);
+            st.lastComboPush = 255;
+            st.lastRuneSig = 0xFFFFFFFF;
+            st.lastRunicBucket = 255;
+            st.runeAcc = 1000;   // so runic power is due immediately, not in a second
+            st.lastRuneOwn = -1; // and work out from scratch whether to draw it at all
         }
         else if (cmd == "ABIL")
             SendAbilityPage(player, uint8(argNum(1)), argNum(2), argNum(3), argNum(4), argNum(5));
