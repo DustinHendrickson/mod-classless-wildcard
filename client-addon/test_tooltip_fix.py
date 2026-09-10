@@ -129,6 +129,32 @@ def test_feed():
     check(rt.eval('ClasslessWildcard_API.spellFixByName["Spell 6343|Rank 1"]') == 6343,
           "the name index is built, for the routes that only know a name")
 
+    # Everything a talent can move, not just the first four. The record grew
+    # from five fields to twelve; a five-field record still has to parse, since
+    # that is what an older server sends.
+    recv("SC|101:0:0:0:0:25:6:15:12000:20:30:-40;102:11:0:0:0;")
+    f = rt.eval("ClasslessWildcard_API.spellFix[101]")
+    check(f is not None and f.eff == 25 and f.crit == 6 and f.dot == 15
+          and f.dur == 12000 and f.range == 20 and f.critdmg == 30 and f.threat == -40,
+          "the long record parses every field")
+    f = rt.eval("ClasslessWildcard_API.spellFix[102]")
+    check(f is not None and f.cost == 11 and f.eff == 0 and f.threat == 0,
+          "a five-field record still parses, with the new fields at zero")
+
+    rt.execute("GameTooltip:Reset()")
+    rt.execute("ClasslessWildcard_API.ApplyTooltipFix(GameTooltip, 101)")
+    line = rt.eval("GameTooltip:Dump()")
+    for want in ("+25% effect", "+6% crit chance", "+30% crit damage",
+                 "+15% damage over time", "12 sec duration", "+20% range",
+                 "-40% threat"):
+        check(want in line, "the tooltip says '%s'" % want)
+
+    rt.execute("GameTooltip:Reset()")
+    rt.execute("ClasslessWildcard_API.ApplyTooltipFix(GameTooltip, 102)")
+    check("effect" not in rt.eval("GameTooltip:Dump()")
+          and "threat" not in rt.eval("GameTooltip:Dump()"),
+          "a field nothing moved prints nothing")
+
     recv("SCE|")
     check(rt.eval("ClasslessWildcard_API._collectingFix") is False, "SCE closes the collection")
 

@@ -3380,6 +3380,18 @@ void ClasslessMgr::GrantTalentRankInternal(Player* player, TalentPoolEntry const
     // already owned, so ranking up hands over nothing twice.
     GrantTalentKit(player, t);
     GrantTalentRequiredForm(player, t);
+
+    // And tell the addon what this talent just changed about the Hero's other
+    // spells. The client cannot work a cross-class talent's modifiers out for
+    // itself, so the corrected cost, cast time and COOLDOWN are computed
+    // server-side and sent as SC records -- and they were only ever sent on
+    // login, on /reload, or when the addon asked for the owned-talent list.
+    // A talent the Wildcard DEALS goes through none of those: the reveal pops,
+    // the talent works, and every tooltip it touches keeps the old number
+    // until the next login. Shield Mastery cutting Shield Block's cooldown is
+    // exactly that shape -- the cooldown really is shorter, the tooltip says
+    // otherwise.
+    PushSpellCorrections(player);
 }
 
 void ClasslessMgr::RemoveTalentInternal(Player* player, TalentPoolEntry const& t, bool persist)
@@ -3411,6 +3423,7 @@ void ClasslessMgr::RemoveTalentInternal(Player* player, TalentPoolEntry const& t
     player->SetFreeTalentPoints(0);
     player->SendTalentsInfoData(false);
     CW_SyncTalentPetSpell(player);   // and the pet spell it handed over
+    PushSpellCorrections(player);    // the numbers it was moving go back
 
     // the ability line the talent handed over goes with it
     for (uint32 first : t.abilityLines)

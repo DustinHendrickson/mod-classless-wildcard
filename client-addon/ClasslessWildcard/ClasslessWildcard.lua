@@ -4935,8 +4935,13 @@ local function HandleMessage(msg)
         for _, f in ipairs(ParseEntries(p[2], 5)) do
             local id = tonumber(f[1])
             if id then
+                -- fields 6 and up were added later; an older server sends five
                 CW.spellFix[id] = { cost = tonumber(f[2]), cast = tonumber(f[3]),
-                                    cd = tonumber(f[4]), dmg = tonumber(f[5]) }
+                                    cd = tonumber(f[4]), dmg = tonumber(f[5]),
+                                    eff = tonumber(f[6]) or 0, crit = tonumber(f[7]) or 0,
+                                    dot = tonumber(f[8]) or 0, dur = tonumber(f[9]) or 0,
+                                    range = tonumber(f[10]) or 0, critdmg = tonumber(f[11]) or 0,
+                                    threat = tonumber(f[12]) or 0 }
                 local name, rank = GetSpellInfo(id)
                 if name then
                     CW.spellFixByName[name .. "|" .. (rank or "")] = id
@@ -5035,6 +5040,13 @@ local function HandleMessage(msg)
         -- a wildcard roll happened: refresh state (reroll charges/scrolls
         -- changed) and play the d20 reveal
         Send("STATE")
+        -- ...and whatever list is open, exactly as OK does below. A roll
+        -- changes what the Hero owns, and the rows carry the owned rank: the
+        -- talent list draws "1/2", the tooltip describes rank 1 and offers to
+        -- teach a rank, while the server has already granted rank 2 and the
+        -- game is applying it. Improved Disciplines read "30 secs" that way
+        -- with Shield Wall already down to 240.
+        if frame:IsShown() then CW.SetTab(CW.tab) end
         if p[2] == "A" then
             CW.EnqueueReveal({ isTalent = false, entry = tonumber(p[3]) or 0, spell = tonumber(p[3]) or 0,
                                rarity = tonumber(p[4]) or 0, flags = tonumber(p[5]) or 0 })
@@ -5127,6 +5139,29 @@ do
         end
         if fix.dmg and fix.dmg ~= 0 then
             bits[#bits + 1] = string.format("%+d%% damage", fix.dmg)
+        end
+        -- The rest of what a talent can move. Each is sent as 0 unless a talent
+        -- actually moved it, so nothing here prints a number that did not change.
+        if fix.eff and fix.eff ~= 0 then
+            bits[#bits + 1] = string.format("%+d%% effect", fix.eff)
+        end
+        if fix.crit and fix.crit ~= 0 then
+            bits[#bits + 1] = string.format("%+d%% crit chance", fix.crit)
+        end
+        if fix.critdmg and fix.critdmg ~= 0 then
+            bits[#bits + 1] = string.format("%+d%% crit damage", fix.critdmg)
+        end
+        if fix.dot and fix.dot ~= 0 then
+            bits[#bits + 1] = string.format("%+d%% damage over time", fix.dot)
+        end
+        if fix.dur and fix.dur > 0 then
+            bits[#bits + 1] = string.format("%.3g sec duration", fix.dur / 1000)
+        end
+        if fix.range and fix.range ~= 0 then
+            bits[#bits + 1] = string.format("%+d%% range", fix.range)
+        end
+        if fix.threat and fix.threat ~= 0 then
+            bits[#bits + 1] = string.format("%+d%% threat", fix.threat)
         end
         if #bits > 0 then
             tip:AddLine("With your talents: " .. table.concat(bits, ", "), 0.4, 0.8, 1)

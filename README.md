@@ -214,6 +214,11 @@ projected as you spend. Reallocating is free.</em>
 
 - **No class to pick.** Character creation shows races only. Every Hero runs on the same
   Paladin chassis, which grants no class abilities and locks nothing away.
+- **Talent numbers show on the tooltip.** The 3.3.5 client will not apply a talent from outside
+  its own class to a spell tooltip, so a Hero saw the unmodified number while the server used the
+  real one. The server sends the corrected figures instead and the addon adds a "With your
+  talents:" line: cost, cast time, cooldown, damage, effect values, crit chance, crit damage,
+  damage over time, duration, range and threat. Only what a talent actually moved is listed.
 - **Universal resources.** Every Hero has mana, rage and energy at once. One shows on the main
   bar and the addon draws mini-bars for the rest. Each spell draws from its own resource, so the
   same Hero casts Fireball on mana and Bloodthirst on rage.
