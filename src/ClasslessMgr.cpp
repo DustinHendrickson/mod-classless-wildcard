@@ -1170,7 +1170,7 @@ void ClasslessMgr::GrantRequiredForm(Player* player, uint32 spellId, bool announ
             if (t == _talents.end() || !t->second.rankSpells[0])
                 return;
             Msg(player, Acore::StringFormat("{} can only be used in {}, which comes from a talent.",
-                SpellName(e.firstSpellId), SpellName(t->second.rankSpells[0])));
+                SpellName(spellId), SpellName(t->second.rankSpells[0])));
             return;
         }
         return;
