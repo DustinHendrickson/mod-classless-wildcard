@@ -152,6 +152,7 @@ public:
     // Riding ranks the Hero has reached the level for. Returns how many were
     // newly taught, so the caller can stay quiet when there is nothing to say.
     uint32 GrantRidingSkill(Player* player);
+    uint32 GrantRuneforging(Player* player);
     // Give the Hero the skill lines their spells belong to, so the client files
     // each one under its own spellbook tab instead of dumping them in General.
     // `clearChassisLines` also takes away the class lines the Hero has nothing
@@ -216,11 +217,25 @@ private:
     // form id -> the library ability that puts you in it, built from spell data
     void BuildFormSpellMap();
     // Give a Hero the stance or form an ability cannot be used without.
-    void GrantRequiredForm(Player* player, ClasslessWildcard::AbilityEntry const& e);
+    void GrantRequiredForm(Player* player, ClasslessWildcard::AbilityEntry const& e,
+                           bool announce = true);
+    // The same, for any spell -- which is how a TALENT gets one. Sweeping
+    // Strikes needs a warrior stance and Premeditation needs Stealth, and a
+    // talent has no ability line to carry the rule for it.
+    void GrantRequiredForm(Player* player, uint32 spellId, bool announce = true);
+    void GrantTalentRequiredForm(Player* player, ClasslessWildcard::TalentPoolEntry const& t,
+                                 bool announce = true);
     // Hand over the basic spells that make a freshly gained form or stance
     // usable. Called for every ability grant; does nothing for the vast
     // majority that are not forms.
     void GrantFormKit(Player* player, ClasslessWildcard::AbilityEntry const& form);
+    // The same kit, for a talent. A talent is not an ability line, so it needs
+    // its own way in: Summon Felguard spends a Soul Shard and Bestial Wrath
+    // needs a pet, exactly like the ability lines that carry those.
+    void GrantTalentKit(Player* player, ClasslessWildcard::TalentPoolEntry const& t);
+    // What both of the above do, once they know which spells just arrived.
+    // `ownerSpellId` only names the owner in the message.
+    void GrantKit(Player* player, std::vector<uint32> const& ownedSpells, uint32 ownerSpellId);
     // Is this companion still needed -- a form something owned has to be in,
     // or part of the kit of a form still owned? Only abilities the Hero
     // EARNED count, so two companions can never keep each other alive.
@@ -229,8 +244,9 @@ private:
     // Take away the free extras nothing needs any more. Returns how many went.
     uint32 PruneCompanions(Player* player);
     // Hand out any stance or form the Hero's earned abilities require but do
-    // not have. Runs at login so a build that predates the form rules is
-    // repaired in place.
+    // not have, and re-run the starter kits over everything they own. Runs at
+    // login, so a build that predates a form rule -- or a kit pair added to
+    // cw_form_kits after the build was made -- is repaired in place.
     void SyncRequiredForms(Player* player);
     // Clear the class tool (totem/relic item) requirement from every library
     // spell. The client patch clears the same two columns and the two must
@@ -274,6 +290,13 @@ private:
     // first rank: Dire Bear Form is rank 2 of Bear Form and grants a
     // different form id, so the line alone cannot answer which is which.
     std::unordered_map<uint32, uint32> _formSpells;
+    // form -> the TALENT that grants it. Moonkin Form, Tree of Life,
+    // Metamorphosis and Shadowform are talents, not abilities, so they are not
+    // in _formSpells and the form kit cannot hand them over: a 31-point talent
+    // is not something to give away with a 2-essence ability. Kept so the Hero
+    // can at least be told where the form comes from instead of being handed a
+    // spell that does nothing.
+    std::unordered_map<uint32, uint32> _formTalents;
     // spell (any rank) -> the class skill line it is filed under, and the set of
     // every class skill line the library touches
     std::unordered_map<uint32, uint16> _spellSkillLine;

@@ -397,6 +397,18 @@ def build_variant(spell, sla, icon, visual, durations, base_id, base_index, rank
     row = spell.row_of(base_id)
     vals = spell_values(spell, row)
     base_name = vals[F["SpellName"]]
+
+    # A variant is the base's row with slots rewritten, so anything not touched
+    # is inherited. No base carries a class tool today -- they are all weapon
+    # strikes -- but inheriting one would be silent and fatal: the server
+    # clears the column at startup, while the client patch's tool sweep runs
+    # over class spells BEFORE these rows are appended and never reaches them,
+    # so the client would draw a red "Tools:" line and refuse the cast itself.
+    # That is exactly what happened to the forged totems. Zeroed here so it
+    # cannot depend on which spells someone picks as bases later; test_elemental
+    # checks the written rows.
+    for _tool in (50, 51, 222, 223):   # Totem[2], RequiredTotemCategoryID[2]
+        vals[_tool] = 0
     lvl = vals[F["SpellLevel"]] or vals[F["BaseLevel"]] or 1
 
     # -- pull the base's effects apart

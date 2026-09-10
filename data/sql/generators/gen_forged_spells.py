@@ -1649,6 +1649,13 @@ def build_row(spell, recipe, rank_index, level, spell_id, next_id, companion_id)
         v[52 + i] = 0                           # Reagent
         v[60 + i] = 0                           # ReagentCount
     v[50] = v[51] = 0                           # Totem
+    # ...and the tool CATEGORY, which is the other half of the same
+    # requirement. Missing it meant every totem-shaped forged spell
+    # inherited its donor's Earth Totem: the server strips the column at
+    # startup, but the client patch does not reach these rows (the tool
+    # sweep runs over class spells, before the forged rows are added), so
+    # the client kept a red Tools: line and refused the cast locally.
+    v[222] = v[223] = 0                         # RequiredTotemCategoryID
 
     setf("SpellLevel", level)
     setf("BaseLevel", level)

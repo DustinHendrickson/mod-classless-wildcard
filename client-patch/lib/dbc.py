@@ -341,13 +341,17 @@ def open_class_abilities(data: bytes, skill_categories: dict):
 def clear_spell_tools(data: bytes, class_spells):
     """Drop the class tool requirement from every class spell in Spell.dbc.
 
-    Stoneskin Totem asks for an Earth Totem, Runeforging for a runeforge:
-    tools handed to one class and to nobody else. A Hero draws spells from
-    every class and is handed no class's tools, so those spells arrive with a
-    red "Tools:" line and refuse to cast. The server clears the same two
+    Stoneskin Totem asks for an Earth Totem and Mana Tide Totem for a Water
+    Totem: relics handed to one class and to nobody else. A Hero draws spells
+    from every class and is handed no class's relics, so those spells arrive
+    with a red "Tools:" line and refuse to cast. The server clears the same two
     columns on its own copy, unconditionally; clearing them
     here is what takes the line out of the tooltip and stops the client
     refusing the cast before the server ever sees it.
+
+    Only the two tool columns, so a spell that asks for a PLACE keeps asking
+    for it: the runeforge enchants still want a runeforge, the same as they do
+    for a Death Knight.
 
     Reagents are left alone: those are vendor goods anyone can buy.
 

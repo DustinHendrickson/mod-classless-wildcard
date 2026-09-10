@@ -191,6 +191,32 @@ def main(argv=None):
     check("targeting: percent hit and elemental add use the base's targets, radius and chain",
           bad_target == 0, "%d slot(s) differ" % bad_target)
 
+    # ---- no variant asks for a class tool -----------------------------------
+    # A variant is its base's row with slots rewritten, so any column the
+    # generator does not touch is INHERITED. That is how the forged totems
+    # ended up demanding an Earth Totem: the server clears the column at
+    # startup, but the installer's tool sweep runs over class spells before
+    # these rows are appended and never reaches them, so the client draws a red
+    # "Tools:" line and refuses the cast itself.
+    #
+    # Read the way the client will read it -- the base row with the manifest's
+    # overrides applied -- so a column that is merely inherited still fails.
+    TOOL_COLUMNS = {50: "Totem_1", 51: "Totem_2",
+                    222: "RequiredTotemCategoryID_1", 223: "RequiredTotemCategoryID_2"}
+    tooled = []
+    for v in variants:
+        b = base_rows.get(v["base"])
+        if b is None:
+            continue
+        brow = base_records[b * r0:(b + 1) * r0]
+        for col, label in sorted(TOOL_COLUMNS.items()):
+            written = v["fields"].get(str(col))
+            value = int(written) if written is not None else                 struct.unpack_from("<I", brow, col * 4)[0]
+            if value:
+                tooled.append("%s wants %s=%d" % (v["name"], label, value))
+    check("no variant asks for a class tool",
+          not tooled, "; ".join(sorted(set(tooled))[:4]))
+
     # ---- every element actually does its element ----------------------------
     # The second effect slot is the element. It used to hold a flat hit for
     # everybody and the element's own signature only when a THIRD slot happened

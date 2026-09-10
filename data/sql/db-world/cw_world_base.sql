@@ -45,7 +45,9 @@ INSERT IGNORE INTO `cw_ability_override` (`first_spell`, `rarity`, `cost`, `weig
 (883,  255, 0, 0, 0),    -- Call Pet: comes with Tame Beast
 (982,  255, 0, 0, 0),    -- Revive Pet: comes with Tame Beast
 (6991, 255, 0, 0, 0),    -- Feed Pet: comes with Tame Beast
-(2641, 255, 0, 0, 0);    -- Dismiss Pet: comes with Tame Beast
+(2641, 255, 0, 0, 0),    -- Dismiss Pet: comes with Tame Beast
+(136,  255, 0, 0, 0),    -- Mend Pet: comes with Tame Beast
+(1002, 255, 0, 0, 0);    -- Eyes of the Beast: comes with Tame Beast
 
 -- ---------------------------------------------------------------------------
 -- Cleanup: an early version of this module auto-applied playercreateinfo_item

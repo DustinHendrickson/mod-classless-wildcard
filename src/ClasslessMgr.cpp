@@ -194,6 +194,17 @@ void ClasslessMgr::LoadConfig(bool /*reload*/)
     parseKit(sConfigMgr->GetOption<std::string>("ClasslessWildcard.Riding.Grants",
         "33388:20,33391:40,34090:60,54197:68,34091:70"), cfg.ridingGrants);
 
+    // Runeforging on the same terms, at the levels the Death Knight trainer
+    // sells each rune: Razorice and Cinderglacier 55, Spellshattering and
+    // Spellbreaking 57, Lichbane 60, Swordshattering and Swordbreaking 63,
+    // Fallen Crusader 70, Stoneskin Gargoyle and Nerubian Carapace 72.
+    // Runeforging itself (53428) is on no trainer list at all -- a Death
+    // Knight gets it with the class, at 55.
+    cfg.runeforgingEnable = sConfigMgr->GetOption<bool>("ClasslessWildcard.Runeforging.Enable", true);
+    parseKit(sConfigMgr->GetOption<std::string>("ClasslessWildcard.Runeforging.Grants",
+        "53428:55,53341:55,53343:55,53342:57,54447:57,53331:60,53323:63,54446:63,"
+        "53344:70,62158:72,70164:72"), cfg.runeforgingGrants);
+
     cfg.teachProficiencies = sConfigMgr->GetOption<bool>("ClasslessWildcard.TeachProficiencies", true);
     cfg.proficiencySpells = ParseUintList(sConfigMgr->GetOption<std::string>(
         "ClasslessWildcard.ProficiencySpells",
@@ -552,6 +563,21 @@ void ClasslessMgr::BuildLibrary()
         // than from a trainer, so nothing else keeps it out.
         if (info->HasAttribute(SPELL_ATTR2_AUTO_REPEAT))
             continue;
+        // Spells the client will not draw in the spellbook, and that nothing
+        // else lists either: the hidden halves of other spells (Light's Beacon,
+        // Curse of Doom Effect, Pain Suppression's 44416) and the talent
+        // effects that ride on an ability (Primal Fury, Fiery Payback, Fingers
+        // of Frost, Tree of Life's 65139). Not one of them is something a Hero
+        // could cast, see or spend Essence on.
+        //
+        // The ten Death Knight runes carry the same flag and are a different
+        // case: they are RECIPES, listed in the runeforge window
+        // rather than the spellbook, and castable only through Runeforging --
+        // a trade skill, which the pool never stocks. A rolled rune would be a
+        // card that does nothing. They are handed over with the skill instead,
+        // free and on the trainer's own schedule: see GrantRuneforging.
+        if (info->HasAttribute(SPELL_ATTR0_DO_NOT_DISPLAY))
+            continue;
         if (cfg.excludedSpells.count(sla->Spell))
             continue;
 
@@ -663,20 +689,82 @@ void ClasslessMgr::BuildLibrary()
     // under every class. A loser the module could still grant under the
     // surviving name is disabled; one that only ever came from a quest or an
     // item is dropped outright, so that source keeps working.
+    //
+    // Name alone is not enough to say two lines are the same ability. Blizzard
+    // reused a few names for spells that do completely different things, and
+    // merging those deletes one of them from the game: the Death Knight's
+    // Death Coil, a level 55 nuke that also heals undead, was being thrown
+    // away for the warlock's, a fear from level 42 that shares nothing but the
+    // word. So the key is the name AND what the spell's first effect is. Every
+    // pair that really is one ability under two ids still merges -- Track
+    // Humanoids, Remove Curse, Seal of Righteousness and the two Shattrath
+    // portals all match on that effect -- and a pair that only shares a name
+    // now keeps both lines.
     {
         std::unordered_map<std::string, AbilityEntry*> byName;
         std::vector<uint32> dropped;
         uint32 disabled = 0;
+
+        // name + "what it does", as the dedupe key
+        auto identity = [](AbilityEntry const& a)
+        {
+            std::string key = a.name;
+            if (SpellInfo const* info = sSpellMgr->GetSpellInfo(a.firstSpellId))
+                for (uint8 ei = 0; ei < MAX_SPELL_EFFECTS; ++ei)
+                    if (info->Effects[ei].Effect)
+                    {
+                        key += Acore::StringFormat("|{}|{}", uint32(info->Effects[ei].Effect),
+                                                   uint32(info->Effects[ei].ApplyAuraName));
+                        break;
+                    }
+            return key;
+        };
+
+        auto learnLevel = [](AbilityEntry const& a)
+        {
+            uint32 const lvl = a.rankLevels.empty() ? 0u : uint32(a.rankLevels[0]);
+            return lvl ? lvl : 0xFFFFu;   // nothing teaches it: sorts last
+        };
+        auto betterThan = [&](AbilityEntry const& x, AbilityEntry const& y)
+        {
+            if (x.ranks.size() != y.ranks.size())
+                return x.ranks.size() > y.ranks.size();
+            if (learnLevel(x) != learnLevel(y))
+                return learnLevel(x) < learnLevel(y);
+            return x.firstSpellId < y.firstSpellId;
+        };
+
         for (auto& [first, e] : _abilities)
         {
             if (!e.enabled || e.name.empty())
                 continue;
-            auto [itr2, inserted] = byName.try_emplace(e.name, &e);
+            auto [itr2, inserted] = byName.try_emplace(identity(e), &e);
             if (inserted)
                 continue;
             AbilityEntry* keep = itr2->second;
-            bool newBetter = e.ranks.size() > keep->ranks.size()
-                || (e.ranks.size() == keep->ranks.size() && e.firstSpellId < keep->firstSpellId);
+
+            // Which of two lines sharing a name is the real ability.
+            //
+            // Most ranks first, as it always was: a full chain is the ability,
+            // and a single-rank copy of the same name is usually a piece of it.
+            //
+            // The tie-break used to be the lowest spell id, which is arbitrary
+            // and kept the wrong half four times over. Track Humanoids kept the
+            // DRUID's 5225 -- castable only in Cat Form, and not until level 32
+            // -- over the hunter's 19883, which needs no form and arrives at
+            // 10. The loser's class mask is merged into the winner just below,
+            // so that Cat Form version was then listed under the HUNTER tab
+            // as well, which is what players reported. Judgement of Light and
+            // Judgement of Wisdom kept the debuff a judgement applies rather
+            // than the judgement itself, and Death Grip kept the pull effect
+            // rather than the spell that casts it.
+            //
+            // So the tie goes to the one a character learns EARLIER,
+            // counting "no level at all" as last, and then to the lowest id so
+            // the answer never depends on the order an unordered_map happens
+            // to walk in. (Spells the spellbook will not draw at all never get
+            // this far -- BuildLibrary drops them above.)
+            bool const newBetter = betterThan(e, *keep);
             AbilityEntry* loser = newBetter ? keep : &e;
             if (newBetter)
             {
@@ -938,24 +1026,67 @@ uint32 ClasslessMgr::ResyncVariants(std::unordered_set<uint32> const& overridden
 // Form at rank 1 is not owning Dire Bear.
 void ClasslessMgr::BuildFormSpellMap()
 {
+    // Which forms does this spell put you in? Usually its own MOD_SHAPESHIFT,
+    // but a talent often teaches the form instead of being it: the Tree of
+    // Life talent's rank spell is a LEARN_SPELL wrapper, and the shapeshift is
+    // on what it teaches. One level of that is followed, so the form is found
+    // either way -- without it, form 2 belongs to nothing and a Hero holding
+    // Improved Tree of Life is told nothing at all.
+    auto formsOf = [](uint32 spellId, std::vector<uint32>& out)
+    {
+        SpellInfo const* info = sSpellMgr->GetSpellInfo(spellId);
+        if (!info)
+            return;
+        for (uint8 ei = 0; ei < MAX_SPELL_EFFECTS; ++ei)
+        {
+            if (info->Effects[ei].ApplyAuraName == SPELL_AURA_MOD_SHAPESHIFT)
+            {
+                if (uint32 const form = uint32(info->Effects[ei].MiscValue))
+                    out.push_back(form);
+                continue;
+            }
+            if (info->Effects[ei].Effect != SPELL_EFFECT_LEARN_SPELL || !info->Effects[ei].TriggerSpell)
+                continue;
+            SpellInfo const* taught = sSpellMgr->GetSpellInfo(uint32(info->Effects[ei].TriggerSpell));
+            if (!taught)
+                continue;
+            for (uint8 tj = 0; tj < MAX_SPELL_EFFECTS; ++tj)
+                if (taught->Effects[tj].ApplyAuraName == SPELL_AURA_MOD_SHAPESHIFT)
+                    if (uint32 const form = uint32(taught->Effects[tj].MiscValue))
+                        out.push_back(form);
+        }
+    };
+
     _formSpells.clear();
     for (auto const& [firstSpell, e] : _abilities)
         for (uint32 rankSpell : e.ranks)
         {
-            SpellInfo const* info = sSpellMgr->GetSpellInfo(rankSpell);
-            if (!info)
-                continue;
-            for (uint8 ei = 0; ei < MAX_SPELL_EFFECTS; ++ei)
-            {
-                if (info->Effects[ei].ApplyAuraName != SPELL_AURA_MOD_SHAPESHIFT)
-                    continue;
-                uint32 form = uint32(info->Effects[ei].MiscValue);
-                if (form && !_formSpells.count(form))
+            std::vector<uint32> forms;
+            formsOf(rankSpell, forms);
+            for (uint32 form : forms)
+                if (!_formSpells.count(form))
                     _formSpells[form] = rankSpell;
-            }
         }
-    LOG_INFO("module.classless", "mod-classless-wildcard: {} shapeshift forms mapped to abilities",
-             _formSpells.size());
+    // And the forms that come from a TALENT rather than an ability. These
+    // cannot be handed over -- Moonkin Form is a 31-point Balance talent, and
+    // giving it away with Moonkin Aura would be a free talent for two Ability
+    // Essence -- but knowing about them is the difference between telling the
+    // Hero where the form comes from and silently handing them a spell that
+    // will never fire.
+    _formTalents.clear();
+    for (auto const& [talentId, t] : _talents)
+        for (uint32 rankSpell : t.rankSpells)
+        {
+            if (!rankSpell)
+                continue;
+            std::vector<uint32> forms;
+            formsOf(rankSpell, forms);
+            for (uint32 form : forms)
+                if (!_formSpells.count(form) && !_formTalents.count(form))
+                    _formTalents[form] = talentId;
+        }
+    LOG_INFO("module.classless", "mod-classless-wildcard: {} shapeshift forms mapped to abilities, "
+             "{} more to talents", _formSpells.size(), _formTalents.size());
 }
 
 // An ability that can only be used in a stance or form is useless without it.
@@ -967,12 +1098,29 @@ void ClasslessMgr::BuildFormSpellMap()
 // SpellInfo::Stances is a mask of the forms a spell may be cast in, so this is
 // general: it covers every stance- or form-locked ability in the game without
 // naming any of them.
-void ClasslessMgr::GrantRequiredForm(Player* player, AbilityEntry const& e)
+void ClasslessMgr::GrantRequiredForm(Player* player, AbilityEntry const& e, bool announce)
+{
+    GrantRequiredForm(player, e.firstSpellId, announce);
+}
+
+// A talent is locked to a form the same way, and nothing else covers it: it is
+// not an ability line, so no grant path runs the rule above for it. Sweeping
+// Strikes is castable only in Battle or Berserker Stance and Premeditation only
+// from Stealth, and thirteen more talents only APPLY in a form -- Feral
+// Swiftness does nothing outside Cat Form. Rank 1 carries the mask for the
+// line, so testing it is testing the talent.
+void ClasslessMgr::GrantTalentRequiredForm(Player* player, TalentPoolEntry const& t, bool announce)
+{
+    if (t.rankSpells[0])
+        GrantRequiredForm(player, t.rankSpells[0], announce);
+}
+
+void ClasslessMgr::GrantRequiredForm(Player* player, uint32 spellId, bool announce)
 {
     if (!cfg.formKitsEnable || _grantingKit)
         return;
 
-    SpellInfo const* info = sSpellMgr->GetSpellInfo(e.firstSpellId);
+    SpellInfo const* info = sSpellMgr->GetSpellInfo(spellId);
     if (!info || !info->Stances)
         return;
 
@@ -1005,7 +1153,28 @@ void ClasslessMgr::GrantRequiredForm(Player* player, AbilityEntry const& e)
             best = formSpell;
         }
     if (!best)
+    {
+        // No ability grants any form this needs. Moonkin Aura is the one case
+        // in the stock game: it needs Moonkin Form, which is a talent. Say so
+        // once, when the ability arrives, rather than handing over a spell
+        // that will never fire and explaining nothing.
+        if (!announce || _revealSuppress)
+            return;
+        for (auto const& [form, talentId] : _formTalents)
+        {
+            if (!(info->Stances & (uint64(1) << (form - 1))))
+                continue;
+            if (GetState(player).talents.count(talentId))
+                return;                       // they already have the talent
+            auto t = _talents.find(talentId);
+            if (t == _talents.end() || !t->second.rankSpells[0])
+                return;
+            Msg(player, Acore::StringFormat("{} can only be used in {}, which comes from a talent.",
+                SpellName(e.firstSpellId), SpellName(t->second.rankSpells[0])));
+            return;
+        }
         return;
+    }
 
     // _formSpells stores the RANK that grants the form (Dire Bear Form, not
     // Bear Form), so resolve it back to the line that has to be owned.
@@ -1023,7 +1192,7 @@ void ClasslessMgr::GrantRequiredForm(Player* player, AbilityEntry const& e)
     GrantAbilityInternal(player, *formEntry, GrantSource::Companion, true, false);
     if (!_revealSuppress)
         Msg(player, Acore::StringFormat("{} can only be used in {}, so that comes with it.",
-            SpellName(e.firstSpellId), SpellName(best)));
+            SpellName(spellId), SpellName(best)));
 }
 
 // Elemental variants: the same strike dealt as an element, generated into
@@ -2128,6 +2297,72 @@ uint32 ClasslessMgr::GrantRidingSkill(Player* player)
     return taught;
 }
 
+// Runeforging comes with being a Hero, on the schedule its trainer uses.
+//
+// It is not class power and it is not in the classless library, so it never
+// rolls and cannot be bought with essence. Each rune is a RECIPE: the forge
+// window lists it, not the spellbook, and it is castable only through
+// Runeforging (53428), which is a trade skill the pool does not stock. A
+// rolled rune would be a card that does nothing.
+//
+// Nothing else can reach it. Runeforging is on no trainer list a Hero can use:
+// the only vendor is the Death Knight class trainer, which checks the
+// customer's class. The spell itself is a trade skill, so the pool filters it
+// out with the professions and it can be neither rolled nor bought.
+//
+// The skill LINE is already open to every chassis -- cw_world_skillraceclass.sql
+// adds an unrestricted SkillRaceClassInfo row for 776, without which
+// Player::LearnDefaultSkill would refuse it, since the DBC lists the line for
+// class mask 0x20 alone. The SetSkill below is what makes the grant hold
+// anyway on a realm that has not applied that file, and what puts the line
+// back if anything took it away.
+//
+// Nothing rides along with that SetSkill. Every SkillLineAbility row on line
+// 776 carries ClassMask 0x20 and learnSkillRewardedSpells checks it, so this
+// list is the only source.
+uint32 ClasslessMgr::GrantRuneforging(Player* player)
+{
+    if (!cfg.runeforgingEnable || cfg.runeforgingGrants.empty())
+        return 0;
+    if (GetState(player).exempt)
+        return 0;   // bots forge by the normal rules
+
+    uint32 const level = player->GetLevel();
+    bool due = false;
+    for (auto const& grant : cfg.runeforgingGrants)
+        if (level >= grant.second)
+        {
+            due = true;
+            break;
+        }
+    if (!due)
+        return 0;
+
+    GrantGuard guard(_applyingGrant);
+
+    // Re-checked on every login, not only when a spell is new: whatever takes
+    // the line away takes the recipes with it.
+    if (!player->HasSkill(uint16(RUNEFORGING_SKILL_LINE)))
+        player->SetSkill(uint16(RUNEFORGING_SKILL_LINE), 0, 1, 1);
+
+    uint32 taught = 0;
+    for (auto const& [spellId, atLevel] : cfg.runeforgingGrants)
+    {
+        if (level < atLevel || player->HasSpell(spellId))
+            continue;
+        if (!sSpellMgr->GetSpellInfo(spellId))
+        {
+            LOG_WARN("module.classless", "Runeforging.Grants lists spell {}, which does not exist", spellId);
+            continue;
+        }
+        player->learnSpell(spellId);
+        ++taught;
+        Msg(player, Acore::StringFormat("You have learned {}. Runeforging is trained for every Hero.",
+            SpellName(spellId)));
+    }
+    return taught;
+}
+
 void ClasslessMgr::TeachProficiencies(Player* player)
 {
     if (!cfg.teachProficiencies)
@@ -2386,6 +2621,7 @@ void ClasslessMgr::HandleLogin(Player* player)
 
     TeachProficiencies(player);
     GrantRidingSkill(player);
+    GrantRuneforging(player);
     ApplyStatMods(player);
     // characters who passed the line before this rule existed, or while
     // logged out
@@ -2621,6 +2857,7 @@ void ClasslessMgr::HandleLevelUp(Player* player, uint8 oldLevel)
     st.lastProcessedLevel = std::max(st.lastProcessedLevel, newLevel);
     UpdateAbilityRanks(player);
     GrantRidingSkill(player);
+    GrantRuneforging(player);
 
     if (uint32 freed = ClearStaleLocks(player))
         Msg(player, Acore::StringFormat(
@@ -2755,13 +2992,34 @@ void ClasslessMgr::GrantAbilityInternal(Player* player, AbilityEntry const& e, G
 // and either side can be any spell.
 void ClasslessMgr::GrantFormKit(Player* player, AbilityEntry const& form)
 {
+    // Match on every rank, not just the first: Bear Form is 5487 and Dire Bear
+    // Form 9634, and either one arriving should hand over the same kit.
+    GrantKit(player, form.ranks, form.firstSpellId);
+}
+
+// A talent has the same problem and no ability line to hang a kit on. Summon
+// Felguard spends a Soul Shard, and Bestial Wrath, Demonic Empowerment and
+// Ghoul Frenzy each need something out to use them on -- so a Hero could roll
+// one and hold a talent that could never fire. Rank spells are matched the same
+// way an ability's ranks are, so a row can name any rank of the talent.
+void ClasslessMgr::GrantTalentKit(Player* player, TalentPoolEntry const& t)
+{
+    std::vector<uint32> ranks;
+    for (uint8 r = 0; r < t.maxRank && r < t.rankSpells.size(); ++r)
+        if (t.rankSpells[r])
+            ranks.push_back(t.rankSpells[r]);
+    if (ranks.empty())
+        return;
+    GrantKit(player, ranks, ranks.front());
+}
+
+void ClasslessMgr::GrantKit(Player* player, std::vector<uint32> const& ownedSpells, uint32 ownerSpellId)
+{
     if (!cfg.formKitsEnable || _formKits.empty() || _grantingKit)
         return;
 
-    // Match on every rank, not just the first: Bear Form is 5487 and Dire Bear
-    // Form 9634, and either one arriving should hand over the same kit.
     std::vector<uint32> kit;
-    for (uint32 rankSpell : form.ranks)
+    for (uint32 rankSpell : ownedSpells)
     {
         auto itr = _formKits.find(rankSpell);
         if (itr == _formKits.end())
@@ -2807,7 +3065,7 @@ void ClasslessMgr::GrantFormKit(Player* player, AbilityEntry const& form)
     for (size_t i = 1; i < gained.size(); ++i)
         list += (i + 1 == gained.size() ? " and " : ", ") + gained[i];
     Msg(player, Acore::StringFormat("{} comes with {}, yours to use straight away.",
-        SpellName(form.firstSpellId), list));
+        SpellName(ownerSpellId), list));
 }
 
 // Is this free extra still earning its place?
@@ -2824,6 +3082,33 @@ bool ClasslessMgr::IsCompanionJustified(CharState const& st, AbilityEntry const&
     for (auto const& [form, formSpell] : _formSpells)
         if (std::find(e.ranks.begin(), e.ranks.end(), formSpell) != e.ranks.end())
             grantsForms |= uint64(1) << (form - 1);
+
+    // A talent can bring a companion in too -- a kit, or the form it is locked
+    // to -- and a talent is always earned, since there is no such thing as a
+    // companion talent. So owning one keeps what it brought alive, exactly as
+    // an earned ability does below.
+    for (auto const& [talentId, rank] : st.talents)
+    {
+        TalentPoolEntry const* t = GetTalent(talentId);
+        if (!t)
+            continue;
+
+        if (grantsForms && t->rankSpells[0])
+            if (SpellInfo const* info = sSpellMgr->GetSpellInfo(t->rankSpells[0]))
+                if ((info->Stances & grantsForms)
+                    && !info->HasAttribute(SPELL_ATTR2_ALLOW_WHILE_NOT_SHAPESHIFTED))
+                    return true;
+
+        for (uint8 r = 0; r < t->maxRank && r < t->rankSpells.size(); ++r)
+        {
+            auto itr = _formKits.find(t->rankSpells[r]);
+            if (itr == _formKits.end())
+                continue;
+            for (uint32 kitSpell : itr->second)
+                if (std::find(e.ranks.begin(), e.ranks.end(), kitSpell) != e.ranks.end())
+                    return true;
+        }
+    }
 
     for (auto const& [ownedFirst, owned] : st.abilities)
     {
@@ -2911,7 +3196,28 @@ void ClasslessMgr::SyncRequiredForms(Player* player)
 
     for (uint32 firstSpell : earned)
         if (AbilityEntry const* e = GetAbility(firstSpell))
-            GrantRequiredForm(player, *e);
+            GrantRequiredForm(player, *e, false);   // a catch-up pass, not news
+
+    // The kits get the same catch-up. A pair added to cw_form_kits after a
+    // Hero was built would otherwise never reach them: kits only fire when
+    // something is gained, and they already own it. That is how a character
+    // ends up holding Summon Voidwalker with no Drain Soul to make a shard
+    // with. Runs for talents too, since those carry kits now.
+    //
+    // Cheap on every login after the first: the kit skips whatever is already
+    // owned and says nothing when it hands over nothing.
+    for (uint32 firstSpell : earned)
+        if (AbilityEntry const* e = GetAbility(firstSpell))
+            GrantFormKit(player, *e);
+    std::vector<uint32> talents;
+    for (auto const& [talentId, rank] : st.talents)
+        talents.push_back(talentId);
+    for (uint32 talentId : talents)
+        if (TalentPoolEntry const* t = GetTalent(talentId))
+        {
+            GrantTalentKit(player, *t);
+            GrantTalentRequiredForm(player, *t, false);
+        }
 }
 
 // A pet is a creature standing in the world, not an aura, so losing Summon Imp
@@ -3068,6 +3374,12 @@ void ClasslessMgr::GrantTalentRankInternal(Player* player, TalentPoolEntry const
     Rarity shown = RankRarity(t, newRank);
     Msg(player, Acore::StringFormat("Talent: {}{}|r rank {}/{} ({}).",
         RarityColor(shown), SpellName(t.rankSpells[newRank - 1]), newRank, uint32(t.maxRank), RarityName(shown)));
+
+    // Whatever this talent cannot be used without: the kit, and the stance or
+    // form it is locked to. Safe to run on every rank -- both skip anything
+    // already owned, so ranking up hands over nothing twice.
+    GrantTalentKit(player, t);
+    GrantTalentRequiredForm(player, t);
 }
 
 void ClasslessMgr::RemoveTalentInternal(Player* player, TalentPoolEntry const& t, bool persist)
@@ -3156,11 +3468,27 @@ uint32 ClasslessMgr::StripUnearnedSpells(Player* player)
     // login sweeps it up as unearned and the Hero loses a spell that arrived
     // with Tame Beast, along with wherever it sat on their action bar.
     if (cfg.formKitsEnable)
+    {
         for (auto const& [firstSpell, owned] : st.abilities)
             if (AbilityEntry const* e = GetAbility(firstSpell))
                 for (uint32 rank : e->ranks)
                     if (auto kit = _formKits.find(rank); kit != _formKits.end())
                         earned.insert(kit->second.begin(), kit->second.end());
+        for (auto const& [talentId, rank] : st.talents)
+            if (TalentPoolEntry const* t = GetTalent(talentId))
+                for (uint8 r = 0; r < t->maxRank && r < t->rankSpells.size(); ++r)
+                    if (auto kit = _formKits.find(t->rankSpells[r]); kit != _formKits.end())
+                        earned.insert(kit->second.begin(), kit->second.end());
+    }
+
+    // So is anything handed over with Runeforging. Two of the recipes -- Rune
+    // of Razorice and Rune of Cinderglacier -- carry AcquireMethod 1 on their
+    // skill lines, which puts them in _skillLearnedClassSpells and straight
+    // into the sweep below. Without this a Hero is given them at 55 and has
+    // them taken back on the same login.
+    if (cfg.runeforgingEnable)
+        for (auto const& grant : cfg.runeforgingGrants)
+            earned.insert(grant.first);
 
     GrantGuard guard(_applyingGrant);
     uint32 removed = 0;
@@ -3288,10 +3616,21 @@ void ClasslessMgr::SyncSpellbookTabs(Player* player, bool clearChassisLines)
     //
     // Only ever for lines with nothing earned in them, so the unlearn cascade
     // SetSkill performs has nothing to take.
+    //
+    // Runeforging is the one exception. It is a class line by category, so it
+    // is in _classSkillLines, but a Hero earns nothing on it through the
+    // library and it would be swept away every login. Losing it is not a
+    // missing tab: Player::SetSkill unlearns every spell on the line it
+    // removes, with no class check, so Runeforging and all ten recipes would
+    // go with it. GrantRuneforging owns that line.
     if (clearChassisLines)
         for (uint16 line : _classSkillLines)
+        {
+            if (line == uint16(RUNEFORGING_SKILL_LINE) && player->HasSpell(RUNEFORGING_SPELL))
+                continue;
             if (!want.count(line) && player->HasSkill(line))
                 player->SetSkill(line, 0, 0, 0);
+        }
 
     // Then a tab for each school they actually know. The Hero line rides
     // along too: it is in `want` exactly when a forged spell is owned.
@@ -3456,6 +3795,10 @@ bool ClasslessMgr::UnlearnTalent(Player* player, uint32 talentId, std::string* e
     // what was paid: the first rank only under the flat price, every rank otherwise
     if (cfg.refundOnUnlearn)
         st.talentEssence += cfg.talentFlatCost ? cfg.talentCostPerRank : cfg.talentCostPerRank * ranks;
+    // A talent can bring a companion in -- Bestial Wrath brings the pet it
+    // needs -- so unlearning it has to let that companion go the same way
+    // unlearning an ability does.
+    PruneCompanions(player);
     SaveState(player);
     Msg(player, Acore::StringFormat("Unlearned {}.", name));
     return true;

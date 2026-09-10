@@ -38,7 +38,9 @@ _a = next(i for i, x in enumerate(_lines) if x.startswith("STUBS = r")) + 1
 _b = next(i for i, x in enumerate(_lines) if i > _a and x.rstrip() == "'''")
 STUBS = "".join(_lines[_a:_b]).replace("''' + PLAYER + r'''", PLAYER)
 assert _b > _a, "could not find the stub block in test_addon_flow.py"
-assert "PLAYER" not in STUBS, "stub extraction left a Python fragment in the Lua"
+assert "+ PLAYER +" not in STUBS, "stub extraction left a Python fragment in the Lua"
+# the word PLAYER on its own is fine: the harness has Lua strings like
+# "PLAYERSTAT_BASE_STATS". Only the interpolation itself must be gone.
 
 # What the flow harness deliberately leaves out: real post-hooks, and a tooltip
 # whose TextLeftN font strings can be read back.

@@ -297,6 +297,30 @@ def main():
     check("every row has the 234-field layout",
           all(len(s["values"]) == 234 for s in spells))
 
+    # ---- no forged spell asks for a class tool ------------------------------
+    # Every row is a donor's row with fields overridden, so anything the
+    # generator does not overwrite is inherited. The tool columns were half
+    # covered: Totem was zeroed, RequiredTotemCategoryID was not, and the
+    # twenty-six totem-shaped recipes copied Stoneclaw Totem's Earth Totem.
+    #
+    # Nothing downstream catches it. The server clears the column at startup,
+    # but the client patch's tool sweep runs over CLASS spells and runs BEFORE
+    # the forged rows are appended, so the client kept the requirement, drew a
+    # red "Tools:" line and refused the cast before the server ever saw it.
+    #
+    # Checked on the written values, not on the manifest's override list, so a
+    # row that inherits one still fails.
+    TOOL_COLUMNS = {"Totem_1": 50, "Totem_2": 51,
+                    "RequiredTotemCategoryID_1": 222, "RequiredTotemCategoryID_2": 223,
+                    "RequiresSpellFocus": 18}
+    tooled = []
+    for sp in spells:
+        for label, col in sorted(TOOL_COLUMNS.items()):
+            if int(sp["values"][col]):
+                tooled.append("%s wants %s=%s" % (sp["name"], label, sp["values"][col]))
+    check("no forged spell asks for a class tool or a spell focus",
+          not tooled, "; ".join(sorted(set(tooled))[:4]))
+
     # ---- the Hero talent tab --------------------------------------------------
     # A talent reaches a line through the ordinary spell-mod path, so three
     # things have to hold or it silently does nothing (or far too much).

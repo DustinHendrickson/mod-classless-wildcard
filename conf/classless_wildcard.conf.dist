@@ -620,6 +620,36 @@ ClasslessWildcard.Riding.Enable = 1
 #        Default: "33388:20,33391:40,34090:60,54197:68,34091:70"
 ClasslessWildcard.Riding.Grants = "33388:20,33391:40,34090:60,54197:68,34091:70"
 
+#    ClasslessWildcard.Runeforging.Enable
+#        Train runeforging for every Hero, free, as they reach the level for
+#        it. The runes are weapon enchants, not class power: they are not in
+#        the library, they never roll and they cannot be bought with essence.
+#
+#        Two things stop any chassis but a Death Knight from ever forging, and
+#        this option is what gets past both. The only trainer that sells the
+#        runes is the Death Knight class trainer, which checks the customer's
+#        class; and SkillRaceClassInfo.dbc lists the runeforging skill for
+#        Death Knights alone, so the core hands the skill to nobody else. With
+#        this on, the skill is set directly and the recipes are given outright.
+#
+#        Set to 0 to leave runeforging to Death Knights.
+#        Default: 1
+ClasslessWildcard.Runeforging.Enable = 1
+
+#    ClasslessWildcard.Runeforging.Grants
+#        Comma-separated spell:level pairs, in the same form as Riding.Grants.
+#        The default gives each rune at the level the Death Knight trainer
+#        sells it: Razorice and Cinderglacier 55, Spellshattering and
+#        Spellbreaking 57, Lichbane 60, Swordshattering and Swordbreaking 63,
+#        Fallen Crusader 70, Stoneskin Gargoyle and Nerubian Carapace 72.
+#
+#        Runeforging itself (53428) is first in the list. It is the trade skill
+#        that opens the forge window, no trainer sells it, and without it none
+#        of the recipes can be cast at all.
+#        Default: "53428:55,53341:55,53343:55,53342:57,54447:57,53331:60,
+#                  53323:63,54446:63,53344:70,62158:72,70164:72"
+ClasslessWildcard.Runeforging.Grants = "53428:55,53341:55,53343:55,53342:57,54447:57,53331:60,53323:63,54446:63,53344:70,62158:72,70164:72"
+
 ########################################################################
 # 9  Class rules the module answers for a Hero
 ########################################################################

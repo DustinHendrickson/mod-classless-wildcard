@@ -232,13 +232,28 @@ projected as you spend. Reallocating is free.</em>
   `data/sql/manual/cw_item_classes_revert.sql`.
 - **Abilities that need each other arrive together.** Cat Form brings Claw and Prowl, Bear Form
   brings Maul, Tame Beast brings Call Pet and the rest of the pet kit. It works the other way
-  too: Rend and Charge bring Battle Stance, Shred brings Cat Form. Anything that arrives this way
-  is free, is not one of your rolls, cannot be rerolled or unlearned on its own, and leaves when
-  nothing you own still needs it. The pairs are rows in `cw_form_kits`, and neither side has to
-  be a form.
-- **No spell asks for a class tool.** Stoneskin Totem wants an Earth Totem and Runeforging wants
-  a runeforge, tools handed to one class each. Every spell in the library drops that requirement,
-  on the server and in the client patch, so it casts whoever earned it. Reagents are unchanged.
+  too: Rend and Charge bring Battle Stance, Shred brings Cat Form, Kill Command brings a pet to
+  command. Anything with a hard prerequisite carries it: every spell that spends a Soul Shard
+  brings Drain Soul, which is the only thing in the game that makes one; Health Funnel and Dark
+  Pact bring Summon Imp; Demonic Circle: Teleport brings the circle to teleport to. Anything that
+  arrives this way is free, is not one of your rolls, cannot be rerolled or unlearned on its own,
+  and leaves when nothing you own still needs it. The pairs are rows in `cw_form_kits`, neither
+  side has to be a form, and a pair added later reaches existing characters at their next login.
+- **Talents follow the same rules.** A talent locked to a stance or form brings it, exactly as an
+  ability does: Sweeping Strikes brings a warrior stance, Premeditation brings Stealth, Feral
+  Swiftness brings Cat Form. Where the form is itself a talent, and so cannot be handed over, the
+  talent says where it comes from instead: Improved Moonkin Form points at Moonkin Form. Talents
+  carry kits too, so Summon Felguard brings Drain Soul, Bestial Wrath and Intimidation bring the
+  pet they command, and Ghoul Frenzy brings Raise Dead. A handful of requirements are enforced by
+  the core's own spell scripts rather than by the spell's data, and those are paired by hand:
+  Savage Roar and Survival Instincts bring Cat Form, Death Pact brings Raise Dead.
+- **No spell asks for a class tool.** Stoneskin Totem wants an Earth Totem, a relic handed to
+  shamans and nobody else. Every spell in the library drops that requirement, on the server and
+  in the client patch, so it casts for whoever earned it, and the generated spells are written
+  without one. Reagents are unchanged, and a Hero gets them the same way any character does: most
+  are sold by reagent vendors, a few (Light Feather, Fish Oil, Shiny Fish Scales) are drops, and
+  a Soul Shard is made with Drain Soul, which is why every spell that spends one brings it. A
+  runeforge is not a tool but a place, and that stays as it is, the same as for a Death Knight.
 - **A summon leaves with its spell.** Reroll Summon Imp away and the imp is dismissed instead of
   standing there permanently. Rerolling Tame Beast away puts the tamed beast away too. The beast
   is kept, not destroyed, so rolling Tame Beast again calls the same one back.
@@ -536,6 +551,29 @@ Hero is given it free as they reach the level for it:
 The schedule is `Riding.Grants`, a list of `spell:level` pairs; set every level to 1 to grant them
 all at character creation. `Riding.Enable = 0` turns the grant off and leaves riding to the
 trainers. Cold Weather Flying is the permission to fly in Northrend rather than a skill rank.
+
+**Runeforging.** Runeforging is given on the same terms, and for the same reason: the runes are
+weapon enchants rather than class power. They are not in the library, they never roll and they
+cannot be bought with essence.
+
+They also cannot be reached any other way. Each rune is a recipe, listed in the runeforge window
+instead of the spellbook, and it is castable only through Runeforging, which is a trade skill: the
+library does not stock those, so it can be neither rolled nor bought. The one vendor for the runes
+is the Death Knight class trainer, and it checks the customer's class. The module gives Runeforging
+and the recipes out on that trainer's own schedule, and sets the skill itself:
+
+| level | granted |
+| --- | --- |
+| 55 | Runeforging, Rune of Razorice, Rune of Cinderglacier |
+| 57 | Rune of Spellshattering, Rune of Spellbreaking |
+| 60 | Rune of Lichbane |
+| 63 | Rune of Swordshattering, Rune of Swordbreaking |
+| 70 | Rune of the Fallen Crusader |
+| 72 | Rune of the Stoneskin Gargoyle, Rune of the Nerubian Carapace |
+
+The schedule is `Runeforging.Grants`, in the same `spell:level` form. `Runeforging.Enable = 0`
+turns the grant off and leaves runeforging to Death Knights. A Hero forges at any runeforge, on
+any weapon the rune allows, exactly as a Death Knight does.
 
 **Mounts.** Vendor mounts, drops, reputation mounts and quest mounts carry no class mask, are not
 in the library, and behave as they do on any realm.

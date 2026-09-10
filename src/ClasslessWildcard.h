@@ -45,6 +45,13 @@ namespace ClasslessWildcard
     // data/sql/generators/gen_forged_spells.py; test_forged.py checks.
     constexpr uint32 HERO_SKILL_LINE = 990;
 
+    // Runeforging: the skill line, and the trade skill that opens the forge
+    // window. SkillRaceClassInfo.dbc lists line 776 for class mask 0x20 alone,
+    // so Player::LearnDefaultSkill hands the skill to no other chassis and the
+    // module sets it directly. See GrantRuneforging.
+    constexpr uint32 RUNEFORGING_SKILL_LINE = 776;
+    constexpr uint32 RUNEFORGING_SPELL = 53428;
+
     enum class Mode : uint8
     {
         Classless = 0,  // free-pick with essences
@@ -268,6 +275,14 @@ namespace ClasslessWildcard
 
         bool ridingEnable = true;
         std::vector<std::pair<uint32, uint32>> ridingGrants;
+
+        // Runeforging is not class power either. The runes are weapon
+        // enchants handed out as recipes: the forge window lists them instead
+        // of the spellbook, they are castable only through Runeforging, and
+        // the one trainer that sells them checks the customer's class. Same
+        // shape as Riding.Grants, at the levels that trainer uses.
+        bool runeforgingEnable = true;
+        std::vector<std::pair<uint32, uint32>> runeforgingGrants;
 
         std::vector<std::pair<uint32, uint32>> starterKitItems;  // into bags
         std::vector<std::pair<uint32, uint32>> starterKitEquip;  // auto-equipped (armour)
