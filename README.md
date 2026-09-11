@@ -205,12 +205,8 @@ projected as you spend. Reallocating is free.</em>
   stock talent frame shows it at the rank you own, and granted as its underlying spell, so it is
   in your spellbook too. You spend Talent Essence rather than talent points: the native point
   total stays at zero, whatever your level.
-- **A spell reachable only through a talent is priced like one.** A talent-taught spell reports
-  the level of its own rank rather than the tier that grants it, and so does a spell castable
-  only in a form a talent grants: Challenging Howl reads level 1 and can be used only in
-  Metamorphosis, a 41-point talent. Both are gated by the tree row instead, which puts Challenging
-  Howl at 60 beside Immolation Aura and Demon Charge. A spell that also works in a form an
-  ability can hand over is left alone, because that one is reachable without the talent.
+- **A spell you can only reach through a talent is gated at that talent's tier**, not at the
+  level its own rank claims.
 - **Ability talents are abilities.** A talent that teaches a spell, such as Pyroblast, Mortal
   Strike or Mangle, is not on the Talents list. The spell is in the Abilities list instead, at
   the level its talent tier would open, with every rank. Owning it meets any prerequisite on
@@ -220,23 +216,10 @@ projected as you spend. Reallocating is free.</em>
 
 - **No class to pick.** Character creation shows races only. Every Hero runs on the same
   Paladin chassis, which grants no class abilities and locks nothing away.
-- **Talent numbers on a spell tooltip.** The client works these out itself, from its own tables,
-  once it will accept the talent. `SMSG_TALENTS_INFO` sends a talent id and a rank and nothing
-  else; the client looks up the rank spell, its spell family and its affect mask, which is a
-  complete and unambiguous description of what the talent modifies. What stopped it was
-  `TalentTab.dbc`: a talent whose tree does not claim the character's class is not the
-  character's talent and is dropped before any of that happens, so a Hero's warrior talents never
-  reached the arithmetic and Shield Wall kept drawing five minutes while the server charged four.
-  The client patch opens all thirty player trees to every class, the same way it already opens
-  skill lines, and every number comes out right on its own -- cooldown, cost, cast time, damage
-  and the values inside the description sentence alike.
-
-  Nothing in the addon touches a spell tooltip. There is no correction layer and no second copy
-  of these numbers: the client holds the only one.
-
-  Known trade-off: the stock talent frame draws three trees and the client now reports thirty for
-  your class, so that frame shows an arbitrary three. The module's own talent browser is
-  unaffected and is where a Hero's talents are meant to be read.
+- **Tooltips count your talents.** The client patch opens every talent tree to every class, so
+  the client applies a Hero's talents to its own tooltips: cooldown, cost, cast time, damage and
+  the numbers in the description. The stock talent frame only draws three trees, so use the
+  addon's talent browser to read a build.
 - **Universal resources.** Every Hero has mana, rage and energy at once. One shows on the main
   bar and the addon draws mini-bars for the rest. Each spell draws from its own resource, so the
   same Hero casts Fireball on mana and Bloodthirst on rage.
@@ -247,63 +230,29 @@ projected as you spend. Reallocating is free.</em>
   adds melee attack power per Agility, extra ranged attack power per Agility and spell power per
   Intellect. Hovering a stat in the addon shows what a point is worth at your level.
 - **All proficiencies taught.** Armor, weapons and dual wield, each configurable.
-- **One thing the base class still decides.** A wand's Shoot takes its damage school from the
-  wand for a mage, priest or warlock and stays Physical for everyone else, and the core reads the
-  class mask directly to decide that. No script hook can answer it: `Spell::m_spellSchoolMask` is
-  protected, `SpellScript`'s friendship does not reach a script derived from it, and no script in
-  the core writes it either. A Hero's wand therefore hits as Physical. It costs resistance
-  typing, nothing else.
 - **The base class never restricts a build.** Any relic equips, shields work, and Overpower,
   Revenge, Riposte and Counterattack fire regardless of base class. A weapon's feral attack power
-  counts in Cat and Bear form, and a pet inherits its owner's hit and expertise from the pool
-  rather than from whichever power bar is on screen.
+  counts in Cat and Bear form, and a pet inherits its owner's hit and expertise.
 - **Every item is open to every Hero.** Class armour sets, all 353 glyphs, rogue poisons, soul
-  bags, quivers and class-locked relics. The core checks an item's class mask before any script
-  can answer, so this is done in the world database and reverts with
+  bags, quivers and class-locked relics. Done in the world database, and reversible with
   `data/sql/manual/cw_item_classes_revert.sql`.
-- **Abilities that need each other arrive together.** Cat Form brings Claw and Prowl, Bear Form
-  brings Maul, Tame Beast brings Call Pet and the rest of the pet kit. It works the other way
-  too: Rend and Charge bring Battle Stance, Shred brings Cat Form, Kill Command brings a pet to
-  command. Anything with a hard prerequisite carries it: every spell that spends a Soul Shard
-  brings Drain Soul, which is the only thing in the game that makes one; Health Funnel and Dark
-  Pact bring Summon Imp; Demonic Circle: Teleport brings the circle to teleport to. Anything that
-  arrives this way is free, is not one of your rolls, cannot be rerolled or unlearned on its own,
-  and leaves when nothing you own still needs it. The pairs are rows in `cw_form_kits`, neither
-  side has to be a form, and a pair added later reaches existing characters at their next login.
-- **Talents follow the same rules.** A talent locked to a stance or form brings it, exactly as an
-  ability does: Sweeping Strikes brings a warrior stance, Premeditation brings Stealth, Feral
-  Swiftness brings Cat Form. Where the form is itself a talent, and so cannot be handed over, the
-  talent says where it comes from instead: Improved Moonkin Form points at Moonkin Form. Talents
-  carry kits too, so Summon Felguard brings Drain Soul, Bestial Wrath and Intimidation bring the
-  pet they command, and Ghoul Frenzy brings Raise Dead. A handful of requirements are enforced by
-  the core's own spell scripts rather than by the spell's data, and those are paired by hand:
-  Savage Roar and Survival Instincts bring Cat Form, Death Pact brings Raise Dead.
-- **No spell asks for a class tool.** Stoneskin Totem wants an Earth Totem, a relic handed to
-  shamans and nobody else. Every spell in the library drops that requirement, on the server and
-  in the client patch, so it casts for whoever earned it, and the generated spells are written
-  without one. Reagents are unchanged, and a Hero gets them the same way any character does: most
-  are sold by reagent vendors, a few (Light Feather, Fish Oil, Shiny Fish Scales) are drops, and
-  a Soul Shard is made with Drain Soul, which is why every spell that spends one brings it. A
-  runeforge is not a tool but a place, and that stays as it is, the same as for a Death Knight.
+- **Anything with a prerequisite carries it.** Cat Form brings Claw and Prowl, Charge brings
+  Battle Stance, Kill Command brings a pet, every spell that spends a Soul Shard brings Drain
+  Soul. Talents do the same: Bestial Wrath brings the pet it commands, Summon Felguard brings
+  Drain Soul, Sweeping Strikes brings a warrior stance. Where the form comes from a talent and
+  cannot be given, the ability says so. Anything handed over this way is free, is not one of your
+  rolls, and leaves when nothing you own still needs it. The pairs are rows in `cw_form_kits`.
+- **No spell asks for a class tool.** Stoneskin Totem needs no Earth Totem. Reagents are
+  unchanged and are bought or farmed as normal. A runeforge is a place, not a tool, and still
+  has to be visited.
 - **A summon leaves with its spell.** Reroll Summon Imp away and the imp is dismissed instead of
   standing there permanently. Rerolling Tame Beast away puts the tamed beast away too. The beast
   is kept, not destroyed, so rolling Tame Beast again calls the same one back.
-- **The free-spell sweep takes back abilities, not machinery.** A chassis is handed its own
-  class's starter spells by the core, and those are taken back -- Holy Light, Seal of
-  Righteousness and the rest. Only the visible ones: seventeen of the spells a skill line hands
-  out are passive or hidden, and they are not free abilities but the parts other spells are built
-  from. Rune Strike's proc enabler is one, and without it Rune Strike refuses to cast for good;
-  so are Runic Focus, Forceful Deflection, Maelstrom Ready, Blood Plague, Frost Fever and the
-  judgement anti-dodge passive.
 - **Class quests are open to everyone.** Every chain is reachable by every Hero. A reward that
   would teach a class ability gives nothing for that part; items, XP, gold and reputation are
-  unchanged. Reversible with `data/sql/manual/cw_class_quests_revert.sql`. A few chains gate a
-  scripted step in the core as well as in the database, where no SQL reaches: the Moonglade
-  gossip that flies a druid in and hands out the aquatic form quest is answered too, so the NPC
-  that finishes the chain still talks to a Hero.
-- **An enslaved demon behaves like a warlock's.** The core hands a charmed demon to the charm AI
-  and fixes up the class byte the client reads only when the charmer is a warlock; without that a
-  Hero's enslaved demon kept its creature AI.
+  unchanged. Reversible with `data/sql/manual/cw_class_quests_revert.sql`.
+- **One known limit.** A wand fires as Physical rather than the wand's own damage school. It
+  affects resistance only.
 
 ### Gear
 
@@ -324,10 +273,6 @@ projected as you spend. Reallocating is free.</em>
   places more.
 - **Addon.** The Character Advancement panel, the Wildcard roll UI, resource bars, a first-login
   wizard and a Help guide. Everything it does is also a chat command.
-- **Tooltips that count your talents.** The client only ever expected its own class's talents, so
-  it will not apply an Improved Thunder Clap bought by a Hero: the spellbook kept reading 20 Rage
-  while the server charged 16. The server sends what each spell really costs, casts and waits, and
-  the addon puts those numbers on the tooltip.
 
 ---
 
@@ -390,6 +335,7 @@ It installs:
 - every class shown as **Hero** on the creation screen, character sheet, `/who` and tooltips
 - a single Hero entry per race on the creation screen, with the Hero outfit and emblem
 - names, tooltips and icons for the elemental variants
+- every talent tree opened to every class, so tooltips count a Hero's talents
 
 The creation-screen text lives in a signed game file, so the installer also applies the standard
 "allow custom interface" patch to `Wow.exe`. It backs the file up first.
@@ -398,29 +344,16 @@ The creation-screen text lives in a signed game file, so the installer also appl
 
 `data/sql/db-world/cw_world_item_classes.sql` clears `item_template`.`AllowableClass` on the
 6,509 items that carry a class restriction, and is applied by the updater like the rest of the
-module SQL. The core tests that mask in `Player::CanUseItem` and returns before any script hook
-can answer, so the world database is the only place it can be done.
-
-Without it a Hero is limited to the base class's items: no class armour set, no glyph but the
-base class's, no rogue poison, no soul bag, and six relics that carry a class mask of their own
-stay unusable however many druid or shaman spells the build has bought.
+module SQL. Without it a Hero can only use the base class's items: no class armour set, no glyph
+but the base class's, no rogue poison, no soul bag, and no relic outside its own class.
 
 The original masks are copied into `cw_item_class_backup` first, so
 `data/sql/manual/cw_item_classes_revert.sql` and the world uninstall script both put them back.
 Players should clear their client `Cache` folder after the first apply.
 
-`data/sql/db-world/cw_world_class_loot.sql` finishes the same job on the loot side. The seven
-Sons of Hodir satchels each hold three or four blocks of gear, one per armour class, each in its
-own loot group behind a class condition, so exactly one block pays out. A Hero matched the
-chassis's block and nothing else, which meant every satchel it ever opened paid out plate. The
-conditions come off and the blocks are collapsed into a single group, so a satchel still hands
-over exactly one set, now any of them. Reversible with
-`data/sql/manual/cw_class_loot_revert.sql`.
-
-Nothing else in `conditions` restricts a Hero. The other 1,168 class conditions are paired
-dialogue branches -- "if the player is a mage" beside "if the player is not a mage", the second
-written as a mask of every other class rather than a negation -- so a Hero already matches the
-branch meant for it. Removing those would show a Hero both halves of every conversation.
+`data/sql/db-world/cw_world_class_loot.sql` does the same on the loot side. The seven Sons of
+Hodir satchels pay out one set of gear chosen by armour class; a Hero gets any of them instead of
+the chassis's. Reversible with `data/sql/manual/cw_class_loot_revert.sql`.
 
 > If you installed this module before September 2026, an earlier version shipped this as an
 > opt-in script that kept no backup. Check with
@@ -519,8 +452,7 @@ reset. Every row is on by default. Switching all of them off puts the frame away
 
 All settings live in [`conf/classless_wildcard.conf.dist`](conf/classless_wildcard.conf.dist)
 and are documented inline. Every name below is prefixed `ClasslessWildcard.` in the file. These
-are the ones a realm usually touches; anything not listed is either a detail or something that
-breaks the module when changed, which is why it is not a setting at all.
+are the ones a realm usually touches; anything not listed is a detail.
 
 | Setting | Default | Meaning |
 | --- | --- | --- |
@@ -609,15 +541,9 @@ The schedule is `Riding.Grants`, a list of `spell:level` pairs; set every level 
 all at character creation. `Riding.Enable = 0` turns the grant off and leaves riding to the
 trainers. Cold Weather Flying is the permission to fly in Northrend rather than a skill rank.
 
-**Runeforging.** Runeforging is given on the same terms, and for the same reason: the runes are
-weapon enchants rather than class power. They are not in the library, they never roll and they
-cannot be bought with essence.
-
-They also cannot be reached any other way. Each rune is a recipe, listed in the runeforge window
-instead of the spellbook, and it is castable only through Runeforging, which is a trade skill: the
-library does not stock those, so it can be neither rolled nor bought. The one vendor for the runes
-is the Death Knight class trainer, and it checks the customer's class. The module gives Runeforging
-and the recipes out on that trainer's own schedule, and sets the skill itself:
+**Runeforging.** The runes are weapon enchants, not class power, so they are not in the library
+and never roll. Every Hero is given Runeforging and the recipes free, on the schedule the Death
+Knight trainer uses:
 
 | level | granted |
 | --- | --- |
@@ -629,8 +555,8 @@ and the recipes out on that trainer's own schedule, and sets the skill itself:
 | 72 | Rune of the Stoneskin Gargoyle, Rune of the Nerubian Carapace |
 
 The schedule is `Runeforging.Grants`, in the same `spell:level` form. `Runeforging.Enable = 0`
-turns the grant off and leaves runeforging to Death Knights. A Hero forges at any runeforge, on
-any weapon the rune allows, exactly as a Death Knight does.
+leaves runeforging to Death Knights. A Hero forges at any runeforge, on any weapon the rune
+allows.
 
 **Mounts.** Vendor mounts, drops, reputation mounts and quest mounts carry no class mask, are not
 in the library, and behave as they do on any realm.
