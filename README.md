@@ -230,7 +230,10 @@ projected as you spend. Reallocating is free.</em>
   Intellect. Hovering a stat in the addon shows what a point is worth at your level.
 - **All proficiencies taught.** Armor, weapons and dual wield, each configurable.
 - **The base class never restricts a build.** Any relic equips, shields work, and Overpower,
-  Revenge, Riposte and Counterattack fire regardless of base class.
+  Revenge, Riposte and Counterattack fire regardless of base class. A weapon's feral attack power
+  counts in Cat and Bear form, a wand fires in the wand's own damage school rather than as
+  physical, and a pet inherits its owner's hit and expertise from the pool rather than from
+  whichever power bar is on screen.
 - **Every item is open to every Hero.** Class armour sets, all 353 glyphs, rogue poisons, soul
   bags, quivers and class-locked relics. The core checks an item's class mask before any script
   can answer, so this is done in the world database and reverts with
@@ -375,6 +378,19 @@ stay unusable however many druid or shaman spells the build has bought.
 The original masks are copied into `cw_item_class_backup` first, so
 `data/sql/manual/cw_item_classes_revert.sql` and the world uninstall script both put them back.
 Players should clear their client `Cache` folder after the first apply.
+
+`data/sql/db-world/cw_world_class_loot.sql` finishes the same job on the loot side. The seven
+Sons of Hodir satchels each hold three or four blocks of gear, one per armour class, each in its
+own loot group behind a class condition, so exactly one block pays out. A Hero matched the
+chassis's block and nothing else, which meant every satchel it ever opened paid out plate. The
+conditions come off and the blocks are collapsed into a single group, so a satchel still hands
+over exactly one set, now any of them. Reversible with
+`data/sql/manual/cw_class_loot_revert.sql`.
+
+Nothing else in `conditions` restricts a Hero. The other 1,168 class conditions are paired
+dialogue branches -- "if the player is a mage" beside "if the player is not a mage", the second
+written as a mask of every other class rather than a negation -- so a Hero already matches the
+branch meant for it. Removing those would show a Hero both halves of every conversation.
 
 > If you installed this module before September 2026, an earlier version shipped this as an
 > opt-in script that kept no backup. Check with

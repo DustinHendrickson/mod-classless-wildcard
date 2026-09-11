@@ -19,6 +19,7 @@
 #include "DatabaseEnv.h"
 #include "Duration.h"
 #include "GameTime.h"
+#include "Item.h"
 #include "Optional.h"
 #include "Pet.h"
 #include "Player.h"
@@ -212,6 +213,47 @@ public:
                     if (sClasslessMgr->IsExempt(const_cast<Player*>(player)))
                         return std::nullopt;
                     return OwnsCounterattack(player);
+                }
+                break;
+            // Stats are the chassis's, deliberately: the module adds its own
+            // attack and spell power on top and the addon quotes the chassis
+            // rates, so a blanket answer here would rewrite formulas it has
+            // already accounted for. Druid is the one exception worth making,
+            // and only for the three sites that ask it:
+            //
+            //   Player.cpp    the feral attack power carried on a WEAPON. Only
+            //                 the druid branch reads it, so a Hero in Cat or
+            //                 Bear got nothing at all from a feral weapon.
+            //   StatSystem    ranged attack power, which the druid branch puts
+            //                 at zero in a feral form and leaves at Agility-10
+            //                 outside one -- the same as the default branch.
+            //   StatSystem    melee attack power, which is UNREACHABLE: the
+            //                 chain tests Paladin, Death Knight and Warrior,
+            //                 then Hunter, Shaman and Rogue, before it ever
+            //                 reaches druid.
+            //
+            // That last one is what makes this safe, and it is safe only while
+            // the chassis is one of those six. A realm on a Mage or Priest
+            // chassis would fall through to the druid formula and have its
+            // melee attack power rewritten, so the answer is withheld there.
+            case CLASS_CONTEXT_STATS:
+                // Every class but druid keeps the chassis's own answer. A
+                // `break` here would fall through to the yes below and make a
+                // Hero every class at once for the attack and spell power
+                // formulas, which is the whole thing this case exists to avoid.
+                if (playerClass != CLASS_DRUID)
+                    return std::nullopt;
+                switch (player->getClass())
+                {
+                    case CLASS_PALADIN:
+                    case CLASS_DEATH_KNIGHT:
+                    case CLASS_WARRIOR:
+                    case CLASS_HUNTER:
+                    case CLASS_SHAMAN:
+                    case CLASS_ROGUE:
+                        break;                 // the melee chain stops first
+                    default:
+                        return std::nullopt;   // it would not, so say nothing
                 }
                 break;
             // Class quests are open to every Hero in the database, but a few
@@ -894,10 +936,146 @@ class spell_cw_judgement_of_wisdom : public AuraScript
     }
 };
 
+// 61013 - Warlock Pet Scaling 05, 61017 - Hunter Pet Scaling 04
+//
+// How much of the owner's hit and expertise a pet inherits. The core picks the
+// source with `IsClass(CLASS_HUNTER, ...)` and then `getPowerType()` -- the bar
+// the player happens to be SHOWING. A Hero has mana, rage and energy at once
+// and chooses which one is on the main bar, so a pet's hit and expertise moved
+// every time its owner clicked a mini-bar.
+//
+// The third spell in this file with that fault, and the same fix: ask the pool
+// rather than the bar. The class test goes the same way -- what it stands in
+// for is "is this a hunter's pet", which the pet itself can answer, so a Hero
+// with a tamed beast inherits ranged hit the way a hunter does whatever the
+// chassis is.
+//
+// Everything else is the core's own script, copied so the binding can be taken
+// over whole: spell_script_names is a multimap and both scripts would otherwise
+// calculate, with the loser's answer landing second.
+class spell_cw_pet_hit_expertise_scaling : public AuraScript
+{
+    PrepareAuraScript(spell_cw_pet_hit_expertise_scaling);
+
+    static int32 Percent(float hitChance, float cap, float maxChance)
+    {
+        return int32((hitChance / cap) * maxChance);
+    }
+
+    // `maxChance` is the effect's own ceiling: 8 for hit, 17 for spell hit,
+    // 26 for expertise, exactly as the core passes them.
+    int32 Inherited(float maxChance)
+    {
+        Unit* pet = GetUnitOwner();
+        Player* modOwner = pet ? pet->GetSpellModOwner() : nullptr;
+        if (!modOwner)
+            return 0;
+
+        bool hunterPet = false;
+        if (Pet const* asPet = pet->ToPet())
+            hunterPet = asPet->getPetType() == HUNTER_PET;
+
+        if (hunterPet || modOwner->IsClass(CLASS_HUNTER, CLASS_CONTEXT_STATS))
+            return Percent(modOwner->m_modRangedHitChance, 8.0f, maxChance);
+        if (UsesPower(modOwner, POWER_MANA))
+            return Percent(modOwner->m_modSpellHitChance, 17.0f, maxChance);
+        return Percent(modOwner->m_modMeleeHitChance, 8.0f, maxChance);
+    }
+
+    void CalculateHitAmount(AuraEffect const* /*aurEff*/, int32& amount, bool& /*recalc*/)
+    {
+        amount = Inherited(8.0f);
+    }
+
+    void CalculateSpellHitAmount(AuraEffect const* /*aurEff*/, int32& amount, bool& /*recalc*/)
+    {
+        amount = Inherited(17.0f);
+    }
+
+    void CalculateExpertiseAmount(AuraEffect const* /*aurEff*/, int32& amount, bool& /*recalc*/)
+    {
+        amount = Inherited(26.0f);
+    }
+
+    void HandleEffectApply(AuraEffect const* aurEff, AuraEffectHandleModes /*mode*/)
+    {
+        GetUnitOwner()->ApplySpellImmune(GetId(), IMMUNITY_STATE, aurEff->GetAuraType(), true,
+                                         SPELL_BLOCK_TYPE_POSITIVE);
+    }
+
+    void CalcPeriodic(AuraEffect const* /*aurEff*/, bool& isPeriodic, int32& amplitude)
+    {
+        if (!GetUnitOwner()->IsPet())
+            return;
+
+        isPeriodic = true;
+        amplitude = 3 * IN_MILLISECONDS;
+    }
+
+    void HandlePeriodic(AuraEffect const* aurEff)
+    {
+        PreventDefaultAction();
+        GetEffect(aurEff->GetEffIndex())->RecalculateAmount();
+    }
+
+    void Register() override
+    {
+        DoEffectCalcAmount += AuraEffectCalcAmountFn(
+            spell_cw_pet_hit_expertise_scaling::CalculateHitAmount, EFFECT_0, SPELL_AURA_MOD_HIT_CHANCE);
+        DoEffectCalcAmount += AuraEffectCalcAmountFn(
+            spell_cw_pet_hit_expertise_scaling::CalculateSpellHitAmount, EFFECT_1, SPELL_AURA_MOD_SPELL_HIT_CHANCE);
+        DoEffectCalcAmount += AuraEffectCalcAmountFn(
+            spell_cw_pet_hit_expertise_scaling::CalculateExpertiseAmount, EFFECT_2, SPELL_AURA_MOD_EXPERTISE);
+
+        OnEffectApply += AuraEffectApplyFn(
+            spell_cw_pet_hit_expertise_scaling::HandleEffectApply, EFFECT_ALL, SPELL_AURA_ANY,
+            AURA_EFFECT_HANDLE_REAL);
+        DoEffectCalcPeriodic += AuraEffectCalcPeriodicFn(
+            spell_cw_pet_hit_expertise_scaling::CalcPeriodic, EFFECT_ALL, SPELL_AURA_ANY);
+        OnEffectPeriodic += AuraEffectPeriodicFn(
+            spell_cw_pet_hit_expertise_scaling::HandlePeriodic, EFFECT_ALL, SPELL_AURA_ANY);
+    }
+};
+
+// 5019 - Shoot, the wand attack
+//
+// The core gives the shot the WAND's own damage school -- fire, shadow,
+// arcane -- but only for CLASSMASK_WAND_USERS, which is mage, priest and
+// warlock. That is a raw class mask with no hook behind it, so a Hero's wand
+// fired as PHYSICAL (Shoot's own school is 1) and had its damage cut by the
+// target's armour however elemental the wand was. The module teaches wand
+// proficiency and Shoot on purpose, so Heroes do carry them.
+//
+// Only fills the gap: a real wand user already has the core's override, and
+// this leaves them alone rather than doing it twice.
+class spell_cw_wand_shoot_school : public SpellScript
+{
+    PrepareSpellScript(spell_cw_wand_shoot_school);
+
+    void SetWandSchool()
+    {
+        Player* caster = GetCaster() ? GetCaster()->ToPlayer() : nullptr;
+        if (!caster || !sClasslessMgr->cfg.enabled || sClasslessMgr->IsExempt(caster))
+            return;
+        if (caster->getClassMask() & CLASSMASK_WAND_USERS)
+            return;
+        if (Item* wand = caster->GetWeaponForAttack(RANGED_ATTACK))
+            GetSpell()->m_spellSchoolMask =
+                SpellSchoolMask(1 << wand->GetTemplate()->Damage[0].DamageType);
+    }
+
+    void Register() override
+    {
+        BeforeCast += SpellCastFn(spell_cw_wand_shoot_school::SetWandSchool);
+    }
+};
+
 void AddClasslessPlayerScripts()
 {
     new ClasslessWorldScript();
     new ClasslessPlayerScript();
     RegisterSpellScript(spell_cw_frenzied_regeneration);
     RegisterSpellScript(spell_cw_judgement_of_wisdom);
+    RegisterSpellScript(spell_cw_pet_hit_expertise_scaling);
+    RegisterSpellScript(spell_cw_wand_shoot_school);
 }

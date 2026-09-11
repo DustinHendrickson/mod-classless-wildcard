@@ -9,6 +9,15 @@
 --                                -- no healing at all, however full the rage is
 --   20186 Judgement of Wisdom    `CheckProc: getPowerType() == POWER_MANA`
 --                                -- no mana, though the Hero pays mana costs
+--   61013 Warlock Pet Scaling 05 `else if (getPowerType() == POWER_MANA)`
+--   61017 Hunter Pet Scaling 04  -- how much of the owner's hit and expertise
+--                                the pet inherits moved every time the owner
+--                                switched which bar was on screen
+--
+-- 5019 Shoot is the other shape: the core gives a wand shot the WAND's damage
+-- school, but gates it on a raw class mask with no hook behind it, so a Hero
+-- fired physically. Nothing of the core's is taken over there -- 5019 has no
+-- script of its own -- this one is simply added.
 --
 -- The module's versions are the core's own implementations with that one
 -- question answered from the pool instead of the bar, and they keep the core's
@@ -24,6 +33,7 @@
 --
 --   Script named 'spell_dru_frenzied_regeneration' is not assigned in the database.
 --   Script named 'spell_pal_judgement_of_wisdom_mana' is not assigned in the database.
+--   Script named 'spell_pet_hit_expertise_scalling' is not assigned in the database.
 --
 -- red, because it is LOG_ERROR("sql.sql"), and harmless. Seeing those two lines
 -- is how you know this file applied.
@@ -33,8 +43,14 @@
 DELETE FROM `spell_script_names` WHERE `spell_id` = 22842 AND `ScriptName` = 'spell_dru_frenzied_regeneration';
 DELETE FROM `spell_script_names` WHERE `spell_id` = 20186 AND `ScriptName` = 'spell_pal_judgement_of_wisdom_mana';
 
+DELETE FROM `spell_script_names` WHERE `spell_id` IN (61013, 61017) AND `ScriptName` = 'spell_pet_hit_expertise_scalling';
+
 DELETE FROM `spell_script_names` WHERE `ScriptName` IN
-    ('spell_cw_frenzied_regeneration', 'spell_cw_judgement_of_wisdom');
+    ('spell_cw_frenzied_regeneration', 'spell_cw_judgement_of_wisdom',
+     'spell_cw_pet_hit_expertise_scaling', 'spell_cw_wand_shoot_school');
 INSERT INTO `spell_script_names` (`spell_id`, `ScriptName`) VALUES
 (22842, 'spell_cw_frenzied_regeneration'),
-(20186, 'spell_cw_judgement_of_wisdom');
+(20186, 'spell_cw_judgement_of_wisdom'),
+(61013, 'spell_cw_pet_hit_expertise_scaling'),
+(61017, 'spell_cw_pet_hit_expertise_scaling'),
+(5019,  'spell_cw_wand_shoot_school');
