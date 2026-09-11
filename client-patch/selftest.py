@@ -43,6 +43,12 @@ def check(label, condition, detail=""):
     return condition
 
 
+def installer_payload_names(files):
+    """Every file build_data_patch actually writes, by name."""
+    import install as installer
+    return set(installer.build_data_patch(files, "Hero", [], theme=True))
+
+
 def dbc_strings(data):
     record_count, _fields, record_size, string_size = dbc.parse_header(data)
     start = 20 + record_count * record_size
@@ -256,36 +262,15 @@ def main(argv):
                   after_tools is not None and not any(after_tools),
                   "%d class spell(s) cleared" % tools_cleared)
 
-            # TalentTab: the table that decides whether the client will even
-            # look at a talent the server says you own. Without this a
-            # cross-class talent is dropped before the client works out what it
-            # modifies, and every number it touches stays at the DBC value --
-            # which is what "the talent is not applying" looked like.
+            # TalentTab.dbc is deliberately NOT patched. Opening every tree to
+            # every class made GetNumTalentTabs report 31, and
+            # PanelTemplates_UpdateTabs then indexed PlayerTalentFrameTab5,
+            # which does not exist -- the talent window came up empty and threw.
             raw_tt, tt_source = files.find(TALENTTAB)
-            tt_dbc, tt_opened, tt_already = dbc.open_talent_tabs(raw_tt)
             check("TalentTab.dbc resolved", bool(raw_tt), os.path.basename(tt_source))
-            check("every player talent tree is opened to every class",
-                  bool(tt_opened) or bool(tt_already),
-                  "%d opened, %d already open" % (len(tt_opened), len(tt_already)))
-
-            ttc, ttf, ttr, _tts = dbc.parse_header(tt_dbc)
-            shut = pets_touched = tt_other_column = 0
-            for index in range(ttc):
-                before = struct.unpack_from("<%dI" % ttf, raw_tt, 20 + index * ttr)
-                after = struct.unpack_from("<%dI" % ttf, tt_dbc, 20 + index * ttr)
-                if before[21]:                       # a pet tree
-                    if before != after:
-                        pets_touched += 1
-                elif before[20] and (after[20] & 0x5FF) != 0x5FF:
-                    shut += 1
-                for column in range(ttf):
-                    if before[column] != after[column] and column != 20:
-                        tt_other_column += 1
-            check("no player tree is left shut", shut == 0, "%d still restricted" % shut)
-            check("the three pet trees are untouched", pets_touched == 0)
-            check("nothing but the class mask column moved", tt_other_column == 0)
-            check("re-running the patch changes nothing further",
-                  dbc.open_talent_tabs(tt_dbc)[1] == [])
+            check("TalentTab.dbc is left alone",
+                  TALENTTAB not in installer_payload_names(files),
+                  "the stock talent frame reads GetNumTalentTabs off it")
 
             kept = 0
             out_of_column = 0
@@ -431,7 +416,6 @@ def main(argv):
                 installer.CHRCLASSES: dbc.CHRCLASSES_FIELDS,
                 installer.SKILLRACECLASSINFO: dbc.SKILLRACECLASSINFO_FIELDS,
                 installer.SKILLLINEABILITY: dbc.SKILLLINEABILITY_FIELDS,
-                installer.TALENTTAB: dbc.TALENTTAB_FIELDS,
                 installer.SPELL: dbc.SPELL_FIELDS,
             }
             missing = [k for k in expect if k not in built]

@@ -5478,6 +5478,46 @@ function ClasslessWildcard_TogglePanel()
     if frame:IsShown() then frame:Hide() else frame:Show() end
 end
 
+-- ---------------------------------------------------------------------------
+-- The stock talent window shows PET talents only
+--
+-- A Hero's talents come from every class and are read in this addon's talent
+-- browser. The stock frame can only draw the chassis class's three trees, which
+-- are not the Hero's build and are very nearly empty, so opening it on a player
+-- spec sends you to the browser instead.
+--
+-- Pet talents are left exactly as they are: those really are the pet's own
+-- trees, the stock frame draws them correctly, and there is nothing here that
+-- replaces it.
+-- ---------------------------------------------------------------------------
+do
+    local function steer()
+        if not PlayerTalentFrame or not PlayerTalentFrame:IsShown() then return end
+        if PlayerTalentFrame.pet then return end      -- pet talents: leave it alone
+        if InCombatLockdown() then return end         -- panels do not move in combat
+        HideUIPanel(PlayerTalentFrame)
+        if frame and not frame:IsShown() then frame:Show() end
+    end
+
+    local function attach()
+        if type(_G.PlayerTalentFrame_Toggle) ~= "function" then return false end
+        hooksecurefunc("PlayerTalentFrame_Toggle", steer)
+        return true
+    end
+
+    -- Blizzard_TalentUI is load-on-demand, so the function usually does not
+    -- exist yet; try now in case it does, and watch for the load if it does not.
+    if not attach() then
+        local watcher = CreateFrame("Frame")
+        watcher:RegisterEvent("ADDON_LOADED")
+        watcher:SetScript("OnEvent", function(_, _, name)
+            if name == "Blizzard_TalentUI" and attach() then
+                watcher:UnregisterAllEvents()
+            end
+        end)
+    end
+end
+
 function ClasslessWildcard_ToggleHelp()
     if not frame:IsShown() then frame:Show() end
     if CW.helpFly then

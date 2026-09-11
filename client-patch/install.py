@@ -45,6 +45,10 @@ CHARSTARTOUTFIT = "DBFilesClient\\CharStartOutfit.dbc"
 SKILLRACECLASSINFO = "DBFilesClient\\SkillRaceClassInfo.dbc"
 SKILLLINEABILITY = "DBFilesClient\\SkillLineAbility.dbc"
 SKILLLINE = "DBFilesClient\\SkillLine.dbc"
+# No longer patched: opening every tree to every class emptied the stock
+# talent window (Blizzard_TalentUI reads GetNumTalentTabs off this table).
+# The name stays here and in _OUR_FILES so an archive written by the version
+# that DID patch it is still recognised as ours by uninstall.
 TALENTTAB = "DBFilesClient\\TalentTab.dbc"
 # the same path elemental.py uses, kept in one place so the two never diverge
 SPELL = elemental.SPELL
@@ -220,18 +224,6 @@ def build_data_patch(files, name, report, theme=False):
     report.append("  SkillLineAbility.dbc  %d class spells now belong to every class "
                   "(spellbook tabs for cross-class spells; from %s)"
                   % (changed, os.path.basename(source)))
-
-    # A talent whose tab does not claim the character's class is dropped by the
-    # client, so a Hero's cross-class talents never reached its talent frame.
-    # This opens every tree. It does NOT make spell tooltips count them -- the
-    # modifier packet carries no spell family, so the client can only match
-    # those bits against the chassis's own; the addon corrects the numbers.
-    tt_raw, tt_source = files.find(TALENTTAB)
-    tt_patched, tt_opened, _tt_already = dbc.open_talent_tabs(tt_raw)
-    payload[TALENTTAB] = tt_patched
-    report.append("  TalentTab.dbc     %d talent trees opened to every class "
-                  "(the client accepts cross-class talents; from %s)"
-                  % (len(tt_opened), os.path.basename(tt_source)))
 
     # A class tool is the one requirement a Hero can never meet: Stoneskin
     # Totem wants an Earth Totem, which is handed to shamans alone. The server

@@ -224,63 +224,6 @@ def _open_to_all(row) -> bool:
 TALENTTAB_FIELDS = 24
 TALENTTAB_CLASSMASK = 20
 TALENTTAB_PETMASK = 21
-
-
-def open_talent_tabs(data: bytes):
-    """Let the client accept a talent from any tree, so it applies the talent's
-    own modifiers to a tooltip itself.
-
-    This is the one that makes a cross-class talent's numbers correct on screen
-    without anything having to correct them afterwards.
-
-    SMSG_TALENTS_INFO sends a talent ID and a rank and nothing else. Everything
-    else the client needs is in its own tables: the talent's rank spell, that
-    spell's SpellFamilyName, and its EffectSpellClassMask. That is a complete,
-    unambiguous description of which spells the modifier touches -- unlike
-    SMSG_SET_FLAT_SPELL_MODIFIER, which carries a bit index with no family and
-    cannot say whether bit 13 means Shield Wall or Hand of Sacrifice.
-
-    So the client can work a Hero's talent modifiers out perfectly well. What
-    stops it is this table: a talent whose tab does not claim the character's
-    class is not the character's talent, and is dropped before any of that
-    happens. Opening the tabs is what lets it through.
-
-    Player tabs only. The three pet tabs carry a PetTalentMask instead of a
-    ClassMask and are left exactly as they are.
-
-    Returns (new_dbc_bytes, opened, already_open).
-    """
-    record_count, field_count, record_size, string_size = parse_header(data)
-    if field_count != TALENTTAB_FIELDS or record_size != TALENTTAB_FIELDS * 4:
-        raise DbcError(
-            "TalentTab.dbc has %d fields of %d bytes, expected %d of %d. "
-            "This client build is not the 3.3.5a layout this patch understands."
-            % (field_count, record_size, TALENTTAB_FIELDS, TALENTTAB_FIELDS * 4))
-
-    records_off = 20
-    strings_off = records_off + record_count * record_size
-    records = bytearray(data[records_off:strings_off])
-
-    opened, already = [], []
-    for index in range(record_count):
-        base = index * record_size
-        tab_id = struct.unpack_from("<I", records, base)[0]
-        class_mask = struct.unpack_from("<I", records, base + TALENTTAB_CLASSMASK * 4)[0]
-        pet_mask = struct.unpack_from("<I", records, base + TALENTTAB_PETMASK * 4)[0]
-        if not class_mask or pet_mask:
-            continue                      # pet tree, or not a player tree at all
-        if (class_mask & ALL_CLASSES_MASK) == ALL_CLASSES_MASK:
-            already.append(tab_id)
-            continue
-        struct.pack_into("<I", records, base + TALENTTAB_CLASSMASK * 4,
-                         class_mask | ALL_CLASSES_MASK)
-        opened.append(tab_id)
-
-    header = WDBC_MAGIC + struct.pack("<4I", record_count, field_count,
-                                      record_size, string_size)
-    return header + bytes(records) + data[strings_off:], opened, already
-
-
 def open_class_skill_lines(data: bytes):
     """Let every class hold every class skill line.
 
