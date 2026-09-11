@@ -221,15 +221,16 @@ def build_data_patch(files, name, report, theme=False):
                   "(spellbook tabs for cross-class spells; from %s)"
                   % (changed, os.path.basename(source)))
 
-    # And this is the one that makes a cross-class talent's numbers right on a
-    # tooltip. The client works them out itself from the talent id and rank the
-    # server sends, but it drops a talent whose tab does not claim the
-    # character's class before it ever gets that far.
+    # A talent whose tab does not claim the character's class is dropped by the
+    # client, so a Hero's cross-class talents never reached its talent frame.
+    # This opens every tree. It does NOT make spell tooltips count them -- the
+    # modifier packet carries no spell family, so the client can only match
+    # those bits against the chassis's own; the addon corrects the numbers.
     tt_raw, tt_source = files.find(TALENTTAB)
     tt_patched, tt_opened, _tt_already = dbc.open_talent_tabs(tt_raw)
     payload[TALENTTAB] = tt_patched
     report.append("  TalentTab.dbc     %d talent trees opened to every class "
-                  "(cross-class talents apply to tooltips; from %s)"
+                  "(the client accepts cross-class talents; from %s)"
                   % (len(tt_opened), os.path.basename(tt_source)))
 
     # A class tool is the one requirement a Hero can never meet: Stoneskin

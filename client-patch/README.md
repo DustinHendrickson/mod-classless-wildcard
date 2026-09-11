@@ -18,10 +18,10 @@ Required for every player on a Classless Wildcard realm. The
   tooltip drops the red `Tools:` line and the spell casts. The server clears the
   same requirement; both halves are needed or the client refuses the cast on its
   own. Reagents are untouched
-- **every talent tree is opened to every class**, so the client applies a Hero's
-  talents to its own spell tooltips: cooldown, cost, cast time, damage and the
-  numbers in the description. The stock talent frame only draws three trees, so
-  use the addon's talent browser to read a build
+- **every talent tree is opened to every class**, so the client accepts a Hero's
+  cross-class talents instead of dropping them. It does NOT make spell tooltips
+  count them -- the addon does that. The stock talent frame draws three trees
+  and there are now thirty, so read a build in the addon's talent browser
 - the **ClasslessWildcard** addon is installed
 
 The creation-screen text is a *signed* interface file, so the installer also applies
@@ -110,7 +110,7 @@ Install to this client? [Y/n] y
   CharBaseInfo.dbc all 10 races, one cosmetic class (shown as Hero)
   SkillRaceClassInfo.dbc  86 class skill lines opened to every class
   SkillLineAbility.dbc  3143 class spells now belong to every class (spellbook tabs for cross-class spells)
-  TalentTab.dbc     30 talent trees opened to every class (cross-class talents apply to tooltips)
+  TalentTab.dbc     30 talent trees opened to every class (the client accepts cross-class talents)
   Spell.dbc        class tool requirement cleared from 102 spells (totems, relics; reagents untouched)
   CharStartOutfit.dbc  armored Hero look on 18 races +Blood Elf
   -> Data/patch-Z.MPQ

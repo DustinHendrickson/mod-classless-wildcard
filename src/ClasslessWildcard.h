@@ -36,6 +36,13 @@ namespace ClasslessWildcard
     // (used e.g. for "RV|..." roll-reveal notifications)
     void PushAddon(Player* player, std::string const& body);
 
+    // Re-send the SC records: what a spell really costs, casts and cooldowns
+    // for once the Hero's talents are counted. The client cannot work these
+    // out itself for a talent outside its own class, so a build change that
+    // the addon did not ask for has to say so, or the tooltip keeps the old
+    // numbers until the next login.
+    void PushSpellCorrections(Player* player);
+
     // The starting hand is four cards. The client addon draws exactly four and
     // the config is clamped to it, so the two can never disagree.
     constexpr uint32 MAX_STARTING_HAND = 4;

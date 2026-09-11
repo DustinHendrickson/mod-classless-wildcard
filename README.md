@@ -216,10 +216,15 @@ projected as you spend. Reallocating is free.</em>
 
 - **No class to pick.** Character creation shows races only. Every Hero runs on the same
   Paladin chassis, which grants no class abilities and locks nothing away.
-- **Tooltips count your talents.** The client patch opens every talent tree to every class, so
-  the client applies a Hero's talents to its own tooltips: cooldown, cost, cast time, damage and
-  the numbers in the description. The stock talent frame only draws three trees, so use the
-  addon's talent browser to read a build.
+- **Tooltips count your talents.** Cost, cooldown, cast time, range, duration and the values in
+  the description all read what your build actually gives. Nothing is appended and nothing is
+  reworded: each number is corrected in the line the client itself wrote, in its own wording and
+  locale. Where a sentence is ambiguous -- the same number twice, a range, a per-combo-point
+  list -- it is left exactly as the client wrote it rather than guessed at.
+
+  The client cannot do this itself for a talent from another class. Its modifier packet carries
+  a class-mask bit and no spell family, so it matches those bits only against the chassis's own
+  family: 10% of what a Hero's talents send. The server has the family and does the arithmetic.
 - **Universal resources.** Every Hero has mana, rage and energy at once. One shows on the main
   bar and the addon draws mini-bars for the rest. Each spell draws from its own resource, so the
   same Hero casts Fireball on mana and Bloodthirst on rage.
@@ -335,7 +340,7 @@ It installs:
 - every class shown as **Hero** on the creation screen, character sheet, `/who` and tooltips
 - a single Hero entry per race on the creation screen, with the Hero outfit and emblem
 - names, tooltips and icons for the elemental variants
-- every talent tree opened to every class, so tooltips count a Hero's talents
+- every talent tree opened to every class, so the client accepts a Hero's cross-class talents
 
 The creation-screen text lives in a signed game file, so the installer also applies the standard
 "allow custom interface" patch to `Wow.exe`. It backs the file up first.

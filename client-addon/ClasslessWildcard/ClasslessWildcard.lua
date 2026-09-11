@@ -4926,6 +4926,36 @@ local function HandleMessage(msg)
         RenderList()
         if hand:IsShown() then CW.RenderHand() end
 
+    elseif kind == "SF" then
+        -- What a spell really costs, casts, waits and prints once the Hero's
+        -- talents are counted. The client cannot work this out for a talent
+        -- outside its own class: the modifier packet carries a class-mask bit
+        -- and no spell family, so it matches those bits only against the
+        -- chassis's family.
+        if not CW._collectingFix then
+            CW.spellFix, CW.spellFixByName, CW._collectingFix = {}, {}, true
+        end
+        for _, f in ipairs(ParseEntries(p[2], 14)) do
+            local id = tonumber(f[1])
+            if id then
+                local function num(i) return tonumber(f[i]) or 0 end
+                CW.spellFix[id] = {
+                    cost = tonumber(f[2]), cast = num(3), cd = num(4),
+                    durBase = num(5), durMod = num(6),
+                    rangeBase = num(7), rangeMod = num(8),
+                    -- each pair is (what the client will print, what it should)
+                    pairs = { { num(9), num(10) }, { num(11), num(12) },
+                              { num(13), num(14) } },
+                }
+                local name, rank = GetSpellInfo(id)
+                if name then
+                    CW.spellFixByName[name .. "|" .. (rank or "")] = id
+                end
+            end
+        end
+    elseif kind == "SFE" then
+        CW._collectingFix = false
+
     elseif kind == "OT" then
         if not CW._collectingOwnedT then
             CW.ownedT = {}
@@ -5049,6 +5079,260 @@ local function HandleMessage(msg)
         -- something. Whatever was drawn from a guess -- a padlock, above all
         -- -- goes back to being drawn from the server's answer.
         Send("OWN")
+    end
+end
+
+-- ---------------------------------------------------------------------------
+-- Tooltip corrections
+--
+-- A Hero's talents come from every class, and the client will not apply their
+-- modifiers to a spell tooltip: SMSG_SET_FLAT_SPELL_MODIFIER carries a
+-- class-mask bit and no family, and the client only ever expected its own
+-- class's talents. Thunder Clap kept reading 20 Rage with Improved Thunder
+-- Clap at 3/3 while the server charged 16.
+--
+-- So the server sends the numbers (SC records) and this puts them on screen.
+-- The cost line is rewritten in place; everything else is appended, because
+-- rewriting a cooldown or a cast time by pattern would be guessing at formats
+-- that change with locale and magnitude.
+-- ---------------------------------------------------------------------------
+do
+    CW.spellFix = CW.spellFix or {}
+    CW.spellFixByName = CW.spellFixByName or {}
+
+    -- the client's own power names, so the cost line is found without matching
+    -- English. Anything absent is simply skipped.
+    local POWER_WORDS = {}
+    for _, g in ipairs({ "MANA", "RAGE", "ENERGY", "FOCUS", "RUNIC_POWER", "HEALTH", "RUNES" }) do
+        local w = _G[g]
+        if type(w) == "string" and w ~= "" then POWER_WORDS[#POWER_WORDS + 1] = w end
+    end
+
+    local function fixFor(spellId)
+        return spellId and CW.spellFix[spellId] or nil
+    end
+
+    -- The client builds "5 min cooldown" from SPELL_RECAST_TIME_MIN, which is
+    -- "%.3g min cooldown" here and something else entirely on a Russian
+    -- client. Split that global around its placeholder and we have the exact
+    -- prefix and suffix the client just wrote, in the player's own locale --
+    -- enough to FIND the line it wrote and to write the line back the same
+    -- way. Nothing here types a format out.
+    -- Split a format string around its FIRST placeholder, whatever that
+    -- placeholder is. enUS writes "%.3g min cooldown" but nothing promises
+    -- another locale uses the same conversion, and SPELL_RANGE_DUAL uses the
+    -- positional "%1$s" form, so the whole shape is matched rather than one
+    -- hard-coded spec. Returns nil when there is no placeholder at all.
+    local SPEC = "%%%d?%$?[-+ #0]*%d*%.?%d*[diouxXeEfgGqcs]"
+
+    local function fmtParts(fmt)
+        if type(fmt) ~= "string" then return nil end
+        local at, stop = fmt:find(SPEC)
+        if not at then return nil end
+        return fmt:sub(1, at - 1), fmt:sub(stop + 1)
+    end
+
+    -- The line the client wrote for this format, and ONLY that line: prefix,
+    -- suffix, and a bare number between them. Without the number test,
+    -- "Melee: 5 yd range" (SPELL_RANGE_DUAL) matches SPELL_RANGE's shape and
+    -- the rewrite would throw away the "Melee:" half.
+    local function looksLike(text, fmt)
+        local pre, suf = fmtParts(fmt)
+        if not pre then return false end
+        if #pre > 0 and text:sub(1, #pre) ~= pre then return false end
+        if #suf > 0 and text:sub(-#suf) ~= suf then return false end
+        local middle = text:sub(#pre + 1, #text - #suf)
+        return middle:match("^%s*%-?[%d%.,]+%s*$") ~= nil
+    end
+
+    -- Walk both columns. A spell tooltip puts the cost at the right of line 1
+    -- and the cooldown at the right of line 2, with the cast time on the left
+    -- beside it, but a talent-modified rank or a tooltip raised from the panel
+    -- can shift them, so neither column nor line number is assumed.
+    local function eachLine(tip, fn)
+        local name = tip:GetName()
+        for i = 1, 8 do
+            for _, side in ipairs({ "TextLeft", "TextRight" }) do
+                local line = _G[name .. side .. i]
+                local text = line and line:GetText()
+                if text and text ~= "" and fn(line, text) then return true end
+            end
+        end
+        return false
+    end
+
+    -- Replace the line the client wrote for `fmts` with `newText`.
+    local function replaceLine(tip, fmts, newText)
+        if not newText then return end
+        eachLine(tip, function(line, text)
+            for _, fmt in ipairs(fmts) do
+                if looksLike(text, fmt) then
+                    line:SetText(newText)
+                    return true
+                end
+            end
+        end)
+    end
+
+    -- Same minute/second split the client uses, so 240000 comes back as
+    -- "4 min cooldown" and 6000 as "6 sec cooldown".
+    local function timeText(ms, secFmt, minFmt)
+        local sec = ms / 1000
+        if sec >= 60 and type(minFmt) == "string" then
+            return string.format(minFmt, sec / 60)
+        end
+        if type(secFmt) == "string" then
+            return string.format(secFmt, sec)
+        end
+        return nil
+    end
+
+    -- Swap the leading number on the line that names a power, leaving the
+    -- localised unit word untouched.
+    local function rewriteCost(tip, cost)
+        if not cost then return end
+        eachLine(tip, function(line, text)
+            for _, word in ipairs(POWER_WORDS) do
+                -- The power's own localised name anchors the line; the number
+                -- is then the first one on it, wherever the locale puts it.
+                -- enUS writes "20 Rage", and nothing says every locale leads
+                -- with the number.
+                if text:find(word, 1, true) and text:find("%d") then
+                    line:SetText((text:gsub("%d+", tostring(cost), 1)))
+                    return true
+                end
+            end
+        end)
+    end
+
+    -- Find a number in a line as a WHOLE number: "5" must not match inside
+    -- "55" or "1.5". Returns how many standalone times it occurs and where the
+    -- last one starts.
+    -- A whole number must be written "12", never "12.0": the client prints
+    -- integers and a division here produces a float.
+    local function numText(v)
+        if v == math.floor(v) then return string.format("%d", v) end
+        return tostring(v)
+    end
+
+    local function findStandalone(text, num)
+        local want = numText(num)
+        local from, count, at = 1, 0, nil
+        while true do
+            local i, j = text:find(want, from, true)
+            if not i then break end
+            local before = (i > 1) and text:sub(i - 1, i - 1) or ""
+            local after = text:sub(j + 1, j + 1)
+            if not before:match("[%d%.]") and not after:match("[%d%.]") then
+                count, at = count + 1, i
+            end
+            from = j + 1
+        end
+        return count, at
+    end
+
+    -- Swap a number the description printed for the one the Hero's talents
+    -- actually give. Only when it appears EXACTLY ONCE across the tooltip: a
+    -- sentence that says "5" twice, or a value the client never printed
+    -- because it folded spell power into it, is left exactly as it is. A wrong
+    -- number is worse than an uncorrected one.
+    local function substituteOnce(tip, from, to)
+        if not from or not to or from == 0 or from == to then return end
+        local name, total, hitLine, hitAt = tip:GetName(), 0, nil, nil
+        for i = 2, 8 do
+            local line = _G[name .. "TextLeft" .. i]
+            local text = line and line:GetText()
+            if text and text ~= "" then
+                local n, at = findStandalone(text, from)
+                if n > 0 then
+                    total, hitLine, hitAt = total + n, line, at
+                end
+            end
+        end
+        if total ~= 1 or not hitLine then return end
+        local text = hitLine:GetText()
+        hitLine:SetText(text:sub(1, hitAt - 1) .. numText(to)
+                        .. text:sub(hitAt + #numText(from)))
+    end
+
+    local function decorate(tip, spellId)
+        local fix = fixFor(spellId)
+        if not fix then return end
+        rewriteCost(tip, fix.cost)
+
+        -- Cooldown, cast time and range are corrected IN PLACE, on the line the
+        -- client itself wrote and in the format it used. Nothing is appended:
+        -- the tooltip reads the way it would on a character whose own class
+        -- owned the talent.
+        if fix.cd and fix.cd > 0 then
+            replaceLine(tip, { _G.SPELL_RECAST_TIME_MIN, _G.SPELL_RECAST_TIME_SEC },
+                        timeText(fix.cd, _G.SPELL_RECAST_TIME_SEC,
+                                         _G.SPELL_RECAST_TIME_MIN))
+        end
+        if fix.cast and fix.cast > 0 then
+            replaceLine(tip, { _G.SPELL_CAST_TIME_MIN, _G.SPELL_CAST_TIME_SEC },
+                        timeText(fix.cast, _G.SPELL_CAST_TIME_SEC,
+                                         _G.SPELL_CAST_TIME_MIN))
+        end
+        if fix.rangeMod and fix.rangeMod > 0 and type(_G.SPELL_RANGE) == "string" then
+            replaceLine(tip, { _G.SPELL_RANGE },
+                        string.format(_G.SPELL_RANGE, fix.rangeMod))
+        end
+
+        -- The numbers inside the sentence. $s1/$s2/$s3 are the effect values
+        -- and $d the duration; the server sends what the client will print
+        -- beside what it should, and the swap is refused unless it is
+        -- unambiguous.
+        if fix.pairs then
+            for _, pair in ipairs(fix.pairs) do
+                substituteOnce(tip, pair[1], pair[2])
+            end
+        end
+        if fix.durBase and fix.durBase > 0 and fix.durMod and fix.durMod > 0
+           and fix.durBase ~= fix.durMod then
+            local was, now = fix.durBase / 1000, fix.durMod / 1000
+            -- only whole seconds: the client writes fractions its own way
+            if was == math.floor(was) and now == math.floor(now) then
+                substituteOnce(tip, was, now)
+            end
+        end
+        -- Crit chance, threat, crit damage and damage-over-time multipliers are
+        -- deliberately absent. A stock tooltip does not print them for the
+        -- class that owns the talent either; the talent's own tooltip says what
+        -- it does.
+    end
+
+    -- exposed so the harness can drive it: this is the one piece whose output
+    -- the player reads directly, and its cost rewrite is easy to get subtly wrong
+    CW.ApplyTooltipFix = decorate
+
+    -- The spellbook hands us a book slot, the action bar an action slot; both
+    -- resolve to a spell name and rank, and CW.spellFixByName is keyed on that
+    -- because 3.3.5 gives no way to read a spell id back off a tooltip.
+    local function idFromBook(slot, book)
+        local name, rank = GetSpellName(slot, book)
+        if not name then return nil end
+        return CW.spellFixByName[name .. "|" .. (rank or "")]
+    end
+
+    if GameTooltip and hooksecurefunc then
+        hooksecurefunc(GameTooltip, "SetSpell", function(self, slot, book)
+            decorate(self, idFromBook(slot, book))
+        end)
+        -- Every tooltip the panel itself raises goes through SetHyperlink
+        -- ("spell:<id>"), which hands us the id outright -- no name matching.
+        -- Missing this hook is why the Abilities list still read 20 Rage.
+        hooksecurefunc(GameTooltip, "SetHyperlink", function(self, link)
+            local id = link and tonumber(link:match("^spell:(%d+)"))
+            if id then decorate(self, id) end
+        end)
+        hooksecurefunc(GameTooltip, "SetAction", function(self, slot)
+            local kind, id = GetActionInfo(slot)
+            if kind ~= "spell" or not id or id == 0 then return end
+            local name, rank = GetSpellName(id, BOOKTYPE_SPELL)
+            if not name then return end
+            decorate(self, CW.spellFixByName[name .. "|" .. (rank or "")])
+        end)
     end
 end
 
