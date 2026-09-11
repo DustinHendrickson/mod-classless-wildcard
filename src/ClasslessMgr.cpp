@@ -576,13 +576,26 @@ void ClasslessMgr::BuildLibrary()
         _spellSkillLine[sla->Spell] = uint16(sla->SkillLine);
         _classSkillLines.insert(uint16(sla->SkillLine));
 
-        // Spells the core hands out free with the line itself. 38 in the whole
-        // game, and the only ones a Hero can end up with by owning nothing.
-        if (sla->AcquireMethod == SKILL_LINE_ABILITY_LEARNED_ON_SKILL_VALUE
-            || sla->AcquireMethod == SKILL_LINE_ABILITY_LEARNED_ON_SKILL_LEARN)
+        SpellInfo const* info = sSpellMgr->GetSpellInfo(sla->Spell);
+
+        // Spells the core hands out free with the line itself -- the ones a
+        // Hero can end up with by owning nothing, and which StripUnearnedSpells
+        // takes back: Holy Light, Seal of Righteousness, the rest of a
+        // chassis's starter kit.
+        //
+        // VISIBLE ABILITIES ONLY. Seventeen of the rows here are passive or
+        // hidden, and they are not free abilities at all -- they are the
+        // machinery the core hangs off a skill line so that other spells work.
+        // Rune Strike's proc enabler is one, and taking it away leaves Rune
+        // Strike refusing to cast for the rest of the character's life; so are
+        // Runic Focus, Forceful Deflection, Maelstrom Ready, Blood Plague,
+        // Frost Fever, the judgement anti-dodge passive and ten more. The
+        // sweep exists to take back free ABILITIES, and none of these is one.
+        if (info && !info->IsPassive() && !info->HasAttribute(SPELL_ATTR0_DO_NOT_DISPLAY)
+            && (sla->AcquireMethod == SKILL_LINE_ABILITY_LEARNED_ON_SKILL_VALUE
+                || sla->AcquireMethod == SKILL_LINE_ABILITY_LEARNED_ON_SKILL_LEARN))
             _skillLearnedClassSpells.insert(sla->Spell);
 
-        SpellInfo const* info = sSpellMgr->GetSpellInfo(sla->Spell);
         if (!info || !info->SpellName[0] || !*info->SpellName[0])
             continue;
         if (GetTalentSpellCost(sla->Spell)) // talent spells live in the talent pool

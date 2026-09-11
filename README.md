@@ -283,6 +283,13 @@ projected as you spend. Reallocating is free.</em>
 - **A summon leaves with its spell.** Reroll Summon Imp away and the imp is dismissed instead of
   standing there permanently. Rerolling Tame Beast away puts the tamed beast away too. The beast
   is kept, not destroyed, so rolling Tame Beast again calls the same one back.
+- **The free-spell sweep takes back abilities, not machinery.** A chassis is handed its own
+  class's starter spells by the core, and those are taken back -- Holy Light, Seal of
+  Righteousness and the rest. Only the visible ones: seventeen of the spells a skill line hands
+  out are passive or hidden, and they are not free abilities but the parts other spells are built
+  from. Rune Strike's proc enabler is one, and without it Rune Strike refuses to cast for good;
+  so are Runic Focus, Forceful Deflection, Maelstrom Ready, Blood Plague, Frost Fever and the
+  judgement anti-dodge passive.
 - **Class quests are open to everyone.** Every chain is reachable by every Hero. A reward that
   would teach a class ability gives nothing for that part; items, XP, gold and reputation are
   unchanged. Reversible with `data/sql/manual/cw_class_quests_revert.sql`. A few chains gate a
