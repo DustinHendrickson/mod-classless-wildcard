@@ -214,6 +214,24 @@ public:
                     return OwnsCounterattack(player);
                 }
                 break;
+            // Class quests are open to every Hero in the database, but a few
+            // chains gate a scripted STEP in C++ as well, where no SQL can
+            // reach: the Moonglade gossip that hands out the druid's aquatic
+            // form quest, and the Death Knight duel quest. Without an answer
+            // here a Hero can accept a chain the module opened and then find
+            // the NPC that finishes it will not talk.
+            case CLASS_CONTEXT_QUEST:
+            // The same gossip's free flight to Moonglade, and the Acherus
+            // taxi's mount fix, which is guarded on the node id so it reaches
+            // nothing else.
+            case CLASS_CONTEXT_TAXI:
+            // Enslave Demon. The core hands a charmed DEMON to CharmAI and
+            // fixes up the class byte the client reads only when the charmer
+            // is a warlock; a Hero's enslaved demon kept its creature AI
+            // instead. Both branches are already guarded on the creature
+            // being a demon, so there is nothing else this can touch.
+            case CLASS_CONTEXT_PET_CHARM:
+                break;
             // Runes, and only the Death Knight question, and only when Death
             // Knight content is switched on.
             //

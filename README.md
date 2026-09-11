@@ -264,7 +264,13 @@ projected as you spend. Reallocating is free.</em>
   is kept, not destroyed, so rolling Tame Beast again calls the same one back.
 - **Class quests are open to everyone.** Every chain is reachable by every Hero. A reward that
   would teach a class ability gives nothing for that part; items, XP, gold and reputation are
-  unchanged. Reversible with `data/sql/manual/cw_class_quests_revert.sql`.
+  unchanged. Reversible with `data/sql/manual/cw_class_quests_revert.sql`. A few chains gate a
+  scripted step in the core as well as in the database, where no SQL reaches: the Moonglade
+  gossip that flies a druid in and hands out the aquatic form quest is answered too, so the NPC
+  that finishes the chain still talks to a Hero.
+- **An enslaved demon behaves like a warlock's.** The core hands a charmed demon to the charm AI
+  and fixes up the class byte the client reads only when the charmer is a warlock; without that a
+  Hero's enslaved demon kept its creature AI.
 
 ### Gear
 
