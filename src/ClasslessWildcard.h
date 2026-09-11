@@ -36,13 +36,6 @@ namespace ClasslessWildcard
     // (used e.g. for "RV|..." roll-reveal notifications)
     void PushAddon(Player* player, std::string const& body);
 
-    // Re-send the SC records: what a spell really costs, casts and cooldowns
-    // for once the Hero's talents are counted. The client cannot work these
-    // out itself for a talent outside its own class, so a build change that
-    // the addon did not ask for has to say so, or the tooltip keeps the old
-    // numbers until the next login.
-    void PushSpellCorrections(Player* player);
-
     // The starting hand is four cards. The client addon draws exactly four and
     // the config is clamped to it, so the two can never disagree.
     constexpr uint32 MAX_STARTING_HAND = 4;
@@ -226,6 +219,17 @@ namespace ClasslessWildcard
         // recomputed at most once a second from the owned ability list.
         int8   lastRuneOwn = -1;
         uint32 runeOwnAcc = 0;
+
+        // The 2-second tick the periodic work in OnPlayerUpdate runs on.
+        //
+        // This lived in an unordered_map on the script, keyed by guid, and
+        // OnPlayerUpdate reached it with operator[] -- an INSERT, for every
+        // player on every map update, from whichever map thread got there.
+        // Maps update in parallel, so two of them rehashed the same container
+        // at once and the server came down inside _Try_emplace under
+        // Map::Update. Per-player state belongs on the per-player state, where
+        // only that player's map thread can reach it.
+        uint32 tickAcc = 0;
         bool loaded = false;
     };
 

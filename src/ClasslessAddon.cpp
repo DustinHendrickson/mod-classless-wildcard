@@ -351,167 +351,6 @@ namespace
         SendAddon(player, "OAE|");
     }
 
-    // ---- what a spell really costs, casts and waits ------------------------
-    //
-    // SC|id:cost:castms:cooldownms:dmgpct:effpct:critpct:dotpct:durms:rangepct:
-    //    critdmgpct:threatpct; one record per spell whose numbers a talent
-    // actually moves, 0 in every field nothing moved.
-    //
-    // The client cannot work these out for a Hero: the modifier packets it
-    // receives carry a class-mask bit and no family, and it only ever expected
-    // its own class's talents. These come from the core's own arithmetic,
-    // which matches on family and is right for all ten.
-    void SendSpellCorrections(Player* player)
-    {
-        std::string body = "SC|";
-        for (auto const& [spellId, playerSpell] : player->GetSpellMap())
-        {
-            // Active is deliberately NOT required. A lower rank stays in the map
-            // as inactive once a higher one is learned, and the Abilities list
-            // shows a line by its FIRST rank -- so Thunder Clap rank 1 is what
-            // the panel puts on screen while the Hero casts rank 9. Its cost is
-            // modified just the same, and skipping it left that tooltip wrong.
-            if (!playerSpell || playerSpell->State == PLAYERSPELL_REMOVED
-                || !playerSpell->IsInSpec(player->GetActiveSpec()))
-                continue;
-            SpellInfo const* info = sSpellMgr->GetSpellInfo(spellId);
-            if (!info || info->IsPassive())
-                continue;
-
-            // ONLY the spell-mod contribution. CalcPowerCost and CalcCastTime
-            // fold in haste and cost auras as well, and the client already
-            // shows those -- correcting for them again would be wrong twice
-            // over and would put every cast-time spell in this list.
-            int32 baseCost = int32(info->ManaCost);
-            if (info->ManaCostPercentage && player->GetCreateMana())
-                baseCost = int32(CalculatePct(player->GetCreateMana(), info->ManaCostPercentage));
-            int32 cost = baseCost;
-            player->ApplySpellMod(spellId, SPELLMOD_COST, cost);
-            // rage and runic power are stored times ten and shown divided
-            int32 const div = (info->PowerType == POWER_RAGE || info->PowerType == POWER_RUNIC_POWER) ? 10 : 1;
-
-            int32 const baseCastMs = info->CastTimeEntry ? int32(info->CastTimeEntry->CastTime) : 0;
-            int32 castMs = baseCastMs;
-            if (castMs)
-                player->ApplySpellMod(spellId, SPELLMOD_CASTING_TIME, castMs);
-
-            int32 const baseCdMs = int32(info->RecoveryTime);
-            int32 cdMs = baseCdMs;
-            player->ApplySpellMod(spellId, SPELLMOD_COOLDOWN, cdMs);
-
-            // Damage as a percentage: the tooltip's own number is built from
-            // base points plus attack and spell power, which is not reproducible
-            // here, but the multiplier is exact.
-            int32 probe = 10000;
-            player->ApplySpellMod(spellId, SPELLMOD_DAMAGE, probe);
-            int32 const dmgPct = (probe - 10000) / 100;
-
-            // ---- everything else a talent moves --------------------------
-            //
-            // Cost, cast time, cooldown and damage were the whole list, and
-            // they are four of the twenty-six modifiers the game's talents
-            // actually use. The rest apply on the server and showed the DBC
-            // number on screen, which reads exactly like a talent that does
-            // nothing. Improved Disciplines was reported that way: Shield Wall
-            // really was down to 240 seconds while the panel said 30.
-            //
-            // Each op is probed with the number it really applies to.
-            // ApplySpellMod is (base * mul) + flat, so a probe of zero hides
-            // every percentage modifier and a probe of 10000 turns a flat one
-            // into nonsense: a percentage op is probed at 10000, a flat op at
-            // zero, and the per-effect ops against the effect's own base
-            // points.
-
-            // Effect values: ALL_EFFECTS applies to every slot, EFFECT1/2/3 to
-            // one each, and the core applies them together in
-            // SpellEffectInfo::CalcValue. Reported as the largest move across
-            // the three slots -- one number, and the one the player notices.
-            int32 effPct = 0;
-            for (uint8 ei = 0; ei < MAX_SPELL_EFFECTS; ++ei)
-            {
-                int32 const baseEff = info->Effects[ei].BasePoints;
-                if (!baseEff)
-                    continue;
-                int32 v = baseEff;
-                player->ApplySpellMod(spellId, SPELLMOD_ALL_EFFECTS, v);
-                player->ApplySpellMod(spellId, ei == 0 ? SPELLMOD_EFFECT1
-                                             : (ei == 1 ? SPELLMOD_EFFECT2 : SPELLMOD_EFFECT3), v);
-                int32 const span = baseEff < 0 ? -baseEff : baseEff;
-                int32 const pct = (v - baseEff) * 100 / span;
-                if ((pct < 0 ? -pct : pct) > (effPct < 0 ? -effPct : effPct))
-                    effPct = pct;
-            }
-
-            // Crit chance is added in percentage POINTS, so zero is the right
-            // probe: the flat lands on it directly.
-            int32 critPct = 0;
-            player->ApplySpellMod(spellId, SPELLMOD_CRITICAL_CHANCE, critPct);
-
-            int32 dotProbe = 10000;
-            player->ApplySpellMod(spellId, SPELLMOD_DOT, dotProbe);
-            int32 const dotPct = (dotProbe - 10000) / 100;
-
-            int32 const baseDurMs = info->GetDuration();
-            int32 durMs = baseDurMs;
-            if (baseDurMs > 0)
-                player->ApplySpellMod(spellId, SPELLMOD_DURATION, durMs);
-
-            float const baseRange = info->GetMaxRange(false);
-            int32 rangePct = 0;
-            if (baseRange > 0.0f)
-            {
-                float r = baseRange;
-                player->ApplySpellMod(spellId, SPELLMOD_RANGE, r);
-                rangePct = int32((r - baseRange) * 100.0f / baseRange);
-            }
-
-            int32 critDmgProbe = 10000;
-            player->ApplySpellMod(spellId, SPELLMOD_CRIT_DAMAGE_BONUS, critDmgProbe);
-            int32 const critDmgPct = (critDmgProbe - 10000) / 100;
-
-            int32 threatProbe = 10000;
-            player->ApplySpellMod(spellId, SPELLMOD_THREAT, threatProbe);
-            int32 const threatPct = (threatProbe - 10000) / 100;
-
-            // Decided BEFORE the fields are zeroed below, or a talent that
-            // takes a cast time down to zero -- an instant -- would read as
-            // "nothing moved" and the spell's other corrections would go with
-            // it.
-            bool const moved = cost != baseCost || castMs != baseCastMs || cdMs != baseCdMs
-                || durMs != baseDurMs || dmgPct || effPct || critPct || dotPct
-                || rangePct || critDmgPct || threatPct;
-            if (!moved)
-                continue;
-
-            // Send only what a talent actually MOVED. The addon prints a line
-            // per non-zero field, so a spell whose cost changed used to carry
-            // its unchanged cooldown along with it and read "With your talents:
-            // 60 sec cooldown" beside a cooldown nothing had touched -- which
-            // looks exactly like a talent applying to the wrong spell.
-            if (castMs == baseCastMs)
-                castMs = 0;
-            if (cdMs == baseCdMs)
-                cdMs = 0;
-            if (durMs == baseDurMs)
-                durMs = 0;
-
-            // id, then one field per number, 0 where nothing moved it. Fields
-            // are only ever appended: an addon that predates them reads the
-            // first five and ignores the rest.
-            std::string piece = Acore::StringFormat("{}:{}:{}:{}:{}:{}:{}:{}:{}:{}:{}:{};",
-                spellId, cost / div, castMs, cdMs, dmgPct, effPct, critPct,
-                dotPct, durMs, rangePct, critDmgPct, threatPct);
-            if (body.size() + piece.size() > MAX_BODY)
-            {
-                SendAddon(player, body);
-                body = "SC|";
-            }
-            body += piece;
-        }
-        SendAddon(player, body);
-        SendAddon(player, "SCE|");
-    }
-
     void SendOwnedTalents(Player* player)
     {
         CharState& st = sClasslessMgr->GetState(player);
@@ -676,7 +515,6 @@ namespace
         if (cmd == "HELLO" || cmd == "STATE")
         {
             SendState(player);
-            SendSpellCorrections(player);
             // Combo points and runes are pushed only when they CHANGE, which
             // is right for the traffic and wrong for the first draw: the first
             // push goes out on the first update tick after entering the world,
@@ -701,11 +539,7 @@ namespace
         else if (cmd == "OWN")
             SendOwnedAbilities(player);
         else if (cmd == "OWNT")
-        {
             SendOwnedTalents(player);
-            // the build just changed, so the numbers may have too
-            SendSpellCorrections(player);
-        }
         else if (cmd == "ARCH")
             SendArchetypes(player);
         else if (cmd == "STATS")
@@ -779,16 +613,6 @@ namespace
             // Any argument an older addon still sends is ignored: there is one
             // scroll now, good for abilities and talents alike.
             sClasslessMgr->BuyScroll(player, &err) ? SendOk(player, "BUYSCROLL") : SendErr(player, err);
-    }
-}
-
-namespace ClasslessWildcard
-{
-    // SendSpellCorrections lives in the anonymous namespace above; this is the
-    // way in for the rest of the module.
-    void PushSpellCorrections(Player* player)
-    {
-        SendSpellCorrections(player);
     }
 }
 

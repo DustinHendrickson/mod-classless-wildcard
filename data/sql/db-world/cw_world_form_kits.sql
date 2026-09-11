@@ -114,6 +114,15 @@ INSERT INTO `cw_form_kits` (`form_spell`, `granted_spell`, `enabled`, `comment`)
 (19577, 6991, 1, 'default: Intimidation -> Feed Pet'),
 (19577, 2641, 1, 'default: Intimidation -> Dismiss Pet'),
 (19577, 136,  1, 'default: Intimidation -> Mend Pet'),
+-- Master's Call frees the pet from a snare, so it needs one. It reached the
+-- library late: its SkillLineAbility row carries no class mask, which is how
+-- Blizzard wrote every ability after vanilla, and the pool used to skip those.
+(53271, 1515, 1, 'default: Master''s Call -> Tame Beast'),
+(53271, 883,  1, 'default: Master''s Call -> Call Pet'),
+(53271, 982,  1, 'default: Master''s Call -> Revive Pet'),
+(53271, 6991, 1, 'default: Master''s Call -> Feed Pet'),
+(53271, 2641, 1, 'default: Master''s Call -> Dismiss Pet'),
+(53271, 136,  1, 'default: Master''s Call -> Mend Pet'),
 -- Three requirements that live in the CORE's spell scripts rather than in the
 -- spell's own data, so nothing reading Spell.dbc can see them. Savage Roar and
 -- Survival Instincts both read Stances 0 and are refused outside a feral form

@@ -22,6 +22,7 @@
 #include "Item.h"
 #include "Optional.h"
 #include "Pet.h"
+#include <mutex>
 #include "Player.h"
 #include "ScriptMgr.h"
 #include "SpellAuraEffects.h"
@@ -54,14 +55,16 @@ public:
 
 class ClasslessPlayerScript : public PlayerScript
 {
-    std::unordered_map<uint64, uint32> _tickAcc; // guid low -> ms accumulator
-
     // The last money a character SPENT, and the world tick it happened on.
     // A class trainer takes the gold and then teaches the spell, and the
     // module takes the spell straight back -- so without this the Hero pays
     // for nothing. Keyed on the tick because the two happen inside one
     // opcode: a debit from any other source is a different tick.
     struct Spend { uint32 copper = 0; uint32 tick = 0; };
+    // Guarded for the same reason _states is: maps update on their own threads
+    // and this is one container shared by all of them. Cold enough -- a money
+    // change, not a tick -- that a plain lock costs nothing worth measuring.
+    std::mutex _lastSpendLock;
     std::unordered_map<uint64, Spend> _lastSpend;
 
 public:
@@ -88,6 +91,7 @@ public:
     {
         if (!sClasslessMgr->cfg.enabled || amount >= 0)
             return;
+        std::lock_guard<std::mutex> spendGuard(_lastSpendLock);
         Spend& spend = _lastSpend[player->GetGUID().GetCounter()];
         spend.copper = uint32(-amount);
         spend.tick = uint32(GameTime::GetGameTimeMS().count());
@@ -503,7 +507,7 @@ public:
 
     void OnPlayerLogout(Player* player) override
     {
-        _tickAcc.erase(player->GetGUID().GetCounter());
+        std::lock_guard<std::mutex> spendGuard(_lastSpendLock);
         _lastSpend.erase(player->GetGUID().GetCounter());
         sClasslessMgr->UnloadState(player->GetGUID());
     }
@@ -527,8 +531,18 @@ public:
         // the points the server tracks (retail warriors had the same hidden
         // Overpower combo points). Mirror them over the addon channel whenever
         // they change; the addon lights its own pips from this.
+        // FindState, not GetState. GetState CREATES the entry when it is
+        // missing, and this runs for every player on every map update -- an
+        // unordered_map insert on the hottest path in the module, from
+        // whichever map thread arrived first. There is nothing to say about a
+        // character whose state has not loaded yet, so there is nothing to
+        // create either.
+        CharState* state = sClasslessMgr->FindState(player);
+        if (!state)
+            return;
+
         {
-            CharState& cpSt = sClasslessMgr->GetState(player);
+            CharState& cpSt = *state;
             if (!cpSt.exempt)
             {
                 // Report points for the CURRENT target only, matching what the
@@ -636,7 +650,7 @@ public:
             }
         }
 
-        uint32& acc = _tickAcc[player->GetGUID().GetCounter()];
+        uint32& acc = state->tickAcc;
         acc += p_time;
         if (acc < 2000)
             return;
@@ -645,7 +659,9 @@ public:
         if (sClasslessMgr->IsExempt(player))
             return;
 
-        CharState& st = sClasslessMgr->GetState(player);
+        // the one FindState above already answered this, and it created
+        // nothing to do it
+        CharState& st = *state;
 
         // A pet that was away when its spell went is not caught by the sweep in
         // RemoveAbilityInternal: mounting temporarily unsummons it, so a Hero
@@ -791,6 +807,7 @@ public:
         // Only a debit from this same world tick counts, which is the one the
         // trainer just took: the two happen inside a single opcode.
         uint32 refund = 0;
+        std::lock_guard<std::mutex> spendGuard(_lastSpendLock);
         if (auto itr = _lastSpend.find(player->GetGUID().GetCounter()); itr != _lastSpend.end())
             if (itr->second.tick == uint32(GameTime::GetGameTimeMS().count()))
             {

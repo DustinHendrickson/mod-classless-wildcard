@@ -45,6 +45,7 @@ CHARSTARTOUTFIT = "DBFilesClient\\CharStartOutfit.dbc"
 SKILLRACECLASSINFO = "DBFilesClient\\SkillRaceClassInfo.dbc"
 SKILLLINEABILITY = "DBFilesClient\\SkillLineAbility.dbc"
 SKILLLINE = "DBFilesClient\\SkillLine.dbc"
+TALENTTAB = "DBFilesClient\\TalentTab.dbc"
 # the same path elemental.py uses, kept in one place so the two never diverge
 SPELL = elemental.SPELL
 GLUESTRINGS = "Interface\\GlueXML\\GlueStrings.lua"
@@ -219,6 +220,22 @@ def build_data_patch(files, name, report, theme=False):
     report.append("  SkillLineAbility.dbc  %d class spells now belong to every class "
                   "(spellbook tabs for cross-class spells; from %s)"
                   % (changed, os.path.basename(source)))
+
+    # And this is the one that makes a cross-class talent's NUMBERS right on a
+    # tooltip, with nothing correcting them afterwards.
+    #
+    # SMSG_TALENTS_INFO sends a talent id and a rank. The client looks the rest
+    # up itself -- the rank spell, that spell's family, its affect mask -- which
+    # is a complete, unambiguous description of what the talent modifies, family
+    # included. It can do the arithmetic perfectly well. What stopped it was
+    # this table: a talent whose tab does not claim the character's class is not
+    # the character's talent, and is dropped before any of that happens.
+    raw, source = files.find(TALENTTAB)
+    patched, opened, already = dbc.open_talent_tabs(raw)
+    payload[TALENTTAB] = patched
+    report.append("  TalentTab.dbc     %d talent trees opened to every class "
+                  "(cross-class talents apply to tooltips; from %s)"
+                  % (len(opened), os.path.basename(source)))
 
     # A class tool is the one requirement a Hero can never meet: Stoneskin
     # Totem wants an Earth Totem, which is handed to shamans alone. The server
@@ -573,6 +590,7 @@ def do_install(args, wow_dir):
 # has something else in it, so it can never be matched by luck of the letter.
 _OUR_FILES = frozenset(x.lower() for x in (
     CHRCLASSES, CHARBASEINFO, CHARSTARTOUTFIT, SKILLRACECLASSINFO, SKILLLINEABILITY,
+    TALENTTAB,
     GLUESTRINGS, CHARCREATE_LUA,
     CLASSICONS_INGAME, CLASSICONS_CREATE,
     elemental.SPELL, elemental.SPELLVISUAL, elemental.SPELLICON,

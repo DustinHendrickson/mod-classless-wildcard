@@ -17,6 +17,7 @@
 #define MOD_CW_CLASSLESS_MGR_H
 
 #include "ClasslessWildcard.h"
+#include <mutex>
 
 class Player;
 
@@ -49,6 +50,11 @@ public:
 
     // ------- per-character state -------
     ClasslessWildcard::CharState& GetState(Player* player);
+    // The same lookup WITHOUT creating an entry, for callers that run every
+    // tick: OnPlayerUpdate has nothing to say about a character whose state is
+    // not loaded yet, and inserting from there is what put an insert on the
+    // hot path in the first place. Returns nullptr when there is none.
+    ClasslessWildcard::CharState* FindState(Player* player);
     void UnloadState(ObjectGuid guid);
     // bot/system accounts (e.g. mod-playerbots "rndbot" accounts) play with
     // vanilla class rules so their factories keep working
@@ -305,6 +311,19 @@ private:
     // The strip needs these by id whether or not the library kept them.
     std::unordered_set<uint32> _skillLearnedClassSpells;
     std::set<uint16> _classSkillLines;
+    // Guards _states ONLY -- the container, not the CharStates in it.
+    //
+    // Maps update on their own threads, so two of them insert into this at the
+    // same moment whenever two players on different maps are seen for the
+    // first time. An unordered_map insert can rehash, which relinks every
+    // bucket while the other thread is walking them, and the result was a
+    // crash inside _Try_emplace reached from Map::Update.
+    //
+    // The CharStates themselves need no lock: a player is on one map and that
+    // map runs on one thread, so nobody else touches their entry. Rehashing
+    // does not invalidate references to elements either, so a CharState& a
+    // caller is holding stays good while another thread inserts.
+    std::mutex _statesLock;
     std::unordered_map<ObjectGuid::LowType, ClasslessWildcard::CharState> _states;
     bool _libraryBuilt = false;
     bool _applyingGrant = false;

@@ -205,6 +205,12 @@ projected as you spend. Reallocating is free.</em>
   stock talent frame shows it at the rank you own, and granted as its underlying spell, so it is
   in your spellbook too. You spend Talent Essence rather than talent points: the native point
   total stays at zero, whatever your level.
+- **A spell reachable only through a talent is priced like one.** A talent-taught spell reports
+  the level of its own rank rather than the tier that grants it, and so does a spell castable
+  only in a form a talent grants: Challenging Howl reads level 1 and can be used only in
+  Metamorphosis, a 41-point talent. Both are gated by the tree row instead, which puts Challenging
+  Howl at 60 beside Immolation Aura and Demon Charge. A spell that also works in a form an
+  ability can hand over is left alone, because that one is reachable without the talent.
 - **Ability talents are abilities.** A talent that teaches a spell, such as Pyroblast, Mortal
   Strike or Mangle, is not on the Talents list. The spell is in the Abilities list instead, at
   the level its talent tier would open, with every rank. Owning it meets any prerequisite on
@@ -214,11 +220,23 @@ projected as you spend. Reallocating is free.</em>
 
 - **No class to pick.** Character creation shows races only. Every Hero runs on the same
   Paladin chassis, which grants no class abilities and locks nothing away.
-- **Talent numbers show on the tooltip.** The 3.3.5 client will not apply a talent from outside
-  its own class to a spell tooltip, so a Hero saw the unmodified number while the server used the
-  real one. The server sends the corrected figures instead and the addon adds a "With your
-  talents:" line: cost, cast time, cooldown, damage, effect values, crit chance, crit damage,
-  damage over time, duration, range and threat. Only what a talent actually moved is listed.
+- **Talent numbers on a spell tooltip.** The client works these out itself, from its own tables,
+  once it will accept the talent. `SMSG_TALENTS_INFO` sends a talent id and a rank and nothing
+  else; the client looks up the rank spell, its spell family and its affect mask, which is a
+  complete and unambiguous description of what the talent modifies. What stopped it was
+  `TalentTab.dbc`: a talent whose tree does not claim the character's class is not the
+  character's talent and is dropped before any of that happens, so a Hero's warrior talents never
+  reached the arithmetic and Shield Wall kept drawing five minutes while the server charged four.
+  The client patch opens all thirty player trees to every class, the same way it already opens
+  skill lines, and every number comes out right on its own -- cooldown, cost, cast time, damage
+  and the values inside the description sentence alike.
+
+  Nothing in the addon touches a spell tooltip. There is no correction layer and no second copy
+  of these numbers: the client holds the only one.
+
+  Known trade-off: the stock talent frame draws three trees and the client now reports thirty for
+  your class, so that frame shows an arbitrary three. The module's own talent browser is
+  unaffected and is where a Hero's talents are meant to be read.
 - **Universal resources.** Every Hero has mana, rage and energy at once. One shows on the main
   bar and the addon draws mini-bars for the rest. Each spell draws from its own resource, so the
   same Hero casts Fireball on mana and Bloodthirst on rage.

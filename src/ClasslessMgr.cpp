@@ -364,6 +364,36 @@ void ClasslessMgr::BuildLibrary()
 
     uint32 const dkMask = 1 << (CLASS_DEATH_KNIGHT - 1);
 
+    // Which class does a skill line belong to?
+    //
+    // Blizzard stopped filling SkillLineAbility's ClassMask on rows added after
+    // vanilla -- the skill line already says which class it is -- so every
+    // ability from Burning Crusade and Wrath on a class line reads zero.
+    // Skipping a zero mask therefore dropped twenty-eight real, trainer-taught
+    // abilities out of the library with no trace: Penance, Starfall, Evocation,
+    // Spellsteal, Riptide, Explosive Shot, Howling Blast, Scourge Strike,
+    // Deterrence, Hex, Master's Call and the rest of that era.
+    //
+    // The line can answer for them. Collect the mask from the rows that DO name
+    // a class and let the rest of the line inherit it. Pet and companion lines
+    // have no such row anywhere, so they still resolve to zero and stay out,
+    // which is what kept them out before.
+    std::unordered_map<uint32, uint32> lineClassMask;
+    for (uint32 i = 0; i < sSkillLineAbilityStore.GetNumRows(); ++i)
+        if (SkillLineAbilityEntry const* sla = sSkillLineAbilityStore.LookupEntry(i))
+            if (sla->ClassMask)
+                if (SkillLineEntry const* line = sSkillLineStore.LookupEntry(sla->SkillLine))
+                    if (line->categoryId == SKILL_CATEGORY_CLASS)
+                        lineClassMask[sla->SkillLine] |= sla->ClassMask;
+
+    auto classMaskOf = [&lineClassMask](SkillLineAbilityEntry const* sla) -> uint32
+    {
+        if (sla->ClassMask)
+            return sla->ClassMask;
+        auto itr = lineClassMask.find(sla->SkillLine);
+        return itr != lineClassMask.end() ? itr->second : 0u;
+    };
+
     // Trainer allowlist + REAL learn levels: what classes actually learn is
     // starter spells + class-trainer lists (npc_trainer). This kills NPC/pet
     // variants ("Demonic Immolate") and tiers every rank by the level a real
@@ -445,7 +475,7 @@ void ClasslessMgr::BuildLibrary()
                 for (uint32 i = 0; i < sSkillLineAbilityStore.GetNumRows(); ++i)
                 {
                     SkillLineAbilityEntry const* sla = sSkillLineAbilityStore.LookupEntry(i);
-                    if (!sla || !sla->ClassMask)
+                    if (!sla || !classMaskOf(sla))
                         continue;
                     SkillLineEntry const* line = sSkillLineStore.LookupEntry(sla->SkillLine);
                     if (!line || line->categoryId != SKILL_CATEGORY_CLASS)
@@ -524,11 +554,14 @@ void ClasslessMgr::BuildLibrary()
     for (uint32 i = 0; i < sSkillLineAbilityStore.GetNumRows(); ++i)
     {
         SkillLineAbilityEntry const* sla = sSkillLineAbilityStore.LookupEntry(i);
-        if (!sla || !sla->ClassMask)
+        if (!sla)
+            continue;
+        uint32 const slaClassMask = classMaskOf(sla);
+        if (!slaClassMask)
             continue;
         if (!cfg.includeRacials && sla->RaceMask)
             continue;
-        if (!cfg.includeDeathKnight && (sla->ClassMask & dkMask) && sla->ClassMask == dkMask)
+        if (!cfg.includeDeathKnight && (slaClassMask & dkMask) && slaClassMask == dkMask)
             continue;
 
         // only real class ability lines — keeps weapon/armor proficiencies,
@@ -554,7 +587,13 @@ void ClasslessMgr::BuildLibrary()
             continue;
         if (GetTalentSpellCost(sla->Spell)) // talent spells live in the talent pool
             continue;
-        if (info->IsPassive() && !cfg.includePassives)
+        // A passive with a COOLDOWN is an ability wearing the wrong flag.
+        // Reincarnation is the only one in the stock game: the self-res is
+        // implemented as an always-on aura with a thirty-minute cooldown, so
+        // the passive filter threw it out and Improved Reincarnation became a
+        // talent that reduced the cooldown of a spell no Hero could own.
+        if (info->IsPassive() && !cfg.includePassives
+            && !info->RecoveryTime && !info->CategoryRecoveryTime)
             continue;
         // Ranged auto-attacks (Auto Shot, Shoot, Throw) are not abilities to
         // roll for: they fire on their own once a ranged weapon is equipped,
@@ -619,7 +658,7 @@ void ClasslessMgr::BuildLibrary()
             e.firstSpellId = first;
             e.passive = info->IsPassive();
         }
-        e.classMask |= sla->ClassMask;
+        e.classMask |= slaClassMask;
     }
 
     // fill rank chains and heuristics
@@ -863,6 +902,38 @@ void ClasslessMgr::BuildLibrary()
                 if (t.rankSpells[r])
                     spellRow[t.rankSpells[r]] = t.row;
 
+        // The same thing one step removed: a form only a TALENT grants, and the
+        // tier that talent sits at. An ability castable only in such a form is
+        // just as unreachable as the talent itself, however low its own level
+        // reads -- Challenging Howl says level 1 and can only be used in
+        // Metamorphosis, a 41-point Demonology talent, so it was turning up in
+        // rolls fifty levels before anything could be done with it. Its two
+        // siblings, Immolation Aura and Demon Charge, already read 60, which is
+        // exactly what this gate computes.
+        std::unordered_map<uint32, uint32> formRow;   // form -> the talent's row
+        for (auto const& [talentId, t] : _talents)
+            for (uint8 r = 0; r < t.maxRank; ++r)
+            {
+                if (!t.rankSpells[r])
+                    continue;
+                std::vector<uint32> forms;
+                CW_FormsGrantedBy(t.rankSpells[r], forms);
+                for (uint32 form : forms)
+                {
+                    uint32& have = formRow[form];
+                    have = std::max(have, t.row);
+                }
+            }
+        // and the forms an ABILITY can hand over, which need no gating at all
+        std::unordered_set<uint32> abilityForms;
+        for (auto const& [firstSpell, e] : _abilities)
+            for (uint32 sp : e.ranks)
+            {
+                std::vector<uint32> forms;
+                CW_FormsGrantedBy(sp, forms);
+                abilityForms.insert(forms.begin(), forms.end());
+            }
+
         uint32 regated = 0;
         for (auto& [firstSpell, e] : _abilities)
         {
@@ -874,6 +945,27 @@ void ClasslessMgr::BuildLibrary()
                     fromTalent = true;
                     row = std::max(row, it->second);
                 }
+            // ...or every form it can be cast in comes from a talent. Only
+            // then: a line that ALSO works in a form an ability grants is
+            // reachable without the talent and is left alone.
+            if (!fromTalent)
+                if (SpellInfo const* info = sSpellMgr->GetSpellInfo(e.firstSpellId))
+                    if (info->Stances
+                        && !info->HasAttribute(SPELL_ATTR2_ALLOW_WHILE_NOT_SHAPESHIFTED))
+                    {
+                        bool fromAbilityForm = false;
+                        for (uint32 form : abilityForms)
+                            if (info->Stances & (uint64(1) << (form - 1)))
+                                fromAbilityForm = true;
+                        if (!fromAbilityForm)
+                            for (auto const& [form, talentRow] : formRow)
+                                if (info->Stances & (uint64(1) << (form - 1)))
+                                {
+                                    fromTalent = true;
+                                    row = std::max(row, talentRow);
+                                }
+                    }
+
             if (!fromTalent || e.rankLevels.empty())
                 continue;
 
@@ -1024,45 +1116,48 @@ uint32 ClasslessMgr::ResyncVariants(std::unordered_set<uint32> const& overridden
 // to use it and nothing the module could hand over. Storing the rank rather
 // than the line also keeps "can the Hero already use this?" honest: owning Bear
 // Form at rank 1 is not owning Dire Bear.
+// Which forms does this spell put you in? Usually its own MOD_SHAPESHIFT, but
+// a talent often teaches the form instead of being it: the Tree of Life
+// talent's rank spell is a LEARN_SPELL wrapper, and the shapeshift is on what
+// it teaches. One level of that is followed, so the form is found either way --
+// without it, form 2 belongs to nothing and a Hero holding Improved Tree of
+// Life is told nothing at all.
+//
+// File scope because two passes need it: the form map, and the level re-gate
+// that has to know which forms only a talent can grant.
+static void CW_FormsGrantedBy(uint32 spellId, std::vector<uint32>& out)
+{
+    SpellInfo const* info = sSpellMgr->GetSpellInfo(spellId);
+    if (!info)
+        return;
+    for (uint8 ei = 0; ei < MAX_SPELL_EFFECTS; ++ei)
+    {
+        if (info->Effects[ei].ApplyAuraName == SPELL_AURA_MOD_SHAPESHIFT)
+        {
+            if (uint32 const form = uint32(info->Effects[ei].MiscValue))
+                out.push_back(form);
+            continue;
+        }
+        if (info->Effects[ei].Effect != SPELL_EFFECT_LEARN_SPELL || !info->Effects[ei].TriggerSpell)
+            continue;
+        SpellInfo const* taught = sSpellMgr->GetSpellInfo(uint32(info->Effects[ei].TriggerSpell));
+        if (!taught)
+            continue;
+        for (uint8 tj = 0; tj < MAX_SPELL_EFFECTS; ++tj)
+            if (taught->Effects[tj].ApplyAuraName == SPELL_AURA_MOD_SHAPESHIFT)
+                if (uint32 const form = uint32(taught->Effects[tj].MiscValue))
+                    out.push_back(form);
+    }
+}
+
 void ClasslessMgr::BuildFormSpellMap()
 {
-    // Which forms does this spell put you in? Usually its own MOD_SHAPESHIFT,
-    // but a talent often teaches the form instead of being it: the Tree of
-    // Life talent's rank spell is a LEARN_SPELL wrapper, and the shapeshift is
-    // on what it teaches. One level of that is followed, so the form is found
-    // either way -- without it, form 2 belongs to nothing and a Hero holding
-    // Improved Tree of Life is told nothing at all.
-    auto formsOf = [](uint32 spellId, std::vector<uint32>& out)
-    {
-        SpellInfo const* info = sSpellMgr->GetSpellInfo(spellId);
-        if (!info)
-            return;
-        for (uint8 ei = 0; ei < MAX_SPELL_EFFECTS; ++ei)
-        {
-            if (info->Effects[ei].ApplyAuraName == SPELL_AURA_MOD_SHAPESHIFT)
-            {
-                if (uint32 const form = uint32(info->Effects[ei].MiscValue))
-                    out.push_back(form);
-                continue;
-            }
-            if (info->Effects[ei].Effect != SPELL_EFFECT_LEARN_SPELL || !info->Effects[ei].TriggerSpell)
-                continue;
-            SpellInfo const* taught = sSpellMgr->GetSpellInfo(uint32(info->Effects[ei].TriggerSpell));
-            if (!taught)
-                continue;
-            for (uint8 tj = 0; tj < MAX_SPELL_EFFECTS; ++tj)
-                if (taught->Effects[tj].ApplyAuraName == SPELL_AURA_MOD_SHAPESHIFT)
-                    if (uint32 const form = uint32(taught->Effects[tj].MiscValue))
-                        out.push_back(form);
-        }
-    };
-
     _formSpells.clear();
     for (auto const& [firstSpell, e] : _abilities)
         for (uint32 rankSpell : e.ranks)
         {
             std::vector<uint32> forms;
-            formsOf(rankSpell, forms);
+            CW_FormsGrantedBy(rankSpell, forms);
             for (uint32 form : forms)
                 if (!_formSpells.count(form))
                     _formSpells[form] = rankSpell;
@@ -1080,7 +1175,7 @@ void ClasslessMgr::BuildFormSpellMap()
             if (!rankSpell)
                 continue;
             std::vector<uint32> forms;
-            formsOf(rankSpell, forms);
+            CW_FormsGrantedBy(rankSpell, forms);
             for (uint32 form : forms)
                 if (!_formSpells.count(form) && !_formTalents.count(form))
                     _formTalents[form] = talentId;
@@ -2103,16 +2198,44 @@ uint8 ClasslessMgr::RollTalentRank(TalentPoolEntry const& t, uint8 fromRank) con
 // Per-character state / persistence
 // -------------------------------------------------------------------------
 
+// The insert is what has to be guarded, not the CharState.
+//
+// Maps run on their own threads, so two of them reach this at the same moment
+// whenever two players on different maps are seen for the first time. The
+// insert can rehash, which relinks every bucket while the other thread is
+// walking them, and the crash that came back from that was an ACCESS_VIOLATION
+// inside _Try_emplace under Map::Update.
+//
+// The lock is released before LoadCharacter, which runs database queries and
+// must not be holding a map-wide lock while it does. That is safe: a player is
+// on one map and that map updates on one thread, so their entry is not shared,
+// and an unordered_map insert does not invalidate references to other
+// elements -- a CharState& a caller already holds stays good.
 CharState& ClasslessMgr::GetState(Player* player)
 {
-    CharState& st = _states[player->GetGUID().GetCounter()];
-    if (!st.loaded)
-        LoadCharacter(player, st);
-    return st;
+    CharState* st = nullptr;
+    {
+        std::lock_guard<std::mutex> guard(_statesLock);
+        st = &_states[player->GetGUID().GetCounter()];
+    }
+    if (!st->loaded)
+        LoadCharacter(player, *st);
+    return *st;
+}
+
+// Same lookup, creating nothing. For the per-tick callers: a character with no
+// state loaded has nothing to push, and an insert does not belong on a path
+// that runs for every player on every map update.
+CharState* ClasslessMgr::FindState(Player* player)
+{
+    std::lock_guard<std::mutex> guard(_statesLock);
+    auto itr = _states.find(player->GetGUID().GetCounter());
+    return itr != _states.end() && itr->second.loaded ? &itr->second : nullptr;
 }
 
 void ClasslessMgr::UnloadState(ObjectGuid guid)
 {
+    std::lock_guard<std::mutex> guard(_statesLock);
     _states.erase(guid.GetCounter());
 }
 
@@ -3381,17 +3504,6 @@ void ClasslessMgr::GrantTalentRankInternal(Player* player, TalentPoolEntry const
     GrantTalentKit(player, t);
     GrantTalentRequiredForm(player, t);
 
-    // And tell the addon what this talent just changed about the Hero's other
-    // spells. The client cannot work a cross-class talent's modifiers out for
-    // itself, so the corrected cost, cast time and COOLDOWN are computed
-    // server-side and sent as SC records -- and they were only ever sent on
-    // login, on /reload, or when the addon asked for the owned-talent list.
-    // A talent the Wildcard DEALS goes through none of those: the reveal pops,
-    // the talent works, and every tooltip it touches keeps the old number
-    // until the next login. Shield Mastery cutting Shield Block's cooldown is
-    // exactly that shape -- the cooldown really is shorter, the tooltip says
-    // otherwise.
-    PushSpellCorrections(player);
 }
 
 void ClasslessMgr::RemoveTalentInternal(Player* player, TalentPoolEntry const& t, bool persist)
@@ -3423,7 +3535,6 @@ void ClasslessMgr::RemoveTalentInternal(Player* player, TalentPoolEntry const& t
     player->SetFreeTalentPoints(0);
     player->SendTalentsInfoData(false);
     CW_SyncTalentPetSpell(player);   // and the pet spell it handed over
-    PushSpellCorrections(player);    // the numbers it was moving go back
 
     // the ability line the talent handed over goes with it
     for (uint32 first : t.abilityLines)
