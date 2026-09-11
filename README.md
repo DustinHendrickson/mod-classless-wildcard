@@ -247,11 +247,16 @@ projected as you spend. Reallocating is free.</em>
   adds melee attack power per Agility, extra ranged attack power per Agility and spell power per
   Intellect. Hovering a stat in the addon shows what a point is worth at your level.
 - **All proficiencies taught.** Armor, weapons and dual wield, each configurable.
+- **One thing the base class still decides.** A wand's Shoot takes its damage school from the
+  wand for a mage, priest or warlock and stays Physical for everyone else, and the core reads the
+  class mask directly to decide that. No script hook can answer it: `Spell::m_spellSchoolMask` is
+  protected, `SpellScript`'s friendship does not reach a script derived from it, and no script in
+  the core writes it either. A Hero's wand therefore hits as Physical. It costs resistance
+  typing, nothing else.
 - **The base class never restricts a build.** Any relic equips, shields work, and Overpower,
   Revenge, Riposte and Counterattack fire regardless of base class. A weapon's feral attack power
-  counts in Cat and Bear form, a wand fires in the wand's own damage school rather than as
-  physical, and a pet inherits its owner's hit and expertise from the pool rather than from
-  whichever power bar is on screen.
+  counts in Cat and Bear form, and a pet inherits its owner's hit and expertise from the pool
+  rather than from whichever power bar is on screen.
 - **Every item is open to every Hero.** Class armour sets, all 353 glyphs, rogue poisons, soul
   bags, quivers and class-locked relics. The core checks an item's class mask before any script
   can answer, so this is done in the world database and reverts with

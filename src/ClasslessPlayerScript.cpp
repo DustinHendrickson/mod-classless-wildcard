@@ -1065,27 +1065,6 @@ class spell_cw_pet_hit_expertise_scaling : public AuraScript
 //
 // Only fills the gap: a real wand user already has the core's override, and
 // this leaves them alone rather than doing it twice.
-class spell_cw_wand_shoot_school : public SpellScript
-{
-    PrepareSpellScript(spell_cw_wand_shoot_school);
-
-    void SetWandSchool()
-    {
-        Player* caster = GetCaster() ? GetCaster()->ToPlayer() : nullptr;
-        if (!caster || !sClasslessMgr->cfg.enabled || sClasslessMgr->IsExempt(caster))
-            return;
-        if (caster->getClassMask() & CLASSMASK_WAND_USERS)
-            return;
-        if (Item* wand = caster->GetWeaponForAttack(RANGED_ATTACK))
-            GetSpell()->m_spellSchoolMask =
-                SpellSchoolMask(1 << wand->GetTemplate()->Damage[0].DamageType);
-    }
-
-    void Register() override
-    {
-        BeforeCast += SpellCastFn(spell_cw_wand_shoot_school::SetWandSchool);
-    }
-};
 
 void AddClasslessPlayerScripts()
 {
@@ -1094,5 +1073,4 @@ void AddClasslessPlayerScripts()
     RegisterSpellScript(spell_cw_frenzied_regeneration);
     RegisterSpellScript(spell_cw_judgement_of_wisdom);
     RegisterSpellScript(spell_cw_pet_hit_expertise_scaling);
-    RegisterSpellScript(spell_cw_wand_shoot_school);
 }

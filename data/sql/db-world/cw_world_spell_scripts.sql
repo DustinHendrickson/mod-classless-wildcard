@@ -47,10 +47,9 @@ DELETE FROM `spell_script_names` WHERE `spell_id` IN (61013, 61017) AND `ScriptN
 
 DELETE FROM `spell_script_names` WHERE `ScriptName` IN
     ('spell_cw_frenzied_regeneration', 'spell_cw_judgement_of_wisdom',
-     'spell_cw_pet_hit_expertise_scaling', 'spell_cw_wand_shoot_school');
+     'spell_cw_pet_hit_expertise_scaling');
 INSERT INTO `spell_script_names` (`spell_id`, `ScriptName`) VALUES
 (22842, 'spell_cw_frenzied_regeneration'),
 (20186, 'spell_cw_judgement_of_wisdom'),
 (61013, 'spell_cw_pet_hit_expertise_scaling'),
-(61017, 'spell_cw_pet_hit_expertise_scaling'),
-(5019,  'spell_cw_wand_shoot_school');
+(61017, 'spell_cw_pet_hit_expertise_scaling');

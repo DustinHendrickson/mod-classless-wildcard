@@ -352,6 +352,10 @@ void ClasslessMgr::LoadConfig(bool /*reload*/)
 // Library building
 // -------------------------------------------------------------------------
 
+// Defined further down, beside BuildFormSpellMap, but needed here: the level
+// re-gate has to know which forms only a talent can grant.
+static void CW_FormsGrantedBy(uint32 spellId, std::vector<uint32>& out);
+
 void ClasslessMgr::BuildLibrary()
 {
     if (!cfg.enabled)
