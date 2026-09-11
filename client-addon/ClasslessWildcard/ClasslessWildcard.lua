@@ -2,7 +2,11 @@
 -- WotLK 3.3.5a client. Talks to the server over the "CWCL" addon channel.
 
 local PREFIX = "CWCL"
-local ADDON_NAME = "ClasslessWildcard"
+-- Reveal and starting-hand animation timings. One table, not nine
+-- locals: Lua 5.1 gives the main chunk 200 and this file lives near
+-- that ceiling -- go over and nothing below the offending line is
+-- ever defined.
+local ANIM = {}
 local ADDON_VERSION = "0.9.5"
 
 local RARITY_COLORS = {
@@ -3460,7 +3464,7 @@ end
 -- ability/talent (Ascension-style level-up moment)
 -- ---------------------------------------------------------------------------
 local SPIN_ATLAS = "Interface\\AddOns\\ClasslessWildcard\\d20_spin"
-local SPIN_TIME, BURST_TIME = 1.6, 0.35
+ANIM.SPIN_TIME, ANIM.BURST_TIME = 1.6, 0.35
 
 -- frameless, Ascension-style: the die floats over the world on a soft shadow,
 -- no dialog box
@@ -3487,7 +3491,7 @@ local function TextScrim(parent, y, height, alpha)
     t:SetAlpha(alpha)
     return t
 end
-local rvTitleScrim = TextScrim(reveal, 176, 96, 0.85)
+TextScrim(reveal, 176, 96, 0.85)
 local rvTextScrim = TextScrim(reveal, -148, 122, 0.9)
 
 local rvTitle = reveal:CreateFontString(nil, "OVERLAY", "GameFontNormalHuge")
@@ -4122,7 +4126,7 @@ reveal:SetScript("OnUpdate", function(self, elapsed)
     end
 
     if rvAnim.phase == "spin" then
-        local p = (GetTime() - rvAnim.t0) / SPIN_TIME
+        local p = (GetTime() - rvAnim.t0) / ANIM.SPIN_TIME
         if p >= 1 then
             -- still waiting on the server's replacement roll: keep spinning
             -- rather than bursting back into the ability we just rerolled
@@ -4173,7 +4177,7 @@ reveal:SetScript("OnUpdate", function(self, elapsed)
         SetDieFrame(math.floor(e * 48))
         rvGlow:SetAlpha(p * 0.9)
     elseif rvAnim.phase == "burst" then
-        local p = (GetTime() - rvAnim.t0) / BURST_TIME
+        local p = (GetTime() - rvAnim.t0) / ANIM.BURST_TIME
         if p >= 1 then
             reveal:ClearAllPoints()
             reveal:SetPoint("CENTER", 0, 170)   -- put the kick back
@@ -4624,8 +4628,8 @@ CW.RenderHand = RenderHand
 -- out: carry on past the last card and fade. pop: how long a card takes to
 -- arrive once the die has reached it. lift: how far below its place a card
 -- starts. spin: die frames per second (the atlas is 16 frames).
-local HAND_IN_TIME, HAND_ROLL_TIME, HAND_OUT_TIME = 0.55, 0.95, 0.30
-local HAND_POP_TIME, HAND_LIFT, HAND_BOUNCE, HAND_SPIN_RATE = 0.24, 14, 30, 34
+ANIM.HAND_IN_TIME, ANIM.HAND_ROLL_TIME, ANIM.HAND_OUT_TIME = 0.55, 0.95, 0.30
+ANIM.HAND_POP_TIME, ANIM.HAND_LIFT, ANIM.HAND_BOUNCE, ANIM.HAND_SPIN_RATE = 0.24, 14, 30, 34
 hand:SetScript("OnUpdate", function(self, elapsed)
     -- An epic or legendary card keeps its starburst turning for as long as the
     -- hand is open, deal or no deal, so this runs before the animation check.
@@ -4646,27 +4650,27 @@ hand:SetScript("OnUpdate", function(self, elapsed)
     if a.phase ~= "done" then
         -- one continuous tumble for the whole run, timed rather than counted
         -- per frame so it looks the same at 30fps and at 144
-        a.spin = a.spin + (elapsed or 0) * HAND_SPIN_RATE
+        a.spin = a.spin + (elapsed or 0) * ANIM.HAND_SPIN_RATE
         local idx = math.floor(a.spin) % 16
         handDie:SetTexCoord((idx % 8) / 8, (idx % 8 + 1) / 8,
                             math.floor(idx / 8) / 2, (math.floor(idx / 8) + 1) / 2)
     end
 
     if a.phase == "in" then
-        local p = math.min(1, t / HAND_IN_TIME)
+        local p = math.min(1, t / ANIM.HAND_IN_TIME)
         local e = 1 - (1 - p) * (1 - p) * (1 - p)          -- ease out, fast then settling
         x = a.fromX + (a.xs[1] - a.fromX) * e
         -- two decaying hops, touching down on the row at the end of each
-        y = a.rowY + math.abs(math.sin(p * math.pi * 2)) * HAND_BOUNCE * (1 - p)
+        y = a.rowY + math.abs(math.sin(p * math.pi * 2)) * ANIM.HAND_BOUNCE * (1 - p)
         handDie:SetAlpha(p)
         if p >= 1 then a.phase = "roll"; a.t0 = now end
     elseif a.phase == "roll" then
-        local p = math.min(1, t / HAND_ROLL_TIME)
+        local p = math.min(1, t / ANIM.HAND_ROLL_TIME)
         x = a.xs[1] + (a.xs[a.n] - a.xs[1]) * p
         handDie:SetAlpha(1)
         if p >= 1 then a.phase = "out"; a.t0 = now end
     elseif a.phase == "out" then
-        local p = math.min(1, t / HAND_OUT_TIME)
+        local p = math.min(1, t / ANIM.HAND_OUT_TIME)
         x = a.xs[a.n] + (a.toX - a.xs[a.n]) * p
         handDie:SetAlpha(1 - p)
         if p >= 1 then
@@ -4705,9 +4709,9 @@ hand:SetScript("OnUpdate", function(self, elapsed)
         if i <= a.n then
             local fx = rvFX.Tier(slot.rarity)
             local since = a.popped[i]
-            local q = since and math.min(1, (now - since) / HAND_POP_TIME) or 0
+            local q = since and math.min(1, (now - since) / ANIM.HAND_POP_TIME) or 0
             local e = 1 - (1 - q) * (1 - q)
-            local lift = HAND_LIFT + fx.pop * 0.6
+            local lift = ANIM.HAND_LIFT + fx.pop * 0.6
             slot:SetAlpha(e)
             slot:ClearAllPoints()
             slot:SetPoint("TOP", hand, "TOP", a.xs[i], HG.top - (1 - e) * lift)
@@ -5097,6 +5101,10 @@ end
 -- that change with locale and magnitude.
 -- ---------------------------------------------------------------------------
 do
+    -- One table for the helpers below. Lua 5.1 allows a function only
+    -- 200 locals and this file sits near that ceiling, so a block that
+    -- wants eleven of them takes one and hangs them off it.
+    local T = {}
     CW.spellFix = CW.spellFix or {}
     CW.spellFixByName = CW.spellFixByName or {}
 
@@ -5108,7 +5116,7 @@ do
         if type(w) == "string" and w ~= "" then POWER_WORDS[#POWER_WORDS + 1] = w end
     end
 
-    local function fixFor(spellId)
+    function T.fixFor(spellId)
         return spellId and CW.spellFix[spellId] or nil
     end
 
@@ -5123,11 +5131,11 @@ do
     -- another locale uses the same conversion, and SPELL_RANGE_DUAL uses the
     -- positional "%1$s" form, so the whole shape is matched rather than one
     -- hard-coded spec. Returns nil when there is no placeholder at all.
-    local SPEC = "%%%d?%$?[-+ #0]*%d*%.?%d*[diouxXeEfgGqcs]"
+    T.SPEC = "%%%d?%$?[-+ #0]*%d*%.?%d*[diouxXeEfgGqcs]"
 
-    local function fmtParts(fmt)
+    function T.fmtParts(fmt)
         if type(fmt) ~= "string" then return nil end
-        local at, stop = fmt:find(SPEC)
+        local at, stop = fmt:find(T.SPEC)
         if not at then return nil end
         return fmt:sub(1, at - 1), fmt:sub(stop + 1)
     end
@@ -5136,8 +5144,8 @@ do
     -- suffix, and a bare number between them. Without the number test,
     -- "Melee: 5 yd range" (SPELL_RANGE_DUAL) matches SPELL_RANGE's shape and
     -- the rewrite would throw away the "Melee:" half.
-    local function looksLike(text, fmt)
-        local pre, suf = fmtParts(fmt)
+    function T.looksLike(text, fmt)
+        local pre, suf = T.fmtParts(fmt)
         if not pre then return false end
         if #pre > 0 and text:sub(1, #pre) ~= pre then return false end
         if #suf > 0 and text:sub(-#suf) ~= suf then return false end
@@ -5149,7 +5157,7 @@ do
     -- and the cooldown at the right of line 2, with the cast time on the left
     -- beside it, but a talent-modified rank or a tooltip raised from the panel
     -- can shift them, so neither column nor line number is assumed.
-    local function eachLine(tip, fn)
+    function T.eachLine(tip, fn)
         local name = tip:GetName()
         for i = 1, 8 do
             for _, side in ipairs({ "TextLeft", "TextRight" }) do
@@ -5162,11 +5170,11 @@ do
     end
 
     -- Replace the line the client wrote for `fmts` with `newText`.
-    local function replaceLine(tip, fmts, newText)
+    function T.replaceLine(tip, fmts, newText)
         if not newText then return end
-        eachLine(tip, function(line, text)
+        T.eachLine(tip, function(line, text)
             for _, fmt in ipairs(fmts) do
-                if looksLike(text, fmt) then
+                if T.looksLike(text, fmt) then
                     line:SetText(newText)
                     return true
                 end
@@ -5176,7 +5184,7 @@ do
 
     -- Same minute/second split the client uses, so 240000 comes back as
     -- "4 min cooldown" and 6000 as "6 sec cooldown".
-    local function timeText(ms, secFmt, minFmt)
+    function T.timeText(ms, secFmt, minFmt)
         local sec = ms / 1000
         if sec >= 60 and type(minFmt) == "string" then
             return string.format(minFmt, sec / 60)
@@ -5189,9 +5197,9 @@ do
 
     -- Swap the leading number on the line that names a power, leaving the
     -- localised unit word untouched.
-    local function rewriteCost(tip, cost)
+    function T.rewriteCost(tip, cost)
         if not cost then return end
-        eachLine(tip, function(line, text)
+        T.eachLine(tip, function(line, text)
             for _, word in ipairs(POWER_WORDS) do
                 -- The power's own localised name anchors the line; the number
                 -- is then the first one on it, wherever the locale puts it.
@@ -5210,13 +5218,13 @@ do
     -- last one starts.
     -- A whole number must be written "12", never "12.0": the client prints
     -- integers and a division here produces a float.
-    local function numText(v)
+    function T.numText(v)
         if v == math.floor(v) then return string.format("%d", v) end
         return tostring(v)
     end
 
-    local function findStandalone(text, num)
-        local want = numText(num)
+    function T.findStandalone(text, num)
+        local want = T.numText(num)
         local from, count, at = 1, 0, nil
         while true do
             local i, j = text:find(want, from, true)
@@ -5236,14 +5244,14 @@ do
     -- sentence that says "5" twice, or a value the client never printed
     -- because it folded spell power into it, is left exactly as it is. A wrong
     -- number is worse than an uncorrected one.
-    local function substituteOnce(tip, from, to)
+    function T.substituteOnce(tip, from, to)
         if not from or not to or from == 0 or from == to then return end
         local name, total, hitLine, hitAt = tip:GetName(), 0, nil, nil
         for i = 2, 8 do
             local line = _G[name .. "TextLeft" .. i]
             local text = line and line:GetText()
             if text and text ~= "" then
-                local n, at = findStandalone(text, from)
+                local n, at = T.findStandalone(text, from)
                 if n > 0 then
                     total, hitLine, hitAt = total + n, line, at
                 end
@@ -5251,31 +5259,31 @@ do
         end
         if total ~= 1 or not hitLine then return end
         local text = hitLine:GetText()
-        hitLine:SetText(text:sub(1, hitAt - 1) .. numText(to)
-                        .. text:sub(hitAt + #numText(from)))
+        hitLine:SetText(text:sub(1, hitAt - 1) .. T.numText(to)
+                        .. text:sub(hitAt + #T.numText(from)))
     end
 
-    local function decorate(tip, spellId)
-        local fix = fixFor(spellId)
+    function T.decorate(tip, spellId)
+        local fix = T.fixFor(spellId)
         if not fix then return end
-        rewriteCost(tip, fix.cost)
+        T.rewriteCost(tip, fix.cost)
 
         -- Cooldown, cast time and range are corrected IN PLACE, on the line the
         -- client itself wrote and in the format it used. Nothing is appended:
         -- the tooltip reads the way it would on a character whose own class
         -- owned the talent.
         if fix.cd and fix.cd > 0 then
-            replaceLine(tip, { _G.SPELL_RECAST_TIME_MIN, _G.SPELL_RECAST_TIME_SEC },
-                        timeText(fix.cd, _G.SPELL_RECAST_TIME_SEC,
+            T.replaceLine(tip, { _G.SPELL_RECAST_TIME_MIN, _G.SPELL_RECAST_TIME_SEC },
+                        T.timeText(fix.cd, _G.SPELL_RECAST_TIME_SEC,
                                          _G.SPELL_RECAST_TIME_MIN))
         end
         if fix.cast and fix.cast > 0 then
-            replaceLine(tip, { _G.SPELL_CAST_TIME_MIN, _G.SPELL_CAST_TIME_SEC },
-                        timeText(fix.cast, _G.SPELL_CAST_TIME_SEC,
+            T.replaceLine(tip, { _G.SPELL_CAST_TIME_MIN, _G.SPELL_CAST_TIME_SEC },
+                        T.timeText(fix.cast, _G.SPELL_CAST_TIME_SEC,
                                          _G.SPELL_CAST_TIME_MIN))
         end
         if fix.rangeMod and fix.rangeMod > 0 and type(_G.SPELL_RANGE) == "string" then
-            replaceLine(tip, { _G.SPELL_RANGE },
+            T.replaceLine(tip, { _G.SPELL_RANGE },
                         string.format(_G.SPELL_RANGE, fix.rangeMod))
         end
 
@@ -5285,7 +5293,7 @@ do
         -- unambiguous.
         if fix.pairs then
             for _, pair in ipairs(fix.pairs) do
-                substituteOnce(tip, pair[1], pair[2])
+                T.substituteOnce(tip, pair[1], pair[2])
             end
         end
         if fix.durBase and fix.durBase > 0 and fix.durMod and fix.durMod > 0
@@ -5293,7 +5301,7 @@ do
             local was, now = fix.durBase / 1000, fix.durMod / 1000
             -- only whole seconds: the client writes fractions its own way
             if was == math.floor(was) and now == math.floor(now) then
-                substituteOnce(tip, was, now)
+                T.substituteOnce(tip, was, now)
             end
         end
         -- Crit chance, threat, crit damage and damage-over-time multipliers are
@@ -5304,7 +5312,7 @@ do
 
     -- exposed so the harness can drive it: this is the one piece whose output
     -- the player reads directly, and its cost rewrite is easy to get subtly wrong
-    CW.ApplyTooltipFix = decorate
+    CW.ApplyTooltipFix = T.decorate
 
     -- The spellbook hands us a book slot, the action bar an action slot; both
     -- resolve to a spell name and rank, and CW.spellFixByName is keyed on that
@@ -5317,21 +5325,21 @@ do
 
     if GameTooltip and hooksecurefunc then
         hooksecurefunc(GameTooltip, "SetSpell", function(self, slot, book)
-            decorate(self, idFromBook(slot, book))
+            T.decorate(self, idFromBook(slot, book))
         end)
         -- Every tooltip the panel itself raises goes through SetHyperlink
         -- ("spell:<id>"), which hands us the id outright -- no name matching.
         -- Missing this hook is why the Abilities list still read 20 Rage.
         hooksecurefunc(GameTooltip, "SetHyperlink", function(self, link)
             local id = link and tonumber(link:match("^spell:(%d+)"))
-            if id then decorate(self, id) end
+            if id then T.decorate(self, id) end
         end)
         hooksecurefunc(GameTooltip, "SetAction", function(self, slot)
             local kind, id = GetActionInfo(slot)
             if kind ~= "spell" or not id or id == 0 then return end
             local name, rank = GetSpellName(id, BOOKTYPE_SPELL)
             if not name then return end
-            decorate(self, CW.spellFixByName[name .. "|" .. (rank or "")])
+            T.decorate(self, CW.spellFixByName[name .. "|" .. (rank or "")])
         end)
     end
 end
