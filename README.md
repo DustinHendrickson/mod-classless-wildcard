@@ -352,8 +352,8 @@ The original masks are copied into `cw_item_class_backup` first, so
 Players should clear their client `Cache` folder after the first apply.
 
 `data/sql/db-world/cw_world_class_loot.sql` does the same on the loot side. The seven Sons of
-Hodir satchels pay out one set of gear chosen by armour class; a Hero gets any of them instead of
-the chassis's. Reversible with `data/sql/manual/cw_class_loot_revert.sql`.
+Hodir satchels pay out one set of gear chosen by armour class; a Hero gets one of the sets at
+random instead of the chassis's. Reversible with `data/sql/manual/cw_class_loot_revert.sql`.
 
 > If you installed this module before September 2026, an earlier version shipped this as an
 > opt-in script that kept no backup. Check with

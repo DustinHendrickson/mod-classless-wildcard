@@ -1,12 +1,12 @@
 -- Undo cw_world_class_loot.sql: put the armour-class gate back on the Sons of
--- Hodir satchels, and each block back in a group of its own.
+-- Hodir satchels, and each block back in a group of its own at Chance 100.
 --
 -- Apply to the world database, then restart the worldserver.
 
-UPDATE `item_loot_template` SET `GroupId` = 1 WHERE `Entry` BETWEEN 51999 AND 52005 AND `Reference` IN (10036, 10039, 10042, 10046, 10050, 10054, 10058);
-UPDATE `item_loot_template` SET `GroupId` = 2 WHERE `Entry` BETWEEN 51999 AND 52005 AND `Reference` IN (10037, 10040, 10043, 10047, 10051, 10055, 10059);
-UPDATE `item_loot_template` SET `GroupId` = 3 WHERE `Entry` BETWEEN 51999 AND 52005 AND `Reference` IN (10038, 10041, 10044, 10048, 10052, 10056, 10060);
-UPDATE `item_loot_template` SET `GroupId` = 4 WHERE `Entry` BETWEEN 51999 AND 52005 AND `Reference` IN (10045, 10049, 10053, 10057, 10061);
+UPDATE `item_loot_template` SET `GroupId` = 1, `Chance` = 100 WHERE `Entry` BETWEEN 51999 AND 52005 AND `Reference` IN (10036, 10039, 10042, 10046, 10050, 10054, 10058);
+UPDATE `item_loot_template` SET `GroupId` = 2, `Chance` = 100 WHERE `Entry` BETWEEN 51999 AND 52005 AND `Reference` IN (10037, 10040, 10043, 10047, 10051, 10055, 10059);
+UPDATE `item_loot_template` SET `GroupId` = 3, `Chance` = 100 WHERE `Entry` BETWEEN 51999 AND 52005 AND `Reference` IN (10038, 10041, 10044, 10048, 10052, 10056, 10060);
+UPDATE `item_loot_template` SET `GroupId` = 4, `Chance` = 100 WHERE `Entry` BETWEEN 51999 AND 52005 AND `Reference` IN (10045, 10049, 10053, 10057, 10061);
 
 DELETE FROM `conditions`
  WHERE `SourceTypeOrReferenceId` = 10
