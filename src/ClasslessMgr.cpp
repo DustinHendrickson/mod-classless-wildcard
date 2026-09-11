@@ -398,6 +398,39 @@ void ClasslessMgr::BuildLibrary()
         return itr != lineClassMask.end() ? itr->second : 0u;
     };
 
+    // The line can answer WHETHER a row belongs to a class. It cannot answer
+    // WHICH class, and using it for that put abilities under the wrong heading.
+    //
+    // Acherus Deathcharger sits on two lines: Unholy, masked Death Knight, and
+    // the shared Mounts line, masked nothing. The Mounts line's only masked
+    // rows are the paladin Warhorse and Charger, so the fallback answered
+    // "Paladin" and the Death Knight mount was filed under Paladin. Holy Light
+    // went the same way: one of its thirteen ranks carries no mask, and Mass
+    // Resurrection -- a priest spell -- shares the paladin Holy line, so that
+    // one rank dragged Priest onto the whole chain.
+    //
+    // So: a spell that names its own class anywhere is attributed by that and
+    // the line is not consulted. Only a spell that names a class NOWHERE falls
+    // back to its line, which is the case the fallback exists for.
+    std::unordered_map<uint32, uint32> spellRealMask;
+    for (uint32 i = 0; i < sSkillLineAbilityStore.GetNumRows(); ++i)
+        if (SkillLineAbilityEntry const* sla = sSkillLineAbilityStore.LookupEntry(i))
+            if (sla->ClassMask)
+                if (SkillLineEntry const* line = sSkillLineStore.LookupEntry(sla->SkillLine))
+                    if (line->categoryId == SKILL_CATEGORY_CLASS)
+                        spellRealMask[sla->Spell] |= sla->ClassMask;
+
+    auto realMaskOf = [&spellRealMask](uint32 spellId) -> uint32
+    {
+        auto itr = spellRealMask.find(spellId);
+        return itr != spellRealMask.end() ? itr->second : 0u;
+    };
+
+    // Per rank chain: what its rows actually claim, and what the line would say
+    // if none of them claimed anything.
+    std::unordered_map<uint32, uint32> entryRealMask;
+    std::unordered_map<uint32, uint32> entryFallbackMask;
+
     // Trainer allowlist + REAL learn levels: what classes actually learn is
     // starter spells + class-trainer lists (npc_trainer). This kills NPC/pet
     // variants ("Demonic Immolate") and tiers every rank by the level a real
@@ -563,9 +596,14 @@ void ClasslessMgr::BuildLibrary()
         uint32 const slaClassMask = classMaskOf(sla);
         if (!slaClassMask)
             continue;
+        // Which class this row is FOR, as opposed to whether it belongs to one.
+        uint32 const spellReal = realMaskOf(sla->Spell);
+        uint32 const attribMask = spellReal ? spellReal : slaClassMask;
         if (!cfg.includeRacials && sla->RaceMask)
             continue;
-        if (!cfg.includeDeathKnight && (slaClassMask & dkMask) && slaClassMask == dkMask)
+        // Attribution, not admission: without it the Death Knight mount came in
+        // through the Mounts line as a paladin spell even with IncludeDeathKnight off.
+        if (!cfg.includeDeathKnight && (attribMask & dkMask) && attribMask == dkMask)
             continue;
 
         // only real class ability lines — keeps weapon/armor proficiencies,
@@ -675,7 +713,16 @@ void ClasslessMgr::BuildLibrary()
             e.firstSpellId = first;
             e.passive = info->IsPassive();
         }
-        e.classMask |= slaClassMask;
+        entryRealMask[first] |= spellReal;
+        entryFallbackMask[first] |= attribMask;
+    }
+
+    // A chain that names its own class anywhere is that class; only one that
+    // names none anywhere takes the line's answer.
+    for (auto& [first, e] : _abilities)
+    {
+        uint32 const real = entryRealMask[first];
+        e.classMask = real ? real : entryFallbackMask[first];
     }
 
     // fill rank chains and heuristics

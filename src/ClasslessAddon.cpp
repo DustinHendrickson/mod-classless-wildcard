@@ -488,16 +488,19 @@ namespace
                 castMs = 0;
             if (cdMs == baseCdMs)
                 cdMs = 0;
-            if (durMs == baseDurMs)
-                durMs = baseDurMs = 0;
-            if (modRange == baseRange)
-                modRange = 0;
+
+            // The two pairs go out as their own values rather than by zeroing
+            // the measurements, which are const and are still needed above.
+            int32 const durBaseOut = durMs == baseDurMs ? 0 : baseDurMs;
+            int32 const durModOut = durMs == baseDurMs ? 0 : durMs;
+            int32 const rangeBaseOut = modRange == baseRange ? 0 : baseRange;
+            int32 const rangeModOut = modRange == baseRange ? 0 : modRange;
 
             // id, cost, then a base/moved pair per number the tooltip prints.
             std::string piece = Acore::StringFormat(
                 "{}:{}:{}:{}:{}:{}:{}:{}:{}:{}:{}:{}:{}:{};",
                 spellId, cost / div, castMs, cdMs,
-                baseDurMs, durMs, modRange ? baseRange : 0, modRange,
+                durBaseOut, durModOut, rangeBaseOut, rangeModOut,
                 effBase[0], effMod[0], effBase[1], effMod[1], effBase[2], effMod[2]);
             if (body.size() + piece.size() > MAX_BODY)
             {
