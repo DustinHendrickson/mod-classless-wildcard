@@ -214,35 +214,30 @@ def build_data_patch(files, name, report, theme=False):
     # so a rolled Eviscerate sat in General while its row said "Rogue". Make
     # every class spell belong to every class; empty tabs stay hidden.
     categories = dbc.skill_line_categories(files.find(SKILLLINE)[0])
-    raw, source = files.find(SKILLLINEABILITY)
-    patched, changed, already = dbc.open_class_abilities(raw, categories)
+    sla_raw, source = files.find(SKILLLINEABILITY)
+    patched, changed, already = dbc.open_class_abilities(sla_raw, categories)
     payload[SKILLLINEABILITY] = patched
     report.append("  SkillLineAbility.dbc  %d class spells now belong to every class "
                   "(spellbook tabs for cross-class spells; from %s)"
                   % (changed, os.path.basename(source)))
 
-    # And this is the one that makes a cross-class talent's NUMBERS right on a
-    # tooltip, with nothing correcting them afterwards.
-    #
-    # SMSG_TALENTS_INFO sends a talent id and a rank. The client looks the rest
-    # up itself -- the rank spell, that spell's family, its affect mask -- which
-    # is a complete, unambiguous description of what the talent modifies, family
-    # included. It can do the arithmetic perfectly well. What stopped it was
-    # this table: a talent whose tab does not claim the character's class is not
-    # the character's talent, and is dropped before any of that happens.
-    raw, source = files.find(TALENTTAB)
-    patched, opened, already = dbc.open_talent_tabs(raw)
-    payload[TALENTTAB] = patched
+    # And this is the one that makes a cross-class talent's numbers right on a
+    # tooltip. The client works them out itself from the talent id and rank the
+    # server sends, but it drops a talent whose tab does not claim the
+    # character's class before it ever gets that far.
+    tt_raw, tt_source = files.find(TALENTTAB)
+    tt_patched, tt_opened, _tt_already = dbc.open_talent_tabs(tt_raw)
+    payload[TALENTTAB] = tt_patched
     report.append("  TalentTab.dbc     %d talent trees opened to every class "
                   "(cross-class talents apply to tooltips; from %s)"
-                  % (len(opened), os.path.basename(source)))
+                  % (len(tt_opened), os.path.basename(tt_source)))
 
     # A class tool is the one requirement a Hero can never meet: Stoneskin
     # Totem wants an Earth Totem, which is handed to shamans alone. The server
     # clears the requirement on its side; the client has to agree, or the
     # tooltip keeps the red "Tools:" line and the cast is refused before it is
     # ever sent.
-    class_spells = dbc.class_spell_ids(raw, categories)
+    class_spells = dbc.class_spell_ids(sla_raw, categories)
     raw, source = files.find(SPELL)
     patched, cleared = dbc.clear_spell_tools(raw, class_spells)
     payload[SPELL] = patched

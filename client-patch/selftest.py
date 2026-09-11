@@ -411,6 +411,47 @@ def main(argv):
                 check("BLP full mip chain + self-consistent",
                       len(mo) == 9 and len(atlas) == mo[-1] + ml[-1])
 
+            # --- the installer's own wiring ---------------------------------
+            # Everything above tests a transform in isolation, which is exactly
+            # how install.py shipped a step that handed TalentTab's bytes to the
+            # SkillLineAbility reader. Run the real assembler and check each
+            # table it produced is the table it claims to be.
+            import install as installer
+            plan = []
+            try:
+                built = installer.build_data_patch(files, "Hero", plan, theme=True)
+                check("build_data_patch runs end to end", True,
+                      "%d file(s)" % len(built))
+            except Exception as error:
+                built = {}
+                check("build_data_patch runs end to end", False,
+                      "%s: %s" % (type(error).__name__, error))
+
+            expect = {
+                installer.CHRCLASSES: dbc.CHRCLASSES_FIELDS,
+                installer.SKILLRACECLASSINFO: dbc.SKILLRACECLASSINFO_FIELDS,
+                installer.SKILLLINEABILITY: dbc.SKILLLINEABILITY_FIELDS,
+                installer.TALENTTAB: dbc.TALENTTAB_FIELDS,
+                installer.SPELL: dbc.SPELL_FIELDS,
+            }
+            missing = [k for k in expect if k not in built]
+            check("every table the installer patches is in the payload",
+                  not missing, "missing: %s" % (missing or "none"))
+            wrong = []
+            for table, fields in expect.items():
+                if table not in built:
+                    continue
+                _rows, got, _size, _str = dbc.parse_header(built[table])
+                if got != fields:
+                    wrong.append("%s has %d fields, expected %d"
+                                 % (os.path.basename(table), got, fields))
+            check("each patched table has its own field count",
+                  built and not wrong,
+                  "; ".join(wrong) if wrong else
+                  ("all match" if built else "nothing was built"))
+            check("CharBaseInfo present (not a DBC layout)",
+                  installer.CHARBASEINFO in built)
+
             # --- archives ---------------------------------------------------
             payload = {CHRCLASSES: patched, CHARBASEINFO: combos,
                        SKILLRACECLASSINFO: opened_dbc, SKILLLINEABILITY: sla_dbc}
