@@ -22,6 +22,10 @@ Required for every player on a Classless Wildcard realm. The
   cross-class talents instead of dropping them. It does NOT make spell tooltips
   count them -- the addon does that. The stock talent frame draws three trees
   and there are now thirty, so read a build in the addon's talent browser
+- **talent-reduced costs can be paid**: the client checks power itself before
+  it will send a cast and cannot count a cross-class talent, so its copy of
+  each cost is lowered to the least any build could pay and the server
+  decides. The addon writes the true cost back onto the tooltip
 - the **ClasslessWildcard** addon is installed
 
 The creation-screen text is a *signed* interface file, so the installer also applies
@@ -112,6 +116,7 @@ Install to this client? [Y/n] y
   SkillLineAbility.dbc  3143 class spells now belong to every class (spellbook tabs for cross-class spells)
   TalentTab.dbc     30 talent trees opened to every class (the client accepts cross-class talents)
   Spell.dbc        class tool requirement cleared from 102 spells (totems, relics; reagents untouched)
+  Spell.dbc        cost floor lowered on 273 spells (talent-reduced costs cast at the real price)
   CharStartOutfit.dbc  armored Hero look on 18 races +Blood Elf
   -> Data/patch-Z.MPQ
   GlueStrings.lua  76 class strings rewritten

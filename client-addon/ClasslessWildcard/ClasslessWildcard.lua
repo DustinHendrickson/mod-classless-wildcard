@@ -5479,6 +5479,36 @@ function ClasslessWildcard_TogglePanel()
 end
 
 -- ---------------------------------------------------------------------------
+-- The Venom Beetle's spellbook tab reads "Pet", not "Demon"
+--
+-- The core only makes a SUMMONED pet permanent when its creature type is demon
+-- or undead, and a pet that is not permanent is never sent its spell list at
+-- all -- no pet bar, no Pet tab, no owner pet auras, and nothing saved at
+-- logout. A tamed wolf sidesteps all of that by being a HUNTER_PET, which the
+-- core makes permanent whatever it is; a summoned beast has no such branch. So
+-- the beetle is filed as a demon, and the client picks its tab label from the
+-- creature type: there are only two, PET_TYPE_DEMON and PET_TYPE_PET.
+--
+-- It is the one pet with no creature family, which is what tells it apart from
+-- a real imp or felhunter a Hero may also own.
+-- ---------------------------------------------------------------------------
+do
+    local function relabel()
+        local tab = _G.SpellBookFrameTabButton2
+        if not tab or tab.bookType ~= BOOKTYPE_PET then return end
+        if UnitCreatureFamily("pet") then return end     -- a real demon: leave it
+        if tab:GetText() ~= _G.PET_TYPE_PET then
+            tab:SetText(_G.PET_TYPE_PET)
+        end
+        SpellBookFrame.petTitle = _G.PET_TYPE_PET
+    end
+
+    if hooksecurefunc and type(_G.SpellBookFrame_Update) == "function" then
+        hooksecurefunc("SpellBookFrame_Update", relabel)
+    end
+end
+
+-- ---------------------------------------------------------------------------
 -- The stock talent window shows PET talents only
 --
 -- A Hero's talents come from every class and are read in this addon's talent

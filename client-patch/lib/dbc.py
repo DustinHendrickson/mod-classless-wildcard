@@ -393,6 +393,172 @@ def clear_spell_tools(data: bytes, class_spells):
     return header + bytes(records) + data[strings_off:], cleared
 
 
+
+# Spell.dbc columns the cost floor needs (3.3.5a layout, 0-based)
+SPELL_POWERTYPE_COLUMN = 41
+SPELL_MANACOST_COLUMN = 42
+SPELL_EFFECT_COLUMN = 71          # +1, +2 for the other two effects
+SPELL_DIESIDES_COLUMN = 74
+SPELL_BASEPOINTS_COLUMN = 80
+SPELL_AURA_COLUMN = 95
+SPELL_MISCVALUE_COLUMN = 110
+SPELL_EFFECTCLASSMASK_COLUMN = 122   # three words per effect, effect-major
+SPELL_CLASSSET_COLUMN = 208
+SPELL_CLASSMASK_COLUMN = 209
+
+TALENT_FIELDS = 23
+TALENT_RANK_COLUMNS = range(4, 13)   # SpellRank[9]
+
+_SPELL_EFFECT_APPLY_AURA = 6
+_AURA_ADD_FLAT_MODIFIER = 107
+_AURA_ADD_PCT_MODIFIER = 108
+_SPELLMOD_COST = 14
+# rage and runic power are stored times ten and shown divided
+_POWER_RAGE, _POWER_RUNIC = 1, 6
+
+
+def lower_talent_reduced_costs(spell_data: bytes, talent_data: bytes,
+                               class_spells, stock_costs: bytes = None):
+    """Lower each spell's cost to the least any Hero build could pay.
+
+    The client checks power itself before it will send a cast, and it cannot
+    apply a talent from another class to that check any more than it can to a
+    tooltip: the modifier packet carries a class-mask bit and no spell family,
+    so the client only ever matches the chassis's own. With Improved Thunder
+    Clap the server wanted 16 rage and the client still refused at 16, saying
+    "Not enough rage" without sending anything.
+
+    The server is the authority on what a cast costs, so the fix is to make the
+    client's copy permissive: set it to the lowest cost any combination of
+    talents could produce. A Hero WITH the talents can then cast at their real
+    cost, and one WITHOUT gets the same refusal as before -- from the server
+    instead of locally, with the same message.
+
+    The tooltip is not left showing the lowered number: the server sends the
+    true cost for every costed spell a Hero owns and the addon writes it in.
+
+    Never raises a cost, and never takes one to zero -- a cost of zero prints
+    no cost line at all, and then there is nothing for the addon to correct.
+
+    `stock_costs` is the table to read the ORIGINAL cost from, when spell_data
+    has already been through another step. Pass the client's own untouched
+    Spell.dbc: read the base from the row being written and a second run would
+    reduce the already-reduced number, so running the installer twice would walk
+    every cost down to the floor.
+
+    Returns (new_dbc_bytes, rows_lowered).
+    """
+    record_count, field_count, record_size, string_size = parse_header(spell_data)
+    if field_count != SPELL_FIELDS or record_size != SPELL_FIELDS * 4:
+        raise DbcError(
+            "Spell.dbc has %d fields of %d bytes, expected %d of %d."
+            % (field_count, record_size, SPELL_FIELDS, SPELL_FIELDS * 4))
+
+    stock = spell_data if stock_costs is None else stock_costs
+    s_count, _s_fields, s_size, _s_str = parse_header(stock)
+    stock_cost_of = {}
+    for index in range(s_count):
+        base = 20 + index * s_size
+        stock_cost_of[struct.unpack_from("<I", stock, base)[0]] =             struct.unpack_from("<I", stock, base + SPELL_MANACOST_COLUMN * 4)[0]
+
+    records_off = 20
+    strings_off = records_off + record_count * record_size
+    records = bytearray(spell_data[records_off:strings_off])
+
+    offset_of = {}
+    for index in range(record_count):
+        base = index * record_size
+        offset_of[struct.unpack_from("<I", records, base)[0]] = base
+
+    def col(base, column):
+        return struct.unpack_from("<I", records, base + column * 4)[0]
+
+    def signed(base, column):
+        return struct.unpack_from("<i", records, base + column * 4)[0]
+
+    # ---- what each talent can take off a cost, at its best rank -------------
+    t_count, t_fields, t_size, _t_str = parse_header(talent_data)
+    if t_fields < max(TALENT_RANK_COLUMNS) + 1:
+        raise DbcError("Talent.dbc has %d fields, too few for SpellRank[9]"
+                       % t_fields)
+
+    modifiers = []          # (family, mask_words, is_flat, value)
+    for index in range(t_count):
+        row = struct.unpack_from("<%dI" % t_fields, talent_data,
+                                 20 + index * t_size)
+        best = None
+        for column in TALENT_RANK_COLUMNS:
+            rank_spell = row[column]
+            if not rank_spell or rank_spell not in offset_of:
+                continue
+            base = offset_of[rank_spell]
+            family = col(base, SPELL_CLASSSET_COLUMN)
+            for eff in range(3):
+                if col(base, SPELL_EFFECT_COLUMN + eff) != _SPELL_EFFECT_APPLY_AURA:
+                    continue
+                aura = col(base, SPELL_AURA_COLUMN + eff)
+                if aura not in (_AURA_ADD_FLAT_MODIFIER, _AURA_ADD_PCT_MODIFIER):
+                    continue
+                if col(base, SPELL_MISCVALUE_COLUMN + eff) != _SPELLMOD_COST:
+                    continue
+                value = signed(base, SPELL_BASEPOINTS_COLUMN + eff)
+                if col(base, SPELL_DIESIDES_COLUMN + eff) == 1:
+                    value += 1
+                if value >= 0:
+                    continue                  # only reductions lower the floor
+                start = SPELL_EFFECTCLASSMASK_COLUMN + 3 * eff
+                mask = (col(base, start), col(base, start + 1), col(base, start + 2))
+                candidate = (family, mask,
+                             aura == _AURA_ADD_FLAT_MODIFIER, value)
+                # ranks of one talent do not stack: keep the deepest cut
+                if best is None or value < best[3]:
+                    best = candidate
+        if best is not None:
+            modifiers.append(best)
+
+    # ---- apply every reduction that can reach each spell --------------------
+    lowered = 0
+    for spell_id, base in offset_of.items():
+        if spell_id not in class_spells:
+            continue
+        cost = stock_cost_of.get(spell_id, col(base, SPELL_MANACOST_COLUMN))
+        if not cost:
+            continue
+        family = col(base, SPELL_CLASSSET_COLUMN)
+        mask = (col(base, SPELL_CLASSMASK_COLUMN),
+                col(base, SPELL_CLASSMASK_COLUMN + 1),
+                col(base, SPELL_CLASSMASK_COLUMN + 2))
+
+        total_flat, total_mul = 0, 1.0
+        for mod_family, mod_mask, is_flat, value in modifiers:
+            if mod_family != family:
+                continue
+            if not any(a & b for a, b in zip(mod_mask, mask)):
+                continue
+            if is_flat:
+                total_flat += value
+            else:
+                total_mul *= (100.0 + value) / 100.0
+        if not total_flat and total_mul == 1.0:
+            continue
+
+        power = col(base, SPELL_POWERTYPE_COLUMN)
+        floor = 10 if power in (_POWER_RAGE, _POWER_RUNIC) else 1
+        new_cost = int(cost * total_mul) + total_flat
+        if new_cost < floor:
+            new_cost = floor
+        if new_cost >= cost:
+            continue
+        if col(base, SPELL_MANACOST_COLUMN) == new_cost:
+            continue                      # already there; nothing to write
+        struct.pack_into("<I", records, base + SPELL_MANACOST_COLUMN * 4,
+                         new_cost)
+        lowered += 1
+
+    header = WDBC_MAGIC + struct.pack("<4I", record_count, field_count,
+                                      record_size, string_size)
+    return header + bytes(records) + spell_data[strings_off:], lowered
+
 def class_spell_ids(sla_data: bytes, skill_categories: dict) -> set:
     """Every spell id on a class (category 7) SkillLineAbility row."""
     record_count, field_count, record_size, _string_size = parse_header(sla_data)

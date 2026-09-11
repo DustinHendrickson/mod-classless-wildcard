@@ -225,6 +225,12 @@ projected as you spend. Reallocating is free.</em>
   The client cannot do this itself for a talent from another class. Its modifier packet carries
   a class-mask bit and no spell family, so it matches those bits only against the chassis's own
   family: 10% of what a Hero's talents send. The server has the family and does the arithmetic.
+
+- **A talent-reduced cost can actually be paid.** The client refuses to send a cast it thinks you
+  cannot afford, and it counts a cross-class talent no better there than in a tooltip, so
+  Improved Thunder Clap left the server wanting 16 rage while the client still said "Not enough
+  rage" at 16. The client patch lowers its copy of each cost to the least any build could pay and
+  leaves the decision to the server, which is the only side that knows the real number.
 - **Universal resources.** Every Hero has mana, rage and energy at once. One shows on the main
   bar and the addon draws mini-bars for the rest. Each spell draws from its own resource, so the
   same Hero casts Fireball on mana and Bloodthirst on rage.
@@ -250,6 +256,10 @@ projected as you spend. Reallocating is free.</em>
 - **No spell asks for a class tool.** Stoneskin Totem needs no Earth Totem. Reagents are
   unchanged and are bought or farmed as normal. A runeforge is a place, not a tool, and still
   has to be visited.
+- **The Venom Beetle is a real pet.** It has a pet bar, a Pet tab in the spellbook, it keeps the
+  auras your talents give a pet, and it survives logging out. A tamed beast gets all of that for
+  being tamed; a SUMMONED pet only gets it when the core reads its creature type as demon or
+  undead, so the beetle is filed as a demon. The addon puts the spellbook tab back to Pet.
 - **A summon leaves with its spell.** Reroll Summon Imp away and the imp is dismissed instead of
   standing there permanently. Rerolling Tame Beast away puts the tamed beast away too. The beast
   is kept, not destroyed, so rolling Tame Beast again calls the same one back.

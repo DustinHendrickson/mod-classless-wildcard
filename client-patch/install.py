@@ -49,6 +49,9 @@ SKILLLINE = "DBFilesClient\\SkillLine.dbc"
 # talent window (Blizzard_TalentUI reads GetNumTalentTabs off this table).
 # The name stays here and in _OUR_FILES so an archive written by the version
 # that DID patch it is still recognised as ours by uninstall.
+# Read only -- the cost floor needs the talent list. Never written, so it is
+# deliberately absent from _OUR_FILES.
+TALENT = "DBFilesClient\\Talent.dbc"
 TALENTTAB = "DBFilesClient\\TalentTab.dbc"
 # the same path elemental.py uses, kept in one place so the two never diverge
 SPELL = elemental.SPELL
@@ -237,6 +240,19 @@ def build_data_patch(files, name, report, theme=False):
     report.append("  Spell.dbc        class tool requirement cleared from %d spells "
                   "(totems, relics; reagents untouched; from %s)"
                   % (cleared, os.path.basename(source)))
+
+    # And the other half of the same client limit. The client checks power
+    # itself before it will send a cast and cannot apply a cross-class talent to
+    # that check, so Improved Thunder Clap left the server wanting 16 rage while
+    # the client still refused at 16. Lower its copy to the least any build could
+    # pay and the server decides; the addon writes the true cost back onto the
+    # tooltip so nothing reads low.
+    talent_raw, talent_source = files.find(TALENT)
+    payload[SPELL], lowered = dbc.lower_talent_reduced_costs(
+        payload[SPELL], talent_raw, class_spells, stock_costs=raw)
+    report.append("  Spell.dbc        cost floor lowered on %d spells "
+                  "(talent-reduced costs cast at the real price; from %s)"
+                  % (lowered, os.path.basename(talent_source)))
 
     if theme:
         try:

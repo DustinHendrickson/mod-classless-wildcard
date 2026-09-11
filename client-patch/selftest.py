@@ -27,6 +27,7 @@ SKILLRACECLASSINFO = "DBFilesClient\\SkillRaceClassInfo.dbc"
 SKILLLINEABILITY = "DBFilesClient\\SkillLineAbility.dbc"
 SKILLLINE = "DBFilesClient\\SkillLine.dbc"
 TALENTTAB = "DBFilesClient\\TalentTab.dbc"
+TALENT = "DBFilesClient\\Talent.dbc"
 SPELL = elemental.SPELL
 CHARSTARTOUTFIT = "DBFilesClient\\CharStartOutfit.dbc"
 GLUESTRINGS = "Interface\\GlueXML\\GlueStrings.lua"
@@ -261,6 +262,46 @@ def main(argv):
             check("Stoneskin Totem asks for none after",
                   after_tools is not None and not any(after_tools),
                   "%d class spell(s) cleared" % tools_cleared)
+
+            # The cost floor: the client refuses to SEND a cast it thinks you
+            # cannot afford, and it cannot count a cross-class talent any more
+            # than it can in a tooltip. Lowering its copy hands the decision to
+            # the server, which is the only side that knows the real cost.
+            talent_raw = files.find(TALENT)[0]
+            cost_dbc, cost_lowered = dbc.lower_talent_reduced_costs(
+                spell_dbc, talent_raw, class_spells)
+            check("a talent-reduced cost is lowered in the client's copy",
+                  cost_lowered > 0, "%d row(s)" % cost_lowered)
+
+            def _cost(raw, spell):
+                rc2, _fc2, rs2, _s2 = dbc.parse_header(raw)
+                for n2 in range(rc2):
+                    b2 = 20 + n2 * rs2
+                    if struct.unpack_from("<I", raw, b2)[0] == spell:
+                        return struct.unpack_from("<I", raw, b2 + 42 * 4)[0]
+                return None
+
+            tc_before, tc_after = _cost(spell_dbc, 8204), _cost(cost_dbc, 8204)
+            check("Thunder Clap can be started at its talented price",
+                  tc_before == 200 and tc_after is not None and tc_after <= 160,
+                  "%s -> %s (x10)" % (tc_before, tc_after))
+
+            raised = vanished = 0
+            rcc, _fcc, rsc, _sc = dbc.parse_header(cost_dbc)
+            for n3 in range(rcc):
+                b3 = 20 + n3 * rsc
+                was = struct.unpack_from("<I", spell_dbc, b3 + 42 * 4)[0]
+                now = struct.unpack_from("<I", cost_dbc, b3 + 42 * 4)[0]
+                if now > was:
+                    raised += 1
+                if was and not now:
+                    vanished += 1
+            check("no cost is ever raised", raised == 0, "%d raised" % raised)
+            check("no cost line is removed", vanished == 0,
+                  "a zero cost prints nothing for the addon to correct")
+            check("re-running the cost floor changes nothing further",
+                  dbc.lower_talent_reduced_costs(cost_dbc, talent_raw, class_spells,
+                                                 stock_costs=spell_dbc)[1] == 0)
 
             # TalentTab.dbc is deliberately NOT patched. Opening every tree to
             # every class made GetNumTalentTabs report 31, and

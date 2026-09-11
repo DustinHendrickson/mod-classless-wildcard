@@ -626,6 +626,41 @@ def main():
     check("no creature carries more spells than the pet bar holds", not over,
           "MAX_SPELL_CHARM is 4; offenders %s" % over[:3])
 
+    # ---- a pet the core will call permanent ----------------------------------
+    # Pet::IsPermanentPetFor answers for a SUMMON_PET by asking the owner's
+    # class and then the creature's TYPE: warlock wants a demon, death knight an
+    # undead, mage one specific entry. A beast matches no branch, so the pet was
+    # never permanent -- and Player::PetSpellInitialize sends the pet's spell
+    # list only `if (pet->IsPermanentPetFor(this))`, which left the spellbook
+    # with no Pet tab at all. Pet::InitStatsForLevel reads the same type and
+    # scaled a SUMMON_PET as a HUNTER_PET while it was a beast.
+    #
+    # Undead would satisfy the core too, but Pet::LoadPetFromDB bails on
+    # IsClass(DEATH_KNIGHT, PET) && !CanSeeDKPet(), which no Hero has.
+    CREATURE_TYPE_DEMON = 3
+    E_SUMMON_PET = 56
+    # A creature is a PET only if a SUMMON_PET effect names it. The Reclaimed
+    # Sentry has creature_template_spell rows too and is a guardian, so "has pet
+    # spells" is not the test -- the first version of this check failed on it.
+    petentries = set()
+    for sp in spells:
+        v = sp.get("values") or []
+        if len(v) < 113:
+            continue
+        for eff in range(3):
+            if int(v[71 + eff]) == E_SUMMON_PET and int(v[110 + eff]):
+                petentries.add(int(v[110 + eff]))
+    wrongtype = []
+    for m in re.finditer(r"^\((\d+), '([^']*)', '', 1, 80, 35, 0, 1, \d+, (\d+),",
+                         sql_pets, re.M):
+        entry, cname, ctype = int(m.group(1)), m.group(2), int(m.group(3))
+        if entry in petentries and ctype != CREATURE_TYPE_DEMON:
+            wrongtype.append("%s (%d) is type %d" % (cname, entry, ctype))
+    check("every pet is a type the core will make permanent",
+          not wrongtype,
+          "no Pet tab and hunter-pet scaling otherwise; %s"
+          % (wrongtype[:3] if wrongtype else "%d pet creature(s)" % len(petentries)))
+
     # ---- a buff has to say what it is doing, and be drawable ------------------
     # Column 187 is the ToolTip the BUFF ICON shows on hover; 170 is the
     # spellbook Description. Every forged row shipped with 187 empty, so a Hero

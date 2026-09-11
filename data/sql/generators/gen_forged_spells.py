@@ -78,6 +78,7 @@ UNIT_FLAGS_MARKER = 0x00000002 | 0x00000004 | 0x02000000   # non-attackable, no 
 EXTRA_FLAGS_MARKER = 0x00000002 | 0x00000040               # civilian, no xp
 CREATURE_TYPE_TOTEM = 11
 CREATURE_TYPE_BEAST = 1
+CREATURE_TYPE_DEMON = 3
 SUMMON_GUARDIAN = 1562
 # SummonProperties.dbc row for a marker: category 1, type 0, slot 0, flags 0x2.
 # Anti-Magic Zone's row, and the only player summon that is a plain stationary
@@ -2059,15 +2060,30 @@ def write_sql(spells, lines, gen, path, talents=()):
     for n, (entry, cname, _display, pet, dmg, hp) in enumerate(creatures):
         end = ";" if n == len(creatures) - 1 else ","
         if pet:
-            # a real guardian: attackable, mobile, a beast, and it fights
+            # a real pet: attackable, mobile, and it fights
             # 1.0 is a running player's speed: a scarab at a pet's usual pace
             # scuttled in fast-forward. The row is the statement of intent --
             # Pet.cpp writes 1.15f over speed_run for every pet before anyone
             # sees it, so cw_forged_pet_model is what actually holds the beetle
             # to this number.
+            #
+            # DEMON, not BEAST, and the creature type is load-bearing twice.
+            # Pet::IsPermanentPetFor answers for a SUMMON_PET by asking the
+            # owner's class and then the creature's type: warlock wants a demon,
+            # death knight an undead, mage one entry. A beast matches no branch,
+            # so the beetle was never permanent -- and
+            # Player::PetSpellInitialize sends the pet's spell list only
+            # `if (pet->IsPermanentPetFor(this))`, which is why the spellbook
+            # had no Pet tab. Pet::InitStatsForLevel reads it too, and a beast
+            # made the core scale a SUMMON_PET as a HUNTER_PET.
+            #
+            # Undead would also work and would label the tab "Pet" rather than
+            # "Demon", but Pet::LoadPetFromDB bails on
+            # IsClass(DEATH_KNIGHT, PET) && !CanSeeDKPet(), which no Hero has:
+            # an undead pet standing there would stop pets loading at all.
             L.append("(%d, '%s', '', 1, 80, 35, 0, 1, 0, %d, 0, 1, %d, 1.0, 1.0, "
                      "%.2f, %.2f, '', 12340)%s"
-                     % (entry, cname, CREATURE_TYPE_BEAST, 0x00000040, dmg, hp, end))
+                     % (entry, cname, CREATURE_TYPE_DEMON, 0x00000040, dmg, hp, end))
         else:
             # ScriptName is what binds a CreatureScript, and an emplacement that
             # acts needs one. Everything else keeps the empty name it had.

@@ -477,7 +477,17 @@ namespace
             bool const moved = cost != baseCost || castMs != baseCastMs
                 || cdMs != baseCdMs || durMs != baseDurMs
                 || modRange != baseRange || effMoved;
-            if (!moved)
+
+            // A spell that COSTS something always carries its cost, moved or
+            // not. The client cannot apply a cross-class talent to its own
+            // power check either, so it refused to send the cast at all -- with
+            // Improved Thunder Clap the server wanted 16 rage and the client
+            // still said "Not enough rage" at 16. The fix is to lower the cost
+            // in the client's own Spell.dbc to the least any build could pay,
+            // which leaves the server to decide; and once that number is low,
+            // the true cost has to be sent for every costed spell or a Hero
+            // WITHOUT the talent would read the lowered one.
+            if (!moved && !baseCost)
                 continue;
 
             // Send only what a talent actually MOVED. A zero pair is "nothing
