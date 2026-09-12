@@ -1,0 +1,2866 @@
+{
+ "count": 286,
+ "items": [
+  {
+   "cls": 15,
+   "display": 1103,
+   "entry": 990101,
+   "inv": 0,
+   "material": 2,
+   "sheathe": 0,
+   "sound_sub": -1,
+   "sub": 0
+  },
+  {
+   "cls": 2,
+   "display": 8258,
+   "entry": 990201,
+   "inv": 26,
+   "material": 1,
+   "sheathe": 1,
+   "sound_sub": -1,
+   "sub": 3
+  },
+  {
+   "cls": 2,
+   "display": 21112,
+   "entry": 990202,
+   "inv": 15,
+   "material": 2,
+   "sheathe": 0,
+   "sound_sub": -1,
+   "sub": 2
+  },
+  {
+   "cls": 2,
+   "display": 52256,
+   "entry": 990203,
+   "inv": 25,
+   "material": 1,
+   "sheathe": 0,
+   "sound_sub": -1,
+   "sub": 16
+  },
+  {
+   "cls": 4,
+   "display": 8634,
+   "entry": 990204,
+   "inv": 5,
+   "material": 5,
+   "sheathe": 0,
+   "sound_sub": -1,
+   "sub": 3
+  },
+  {
+   "cls": 4,
+   "display": 15318,
+   "entry": 990205,
+   "inv": 1,
+   "material": 5,
+   "sheathe": 0,
+   "sound_sub": -1,
+   "sub": 3
+  },
+  {
+   "cls": 4,
+   "display": 27356,
+   "entry": 990206,
+   "inv": 5,
+   "material": 6,
+   "sheathe": 0,
+   "sound_sub": -1,
+   "sub": 4
+  },
+  {
+   "cls": 4,
+   "display": 27358,
+   "entry": 990207,
+   "inv": 10,
+   "material": 6,
+   "sheathe": 0,
+   "sound_sub": -1,
+   "sub": 4
+  },
+  {
+   "cls": 2,
+   "display": 23271,
+   "entry": 990208,
+   "inv": 13,
+   "material": 1,
+   "sheathe": 7,
+   "sound_sub": -1,
+   "sub": 13
+  },
+  {
+   "cls": 4,
+   "display": 30819,
+   "entry": 990209,
+   "inv": 5,
+   "material": 8,
+   "sheathe": 0,
+   "sound_sub": -1,
+   "sub": 2
+  },
+  {
+   "cls": 2,
+   "display": 20195,
+   "entry": 990210,
+   "inv": 17,
+   "material": 1,
+   "sheathe": 1,
+   "sound_sub": -1,
+   "sub": 8
+  },
+  {
+   "cls": 4,
+   "display": 18751,
+   "entry": 990211,
+   "inv": 14,
+   "material": 1,
+   "sheathe": 4,
+   "sound_sub": -1,
+   "sub": 6
+  },
+  {
+   "cls": 4,
+   "display": 34799,
+   "entry": 990212,
+   "inv": 20,
+   "material": 7,
+   "sheathe": 0,
+   "sound_sub": -1,
+   "sub": 1
+  },
+  {
+   "cls": 4,
+   "display": 6497,
+   "entry": 990280,
+   "inv": 2,
+   "material": -1,
+   "sheathe": 0,
+   "sound_sub": -1,
+   "sub": 0
+  },
+  {
+   "cls": 4,
+   "display": 64205,
+   "entry": 990281,
+   "inv": 2,
+   "material": -1,
+   "sheathe": 0,
+   "sound_sub": -1,
+   "sub": 0
+  },
+  {
+   "cls": 4,
+   "display": 9840,
+   "entry": 990282,
+   "inv": 11,
+   "material": 4,
+   "sheathe": 0,
+   "sound_sub": -1,
+   "sub": 0
+  },
+  {
+   "cls": 4,
+   "display": 43706,
+   "entry": 990283,
+   "inv": 11,
+   "material": 4,
+   "sheathe": 0,
+   "sound_sub": -1,
+   "sub": 0
+  },
+  {
+   "cls": 4,
+   "display": 25072,
+   "entry": 990284,
+   "inv": 23,
+   "material": 1,
+   "sheathe": 7,
+   "sound_sub": -1,
+   "sub": 0
+  },
+  {
+   "cls": 4,
+   "display": 23321,
+   "entry": 990285,
+   "inv": 23,
+   "material": 1,
+   "sheathe": 7,
+   "sound_sub": -1,
+   "sub": 0
+  },
+  {
+   "cls": 4,
+   "display": 30835,
+   "entry": 990286,
+   "inv": 14,
+   "material": 1,
+   "sheathe": 4,
+   "sound_sub": -1,
+   "sub": 6
+  },
+  {
+   "cls": 2,
+   "display": 32677,
+   "entry": 990287,
+   "inv": 17,
+   "material": 2,
+   "sheathe": 2,
+   "sound_sub": -1,
+   "sub": 10
+  },
+  {
+   "cls": 2,
+   "display": 55966,
+   "entry": 990288,
+   "inv": 17,
+   "material": 1,
+   "sheathe": 2,
+   "sound_sub": -1,
+   "sub": 6
+  },
+  {
+   "cls": 2,
+   "display": 6460,
+   "entry": 990289,
+   "inv": 13,
+   "material": 1,
+   "sheathe": 3,
+   "sound_sub": -1,
+   "sub": 15
+  },
+  {
+   "cls": 2,
+   "display": 57332,
+   "entry": 990290,
+   "inv": 13,
+   "material": 2,
+   "sheathe": 3,
+   "sound_sub": -1,
+   "sub": 4
+  },
+  {
+   "cls": 2,
+   "display": 30809,
+   "entry": 990291,
+   "inv": 26,
+   "material": 1,
+   "sheathe": 1,
+   "sound_sub": -1,
+   "sub": 3
+  },
+  {
+   "cls": 2,
+   "display": 45357,
+   "entry": 990292,
+   "inv": 26,
+   "material": 2,
+   "sheathe": 0,
+   "sound_sub": -1,
+   "sub": 19
+  },
+  {
+   "cls": 2,
+   "display": 40411,
+   "entry": 990293,
+   "inv": 25,
+   "material": 1,
+   "sheathe": 0,
+   "sound_sub": -1,
+   "sub": 16
+  },
+  {
+   "cls": 4,
+   "display": 26651,
+   "entry": 990294,
+   "inv": 7,
+   "material": 6,
+   "sheathe": 0,
+   "sound_sub": -1,
+   "sub": 4
+  },
+  {
+   "cls": 4,
+   "display": 17138,
+   "entry": 990295,
+   "inv": 8,
+   "material": 7,
+   "sheathe": 0,
+   "sound_sub": -1,
+   "sub": 1
+  },
+  {
+   "cls": 2,
+   "display": 32722,
+   "entry": 990250,
+   "inv": 13,
+   "material": 1,
+   "sheathe": 3,
+   "sound_sub": -1,
+   "sub": 7
+  },
+  {
+   "cls": 2,
+   "display": 29706,
+   "entry": 990251,
+   "inv": 13,
+   "material": 1,
+   "sheathe": 3,
+   "sound_sub": -1,
+   "sub": 15
+  },
+  {
+   "cls": 2,
+   "display": 31309,
+   "entry": 990252,
+   "inv": 13,
+   "material": 1,
+   "sheathe": 3,
+   "sound_sub": -1,
+   "sub": 7
+  },
+  {
+   "cls": 2,
+   "display": 31735,
+   "entry": 990253,
+   "inv": 17,
+   "material": 1,
+   "sheathe": 1,
+   "sound_sub": -1,
+   "sub": 1
+  },
+  {
+   "cls": 2,
+   "display": 34114,
+   "entry": 990254,
+   "inv": 17,
+   "material": 2,
+   "sheathe": 2,
+   "sound_sub": -1,
+   "sub": 10
+  },
+  {
+   "cls": 2,
+   "display": 33015,
+   "entry": 990255,
+   "inv": 17,
+   "material": 2,
+   "sheathe": 2,
+   "sound_sub": -1,
+   "sub": 10
+  },
+  {
+   "cls": 2,
+   "display": 31338,
+   "entry": 990256,
+   "inv": 15,
+   "material": 2,
+   "sheathe": 0,
+   "sound_sub": -1,
+   "sub": 2
+  },
+  {
+   "cls": 2,
+   "display": 31876,
+   "entry": 990257,
+   "inv": 26,
+   "material": 1,
+   "sheathe": 1,
+   "sound_sub": -1,
+   "sub": 3
+  },
+  {
+   "cls": 4,
+   "display": 31083,
+   "entry": 990258,
+   "inv": 5,
+   "material": 6,
+   "sheathe": 0,
+   "sound_sub": -1,
+   "sub": 4
+  },
+  {
+   "cls": 4,
+   "display": 26662,
+   "entry": 990259,
+   "inv": 3,
+   "material": 6,
+   "sheathe": 0,
+   "sound_sub": -1,
+   "sub": 4
+  },
+  {
+   "cls": 4,
+   "display": 25222,
+   "entry": 990260,
+   "inv": 5,
+   "material": 5,
+   "sheathe": 0,
+   "sound_sub": -1,
+   "sub": 3
+  },
+  {
+   "cls": 4,
+   "display": 32128,
+   "entry": 990261,
+   "inv": 3,
+   "material": 7,
+   "sheathe": 0,
+   "sound_sub": -1,
+   "sub": 3
+  },
+  {
+   "cls": 4,
+   "display": 36015,
+   "entry": 990262,
+   "inv": 5,
+   "material": 8,
+   "sheathe": 0,
+   "sound_sub": -1,
+   "sub": 2
+  },
+  {
+   "cls": 4,
+   "display": 31038,
+   "entry": 990263,
+   "inv": 3,
+   "material": 8,
+   "sheathe": 0,
+   "sound_sub": -1,
+   "sub": 2
+  },
+  {
+   "cls": 4,
+   "display": 30824,
+   "entry": 990264,
+   "inv": 20,
+   "material": 7,
+   "sheathe": 0,
+   "sound_sub": -1,
+   "sub": 1
+  },
+  {
+   "cls": 4,
+   "display": 36038,
+   "entry": 990265,
+   "inv": 3,
+   "material": 7,
+   "sheathe": 0,
+   "sound_sub": -1,
+   "sub": 1
+  },
+  {
+   "cls": 4,
+   "display": 31641,
+   "entry": 990266,
+   "inv": 5,
+   "material": 5,
+   "sheathe": 0,
+   "sound_sub": -1,
+   "sub": 3
+  },
+  {
+   "cls": 4,
+   "display": 14496,
+   "entry": 990267,
+   "inv": 5,
+   "material": 8,
+   "sheathe": 0,
+   "sound_sub": -1,
+   "sub": 2
+  },
+  {
+   "cls": 4,
+   "display": 31978,
+   "entry": 990268,
+   "inv": 16,
+   "material": 7,
+   "sheathe": 0,
+   "sound_sub": -1,
+   "sub": 1
+  },
+  {
+   "cls": 4,
+   "display": 24159,
+   "entry": 990269,
+   "inv": 16,
+   "material": 7,
+   "sheathe": 0,
+   "sound_sub": -1,
+   "sub": 1
+  },
+  {
+   "cls": 4,
+   "display": 34149,
+   "entry": 990270,
+   "inv": 12,
+   "material": 4,
+   "sheathe": 0,
+   "sound_sub": -1,
+   "sub": 0
+  },
+  {
+   "cls": 4,
+   "display": 39186,
+   "entry": 990271,
+   "inv": 12,
+   "material": 4,
+   "sheathe": 0,
+   "sound_sub": -1,
+   "sub": 0
+  },
+  {
+   "cls": 4,
+   "display": 31029,
+   "entry": 990272,
+   "inv": 12,
+   "material": 4,
+   "sheathe": 0,
+   "sound_sub": -1,
+   "sub": 0
+  },
+  {
+   "cls": 2,
+   "display": 28636,
+   "entry": 990300,
+   "inv": 26,
+   "material": 1,
+   "sheathe": 1,
+   "sound_sub": -1,
+   "sub": 3
+  },
+  {
+   "cls": 2,
+   "display": 20713,
+   "entry": 990301,
+   "inv": 15,
+   "material": 2,
+   "sheathe": 0,
+   "sound_sub": -1,
+   "sub": 2
+  },
+  {
+   "cls": 2,
+   "display": 20298,
+   "entry": 990302,
+   "inv": 17,
+   "material": 2,
+   "sheathe": 2,
+   "sound_sub": -1,
+   "sub": 10
+  },
+  {
+   "cls": 2,
+   "display": 25630,
+   "entry": 990303,
+   "inv": 17,
+   "material": 1,
+   "sheathe": 2,
+   "sound_sub": -1,
+   "sub": 6
+  },
+  {
+   "cls": 2,
+   "display": 18328,
+   "entry": 990304,
+   "inv": 17,
+   "material": 1,
+   "sheathe": 1,
+   "sound_sub": -1,
+   "sub": 1
+  },
+  {
+   "cls": 2,
+   "display": 6442,
+   "entry": 990305,
+   "inv": 13,
+   "material": 1,
+   "sheathe": 3,
+   "sound_sub": -1,
+   "sub": 15
+  },
+  {
+   "cls": 2,
+   "display": 21956,
+   "entry": 990306,
+   "inv": 13,
+   "material": 2,
+   "sheathe": 3,
+   "sound_sub": -1,
+   "sub": 4
+  },
+  {
+   "cls": 2,
+   "display": 29769,
+   "entry": 990307,
+   "inv": 13,
+   "material": 1,
+   "sheathe": 3,
+   "sound_sub": -1,
+   "sub": 7
+  },
+  {
+   "cls": 2,
+   "display": 26593,
+   "entry": 990308,
+   "inv": 13,
+   "material": 1,
+   "sheathe": 7,
+   "sound_sub": -1,
+   "sub": 13
+  },
+  {
+   "cls": 2,
+   "display": 6097,
+   "entry": 990309,
+   "inv": 26,
+   "material": 2,
+   "sheathe": 0,
+   "sound_sub": -1,
+   "sub": 19
+  },
+  {
+   "cls": 4,
+   "display": 29958,
+   "entry": 990310,
+   "inv": 5,
+   "material": 6,
+   "sheathe": 0,
+   "sound_sub": -1,
+   "sub": 4
+  },
+  {
+   "cls": 4,
+   "display": 977,
+   "entry": 990311,
+   "inv": 5,
+   "material": 5,
+   "sheathe": 0,
+   "sound_sub": -1,
+   "sub": 3
+  },
+  {
+   "cls": 4,
+   "display": 14279,
+   "entry": 990312,
+   "inv": 5,
+   "material": 8,
+   "sheathe": 0,
+   "sound_sub": -1,
+   "sub": 2
+  },
+  {
+   "cls": 4,
+   "display": 29792,
+   "entry": 990313,
+   "inv": 20,
+   "material": 7,
+   "sheathe": 0,
+   "sound_sub": -1,
+   "sub": 1
+  },
+  {
+   "cls": 4,
+   "display": 52277,
+   "entry": 990314,
+   "inv": 7,
+   "material": 6,
+   "sheathe": 0,
+   "sound_sub": -1,
+   "sub": 4
+  },
+  {
+   "cls": 4,
+   "display": 2217,
+   "entry": 990315,
+   "inv": 7,
+   "material": 5,
+   "sheathe": 0,
+   "sound_sub": -1,
+   "sub": 3
+  },
+  {
+   "cls": 4,
+   "display": 15149,
+   "entry": 990316,
+   "inv": 16,
+   "material": 7,
+   "sheathe": 0,
+   "sound_sub": -1,
+   "sub": 1
+  },
+  {
+   "cls": 4,
+   "display": 30835,
+   "entry": 990317,
+   "inv": 14,
+   "material": 1,
+   "sheathe": 4,
+   "sound_sub": -1,
+   "sub": 6
+  },
+  {
+   "cls": 4,
+   "display": 6497,
+   "entry": 990318,
+   "inv": 2,
+   "material": -1,
+   "sheathe": 0,
+   "sound_sub": -1,
+   "sub": 0
+  },
+  {
+   "cls": 4,
+   "display": 31657,
+   "entry": 990319,
+   "inv": 11,
+   "material": 4,
+   "sheathe": 0,
+   "sound_sub": -1,
+   "sub": 0
+  },
+  {
+   "cls": 4,
+   "display": 40036,
+   "entry": 990320,
+   "inv": 12,
+   "material": 4,
+   "sheathe": 0,
+   "sound_sub": -1,
+   "sub": 0
+  },
+  {
+   "cls": 4,
+   "display": 21608,
+   "entry": 990321,
+   "inv": 23,
+   "material": 1,
+   "sheathe": 7,
+   "sound_sub": -1,
+   "sub": 0
+  },
+  {
+   "cls": 2,
+   "display": 21071,
+   "entry": 990322,
+   "inv": 26,
+   "material": 1,
+   "sheathe": 1,
+   "sound_sub": -1,
+   "sub": 3
+  },
+  {
+   "cls": 2,
+   "display": 28308,
+   "entry": 990323,
+   "inv": 15,
+   "material": 2,
+   "sheathe": 0,
+   "sound_sub": -1,
+   "sub": 2
+  },
+  {
+   "cls": 2,
+   "display": 20431,
+   "entry": 990324,
+   "inv": 17,
+   "material": 2,
+   "sheathe": 2,
+   "sound_sub": -1,
+   "sub": 10
+  },
+  {
+   "cls": 2,
+   "display": 22242,
+   "entry": 990325,
+   "inv": 17,
+   "material": 1,
+   "sheathe": 2,
+   "sound_sub": -1,
+   "sub": 6
+  },
+  {
+   "cls": 2,
+   "display": 23228,
+   "entry": 990326,
+   "inv": 17,
+   "material": 1,
+   "sheathe": 1,
+   "sound_sub": -1,
+   "sub": 1
+  },
+  {
+   "cls": 2,
+   "display": 13848,
+   "entry": 990327,
+   "inv": 13,
+   "material": 1,
+   "sheathe": 3,
+   "sound_sub": -1,
+   "sub": 15
+  },
+  {
+   "cls": 2,
+   "display": 8572,
+   "entry": 990328,
+   "inv": 13,
+   "material": 2,
+   "sheathe": 3,
+   "sound_sub": -1,
+   "sub": 4
+  },
+  {
+   "cls": 2,
+   "display": 20116,
+   "entry": 990329,
+   "inv": 13,
+   "material": 1,
+   "sheathe": 3,
+   "sound_sub": -1,
+   "sub": 7
+  },
+  {
+   "cls": 2,
+   "display": 23271,
+   "entry": 990330,
+   "inv": 13,
+   "material": 1,
+   "sheathe": 7,
+   "sound_sub": -1,
+   "sub": 13
+  },
+  {
+   "cls": 2,
+   "display": 20920,
+   "entry": 990331,
+   "inv": 26,
+   "material": 2,
+   "sheathe": 0,
+   "sound_sub": -1,
+   "sub": 19
+  },
+  {
+   "cls": 4,
+   "display": 28398,
+   "entry": 990332,
+   "inv": 5,
+   "material": 6,
+   "sheathe": 0,
+   "sound_sub": -1,
+   "sub": 4
+  },
+  {
+   "cls": 4,
+   "display": 2269,
+   "entry": 990333,
+   "inv": 5,
+   "material": 5,
+   "sheathe": 0,
+   "sound_sub": -1,
+   "sub": 3
+  },
+  {
+   "cls": 4,
+   "display": 17233,
+   "entry": 990334,
+   "inv": 5,
+   "material": 8,
+   "sheathe": 0,
+   "sound_sub": -1,
+   "sub": 2
+  },
+  {
+   "cls": 4,
+   "display": 12687,
+   "entry": 990335,
+   "inv": 20,
+   "material": 7,
+   "sheathe": 0,
+   "sound_sub": -1,
+   "sub": 1
+  },
+  {
+   "cls": 4,
+   "display": 27413,
+   "entry": 990336,
+   "inv": 7,
+   "material": 6,
+   "sheathe": 0,
+   "sound_sub": -1,
+   "sub": 4
+  },
+  {
+   "cls": 4,
+   "display": 12453,
+   "entry": 990337,
+   "inv": 7,
+   "material": 5,
+   "sheathe": 0,
+   "sound_sub": -1,
+   "sub": 3
+  },
+  {
+   "cls": 4,
+   "display": 23041,
+   "entry": 990338,
+   "inv": 16,
+   "material": 7,
+   "sheathe": 0,
+   "sound_sub": -1,
+   "sub": 1
+  },
+  {
+   "cls": 4,
+   "display": 44710,
+   "entry": 990339,
+   "inv": 14,
+   "material": 1,
+   "sheathe": 4,
+   "sound_sub": -1,
+   "sub": 6
+  },
+  {
+   "cls": 4,
+   "display": 18172,
+   "entry": 990340,
+   "inv": 2,
+   "material": -1,
+   "sheathe": 0,
+   "sound_sub": -1,
+   "sub": 0
+  },
+  {
+   "cls": 4,
+   "display": 43407,
+   "entry": 990341,
+   "inv": 11,
+   "material": 4,
+   "sheathe": 0,
+   "sound_sub": -1,
+   "sub": 0
+  },
+  {
+   "cls": 4,
+   "display": 6496,
+   "entry": 990342,
+   "inv": 12,
+   "material": 4,
+   "sheathe": 0,
+   "sound_sub": -1,
+   "sub": 0
+  },
+  {
+   "cls": 4,
+   "display": 28197,
+   "entry": 990343,
+   "inv": 23,
+   "material": 1,
+   "sheathe": 7,
+   "sound_sub": -1,
+   "sub": 0
+  },
+  {
+   "cls": 2,
+   "display": 20725,
+   "entry": 990344,
+   "inv": 26,
+   "material": 1,
+   "sheathe": 1,
+   "sound_sub": -1,
+   "sub": 3
+  },
+  {
+   "cls": 2,
+   "display": 34800,
+   "entry": 990345,
+   "inv": 15,
+   "material": 2,
+   "sheathe": 0,
+   "sound_sub": -1,
+   "sub": 2
+  },
+  {
+   "cls": 2,
+   "display": 20381,
+   "entry": 990346,
+   "inv": 17,
+   "material": 2,
+   "sheathe": 2,
+   "sound_sub": -1,
+   "sub": 10
+  },
+  {
+   "cls": 2,
+   "display": 25631,
+   "entry": 990347,
+   "inv": 17,
+   "material": 1,
+   "sheathe": 2,
+   "sound_sub": -1,
+   "sub": 6
+  },
+  {
+   "cls": 2,
+   "display": 31857,
+   "entry": 990348,
+   "inv": 17,
+   "material": 1,
+   "sheathe": 1,
+   "sound_sub": -1,
+   "sub": 1
+  },
+  {
+   "cls": 2,
+   "display": 20602,
+   "entry": 990349,
+   "inv": 13,
+   "material": 1,
+   "sheathe": 3,
+   "sound_sub": -1,
+   "sub": 15
+  },
+  {
+   "cls": 2,
+   "display": 28191,
+   "entry": 990350,
+   "inv": 13,
+   "material": 2,
+   "sheathe": 3,
+   "sound_sub": -1,
+   "sub": 4
+  },
+  {
+   "cls": 2,
+   "display": 23734,
+   "entry": 990351,
+   "inv": 13,
+   "material": 1,
+   "sheathe": 3,
+   "sound_sub": -1,
+   "sub": 7
+  },
+  {
+   "cls": 2,
+   "display": 56907,
+   "entry": 990352,
+   "inv": 13,
+   "material": 1,
+   "sheathe": 7,
+   "sound_sub": -1,
+   "sub": 13
+  },
+  {
+   "cls": 2,
+   "display": 21019,
+   "entry": 990353,
+   "inv": 26,
+   "material": 2,
+   "sheathe": 0,
+   "sound_sub": -1,
+   "sub": 19
+  },
+  {
+   "cls": 4,
+   "display": 25846,
+   "entry": 990354,
+   "inv": 5,
+   "material": 6,
+   "sheathe": 0,
+   "sound_sub": -1,
+   "sub": 4
+  },
+  {
+   "cls": 4,
+   "display": 12971,
+   "entry": 990355,
+   "inv": 5,
+   "material": 5,
+   "sheathe": 0,
+   "sound_sub": -1,
+   "sub": 3
+  },
+  {
+   "cls": 4,
+   "display": 14472,
+   "entry": 990356,
+   "inv": 5,
+   "material": 8,
+   "sheathe": 0,
+   "sound_sub": -1,
+   "sub": 2
+  },
+  {
+   "cls": 4,
+   "display": 22958,
+   "entry": 990357,
+   "inv": 20,
+   "material": 7,
+   "sheathe": 0,
+   "sound_sub": -1,
+   "sub": 1
+  },
+  {
+   "cls": 4,
+   "display": 31023,
+   "entry": 990358,
+   "inv": 7,
+   "material": 6,
+   "sheathe": 0,
+   "sound_sub": -1,
+   "sub": 4
+  },
+  {
+   "cls": 4,
+   "display": 26249,
+   "entry": 990359,
+   "inv": 7,
+   "material": 5,
+   "sheathe": 0,
+   "sound_sub": -1,
+   "sub": 3
+  },
+  {
+   "cls": 4,
+   "display": 23058,
+   "entry": 990360,
+   "inv": 16,
+   "material": 7,
+   "sheathe": 0,
+   "sound_sub": -1,
+   "sub": 1
+  },
+  {
+   "cls": 4,
+   "display": 49154,
+   "entry": 990361,
+   "inv": 14,
+   "material": 1,
+   "sheathe": 4,
+   "sound_sub": -1,
+   "sub": 6
+  },
+  {
+   "cls": 4,
+   "display": 6539,
+   "entry": 990362,
+   "inv": 2,
+   "material": -1,
+   "sheathe": 0,
+   "sound_sub": -1,
+   "sub": 0
+  },
+  {
+   "cls": 4,
+   "display": 9837,
+   "entry": 990363,
+   "inv": 11,
+   "material": 4,
+   "sheathe": 0,
+   "sound_sub": -1,
+   "sub": 0
+  },
+  {
+   "cls": 4,
+   "display": 39916,
+   "entry": 990364,
+   "inv": 12,
+   "material": 4,
+   "sheathe": 0,
+   "sound_sub": -1,
+   "sub": 0
+  },
+  {
+   "cls": 4,
+   "display": 60349,
+   "entry": 990365,
+   "inv": 23,
+   "material": 1,
+   "sheathe": 7,
+   "sound_sub": -1,
+   "sub": 0
+  },
+  {
+   "cls": 2,
+   "display": 6592,
+   "entry": 990366,
+   "inv": 26,
+   "material": 1,
+   "sheathe": 1,
+   "sound_sub": -1,
+   "sub": 3
+  },
+  {
+   "cls": 2,
+   "display": 2786,
+   "entry": 990367,
+   "inv": 15,
+   "material": 2,
+   "sheathe": 0,
+   "sound_sub": -1,
+   "sub": 2
+  },
+  {
+   "cls": 2,
+   "display": 28231,
+   "entry": 990368,
+   "inv": 17,
+   "material": 2,
+   "sheathe": 2,
+   "sound_sub": -1,
+   "sub": 10
+  },
+  {
+   "cls": 2,
+   "display": 55966,
+   "entry": 990369,
+   "inv": 17,
+   "material": 1,
+   "sheathe": 2,
+   "sound_sub": -1,
+   "sub": 6
+  },
+  {
+   "cls": 2,
+   "display": 40300,
+   "entry": 990370,
+   "inv": 17,
+   "material": 1,
+   "sheathe": 1,
+   "sound_sub": -1,
+   "sub": 1
+  },
+  {
+   "cls": 2,
+   "display": 35589,
+   "entry": 990371,
+   "inv": 13,
+   "material": 1,
+   "sheathe": 3,
+   "sound_sub": -1,
+   "sub": 15
+  },
+  {
+   "cls": 2,
+   "display": 19741,
+   "entry": 990372,
+   "inv": 13,
+   "material": 2,
+   "sheathe": 3,
+   "sound_sub": -1,
+   "sub": 4
+  },
+  {
+   "cls": 2,
+   "display": 31309,
+   "entry": 990373,
+   "inv": 13,
+   "material": 1,
+   "sheathe": 3,
+   "sound_sub": -1,
+   "sub": 7
+  },
+  {
+   "cls": 2,
+   "display": 42348,
+   "entry": 990374,
+   "inv": 13,
+   "material": 1,
+   "sheathe": 7,
+   "sound_sub": -1,
+   "sub": 13
+  },
+  {
+   "cls": 2,
+   "display": 20790,
+   "entry": 990375,
+   "inv": 26,
+   "material": 2,
+   "sheathe": 0,
+   "sound_sub": -1,
+   "sub": 19
+  },
+  {
+   "cls": 4,
+   "display": 44424,
+   "entry": 990376,
+   "inv": 5,
+   "material": 6,
+   "sheathe": 0,
+   "sound_sub": -1,
+   "sub": 4
+  },
+  {
+   "cls": 4,
+   "display": 30663,
+   "entry": 990377,
+   "inv": 5,
+   "material": 5,
+   "sheathe": 0,
+   "sound_sub": -1,
+   "sub": 3
+  },
+  {
+   "cls": 4,
+   "display": 28430,
+   "entry": 990378,
+   "inv": 5,
+   "material": 8,
+   "sheathe": 0,
+   "sound_sub": -1,
+   "sub": 2
+  },
+  {
+   "cls": 4,
+   "display": 16670,
+   "entry": 990379,
+   "inv": 20,
+   "material": 7,
+   "sheathe": 0,
+   "sound_sub": -1,
+   "sub": 1
+  },
+  {
+   "cls": 4,
+   "display": 38316,
+   "entry": 990380,
+   "inv": 7,
+   "material": 6,
+   "sheathe": 0,
+   "sound_sub": -1,
+   "sub": 4
+  },
+  {
+   "cls": 4,
+   "display": 41607,
+   "entry": 990381,
+   "inv": 7,
+   "material": 5,
+   "sheathe": 0,
+   "sound_sub": -1,
+   "sub": 3
+  },
+  {
+   "cls": 4,
+   "display": 26016,
+   "entry": 990382,
+   "inv": 16,
+   "material": 7,
+   "sheathe": 0,
+   "sound_sub": -1,
+   "sub": 1
+  },
+  {
+   "cls": 4,
+   "display": 56415,
+   "entry": 990383,
+   "inv": 14,
+   "material": 1,
+   "sheathe": 4,
+   "sound_sub": -1,
+   "sub": 6
+  },
+  {
+   "cls": 4,
+   "display": 40040,
+   "entry": 990384,
+   "inv": 2,
+   "material": -1,
+   "sheathe": 0,
+   "sound_sub": -1,
+   "sub": 0
+  },
+  {
+   "cls": 4,
+   "display": 28733,
+   "entry": 990385,
+   "inv": 11,
+   "material": 4,
+   "sheathe": 0,
+   "sound_sub": -1,
+   "sub": 0
+  },
+  {
+   "cls": 4,
+   "display": 26374,
+   "entry": 990386,
+   "inv": 12,
+   "material": 4,
+   "sheathe": 0,
+   "sound_sub": -1,
+   "sub": 0
+  },
+  {
+   "cls": 4,
+   "display": 28337,
+   "entry": 990387,
+   "inv": 23,
+   "material": 1,
+   "sheathe": 7,
+   "sound_sub": -1,
+   "sub": 0
+  },
+  {
+   "cls": 2,
+   "display": 29163,
+   "entry": 990388,
+   "inv": 26,
+   "material": 1,
+   "sheathe": 1,
+   "sound_sub": -1,
+   "sub": 3
+  },
+  {
+   "cls": 2,
+   "display": 41791,
+   "entry": 990389,
+   "inv": 15,
+   "material": 2,
+   "sheathe": 0,
+   "sound_sub": -1,
+   "sub": 2
+  },
+  {
+   "cls": 2,
+   "display": 34894,
+   "entry": 990390,
+   "inv": 17,
+   "material": 2,
+   "sheathe": 2,
+   "sound_sub": -1,
+   "sub": 10
+  },
+  {
+   "cls": 2,
+   "display": 55017,
+   "entry": 990391,
+   "inv": 17,
+   "material": 1,
+   "sheathe": 2,
+   "sound_sub": -1,
+   "sub": 6
+  },
+  {
+   "cls": 2,
+   "display": 39577,
+   "entry": 990392,
+   "inv": 17,
+   "material": 1,
+   "sheathe": 1,
+   "sound_sub": -1,
+   "sub": 1
+  },
+  {
+   "cls": 2,
+   "display": 6443,
+   "entry": 990393,
+   "inv": 13,
+   "material": 1,
+   "sheathe": 3,
+   "sound_sub": -1,
+   "sub": 15
+  },
+  {
+   "cls": 2,
+   "display": 28821,
+   "entry": 990394,
+   "inv": 13,
+   "material": 2,
+   "sheathe": 3,
+   "sound_sub": -1,
+   "sub": 4
+  },
+  {
+   "cls": 2,
+   "display": 40795,
+   "entry": 990395,
+   "inv": 13,
+   "material": 1,
+   "sheathe": 3,
+   "sound_sub": -1,
+   "sub": 7
+  },
+  {
+   "cls": 2,
+   "display": 42408,
+   "entry": 990396,
+   "inv": 13,
+   "material": 1,
+   "sheathe": 7,
+   "sound_sub": -1,
+   "sub": 13
+  },
+  {
+   "cls": 2,
+   "display": 52257,
+   "entry": 990397,
+   "inv": 26,
+   "material": 2,
+   "sheathe": 0,
+   "sound_sub": -1,
+   "sub": 19
+  },
+  {
+   "cls": 4,
+   "display": 42352,
+   "entry": 990398,
+   "inv": 5,
+   "material": 6,
+   "sheathe": 0,
+   "sound_sub": -1,
+   "sub": 4
+  },
+  {
+   "cls": 4,
+   "display": 22860,
+   "entry": 990399,
+   "inv": 5,
+   "material": 5,
+   "sheathe": 0,
+   "sound_sub": -1,
+   "sub": 3
+  },
+  {
+   "cls": 4,
+   "display": 26514,
+   "entry": 990400,
+   "inv": 5,
+   "material": 8,
+   "sheathe": 0,
+   "sound_sub": -1,
+   "sub": 2
+  },
+  {
+   "cls": 4,
+   "display": 16673,
+   "entry": 990401,
+   "inv": 20,
+   "material": 7,
+   "sheathe": 0,
+   "sound_sub": -1,
+   "sub": 1
+  },
+  {
+   "cls": 4,
+   "display": 44347,
+   "entry": 990402,
+   "inv": 7,
+   "material": 6,
+   "sheathe": 0,
+   "sound_sub": -1,
+   "sub": 4
+  },
+  {
+   "cls": 4,
+   "display": 32127,
+   "entry": 990403,
+   "inv": 7,
+   "material": 5,
+   "sheathe": 0,
+   "sound_sub": -1,
+   "sub": 3
+  },
+  {
+   "cls": 4,
+   "display": 23097,
+   "entry": 990404,
+   "inv": 16,
+   "material": 7,
+   "sheathe": 0,
+   "sound_sub": -1,
+   "sub": 1
+  },
+  {
+   "cls": 4,
+   "display": 56416,
+   "entry": 990405,
+   "inv": 14,
+   "material": 1,
+   "sheathe": 4,
+   "sound_sub": -1,
+   "sub": 6
+  },
+  {
+   "cls": 4,
+   "display": 15420,
+   "entry": 990406,
+   "inv": 2,
+   "material": -1,
+   "sheathe": 0,
+   "sound_sub": -1,
+   "sub": 0
+  },
+  {
+   "cls": 4,
+   "display": 34189,
+   "entry": 990407,
+   "inv": 11,
+   "material": 4,
+   "sheathe": 0,
+   "sound_sub": -1,
+   "sub": 0
+  },
+  {
+   "cls": 4,
+   "display": 38571,
+   "entry": 990408,
+   "inv": 12,
+   "material": 4,
+   "sheathe": 0,
+   "sound_sub": -1,
+   "sub": 0
+  },
+  {
+   "cls": 4,
+   "display": 28475,
+   "entry": 990409,
+   "inv": 23,
+   "material": 1,
+   "sheathe": 7,
+   "sound_sub": -1,
+   "sub": 0
+  },
+  {
+   "cls": 2,
+   "display": 43685,
+   "entry": 990410,
+   "inv": 26,
+   "material": 1,
+   "sheathe": 1,
+   "sound_sub": -1,
+   "sub": 3
+  },
+  {
+   "cls": 2,
+   "display": 49222,
+   "entry": 990411,
+   "inv": 15,
+   "material": 2,
+   "sheathe": 0,
+   "sound_sub": -1,
+   "sub": 2
+  },
+  {
+   "cls": 2,
+   "display": 38345,
+   "entry": 990412,
+   "inv": 17,
+   "material": 2,
+   "sheathe": 2,
+   "sound_sub": -1,
+   "sub": 10
+  },
+  {
+   "cls": 2,
+   "display": 56412,
+   "entry": 990413,
+   "inv": 17,
+   "material": 1,
+   "sheathe": 2,
+   "sound_sub": -1,
+   "sub": 6
+  },
+  {
+   "cls": 2,
+   "display": 8537,
+   "entry": 990414,
+   "inv": 17,
+   "material": 1,
+   "sheathe": 1,
+   "sound_sub": -1,
+   "sub": 1
+  },
+  {
+   "cls": 2,
+   "display": 38457,
+   "entry": 990415,
+   "inv": 13,
+   "material": 1,
+   "sheathe": 3,
+   "sound_sub": -1,
+   "sub": 15
+  },
+  {
+   "cls": 2,
+   "display": 33072,
+   "entry": 990416,
+   "inv": 13,
+   "material": 2,
+   "sheathe": 3,
+   "sound_sub": -1,
+   "sub": 4
+  },
+  {
+   "cls": 2,
+   "display": 41782,
+   "entry": 990417,
+   "inv": 13,
+   "material": 1,
+   "sheathe": 3,
+   "sound_sub": -1,
+   "sub": 7
+  },
+  {
+   "cls": 2,
+   "display": 51189,
+   "entry": 990418,
+   "inv": 13,
+   "material": 1,
+   "sheathe": 7,
+   "sound_sub": -1,
+   "sub": 13
+  },
+  {
+   "cls": 2,
+   "display": 40133,
+   "entry": 990419,
+   "inv": 26,
+   "material": 2,
+   "sheathe": 0,
+   "sound_sub": -1,
+   "sub": 19
+  },
+  {
+   "cls": 4,
+   "display": 56330,
+   "entry": 990420,
+   "inv": 5,
+   "material": 6,
+   "sheathe": 0,
+   "sound_sub": -1,
+   "sub": 4
+  },
+  {
+   "cls": 4,
+   "display": 32094,
+   "entry": 990421,
+   "inv": 5,
+   "material": 5,
+   "sheathe": 0,
+   "sound_sub": -1,
+   "sub": 3
+  },
+  {
+   "cls": 4,
+   "display": 17312,
+   "entry": 990422,
+   "inv": 5,
+   "material": 8,
+   "sheathe": 0,
+   "sound_sub": -1,
+   "sub": 2
+  },
+  {
+   "cls": 4,
+   "display": 31053,
+   "entry": 990423,
+   "inv": 20,
+   "material": 7,
+   "sheathe": 0,
+   "sound_sub": -1,
+   "sub": 1
+  },
+  {
+   "cls": 4,
+   "display": 54825,
+   "entry": 990424,
+   "inv": 7,
+   "material": 6,
+   "sheathe": 0,
+   "sound_sub": -1,
+   "sub": 4
+  },
+  {
+   "cls": 4,
+   "display": 38279,
+   "entry": 990425,
+   "inv": 7,
+   "material": 5,
+   "sheathe": 0,
+   "sound_sub": -1,
+   "sub": 3
+  },
+  {
+   "cls": 4,
+   "display": 23048,
+   "entry": 990426,
+   "inv": 16,
+   "material": 7,
+   "sheathe": 0,
+   "sound_sub": -1,
+   "sub": 1
+  },
+  {
+   "cls": 4,
+   "display": 61884,
+   "entry": 990427,
+   "inv": 14,
+   "material": 1,
+   "sheathe": 4,
+   "sound_sub": -1,
+   "sub": 6
+  },
+  {
+   "cls": 4,
+   "display": 39212,
+   "entry": 990428,
+   "inv": 2,
+   "material": -1,
+   "sheathe": 0,
+   "sound_sub": -1,
+   "sub": 0
+  },
+  {
+   "cls": 4,
+   "display": 47325,
+   "entry": 990429,
+   "inv": 11,
+   "material": 4,
+   "sheathe": 0,
+   "sound_sub": -1,
+   "sub": 0
+  },
+  {
+   "cls": 4,
+   "display": 40413,
+   "entry": 990430,
+   "inv": 12,
+   "material": 4,
+   "sheathe": 0,
+   "sound_sub": -1,
+   "sub": 0
+  },
+  {
+   "cls": 4,
+   "display": 34807,
+   "entry": 990431,
+   "inv": 23,
+   "material": 1,
+   "sheathe": 7,
+   "sound_sub": -1,
+   "sub": 0
+  },
+  {
+   "cls": 2,
+   "display": 41948,
+   "entry": 990432,
+   "inv": 26,
+   "material": 1,
+   "sheathe": 1,
+   "sound_sub": -1,
+   "sub": 3
+  },
+  {
+   "cls": 2,
+   "display": 49140,
+   "entry": 990433,
+   "inv": 15,
+   "material": 2,
+   "sheathe": 0,
+   "sound_sub": -1,
+   "sub": 2
+  },
+  {
+   "cls": 2,
+   "display": 39878,
+   "entry": 990434,
+   "inv": 17,
+   "material": 2,
+   "sheathe": 2,
+   "sound_sub": -1,
+   "sub": 10
+  },
+  {
+   "cls": 2,
+   "display": 55965,
+   "entry": 990435,
+   "inv": 17,
+   "material": 1,
+   "sheathe": 2,
+   "sound_sub": -1,
+   "sub": 6
+  },
+  {
+   "cls": 2,
+   "display": 45492,
+   "entry": 990436,
+   "inv": 17,
+   "material": 1,
+   "sheathe": 1,
+   "sound_sub": -1,
+   "sub": 1
+  },
+  {
+   "cls": 2,
+   "display": 43977,
+   "entry": 990437,
+   "inv": 13,
+   "material": 1,
+   "sheathe": 3,
+   "sound_sub": -1,
+   "sub": 15
+  },
+  {
+   "cls": 2,
+   "display": 40791,
+   "entry": 990438,
+   "inv": 13,
+   "material": 2,
+   "sheathe": 3,
+   "sound_sub": -1,
+   "sub": 4
+  },
+  {
+   "cls": 2,
+   "display": 46992,
+   "entry": 990439,
+   "inv": 13,
+   "material": 1,
+   "sheathe": 3,
+   "sound_sub": -1,
+   "sub": 7
+  },
+  {
+   "cls": 2,
+   "display": 52437,
+   "entry": 990440,
+   "inv": 13,
+   "material": 1,
+   "sheathe": 7,
+   "sound_sub": -1,
+   "sub": 13
+  },
+  {
+   "cls": 2,
+   "display": 40156,
+   "entry": 990441,
+   "inv": 26,
+   "material": 2,
+   "sheathe": 0,
+   "sound_sub": -1,
+   "sub": 19
+  },
+  {
+   "cls": 4,
+   "display": 51900,
+   "entry": 990442,
+   "inv": 5,
+   "material": 6,
+   "sheathe": 0,
+   "sound_sub": -1,
+   "sub": 4
+  },
+  {
+   "cls": 4,
+   "display": 11497,
+   "entry": 990443,
+   "inv": 5,
+   "material": 5,
+   "sheathe": 0,
+   "sound_sub": -1,
+   "sub": 3
+  },
+  {
+   "cls": 4,
+   "display": 40727,
+   "entry": 990444,
+   "inv": 5,
+   "material": 8,
+   "sheathe": 0,
+   "sound_sub": -1,
+   "sub": 2
+  },
+  {
+   "cls": 4,
+   "display": 43469,
+   "entry": 990445,
+   "inv": 20,
+   "material": 7,
+   "sheathe": 0,
+   "sound_sub": -1,
+   "sub": 1
+  },
+  {
+   "cls": 4,
+   "display": 52996,
+   "entry": 990446,
+   "inv": 7,
+   "material": 6,
+   "sheathe": 0,
+   "sound_sub": -1,
+   "sub": 4
+  },
+  {
+   "cls": 4,
+   "display": 45966,
+   "entry": 990447,
+   "inv": 7,
+   "material": 5,
+   "sheathe": 0,
+   "sound_sub": -1,
+   "sub": 3
+  },
+  {
+   "cls": 4,
+   "display": 35114,
+   "entry": 990448,
+   "inv": 16,
+   "material": 7,
+   "sheathe": 0,
+   "sound_sub": -1,
+   "sub": 1
+  },
+  {
+   "cls": 4,
+   "display": 61838,
+   "entry": 990449,
+   "inv": 14,
+   "material": 1,
+   "sheathe": 4,
+   "sound_sub": -1,
+   "sub": 6
+  },
+  {
+   "cls": 4,
+   "display": 32087,
+   "entry": 990450,
+   "inv": 2,
+   "material": -1,
+   "sheathe": 0,
+   "sound_sub": -1,
+   "sub": 0
+  },
+  {
+   "cls": 4,
+   "display": 49229,
+   "entry": 990451,
+   "inv": 11,
+   "material": 4,
+   "sheathe": 0,
+   "sound_sub": -1,
+   "sub": 0
+  },
+  {
+   "cls": 4,
+   "display": 24187,
+   "entry": 990452,
+   "inv": 12,
+   "material": 4,
+   "sheathe": 0,
+   "sound_sub": -1,
+   "sub": 0
+  },
+  {
+   "cls": 4,
+   "display": 35816,
+   "entry": 990453,
+   "inv": 23,
+   "material": 1,
+   "sheathe": 7,
+   "sound_sub": -1,
+   "sub": 0
+  },
+  {
+   "cls": 2,
+   "display": 49393,
+   "entry": 990454,
+   "inv": 26,
+   "material": 1,
+   "sheathe": 1,
+   "sound_sub": -1,
+   "sub": 3
+  },
+  {
+   "cls": 2,
+   "display": 55930,
+   "entry": 990455,
+   "inv": 15,
+   "material": 2,
+   "sheathe": 0,
+   "sound_sub": -1,
+   "sub": 2
+  },
+  {
+   "cls": 2,
+   "display": 50139,
+   "entry": 990456,
+   "inv": 17,
+   "material": 2,
+   "sheathe": 2,
+   "sound_sub": -1,
+   "sub": 10
+  },
+  {
+   "cls": 2,
+   "display": 60837,
+   "entry": 990457,
+   "inv": 17,
+   "material": 1,
+   "sheathe": 2,
+   "sound_sub": -1,
+   "sub": 6
+  },
+  {
+   "cls": 2,
+   "display": 49356,
+   "entry": 990458,
+   "inv": 17,
+   "material": 1,
+   "sheathe": 1,
+   "sound_sub": -1,
+   "sub": 1
+  },
+  {
+   "cls": 2,
+   "display": 42825,
+   "entry": 990459,
+   "inv": 13,
+   "material": 1,
+   "sheathe": 3,
+   "sound_sub": -1,
+   "sub": 15
+  },
+  {
+   "cls": 2,
+   "display": 39875,
+   "entry": 990460,
+   "inv": 13,
+   "material": 2,
+   "sheathe": 3,
+   "sound_sub": -1,
+   "sub": 4
+  },
+  {
+   "cls": 2,
+   "display": 56004,
+   "entry": 990461,
+   "inv": 13,
+   "material": 1,
+   "sheathe": 3,
+   "sound_sub": -1,
+   "sub": 7
+  },
+  {
+   "cls": 2,
+   "display": 56658,
+   "entry": 990462,
+   "inv": 13,
+   "material": 1,
+   "sheathe": 7,
+   "sound_sub": -1,
+   "sub": 13
+  },
+  {
+   "cls": 2,
+   "display": 56895,
+   "entry": 990463,
+   "inv": 26,
+   "material": 2,
+   "sheathe": 0,
+   "sound_sub": -1,
+   "sub": 19
+  },
+  {
+   "cls": 4,
+   "display": 51707,
+   "entry": 990464,
+   "inv": 5,
+   "material": 6,
+   "sheathe": 0,
+   "sound_sub": -1,
+   "sub": 4
+  },
+  {
+   "cls": 4,
+   "display": 52147,
+   "entry": 990465,
+   "inv": 5,
+   "material": 5,
+   "sheathe": 0,
+   "sound_sub": -1,
+   "sub": 3
+  },
+  {
+   "cls": 4,
+   "display": 14278,
+   "entry": 990466,
+   "inv": 5,
+   "material": 8,
+   "sheathe": 0,
+   "sound_sub": -1,
+   "sub": 2
+  },
+  {
+   "cls": 4,
+   "display": 46873,
+   "entry": 990467,
+   "inv": 20,
+   "material": 7,
+   "sheathe": 0,
+   "sound_sub": -1,
+   "sub": 1
+  },
+  {
+   "cls": 4,
+   "display": 55814,
+   "entry": 990468,
+   "inv": 7,
+   "material": 6,
+   "sheathe": 0,
+   "sound_sub": -1,
+   "sub": 4
+  },
+  {
+   "cls": 4,
+   "display": 48608,
+   "entry": 990469,
+   "inv": 7,
+   "material": 5,
+   "sheathe": 0,
+   "sound_sub": -1,
+   "sub": 3
+  },
+  {
+   "cls": 4,
+   "display": 44458,
+   "entry": 990470,
+   "inv": 16,
+   "material": 7,
+   "sheathe": 0,
+   "sound_sub": -1,
+   "sub": 1
+  },
+  {
+   "cls": 4,
+   "display": 61785,
+   "entry": 990471,
+   "inv": 14,
+   "material": 1,
+   "sheathe": 4,
+   "sound_sub": -1,
+   "sub": 6
+  },
+  {
+   "cls": 4,
+   "display": 53566,
+   "entry": 990472,
+   "inv": 2,
+   "material": -1,
+   "sheathe": 0,
+   "sound_sub": -1,
+   "sub": 0
+  },
+  {
+   "cls": 4,
+   "display": 56104,
+   "entry": 990473,
+   "inv": 11,
+   "material": 4,
+   "sheathe": 0,
+   "sound_sub": -1,
+   "sub": 0
+  },
+  {
+   "cls": 4,
+   "display": 48010,
+   "entry": 990474,
+   "inv": 12,
+   "material": 4,
+   "sheathe": 0,
+   "sound_sub": -1,
+   "sub": 0
+  },
+  {
+   "cls": 4,
+   "display": 42564,
+   "entry": 990475,
+   "inv": 23,
+   "material": 1,
+   "sheathe": 7,
+   "sound_sub": -1,
+   "sub": 0
+  },
+  {
+   "cls": 2,
+   "display": 57465,
+   "entry": 990476,
+   "inv": 26,
+   "material": 1,
+   "sheathe": 1,
+   "sound_sub": -1,
+   "sub": 3
+  },
+  {
+   "cls": 2,
+   "display": 60833,
+   "entry": 990477,
+   "inv": 15,
+   "material": 2,
+   "sheathe": 0,
+   "sound_sub": -1,
+   "sub": 2
+  },
+  {
+   "cls": 2,
+   "display": 54504,
+   "entry": 990478,
+   "inv": 17,
+   "material": 2,
+   "sheathe": 2,
+   "sound_sub": -1,
+   "sub": 10
+  },
+  {
+   "cls": 2,
+   "display": 65382,
+   "entry": 990479,
+   "inv": 17,
+   "material": 1,
+   "sheathe": 2,
+   "sound_sub": -1,
+   "sub": 6
+  },
+  {
+   "cls": 2,
+   "display": 52941,
+   "entry": 990480,
+   "inv": 17,
+   "material": 1,
+   "sheathe": 1,
+   "sound_sub": -1,
+   "sub": 1
+  },
+  {
+   "cls": 2,
+   "display": 49206,
+   "entry": 990481,
+   "inv": 13,
+   "material": 1,
+   "sheathe": 3,
+   "sound_sub": -1,
+   "sub": 15
+  },
+  {
+   "cls": 2,
+   "display": 50204,
+   "entry": 990482,
+   "inv": 13,
+   "material": 2,
+   "sheathe": 3,
+   "sound_sub": -1,
+   "sub": 4
+  },
+  {
+   "cls": 2,
+   "display": 58735,
+   "entry": 990483,
+   "inv": 13,
+   "material": 1,
+   "sheathe": 3,
+   "sound_sub": -1,
+   "sub": 7
+  },
+  {
+   "cls": 2,
+   "display": 61676,
+   "entry": 990484,
+   "inv": 13,
+   "material": 1,
+   "sheathe": 7,
+   "sound_sub": -1,
+   "sub": 13
+  },
+  {
+   "cls": 2,
+   "display": 56898,
+   "entry": 990485,
+   "inv": 26,
+   "material": 2,
+   "sheathe": 0,
+   "sound_sub": -1,
+   "sub": 19
+  },
+  {
+   "cls": 4,
+   "display": 61879,
+   "entry": 990486,
+   "inv": 5,
+   "material": 6,
+   "sheathe": 0,
+   "sound_sub": -1,
+   "sub": 4
+  },
+  {
+   "cls": 4,
+   "display": 55847,
+   "entry": 990487,
+   "inv": 5,
+   "material": 5,
+   "sheathe": 0,
+   "sound_sub": -1,
+   "sub": 3
+  },
+  {
+   "cls": 4,
+   "display": 43462,
+   "entry": 990488,
+   "inv": 5,
+   "material": 8,
+   "sheathe": 0,
+   "sound_sub": -1,
+   "sub": 2
+  },
+  {
+   "cls": 4,
+   "display": 55897,
+   "entry": 990489,
+   "inv": 20,
+   "material": 7,
+   "sheathe": 0,
+   "sound_sub": -1,
+   "sub": 1
+  },
+  {
+   "cls": 4,
+   "display": 58794,
+   "entry": 990490,
+   "inv": 7,
+   "material": 6,
+   "sheathe": 0,
+   "sound_sub": -1,
+   "sub": 4
+  },
+  {
+   "cls": 4,
+   "display": 55855,
+   "entry": 990491,
+   "inv": 7,
+   "material": 5,
+   "sheathe": 0,
+   "sound_sub": -1,
+   "sub": 3
+  },
+  {
+   "cls": 4,
+   "display": 50053,
+   "entry": 990492,
+   "inv": 16,
+   "material": 7,
+   "sheathe": 0,
+   "sound_sub": -1,
+   "sub": 1
+  },
+  {
+   "cls": 4,
+   "display": 60854,
+   "entry": 990493,
+   "inv": 14,
+   "material": 1,
+   "sheathe": 4,
+   "sound_sub": -1,
+   "sub": 6
+  },
+  {
+   "cls": 4,
+   "display": 64201,
+   "entry": 990494,
+   "inv": 2,
+   "material": -1,
+   "sheathe": 0,
+   "sound_sub": -1,
+   "sub": 0
+  },
+  {
+   "cls": 4,
+   "display": 54513,
+   "entry": 990495,
+   "inv": 11,
+   "material": 4,
+   "sheathe": 0,
+   "sound_sub": -1,
+   "sub": 0
+  },
+  {
+   "cls": 4,
+   "display": 59313,
+   "entry": 990496,
+   "inv": 12,
+   "material": 4,
+   "sheathe": 0,
+   "sound_sub": -1,
+   "sub": 0
+  },
+  {
+   "cls": 4,
+   "display": 54753,
+   "entry": 990497,
+   "inv": 23,
+   "material": 1,
+   "sheathe": 7,
+   "sound_sub": -1,
+   "sub": 0
+  },
+  {
+   "cls": 4,
+   "display": 52272,
+   "entry": 990500,
+   "inv": 1,
+   "material": 8,
+   "sheathe": 0,
+   "sound_sub": -1,
+   "sub": 4
+  },
+  {
+   "cls": 4,
+   "display": 33333,
+   "entry": 990501,
+   "inv": 10,
+   "material": 7,
+   "sheathe": 0,
+   "sound_sub": -1,
+   "sub": 1
+  },
+  {
+   "cls": 4,
+   "display": 7545,
+   "entry": 990502,
+   "inv": 6,
+   "material": 8,
+   "sheathe": 0,
+   "sound_sub": -1,
+   "sub": 2
+  },
+  {
+   "cls": 4,
+   "display": 6827,
+   "entry": 990503,
+   "inv": 8,
+   "material": 5,
+   "sheathe": 0,
+   "sound_sub": -1,
+   "sub": 3
+  },
+  {
+   "cls": 4,
+   "display": 24510,
+   "entry": 990504,
+   "inv": 1,
+   "material": 8,
+   "sheathe": 0,
+   "sound_sub": -1,
+   "sub": 4
+  },
+  {
+   "cls": 4,
+   "display": 16789,
+   "entry": 990505,
+   "inv": 10,
+   "material": 7,
+   "sheathe": 0,
+   "sound_sub": -1,
+   "sub": 1
+  },
+  {
+   "cls": 4,
+   "display": 11253,
+   "entry": 990506,
+   "inv": 6,
+   "material": 8,
+   "sheathe": 0,
+   "sound_sub": -1,
+   "sub": 2
+  },
+  {
+   "cls": 4,
+   "display": 11447,
+   "entry": 990507,
+   "inv": 8,
+   "material": 5,
+   "sheathe": 0,
+   "sound_sub": -1,
+   "sub": 3
+  },
+  {
+   "cls": 4,
+   "display": 26257,
+   "entry": 990508,
+   "inv": 1,
+   "material": 8,
+   "sheathe": 0,
+   "sound_sub": -1,
+   "sub": 4
+  },
+  {
+   "cls": 4,
+   "display": 16956,
+   "entry": 990509,
+   "inv": 10,
+   "material": 7,
+   "sheathe": 0,
+   "sound_sub": -1,
+   "sub": 1
+  },
+  {
+   "cls": 4,
+   "display": 17129,
+   "entry": 990510,
+   "inv": 6,
+   "material": 8,
+   "sheathe": 0,
+   "sound_sub": -1,
+   "sub": 2
+  },
+  {
+   "cls": 4,
+   "display": 27771,
+   "entry": 990511,
+   "inv": 8,
+   "material": 5,
+   "sheathe": 0,
+   "sound_sub": -1,
+   "sub": 3
+  },
+  {
+   "cls": 4,
+   "display": 40771,
+   "entry": 990512,
+   "inv": 1,
+   "material": 8,
+   "sheathe": 0,
+   "sound_sub": -1,
+   "sub": 4
+  },
+  {
+   "cls": 4,
+   "display": 16720,
+   "entry": 990513,
+   "inv": 10,
+   "material": 7,
+   "sheathe": 0,
+   "sound_sub": -1,
+   "sub": 1
+  },
+  {
+   "cls": 4,
+   "display": 27560,
+   "entry": 990514,
+   "inv": 6,
+   "material": 8,
+   "sheathe": 0,
+   "sound_sub": -1,
+   "sub": 2
+  },
+  {
+   "cls": 4,
+   "display": 25930,
+   "entry": 990515,
+   "inv": 8,
+   "material": 5,
+   "sheathe": 0,
+   "sound_sub": -1,
+   "sub": 3
+  },
+  {
+   "cls": 4,
+   "display": 42829,
+   "entry": 990516,
+   "inv": 1,
+   "material": 8,
+   "sheathe": 0,
+   "sound_sub": -1,
+   "sub": 4
+  },
+  {
+   "cls": 4,
+   "display": 24986,
+   "entry": 990517,
+   "inv": 10,
+   "material": 7,
+   "sheathe": 0,
+   "sound_sub": -1,
+   "sub": 1
+  },
+  {
+   "cls": 4,
+   "display": 23844,
+   "entry": 990518,
+   "inv": 6,
+   "material": 8,
+   "sheathe": 0,
+   "sound_sub": -1,
+   "sub": 2
+  },
+  {
+   "cls": 4,
+   "display": 31412,
+   "entry": 990519,
+   "inv": 8,
+   "material": 5,
+   "sheathe": 0,
+   "sound_sub": -1,
+   "sub": 3
+  },
+  {
+   "cls": 4,
+   "display": 41135,
+   "entry": 990520,
+   "inv": 1,
+   "material": 8,
+   "sheathe": 0,
+   "sound_sub": -1,
+   "sub": 4
+  },
+  {
+   "cls": 4,
+   "display": 18858,
+   "entry": 990521,
+   "inv": 10,
+   "material": 7,
+   "sheathe": 0,
+   "sound_sub": -1,
+   "sub": 1
+  },
+  {
+   "cls": 4,
+   "display": 30839,
+   "entry": 990522,
+   "inv": 6,
+   "material": 8,
+   "sheathe": 0,
+   "sound_sub": -1,
+   "sub": 2
+  },
+  {
+   "cls": 4,
+   "display": 33036,
+   "entry": 990523,
+   "inv": 8,
+   "material": 5,
+   "sheathe": 0,
+   "sound_sub": -1,
+   "sub": 3
+  },
+  {
+   "cls": 4,
+   "display": 48057,
+   "entry": 990524,
+   "inv": 1,
+   "material": 8,
+   "sheathe": 0,
+   "sound_sub": -1,
+   "sub": 4
+  },
+  {
+   "cls": 4,
+   "display": 37308,
+   "entry": 990525,
+   "inv": 10,
+   "material": 7,
+   "sheathe": 0,
+   "sound_sub": -1,
+   "sub": 1
+  },
+  {
+   "cls": 4,
+   "display": 35164,
+   "entry": 990526,
+   "inv": 6,
+   "material": 8,
+   "sheathe": 0,
+   "sound_sub": -1,
+   "sub": 2
+  },
+  {
+   "cls": 4,
+   "display": 44200,
+   "entry": 990527,
+   "inv": 8,
+   "material": 5,
+   "sheathe": 0,
+   "sound_sub": -1,
+   "sub": 3
+  },
+  {
+   "cls": 4,
+   "display": 57522,
+   "entry": 990528,
+   "inv": 1,
+   "material": 8,
+   "sheathe": 0,
+   "sound_sub": -1,
+   "sub": 4
+  },
+  {
+   "cls": 4,
+   "display": 53094,
+   "entry": 990529,
+   "inv": 10,
+   "material": 7,
+   "sheathe": 0,
+   "sound_sub": -1,
+   "sub": 1
+  },
+  {
+   "cls": 4,
+   "display": 16704,
+   "entry": 990530,
+   "inv": 6,
+   "material": 8,
+   "sheathe": 0,
+   "sound_sub": -1,
+   "sub": 2
+  },
+  {
+   "cls": 4,
+   "display": 46637,
+   "entry": 990531,
+   "inv": 8,
+   "material": 5,
+   "sheathe": 0,
+   "sound_sub": -1,
+   "sub": 3
+  },
+  {
+   "cls": 4,
+   "display": 59603,
+   "entry": 990532,
+   "inv": 1,
+   "material": 8,
+   "sheathe": 0,
+   "sound_sub": -1,
+   "sub": 4
+  },
+  {
+   "cls": 4,
+   "display": 54779,
+   "entry": 990533,
+   "inv": 10,
+   "material": 7,
+   "sheathe": 0,
+   "sound_sub": -1,
+   "sub": 1
+  },
+  {
+   "cls": 4,
+   "display": 56497,
+   "entry": 990534,
+   "inv": 6,
+   "material": 8,
+   "sheathe": 0,
+   "sound_sub": -1,
+   "sub": 2
+  },
+  {
+   "cls": 4,
+   "display": 52342,
+   "entry": 990535,
+   "inv": 8,
+   "material": 5,
+   "sheathe": 0,
+   "sound_sub": -1,
+   "sub": 3
+  }
+ ],
+ "version": 1
+}

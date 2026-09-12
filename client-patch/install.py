@@ -52,6 +52,7 @@ SKILLLINE = "DBFilesClient\\SkillLine.dbc"
 # Read only -- the cost floor needs the talent list. Never written, so it is
 # deliberately absent from _OUR_FILES.
 TALENT = "DBFilesClient\\Talent.dbc"
+ITEM = "DBFilesClient\\Item.dbc"
 TALENTTAB = "DBFilesClient\\TalentTab.dbc"
 # the same path elemental.py uses, kept in one place so the two never diverge
 SPELL = elemental.SPELL
@@ -253,6 +254,23 @@ def build_data_patch(files, name, report, theme=False):
     report.append("  Spell.dbc        cost floor lowered on %d spells "
                   "(talent-reduced costs cast at the real price; from %s)"
                   % (lowered, os.path.basename(talent_source)))
+
+    # Our own items, so the client can draw them before it has ever asked the
+    # server about one. Without a row here GetItemIcon returns nothing for a
+    # custom item and a bag addon rendering from its own saved slot list shows a
+    # question mark -- which clearing the client's Cache only makes worse.
+    manifest = os.path.join(os.path.dirname(os.path.abspath(__file__)),
+                            "items_manifest.json")
+    if os.path.isfile(manifest):
+        with open(manifest, encoding="utf-8") as handle:
+            wanted = json.load(handle).get("items", [])
+        item_raw, item_source = files.find(ITEM)
+        payload[ITEM], item_added, item_skipped = dbc.append_items(item_raw, wanted)
+        report.append("  Item.dbc         %d classless item(s) registered "
+                      "(so their icons draw before the server is asked; from %s)"
+                      % (item_added, os.path.basename(item_source)))
+    else:
+        report.append("  Item.dbc         skipped (no items_manifest.json shipped)")
 
     if theme:
         try:
@@ -594,6 +612,7 @@ def do_install(args, wow_dir):
 # has something else in it, so it can never be matched by luck of the letter.
 _OUR_FILES = frozenset(x.lower() for x in (
     CHRCLASSES, CHARBASEINFO, CHARSTARTOUTFIT, SKILLRACECLASSINFO, SKILLLINEABILITY,
+    ITEM,
     TALENTTAB,
     GLUESTRINGS, CHARCREATE_LUA,
     CLASSICONS_INGAME, CLASSICONS_CREATE,

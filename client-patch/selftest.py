@@ -28,6 +28,7 @@ SKILLLINEABILITY = "DBFilesClient\\SkillLineAbility.dbc"
 SKILLLINE = "DBFilesClient\\SkillLine.dbc"
 TALENTTAB = "DBFilesClient\\TalentTab.dbc"
 TALENT = "DBFilesClient\\Talent.dbc"
+ITEM = "DBFilesClient\\Item.dbc"
 SPELL = elemental.SPELL
 CHARSTARTOUTFIT = "DBFilesClient\\CharStartOutfit.dbc"
 GLUESTRINGS = "Interface\\GlueXML\\GlueStrings.lua"
@@ -436,6 +437,50 @@ def main(argv):
                       atlas[8:12] == bytes.fromhex("01080801"))
                 check("BLP full mip chain + self-consistent",
                       len(mo) == 9 and len(atlas) == mo[-1] + ml[-1])
+
+            # --- our items in the client's own Item.dbc ---------------------
+            # A stock item's icon draws before the server is ever asked because
+            # Item.dbc holds its class, display and slot. A custom item has no
+            # row, so nothing can draw it until an item query returns, and a bag
+            # addon rendering from its own saved slot list paints a question
+            # mark instead.
+            import json as _json
+            man = os.path.join(os.path.dirname(os.path.abspath(__file__)),
+                               "items_manifest.json")
+            if not os.path.isfile(man):
+                check("items_manifest.json is shipped", False, "not found")
+            else:
+                with open(man, encoding="utf-8") as fh:
+                    want_items = _json.load(fh)["items"]
+                item_raw, item_src = files.find(ITEM)
+                item_dbc, n_added, n_skip = dbc.append_items(item_raw, want_items)
+                check("Item.dbc resolved", bool(item_raw), os.path.basename(item_src))
+                check("every classless item gets an Item.dbc row",
+                      n_added == len(want_items) and n_skip == 0,
+                      "%d added, %d skipped of %d" % (n_added, n_skip, len(want_items)))
+
+                irows, ifields, irec, _is = dbc.parse_header(item_dbc)
+                byid = {}
+                for n4 in range(irows):
+                    b4 = 20 + n4 * irec
+                    byid[struct.unpack_from("<I", item_dbc, b4)[0]] =                         struct.unpack_from("<8i", item_dbc, b4)
+                stock_before, _f, _r, _s5 = dbc.parse_header(item_raw)
+                check("no stock item row is disturbed",
+                      irows == stock_before + len(want_items))
+
+                wrong = []
+                for it in want_items:
+                    row = byid.get(it["entry"])
+                    if not row:
+                        wrong.append("%d absent" % it["entry"])
+                    elif (row[1], row[2], row[5], row[6]) != (
+                            it["cls"], it["sub"], it["display"], it["inv"]):
+                        wrong.append("%d wrote %s" % (it["entry"], row[1:]))
+                check("each row carries the item's own class, display and slot",
+                      not wrong, "%s" % (wrong[:3] if wrong else "all %d" % len(want_items)))
+
+                check("re-running the append adds nothing twice",
+                      dbc.append_items(item_dbc, want_items)[1] == 0)
 
             # --- the installer's own wiring ---------------------------------
             # Everything above tests a transform in isolation, which is exactly

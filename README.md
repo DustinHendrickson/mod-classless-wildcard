@@ -350,6 +350,7 @@ It installs:
 - every class shown as **Hero** on the creation screen, character sheet, `/who` and tooltips
 - a single Hero entry per race on the creation screen, with the Hero outfit and emblem
 - names, tooltips and icons for the elemental variants
+- the classless items registered with the client, so their icons draw in any bag
 - every talent tree opened to every class, so the client accepts a Hero's cross-class talents
 
 The creation-screen text lives in a signed game file, so the installer also applies the standard

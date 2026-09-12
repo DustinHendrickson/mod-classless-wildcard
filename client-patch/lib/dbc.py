@@ -559,6 +559,62 @@ def lower_talent_reduced_costs(spell_data: bytes, talent_data: bytes,
                                       record_size, string_size)
     return header + bytes(records) + spell_data[strings_off:], lowered
 
+
+ITEM_FIELDS = 8
+
+
+def append_items(data: bytes, rows):
+    """Add a row per generated item to Item.dbc.
+
+    Item.dbc is how the client draws an item it has never asked the server
+    about: GetItemIcon and GetItemInfo read class, subclass, display and slot
+    straight out of it. A stock item is in there, so its icon appears at once.
+    A custom item is not, so nothing can draw it until an item query comes back
+    -- and a bag addon that renders from a saved slot list paints
+    INV_Misc_QuestionMark in the meantime. Clearing the client's Cache makes it
+    worse: that throws away the only copy the client had.
+
+    Eight int columns, no strings: ID, ClassID, SubclassID,
+    SoundOverrideSubclassID, Material, DisplayInfoID, InventoryType,
+    SheatheType.
+
+    An id already in the table is skipped rather than duplicated, so re-running
+    the installer over its own output changes nothing.
+
+    Returns (new_dbc_bytes, rows_added, rows_skipped).
+    """
+    record_count, field_count, record_size, string_size = parse_header(data)
+    if field_count != ITEM_FIELDS or record_size != ITEM_FIELDS * 4:
+        raise DbcError(
+            "Item.dbc has %d fields of %d bytes, expected %d of %d. "
+            "This client build is not the 3.3.5a layout this patch understands."
+            % (field_count, record_size, ITEM_FIELDS, ITEM_FIELDS * 4))
+
+    records_off = 20
+    strings_off = records_off + record_count * record_size
+    records = bytearray(data[records_off:strings_off])
+
+    have = set()
+    for index in range(record_count):
+        have.add(struct.unpack_from("<I", records, index * record_size)[0])
+
+    added = skipped = 0
+    for row in rows:
+        entry = int(row["entry"])
+        if entry in have:
+            skipped += 1
+            continue
+        records += struct.pack(
+            "<8i", entry, int(row["cls"]), int(row["sub"]), int(row["sound_sub"]),
+            int(row["material"]), int(row["display"]), int(row["inv"]),
+            int(row["sheathe"]))
+        have.add(entry)
+        added += 1
+
+    header = WDBC_MAGIC + struct.pack("<4I", record_count + added, field_count,
+                                      record_size, string_size)
+    return header + bytes(records) + data[strings_off:], added, skipped
+
 def class_spell_ids(sla_data: bytes, skill_categories: dict) -> set:
     """Every spell id on a class (category 7) SkillLineAbility row."""
     record_count, field_count, record_size, _string_size = parse_header(sla_data)

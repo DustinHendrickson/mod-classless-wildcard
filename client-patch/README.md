@@ -26,6 +26,10 @@ Required for every player on a Classless Wildcard realm. The
   it will send a cast and cannot count a cross-class talent, so its copy of
   each cost is lowered to the least any build could pay and the server
   decides. The addon writes the true cost back onto the tooltip
+- **the classless items are registered with the client**, so their icons draw
+  the moment a bag is opened. A stock item's icon comes from the client's own
+  Item.dbc; a custom one has no row there, so nothing can draw it until the
+  server answers an item query and a bag addon shows a question mark instead
 - the **ClasslessWildcard** addon is installed
 
 The creation-screen text is a *signed* interface file, so the installer also applies
@@ -117,6 +121,7 @@ Install to this client? [Y/n] y
   TalentTab.dbc     30 talent trees opened to every class (the client accepts cross-class talents)
   Spell.dbc        class tool requirement cleared from 102 spells (totems, relics; reagents untouched)
   Spell.dbc        cost floor lowered on 273 spells (talent-reduced costs cast at the real price)
+  Item.dbc         286 classless item(s) registered (so their icons draw before the server is asked)
   CharStartOutfit.dbc  armored Hero look on 18 races +Blood Elf
   -> Data/patch-Z.MPQ
   GlueStrings.lua  76 class strings rewritten
