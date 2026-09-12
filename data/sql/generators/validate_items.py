@@ -89,8 +89,37 @@ cf = clientfs.ClientFiles(data_dir, clientfs.detect_locales(data_dir)[0])
 raw, src = cf.find(r"DBFilesClient\ItemDisplayInfo.dbc")
 records, fields, rec_size, _s = parse_header(raw)
 valid_disp = set()
+# A display id that EXISTS can still name an icon the client does not ship, and
+# then the bag draws a red question mark. InventoryIcon[0] is field 5 (1-2 are
+# the models, 3-4 the model textures, 6 the second icon, nearly always blank --
+# read that one and every item looks broken).
+strings = raw[20 + records * rec_size:]
+NUL = bytes([0])
+icon_of = {}
 for i in range(records):
-    valid_disp.add(struct.unpack_from("<I", raw, 20 + i * rec_size)[0])
+    v = struct.unpack_from("<%dI" % fields, raw, 20 + i * rec_size)
+    valid_disp.add(v[0])
+    off = v[5]
+    icon_of[v[0]] = (strings[off:strings.index(NUL, off)].decode("utf-8", "replace")
+                     if off else "")
+
+_icon_cache = {}
+
+
+def icon_missing(display):
+    """True when the client ships no texture for this display's inventory icon."""
+    icon = icon_of.get(display, "")
+    if not icon:
+        return True
+    if icon not in _icon_cache:
+        try:
+            cf.find("Interface" + chr(92) + "Icons" + chr(92) + icon + ".blp")
+            _icon_cache[icon] = False
+        except Exception:
+            _icon_cache[icon] = True
+    return _icon_cache[icon]
+
+
 print("ItemDisplayInfo.dbc: %d display ids (from %s)\n" % (len(valid_disp), src.split("\\")[-1]))
 
 bad, seen = 0, {}
@@ -117,6 +146,11 @@ for name in FILES:
         e, d = int(v[iE]), int(v[iD])
         if d and d not in valid_disp:
             print("  !! %s: entry %d display %d NOT in ItemDisplayInfo.dbc" % (name, e, d))
+            disp_bad += 1; bad += 1
+        elif d and icon_missing(d):
+            print("  !! %s: entry %d display %d names icon %r, which the client "
+                  "does not ship -- the bag draws a question mark"
+                  % (name, e, d, icon_of.get(d, "")))
             disp_bad += 1; bad += 1
         if e in seen:
             print("  !! entry %d duplicated: %s and %s" % (e, seen[e], name))
