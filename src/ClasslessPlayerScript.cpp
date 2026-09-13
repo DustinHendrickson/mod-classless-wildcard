@@ -304,6 +304,14 @@ public:
             case CLASS_CONTEXT_ABILITY:
                 if (playerClass != CLASS_DEATH_KNIGHT)
                     break;
+                // Exempt accounts (playerbots and friends) play vanilla class
+                // rules, so the Death Knight question has to be answered from
+                // their real class. Answering it from the classless state told
+                // a Death Knight bot it was not one, so Player::InitRunes()
+                // skipped the m_runes allocation while the bot kept its DK AI
+                // and a rune trigger read the null block.
+                if (sClasslessMgr->IsExempt(const_cast<Player*>(player)))
+                    return std::nullopt;
                 // From the character's own snapshot, NOT the live config: this
                 // same question gates both the one-time InitRunes allocation
                 // and the per-tick loop that reads the block it allocates. If
