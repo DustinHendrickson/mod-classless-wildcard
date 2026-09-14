@@ -431,14 +431,54 @@ def install_addon(wow_dir, dry_run, report, files=None):
     return os.path.relpath(target, wow_dir).replace("\\", "/")
 
 
-def clear_cache(wow_dir, dry_run, report):
+def count_cache_files(wow_dir):
+    """How many cached records the client is still holding."""
     cache = resolve_child(wow_dir, "Cache")
     if not os.path.isdir(cache):
+        return 0
+    total = 0
+    for _base, _dirs, files in os.walk(cache):
+        total += len(files)
+    return total
+
+
+def clear_cache(wow_dir, dry_run, report):
+    """Delete the client's cached copy of everything the server ever told it.
+
+    The client keeps every item, spell and creature it has been sent in
+    Cache/WDB/<locale>/*.wdb and prefers that copy to anything new. An item
+    cached before its stats existed keeps drawing a question mark and refuses to
+    equip; a ranged weapon cached without its range keeps answering "Out of
+    range". Deleting it is always safe -- nothing of the player's lives there.
+
+    Counted rather than assumed. This used to be `rmtree(ignore_errors=True)`
+    followed by an unconditional "cleared", and ignore_errors swallows exactly
+    the failure that matters: a RUNNING client holds its .wdb files open, so
+    nothing is removed and the installer says it was. Anyone hitting that is
+    then looking for a bug in the patch instead of closing the game.
+
+    Returns the number of files still there afterwards.
+    """
+    before = count_cache_files(wow_dir)
+    if not before:
         report.append("  cache            nothing to clear")
-        return
-    if not dry_run:
-        shutil.rmtree(cache, ignore_errors=True)
-    report.append("  cache            cleared (the client rebuilds it on next login)")
+        return 0
+    if dry_run:
+        report.append("  cache            %d cached record(s) would be deleted" % before)
+        return 0
+
+    shutil.rmtree(resolve_child(wow_dir, "Cache"), ignore_errors=True)
+    left = count_cache_files(wow_dir)
+    if not left:
+        report.append("  cache            %d cached record(s) deleted "
+                      "(the client rebuilds it on next login)" % before)
+    else:
+        report.append("  cache            COULD NOT CLEAR -- %d of %d file(s) are "
+                      "still locked. The game is open: CLOSE IT, delete the Cache "
+                      "folder yourself, and start the game again. Until you do, "
+                      "items show the wrong icon and ranged weapons say \"Out of "
+                      "range\"." % (left, before))
+    return left
 
 
 def read_manifest(wow_dir):
@@ -466,6 +506,11 @@ def write_manifest(wow_dir, data, dry_run):
 def do_install(args, wow_dir):
     data_dir = resolve_child(wow_dir, "Data")
     exe = find_wow_exe(wow_dir)
+    # First thing after the folder is known, so it happens even if a later step
+    # aborts. Re-checked at the end, because a client running through the
+    # install writes its cache back and undoes this.
+    cache_report = []
+    cache_left = clear_cache(wow_dir, args.dry_run, cache_report)
 
     locales = clientfs.detect_locales(data_dir)
     if args.locale:
@@ -625,7 +670,15 @@ def do_install(args, wow_dir):
                                   exclude=own_archives(locales[0])) as files:
             addon_rel = install_addon(wow_dir, args.dry_run, report, files)
 
-    clear_cache(wow_dir, args.dry_run, report)
+    report.extend(cache_report)
+    # A client that was open during the run writes its cache back on exit, so
+    # what matters is whether anything is there NOW, not whether the delete
+    # earlier returned.
+    if not args.dry_run and not cache_left and count_cache_files(wow_dir):
+        cache_left = count_cache_files(wow_dir)
+        report.append("  cache            CAME BACK while installing -- the game "
+                      "is open. Close it, delete the Cache folder, then start the "
+                      "game.")
 
     write_manifest(wow_dir, {
         "version": 1,
@@ -648,6 +701,17 @@ def do_install(args, wow_dir):
         print("Almost done -- the game was open, so Wow.exe was not patched and")
         print("the creation-screen text will show as corrupt until it is. Close")
         print("World of Warcraft completely and run this installer again to finish.")
+        print()
+
+    # Last thing on screen, because it is the one failure whose symptoms look
+    # like a broken patch rather than a skipped step: the player sees question
+    # marks and "Out of range" and goes looking for a bug.
+    if cache_left:
+        print("YOUR CACHE WAS NOT CLEARED. The game is open and holding it.")
+        print("Close World of Warcraft, delete the Cache folder in:")
+        print("    %s" % wow_dir)
+        print("and start the game again. Until you do, new items draw the wrong")
+        print("icon and ranged weapons say \"Out of range\".")
         print()
 
     print("Done. Start the game and every class will read %s." % args.name)

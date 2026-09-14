@@ -2,6 +2,18 @@
 
 Required for every player on a Classless Wildcard realm. The
 [module README](../README.md) explains why.
+
+> ## Close World of Warcraft before you run this
+>
+> The installer deletes your client cache for you, every time it runs, and it
+> checks afterwards that the files are really gone. A running game holds those
+> files open: nothing is deleted, and the installer will say so in capitals at
+> the end of its report.
+>
+> If you see that message: close the game, delete the `Cache` folder in your WoW
+> directory, and start the game again. Until you do, new items draw the wrong
+> icon or a question mark and ranged weapons say "Out of range".
+
 **One installer sets up the full Hero client:**
 
 - every class shows as **Hero**, everywhere it appears
@@ -36,7 +48,7 @@ The creation-screen text is a *signed* interface file, so the installer also app
 the well-known "allow custom interface" patch to `Wow.exe` (backed up first,
 reversible with `--uninstall`). **Close World of Warcraft before installing.**
 
-### Close the game first, and let the cache go
+### About that cache
 
 The client keeps its own copy of every item, spell and creature the server has
 ever told it about, in
@@ -51,15 +63,10 @@ an item cached before its stats existed keeps drawing a red question mark and
 refuses to equip, and a ranged weapon cached with no range keeps answering "Out
 of range" whatever the database now says.
 
-**The installer deletes the whole `Cache` folder for you** and the client rebuilds
-it on the next login, so normally there is nothing to do. Two cases need it by
-hand:
-
-- **The game was running while you installed.** A live client writes its cache
-  back on exit, undoing the clear. Close the game, delete `Cache`, start again.
-- **The realm applied SQL without you re-running the installer.** New or changed
-  items reach you through the server, not the patch, so nothing cleared your
-  cache. Delete `Cache` and log back in.
+The installer deletes it, counts what it deleted, and tells you if anything
+survived. One case it cannot cover: the realm applying new SQL without you
+re-running the installer. Changed items reach you through the server, not the
+patch, so nothing has cleared your cache. Delete `Cache` and log back in.
 
 Deleting it is always safe. It is a cache: nothing of yours lives there, and the
 client fills it in again as you play.

@@ -221,6 +221,9 @@ private:
     void ResolveTalentAbilityLines();
     void DropUnresolvablePrerequisites();
     std::vector<uint32> TaughtSpells() const;
+    // Push the addon's tooltip corrections, unless a bulk operation is running
+    // and will push once when it finishes.
+    void PushCorrectionsUnlessBulk(Player* player);
     bool OwnsReplacedTalent(ClasslessWildcard::CharState const& st, uint32 talentId) const;
     // form id -> the library ability that puts you in it, built from spell data
     void BuildFormSpellMap();
@@ -341,6 +344,11 @@ private:
     // drop _applyingGrant while the outer grant is still running, and the
     // learn-spell hook would take the rest of it for an outside source and
     // revert it.
+    // Set while something is changing a build in bulk -- a level-up, an
+    // archetype follow, a starting hand. Individual grants skip their own
+    // correction push and the bulk operation sends one at the end.
+    bool _bulkCorrections = false;
+
     struct GrantGuard
     {
         explicit GrantGuard(bool& flag) : _flag(flag), _prev(flag) { _flag = true; }

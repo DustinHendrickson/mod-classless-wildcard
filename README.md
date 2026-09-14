@@ -18,6 +18,11 @@ Essence, or let the server roll for you in Wildcard mode.
 It installs into `modules/` on an AzerothCore master build and needs a recompile, its own SQL and
 a client patch every player runs. See [Requirements](#requirements) and [Install](#installation).
 
+**Players must close World of Warcraft before running the client patcher.** It deletes their
+client cache for them and verifies it is gone, but a running game holds those files open and
+nothing is deleted. A stale cache is what makes a new item draw a question mark or a ranged
+weapon say "Out of range".
+
 [What it is](#what-it-is) · [Features](#features) · [Install](#installation) · [Playerbots](#playerbots) · [Commands](#commands) · [Configuration](#configuration) · [Wildcard rolls](#how-wildcard-rolls-work) · [Hero line](#the-hero-line) · [Elemental variants](#elemental-variants) · [Uninstall](#uninstall)
 
 <br>
@@ -359,15 +364,15 @@ It installs:
 The creation-screen text lives in a signed game file, so the installer also applies the standard
 "allow custom interface" patch to `Wow.exe`. It backs the file up first.
 
-**Close the game before installing, and let the cache go.** The client keeps its own copy of
-every item and spell the server has told it about, in `<WoW folder>\Cache\WDB\<locale>\`
-(for example `C:\Games\World of Warcraft\Cache\WDB\enUS\`). A stale entry there does not fix
-itself: an item cached before its stats existed keeps drawing a question mark and refuses to
-equip, and a ranged weapon cached without its range keeps saying "Out of range". The installer
-deletes the whole `Cache` folder and the client rebuilds it on the next login, so normally there
-is nothing to do -- but a client left running writes its cache back on exit and undoes that, and
-a realm that applies SQL without players re-running the installer clears nothing at all. In both
-cases: close the game, delete `Cache`, log back in. Deleting it is always safe.
+**Close the game before installing.** The client keeps its own copy of every item and spell the
+server has told it about, in `<WoW folder>\Cache\WDB\<locale>\` (for example
+`C:\Games\World of Warcraft\Cache\WDB\enUS\`). A stale entry there does not fix itself: an
+item cached before its stats existed keeps drawing a question mark and refuses to equip, and a
+ranged weapon cached without its range keeps saying "Out of range". The installer deletes that
+folder and checks afterwards that it is gone, reporting in capitals if it is not, which happens
+when the game is open and holding the files. The other case it cannot cover is a realm applying
+SQL without players re-running the installer: nothing clears their cache, so tell them to delete
+`Cache` and log back in. Deleting it is always safe.
 
 ### Every item is unlocked for every class
 

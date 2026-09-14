@@ -650,13 +650,18 @@ void ClasslessMgr::BuildLibrary()
         if (info->IsPassive() && !cfg.includePassives
             && !info->RecoveryTime && !info->CategoryRecoveryTime)
             continue;
-        // Ranged auto-attacks (Auto Shot, Shoot, Throw) are not abilities to
-        // roll for: they fire on their own once a ranged weapon is equipped,
-        // and the module already teaches the ones a Hero needs as
-        // proficiencies. Auto Shot is learned with the Hunter class rather
-        // than from a trainer, so nothing else keeps it out.
-        if (info->HasAttribute(SPELL_ATTR2_AUTO_REPEAT))
-            continue;
+        // There is no auto-repeat filter here, deliberately. One existed, on
+        // the reasoning that a repeating shot is not an ability to roll for --
+        // but Auto Shot is the ONLY auto-repeat spell in the game that sits on
+        // a class skill line, so the filter's whole effect was to delete it.
+        // Shoot and Throw, which that reasoning was really about, live on
+        // weapon proficiency lines and never get this far; the skill-category
+        // check above drops them.
+        //
+        // Auto Shot is what makes a bow a weapon, it is the thing every hunter
+        // shot in the library is built around, and it asks nothing special of
+        // the pool: SpellLevel 1 and no cooldown rate it Common at level 1 on
+        // the ordinary rules. A Hero buys it like anything else.
         // Spells the client will not draw in the spellbook, and that nothing
         // else lists either: the hidden halves of other spells (Light's Beacon,
         // Curse of Doom Effect, Pain Suppression's 44416) and the talent
@@ -2627,6 +2632,12 @@ void ClasslessMgr::TeachProficiencies(Player* player)
 // taught spell must still be wanted -- Auto Shot lives on Marksmanship, a class
 // line, and the sweep took it straight back inside the same login, every login,
 // before anything reached character_spell.
+void ClasslessMgr::PushCorrectionsUnlessBulk(Player* player)
+{
+    if (!_bulkCorrections)
+        PushSpellCorrections(player);
+}
+
 std::vector<uint32> ClasslessMgr::TaughtSpells() const
 {
     std::vector<uint32> out;
@@ -2644,16 +2655,13 @@ std::vector<uint32> ClasslessMgr::TaughtSpells() const
         return std::find(cfg.proficiencySpells.begin(), cfg.proficiencySpells.end(), id) != cfg.proficiencySpells.end();
     };
     if (listed(264) || listed(266) || listed(5011))
-    {
         out.push_back(3018);   // Shoot (bow / gun / crossbow)
-        // And Auto Shot, which is the one that REPEATS. 3018 is the single shot
-        // a warrior or rogue gets with the weapon skill; 75 is what a hunter
-        // uses and what every hunter shot in the library is built around. It is
-        // on a class line rather than a weapon line, so nothing else in the
-        // module hands it over: the pool skips it as an auto-repeat spell and
-        // no trainer teaches it to the chassis.
-        out.push_back(75);     // Auto Shot
-    }
+    // Auto Shot is NOT here. It was, for one round, because the pool's
+    // auto-repeat filter meant nothing else could hand it over -- but the
+    // answer to that was to take the filter out, not to give the ability away.
+    // 3018 stays: it is the single shot that comes with the weapon skill, the
+    // proficiency is useless without it, and it is on a weapon line the pool
+    // never stocks.
     if (listed(2567))
         out.push_back(2764);   // Throw
 
@@ -3080,6 +3088,10 @@ void ClasslessMgr::HandleLevelUp(Player* player, uint8 oldLevel)
     if (st.exempt)
         return;
 
+    // One push at the end covers the whole level, however many abilities an
+    // archetype follow hands over on the way.
+    GrantGuard bulk(_bulkCorrections);
+
     // Reaching the deadline level is itself the moment the default takes over.
     ApplyDefaultMode(player);
 
@@ -3149,6 +3161,13 @@ void ClasslessMgr::HandleLevelUp(Player* player, uint8 oldLevel)
     if (st.mode == Mode::Classless && newLevel >= cfg.essenceStartLevel && cfg.announce)
         Msg(player, Acore::StringFormat("You now have |cff00ff00{}|r Ability Essence and |cff00ff00{}|r Talent Essence.",
             st.abilityEssence, st.talentEssence));
+
+    // Last, and unconditionally: base mana rose with the level, so every spell
+    // priced as a percentage of it now costs more than the correction the addon
+    // is holding. Nothing about the build has to have changed for the tooltip
+    // to be wrong -- the level alone does it -- and UpdateAbilityRanks above
+    // may also have handed over rank spells that have no correction yet.
+    PushSpellCorrections(player);
 }
 
 bool ClasslessMgr::SetMode(Player* player, Mode mode, std::string* err)
@@ -3237,6 +3256,11 @@ void ClasslessMgr::GrantAbilityInternal(Player* player, AbilityEntry const& e, G
     GrantRequiredForm(player, e);
     // a newly gained spell needs its tab straight away, not at next login
     SyncSpellbookTabs(player);
+    // and its corrected numbers, for the same reason. A spell bought AFTER the
+    // talent that modifies it had no correction at all until the next login, so
+    // its tooltip drew the client's own figure -- which is the one number the
+    // client cannot work out for a talent outside its class.
+    PushCorrectionsUnlessBulk(player);
 
     // Learning one spell can hand over a whole starter set. Player::addSpell
     // calls LearnDefaultSkill for the spell's own skill line when that line
@@ -3584,6 +3608,7 @@ void ClasslessMgr::RemoveAbilityInternal(Player* player, AbilityEntry const& e, 
             player->GetGUID().GetCounter(), e.firstSpellId);
 
     DismissOrphanedSummons(player);
+    PushCorrectionsUnlessBulk(player);
 }
 
 void ClasslessMgr::GrantTalentRankInternal(Player* player, TalentPoolEntry const& t, uint8 newRank, bool persist)
