@@ -478,16 +478,35 @@ namespace
                 || cdMs != baseCdMs || durMs != baseDurMs
                 || modRange != baseRange || effMoved;
 
-            // A spell that COSTS something always carries its cost, moved or
-            // not. The client cannot apply a cross-class talent to its own
-            // power check either, so it refused to send the cast at all -- with
-            // Improved Thunder Clap the server wanted 16 rage and the client
-            // still said "Not enough rage" at 16. The fix is to lower the cost
-            // in the client's own Spell.dbc to the least any build could pay,
-            // which leaves the server to decide; and once that number is low,
-            // the true cost has to be sent for every costed spell or a Hero
-            // WITHOUT the talent would read the lowered one.
-            if (!moved && !baseCost)
+            // A spell with a FLAT cost always carries it, moved or not.
+            //
+            // The client cannot apply a cross-class talent to its own power
+            // check, so it refused to send the cast at all -- with Improved
+            // Thunder Clap the server wanted 16 rage and the client still said
+            // "Not enough rage" at 16. The client patch answers that by
+            // lowering Spell.dbc's ManaCost to the least any build could pay,
+            // so the true number has to be sent or a Hero WITHOUT the talent
+            // would read the lowered one.
+            //
+            // ManaCost, which is the column the patch lowers on everything
+            // stock. A caster spell prices itself from ManaCostPercentage
+            // instead and is left alone there, so its tooltip is already right:
+            // sending a correction for it just overwrote a correct number with
+            // this side's arithmetic, on every mana spell in the game. Those are
+            // corrected only when a talent actually moves them, which is what
+            // Convection does to Lightning Bolt.
+            //
+            // This module's own spells are the exception, and they are the
+            // reason the exception exists. A Hero talent lives in a world table
+            // the client's Talent.dbc has never seen, so the client cannot apply
+            // one to its own power check any more than it can to a cross-class
+            // talent: Thrift took 30% off Ward Off on the server while the
+            // client went on refusing at the full price. The patch lowers their
+            // percentage too, and that is only safe while every one of them is
+            // corrected from here -- so they are sent whether anything moved or
+            // not. 11 spells, none of them stock.
+            constexpr uint32 HERO_SPELL_FAMILY = 14;
+            if (!moved && !info->ManaCost && info->SpellFamilyName != HERO_SPELL_FAMILY)
                 continue;
 
             // Send only what a talent actually MOVED. A zero pair is "nothing

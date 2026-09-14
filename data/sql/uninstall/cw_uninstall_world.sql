@@ -101,10 +101,20 @@ DELETE FROM `charstartoutfit_dbc` WHERE `ID` >= 900000;
 -- the two stock spell scripts this module took over (cw_world_spell_scripts.sql),
 -- and the core's own rows put back
 DELETE FROM `spell_script_names` WHERE `ScriptName` IN
-    ('spell_cw_frenzied_regeneration', 'spell_cw_judgement_of_wisdom');
+    ('spell_cw_frenzied_regeneration', 'spell_cw_judgement_of_wisdom',
+     'spell_cw_pet_hit_expertise_scaling',
+     'spell_cw_dk_blade_barrier', 'spell_cw_dk_death_rune');
 INSERT IGNORE INTO `spell_script_names` (`spell_id`, `ScriptName`) VALUES
 (22842, 'spell_dru_frenzied_regeneration'),
-(20186, 'spell_pal_judgement_of_wisdom_mana');
+(20186, 'spell_pal_judgement_of_wisdom_mana'),
+-- these two were taken over but never put back: without them a realm that
+-- uninstalled the module kept the core's scripts bound to nothing
+(61013, 'spell_pet_hit_expertise_scalling'),
+(61017, 'spell_pet_hit_expertise_scalling'),
+(-49182, 'spell_dk_blade_barrier'),
+(-49208, 'spell_dk_death_rune'),
+(-49467, 'spell_dk_death_rune'),
+(-54639, 'spell_dk_death_rune');
 
 -- module DB-updater bookkeeping, so reinstalling later re-applies cleanly
 DELETE FROM `updates` WHERE `name` LIKE 'cw_%';

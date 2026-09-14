@@ -1287,6 +1287,34 @@ MARKERS = ["cairn", "waystone", "signal_fire", "bulwark_anchor",
 CONTROL = ["kick_dirt", "vertigo", "hush", "draw_attention", "rattle"]
 RESERVES = ["brace", "ward_off", "second_nature", "adrenaline"]
 
+_RECIPE_BY_KEY = {r["key"]: r for r in RECIPES}
+
+
+def priced(keys):
+    """Only the lines that actually charge something.
+
+    A cost reduction on a free spell is a promise its tooltip cannot keep.
+    Second Nature is deliberately free -- a refill priced in the pool it refills
+    cannot be cast when it is wanted -- so Thrift naming it was a clause with
+    nothing to take off, and a rank of the talent bought the player nothing on
+    that line. Filtered from the recipes themselves rather than by hand, so a
+    line changing its price cannot leave a talent's text stale again.
+    """
+    out = [k for k in keys if _RECIPE_BY_KEY[k].get("power", ("mana", 0))[1]]
+    assert out, "no priced line left in %s" % (keys,)
+    return out
+
+
+def name_list(keys):
+    """"A, B and C", from the recipes' own names, for a talent's description."""
+    names = [_RECIPE_BY_KEY[k]["name"] for k in keys]
+    if len(names) == 1:
+        return names[0]
+    return ", ".join(names[:-1]) + " and " + names[-1]
+
+
+THRIFT_LINES = priced(RESERVES + ["quicksilver"])
+
 TALENTS = [
     # ---- column 0: improvisation, the pools feeding each other -------------
     # Read by C++: spell_cw_makeshift_strike cuts Hurl's cooldown by this much
@@ -1309,10 +1337,9 @@ TALENTS = [
          desc="When Ward Off's shield is absorbed to the last point, $s1% of its "
               "cooldown is refunded."),
     dict(key="thrift", name="Thrift", row=3, col=0, ranks=3,
-         icon=3184, affects=RESERVES + ["quicksilver"],
+         icon=3184, affects=THRIFT_LINES,
          op=MOD_COST, pct=True, values=[-10, -20, -30],
-         desc="Reduces the cost of Brace, Ward Off, Second Nature, Adrenaline and "
-              "Quicksilver by $s1%."),
+         desc="Reduces the cost of " + name_list(THRIFT_LINES) + " by $s1%."),
     dict(key="overdraw", name="Overdraw", row=4, col=0, ranks=3,
          icon=2899, affects=["adrenaline", "quickening", "second_nature"],
          op=MOD_COOLDOWN, pct=True, values=[-10, -20, -30],

@@ -137,6 +137,31 @@ def append_visuals(data: bytes, visuals):
 
 # --------------------------------------------------------------------- apply
 
+def modifier_spells(manifest: dict):
+    """The deepest rank of every Hero talent, for the cost floor to read.
+
+    The Hero tree lives in the server's `talent_dbc` and never reaches the
+    client's Talent.dbc, so the installer's cost floor could not see it. Each
+    talent rank is an ordinary forged spell here, keyed `talent_<name>_r<n>`, and
+    the modifier is read straight out of its row -- so this only has to say which
+    rows to look at, and which rank is the deepest.
+
+    Grouped by `first`, the line's own first spell, and NOT by the key: the key
+    carries the rank, so grouping by it handed back all three ranks of every
+    talent as though they were three talents, and the floor multiplied their
+    reductions together -- Thrift came out at 51% off instead of 30%.
+    """
+    best = {}
+    for spell in manifest.get("spells", []):
+        if not spell.get("key", "").startswith("talent_"):
+            continue
+        line = spell.get("first", spell["id"])
+        rank = spell.get("rank", 0)
+        if line not in best or rank > best[line][0]:
+            best[line] = (rank, spell["id"])
+    return [spell_id for _rank, spell_id in best.values()]
+
+
 def apply(files, payload: dict, manifest: dict, report: list):
     """Add the forged spells to the patch payload. `files` is a
     clientfs.ClientFiles; `payload` maps archive paths to bytes and may already

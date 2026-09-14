@@ -45,11 +45,28 @@ DELETE FROM `spell_script_names` WHERE `spell_id` = 20186 AND `ScriptName` = 'sp
 
 DELETE FROM `spell_script_names` WHERE `spell_id` IN (61013, 61017) AND `ScriptName` = 'spell_pet_hit_expertise_scalling';
 
+-- Four Death Knight TALENTS a Hero can buy and could never make work. Their
+-- core scripts compare getClass() to CLASS_DEATH_KNIGHT outright and return
+-- before touching a rune, so Blade Barrier never procs and Blood of the North,
+-- Reaping and Death Rune Mastery never convert one. The module's versions ask
+-- the same question through IsClass(..., CLASS_CONTEXT_ABILITY), which is what
+-- allocates the Hero's runes in the first place.
+--
+-- The ids are negative in spell_script_names: that means the spell and every
+-- rank below it, which is how one row covers a five-rank talent.
+DELETE FROM `spell_script_names` WHERE `spell_id` = -49182 AND `ScriptName` = 'spell_dk_blade_barrier';
+DELETE FROM `spell_script_names` WHERE `spell_id` IN (-49208, -49467, -54639) AND `ScriptName` = 'spell_dk_death_rune';
+
 DELETE FROM `spell_script_names` WHERE `ScriptName` IN
     ('spell_cw_frenzied_regeneration', 'spell_cw_judgement_of_wisdom',
-     'spell_cw_pet_hit_expertise_scaling');
+     'spell_cw_pet_hit_expertise_scaling',
+     'spell_cw_dk_blade_barrier', 'spell_cw_dk_death_rune');
 INSERT INTO `spell_script_names` (`spell_id`, `ScriptName`) VALUES
 (22842, 'spell_cw_frenzied_regeneration'),
 (20186, 'spell_cw_judgement_of_wisdom'),
 (61013, 'spell_cw_pet_hit_expertise_scaling'),
-(61017, 'spell_cw_pet_hit_expertise_scaling');
+(61017, 'spell_cw_pet_hit_expertise_scaling'),
+(-49182, 'spell_cw_dk_blade_barrier'),
+(-49208, 'spell_cw_dk_death_rune'),
+(-49467, 'spell_cw_dk_death_rune'),
+(-54639, 'spell_cw_dk_death_rune');

@@ -240,7 +240,11 @@ projected as you spend. Reallocating is free.</em>
   reallocated at any time for free. Because a build can point in any direction, the module also
   adds melee attack power per Agility, extra ranged attack power per Agility and spell power per
   Intellect. Hovering a stat in the addon shows what a point is worth at your level.
-- **All proficiencies taught.** Armor, weapons and dual wield, each configurable.
+- **All proficiencies at level 1.** Armor, weapons and dual wield, handed over at character
+  creation, with the abilities that make them usable: Shoot and Auto Shot with bows, guns and
+  crossbows, Throw with thrown weapons. The skills themselves are not touched after that -- each
+  arrives at the rank a trainer leaves it at and rises by use, the same as for anyone else on the
+  realm.
 - **The base class never restricts a build.** Any relic equips, shields work, and Overpower,
   Revenge, Riposte and Counterattack fire regardless of base class. A weapon's feral attack power
   counts in Cat and Bear form, and a pet inherits its owner's hit and expertise.
@@ -351,10 +355,19 @@ It installs:
 - a single Hero entry per race on the creation screen, with the Hero outfit and emblem
 - names, tooltips and icons for the elemental variants
 - the classless items registered with the client, so their icons draw in any bag
-- every talent tree opened to every class, so the client accepts a Hero's cross-class talents
 
 The creation-screen text lives in a signed game file, so the installer also applies the standard
 "allow custom interface" patch to `Wow.exe`. It backs the file up first.
+
+**Close the game before installing, and let the cache go.** The client keeps its own copy of
+every item and spell the server has told it about, in `<WoW folder>\Cache\WDB\<locale>\`
+(for example `C:\Games\World of Warcraft\Cache\WDB\enUS\`). A stale entry there does not fix
+itself: an item cached before its stats existed keeps drawing a question mark and refuses to
+equip, and a ranged weapon cached without its range keeps saying "Out of range". The installer
+deletes the whole `Cache` folder and the client rebuilds it on the next login, so normally there
+is nothing to do -- but a client left running writes its cache back on exit and undoes that, and
+a realm that applies SQL without players re-running the installer clears nothing at all. In both
+cases: close the game, delete `Cache`, log back in. Deleting it is always safe.
 
 ### Every item is unlocked for every class
 
@@ -365,7 +378,8 @@ but the base class's, no rogue poison, no soul bag, and no relic outside its own
 
 The original masks are copied into `cw_item_class_backup` first, so
 `data/sql/manual/cw_item_classes_revert.sql` and the world uninstall script both put them back.
-Players should clear their client `Cache` folder after the first apply.
+Players should delete their client `Cache` folder after the first apply (see
+[Client (every player)](#client-every-player) for where it is and why).
 
 `data/sql/db-world/cw_world_class_loot.sql` does the same on the loot side. The seven Sons of
 Hodir satchels pay out one set of gear chosen by armour class; a Hero gets one of the sets at

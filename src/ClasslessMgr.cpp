@@ -1059,6 +1059,7 @@ void ClasslessMgr::BuildLibrary()
     LoadVariants();
     LoadForgedSpells();
     ResolveTalentAbilityLines();
+    DropUnresolvablePrerequisites();
 
     std::unordered_set<uint32> overridden;
     LoadOverrides(&overridden);
@@ -1683,6 +1684,46 @@ void ClasslessMgr::ResolveTalentAbilityLines()
     LOG_INFO("module.classless",
              "mod-classless-wildcard: {} ability talents taken off the Talents list; their ability lines stand in for them ({} resolved)",
              _replacedTalents.size(), resolved);
+}
+
+// A prerequisite that names a talent which does not exist is no prerequisite.
+//
+// Talent.dbc carries two of them, left over from beta-era tree reshuffles that
+// Blizzard never cleaned up before release:
+//
+//   1756 Sanctified Retribution (Paladin, Retribution) -> 1409, no such row
+//   1993 Merciless Combat       (Death Knight, Frost)  -> 1994, no such row
+//
+// On a class character it costs nothing -- the client gates those rows on
+// points spent in the tree and never asks about talent 1409. Here the value is
+// read straight out of the DBC and enforced, so `st.talents.find(1409)` could
+// never succeed and BuyTalentRank refused forever with "You are missing a
+// prerequisite talent." Neither talent was learnable by anyone, on any path.
+//
+// Checked after ResolveTalentAbilityLines, because a prerequisite is also met
+// by owning the ABILITY that replaced it -- so a dependency is only unresolvable
+// when it is in neither list.
+void ClasslessMgr::DropUnresolvablePrerequisites()
+{
+    uint32 dropped = 0;
+    for (auto& [talentId, t] : _talents)
+    {
+        if (!t.dependsOn)
+            continue;
+        if (_talents.count(t.dependsOn) || _replacedTalents.count(t.dependsOn))
+            continue;
+        LOG_INFO("module.classless",
+                 "mod-classless-wildcard: talent {} ({}) requires talent {}, which does not exist; "
+                 "prerequisite dropped",
+                 talentId, SpellName(t.rankSpells[0]), t.dependsOn);
+        t.dependsOn = 0;
+        t.dependsOnRank = 0;
+        ++dropped;
+    }
+    if (dropped)
+        LOG_INFO("module.classless",
+                 "mod-classless-wildcard: {} talent prerequisite(s) dropped as unresolvable",
+                 dropped);
 }
 
 // Whether a Hero owns an ability that stands in for a talent taken off the
@@ -2557,9 +2598,42 @@ void ClasslessMgr::TeachProficiencies(Player* player)
 
     GrantGuard guard(_applyingGrant);
 
-    for (uint32 spellId : cfg.proficiencySpells)
+    for (uint32 spellId : TaughtSpells())
         if (sSpellMgr->GetSpellInfo(spellId) && !player->HasSpell(spellId))
             player->learnSpell(spellId);
+
+    // Teaching is all this does. It hands over the proficiency SPELL, which is
+    // what lets a Hero wear or wield the thing at all, and stops there.
+    //
+    // It used to end with UpdateSkillsToMaxSkillsForLevel(), which writes every
+    // level-ranged skill straight to the cap -- so a Hero had all fifteen
+    // weapon skills topped up again on every login. Nothing here asks for that
+    // and nothing here does it now.
+    //
+    // learnSpell is the whole grant, so the skill lands through the core's own
+    // addSpell path and comes out at exactly the rank a trainer leaves it at:
+    // SpellMgr::LoadSpellLearnSkills gives every SPELL_EFFECT_SKILL a value of
+    // 1 (Riding is the only exception) with the max the spell's own step says.
+    // It then rises by use, the same as for anyone else on the realm. Ranking
+    // up is for ability lines.
+}
+
+// Every spell the module hands out for free, proficiencies and the abilities
+// that make them usable.
+//
+// One list, because two places need the same answer: TeachProficiencies grants
+// them, and SyncSpellbookTabs has to keep their skill lines. Player::SetSkill
+// unlearns every spell on a line it removes, so a line whose only occupant is a
+// taught spell must still be wanted -- Auto Shot lives on Marksmanship, a class
+// line, and the sweep took it straight back inside the same login, every login,
+// before anything reached character_spell.
+std::vector<uint32> ClasslessMgr::TaughtSpells() const
+{
+    std::vector<uint32> out;
+    if (!cfg.teachProficiencies)
+        return out;
+
+    out.assign(cfg.proficiencySpells.begin(), cfg.proficiencySpells.end());
 
     // A ranged proficiency without its use-ability is a dead skill: 5019 only
     // shoots WANDS -- bows/guns/crossbows fire with 3018 (Shoot) and thrown
@@ -2569,16 +2643,21 @@ void ClasslessMgr::TeachProficiencies(Player* player)
     {
         return std::find(cfg.proficiencySpells.begin(), cfg.proficiencySpells.end(), id) != cfg.proficiencySpells.end();
     };
-    std::vector<uint32> useAbilities;
     if (listed(264) || listed(266) || listed(5011))
-        useAbilities.push_back(3018);   // Shoot (bow / gun / crossbow)
+    {
+        out.push_back(3018);   // Shoot (bow / gun / crossbow)
+        // And Auto Shot, which is the one that REPEATS. 3018 is the single shot
+        // a warrior or rogue gets with the weapon skill; 75 is what a hunter
+        // uses and what every hunter shot in the library is built around. It is
+        // on a class line rather than a weapon line, so nothing else in the
+        // module hands it over: the pool skips it as an auto-repeat spell and
+        // no trainer teaches it to the chassis.
+        out.push_back(75);     // Auto Shot
+    }
     if (listed(2567))
-        useAbilities.push_back(2764);   // Throw
-    for (uint32 spellId : useAbilities)
-        if (sSpellMgr->GetSpellInfo(spellId) && !player->HasSpell(spellId))
-            player->learnSpell(spellId);
+        out.push_back(2764);   // Throw
 
-    player->UpdateSkillsToMaxSkillsForLevel();
+    return out;
 }
 
 // Force every Hero onto the single configured chassis class.
@@ -3776,6 +3855,13 @@ void ClasslessMgr::SyncSpellbookTabs(Player* player, bool clearChassisLines)
             for (uint8 r = 0; r < rank && r < t->rankSpells.size(); ++r)
                 if (t->rankSpells[r])
                     add(t->rankSpells[r]);
+
+    // What the module TEACHES counts as well as what the Hero earned. These
+    // land on real skill lines and SetSkill unlearns everything on a line it
+    // removes, so leaving them out of `want` cancelled the grant -- which is
+    // exactly what happened to Auto Shot on the Marksmanship line.
+    for (uint32 spellId : TaughtSpells())
+        add(spellId);
 
     // The Hero line is nobody's class line: no chassis learns it, and a forged
     // spell's SkillLineAbility row says AcquireMethod 0, so nothing but this

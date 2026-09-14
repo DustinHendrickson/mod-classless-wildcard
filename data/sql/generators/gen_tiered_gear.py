@@ -44,6 +44,11 @@ TIER_NAME = {1: "Apprentice's", 10: "Journeyman's", 20: "Adept's",
              60: "Grand Master's", 70: "Heroic", 80: "Ascendant"}
 
 # armor per level for a chest piece, by armour class; other slots scale down
+# item_template.class / subclass, for the RangedModRange rule below
+ITEM_CLASS_WEAPON = 2
+# bow, gun, thrown, crossbow, wand -- every subclass that shoots
+RANGED_WEAPON_SUBCLASSES = (2, 3, 16, 18, 19)
+
 ARMOR_PER_LEVEL = {"cloth": 2.0, "leather": 3.2, "mail": 5.0, "plate": 7.0,
                    "shield": 26.0}
 
@@ -261,18 +266,26 @@ L.append("  (`entry`, `class`, `subclass`, `name`, `displayid`, `Quality`, `BuyC
 L.append("   `InventoryType`, `AllowableClass`, `AllowableRace`, `ItemLevel`, `RequiredLevel`, `stackable`,")
 L.append("   `stat_type1`, `stat_value1`, `stat_type2`, `stat_value2`, `stat_type3`, `stat_value3`,")
 L.append("   `dmg_min1`, `dmg_max1`, `dmg_type1`, `delay`, `armor`, `bonding`, `MaxDurability`, `Material`, `sheath`,")
+L.append("   `RangedModRange`,")
 L.append("   `description`, `VerifiedBuild`)")
 L.append("VALUES")
 for n, r in enumerate(rows):
     end = ";" if n == len(rows) - 1 else ","
     s = r["stats"]
+    # A ranged weapon with no RangedModRange has no range: the column is the
+    # PERCENTAGE of the weapon's reach and the table default is 0, so the client
+    # worked out zero yards and answered "Out of range" at any distance. Every
+    # stock bow, gun, crossbow, thrown and wand carries 100. Melee keeps 0,
+    # which is what stock melee carries.
+    ranged_mod = 100 if (r["cls"] == ITEM_CLASS_WEAPON
+                         and r["sub"] in RANGED_WEAPON_SUBCLASSES) else 0
     L.append("(%d, %d, %d, '%s', %d, %d, 1, %d, %d, %d, -1, -1, %d, %d, 1, "
-             "%d, %d, %d, %d, %d, %d, %d, %d, 0, %d, %d, 2, %d, %d, %d, '%s', %d)%s"
+             "%d, %d, %d, %d, %d, %d, %d, %d, 0, %d, %d, 2, %d, %d, %d, %d, '%s', %d)%s"
              % (r["entry"], r["cls"], r["sub"], esc(r["name"]), r["disp"], r["quality"],
                 r["buy"], r["sell"], r["inv"], r["ilvl"], r["req"],
                 s[0][0], s[0][1], s[1][0], s[1][1], s[2][0], s[2][1],
                 r["dmin"], r["dmax"], r["delay"], r["armor"], r["dur"],
-                r["mat"], r["sheath"], esc(r["desc"]), VERIFIED, end))
+                r["mat"], r["sheath"], ranged_mod, esc(r["desc"]), VERIFIED, end))
 
 L.append("")
 

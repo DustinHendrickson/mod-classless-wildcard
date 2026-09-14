@@ -397,6 +397,7 @@ def clear_spell_tools(data: bytes, class_spells):
 # Spell.dbc columns the cost floor needs (3.3.5a layout, 0-based)
 SPELL_POWERTYPE_COLUMN = 41
 SPELL_MANACOST_COLUMN = 42
+SPELL_MANACOSTPCT_COLUMN = 204     # nearly every caster spell prices itself here
 SPELL_EFFECT_COLUMN = 71          # +1, +2 for the other two effects
 SPELL_DIESIDES_COLUMN = 74
 SPELL_BASEPOINTS_COLUMN = 80
@@ -418,7 +419,8 @@ _POWER_RAGE, _POWER_RUNIC = 1, 6
 
 
 def lower_talent_reduced_costs(spell_data: bytes, talent_data: bytes,
-                               class_spells, stock_costs: bytes = None):
+                               class_spells, stock_costs: bytes = None,
+                               extra_modifier_spells=(), pct_families=()):
     """Lower each spell's cost to the least any Hero build could pay.
 
     The client checks power itself before it will send a cast, and it cannot
@@ -446,6 +448,27 @@ def lower_talent_reduced_costs(spell_data: bytes, talent_data: bytes,
     reduce the already-reduced number, so running the installer twice would walk
     every cost down to the floor.
 
+    `extra_modifier_spells` names talent spells that Talent.dbc does not list.
+    The Hero tree is a world table on the server and never reaches the client's
+    Talent.dbc, so the talents that reduce a forged spell's cost -- Thrift is
+    the one that does today -- were invisible here: the server charged 70% and
+    the client still refused at 100%, which is the Improved Thunder Clap bug
+    again with the module's own talents. Pass the deepest rank of each such
+    talent; the modifier itself is read out of the spell row like any other.
+
+    `pct_families` names the spell families whose PERCENTAGE cost may also be
+    lowered. A percentage-priced spell has a ManaCost of zero and was skipped
+    outright, so a reduction on one could never reach the client -- but lowering
+    it has a price of its own: the tooltip then reads the lowered number for
+    anyone WITHOUT the talent, and only a correction from the server puts it
+    back. The server sends one for every spell with a flat cost and for none
+    priced by percentage, because doing that once overwrote 1474 correct caster
+    tooltips with the server's own arithmetic. So this is opt-in and empty by
+    default; the installer passes the module's own family, where the correction
+    is guaranteed. Only the multiplying modifiers apply here in any case: a flat
+    modifier is in power units and there is no base mana in this table to turn it
+    into a percentage.
+
     Returns (new_dbc_bytes, rows_lowered).
     """
     record_count, field_count, record_size, string_size = parse_header(spell_data)
@@ -456,9 +479,11 @@ def lower_talent_reduced_costs(spell_data: bytes, talent_data: bytes,
 
     stock = spell_data if stock_costs is None else stock_costs
     s_count, _s_fields, s_size, _s_str = parse_header(stock)
-    stock_cost_of = {}
+    stock_cost_of, stock_pct_of = {}, {}
     for index in range(s_count):
         base = 20 + index * s_size
+        stock_pct_of[struct.unpack_from("<I", stock, base)[0]] = \
+            struct.unpack_from("<I", stock, base + SPELL_MANACOSTPCT_COLUMN * 4)[0]
         stock_cost_of[struct.unpack_from("<I", stock, base)[0]] =             struct.unpack_from("<I", stock, base + SPELL_MANACOST_COLUMN * 4)[0]
 
     records_off = 20
@@ -482,37 +507,49 @@ def lower_talent_reduced_costs(spell_data: bytes, talent_data: bytes,
         raise DbcError("Talent.dbc has %d fields, too few for SpellRank[9]"
                        % t_fields)
 
+    def cost_modifier(spell_id):
+        """The deepest cost reduction this spell's own effects carry, or None."""
+        base = offset_of.get(spell_id)
+        if base is None:
+            return None
+        family = col(base, SPELL_CLASSSET_COLUMN)
+        best = None
+        for eff in range(3):
+            if col(base, SPELL_EFFECT_COLUMN + eff) != _SPELL_EFFECT_APPLY_AURA:
+                continue
+            aura = col(base, SPELL_AURA_COLUMN + eff)
+            if aura not in (_AURA_ADD_FLAT_MODIFIER, _AURA_ADD_PCT_MODIFIER):
+                continue
+            if col(base, SPELL_MISCVALUE_COLUMN + eff) != _SPELLMOD_COST:
+                continue
+            value = signed(base, SPELL_BASEPOINTS_COLUMN + eff)
+            if col(base, SPELL_DIESIDES_COLUMN + eff) == 1:
+                value += 1
+            if value >= 0:
+                continue                      # only reductions lower the floor
+            start = SPELL_EFFECTCLASSMASK_COLUMN + 3 * eff
+            mask = (col(base, start), col(base, start + 1), col(base, start + 2))
+            candidate = (family, mask, aura == _AURA_ADD_FLAT_MODIFIER, value)
+            if best is None or value < best[3]:
+                best = candidate
+        return best
+
     modifiers = []          # (family, mask_words, is_flat, value)
     for index in range(t_count):
         row = struct.unpack_from("<%dI" % t_fields, talent_data,
                                  20 + index * t_size)
         best = None
         for column in TALENT_RANK_COLUMNS:
-            rank_spell = row[column]
-            if not rank_spell or rank_spell not in offset_of:
-                continue
-            base = offset_of[rank_spell]
-            family = col(base, SPELL_CLASSSET_COLUMN)
-            for eff in range(3):
-                if col(base, SPELL_EFFECT_COLUMN + eff) != _SPELL_EFFECT_APPLY_AURA:
-                    continue
-                aura = col(base, SPELL_AURA_COLUMN + eff)
-                if aura not in (_AURA_ADD_FLAT_MODIFIER, _AURA_ADD_PCT_MODIFIER):
-                    continue
-                if col(base, SPELL_MISCVALUE_COLUMN + eff) != _SPELLMOD_COST:
-                    continue
-                value = signed(base, SPELL_BASEPOINTS_COLUMN + eff)
-                if col(base, SPELL_DIESIDES_COLUMN + eff) == 1:
-                    value += 1
-                if value >= 0:
-                    continue                  # only reductions lower the floor
-                start = SPELL_EFFECTCLASSMASK_COLUMN + 3 * eff
-                mask = (col(base, start), col(base, start + 1), col(base, start + 2))
-                candidate = (family, mask,
-                             aura == _AURA_ADD_FLAT_MODIFIER, value)
-                # ranks of one talent do not stack: keep the deepest cut
-                if best is None or value < best[3]:
-                    best = candidate
+            candidate = cost_modifier(row[column]) if row[column] else None
+            # ranks of one talent do not stack: keep the deepest cut
+            if candidate is not None and (best is None or candidate[3] < best[3]):
+                best = candidate
+        if best is not None:
+            modifiers.append(best)
+
+    # and the talents the client's own table has never heard of
+    for spell_id in extra_modifier_spells:
+        best = cost_modifier(spell_id)
         if best is not None:
             modifiers.append(best)
 
@@ -522,7 +559,8 @@ def lower_talent_reduced_costs(spell_data: bytes, talent_data: bytes,
         if spell_id not in class_spells:
             continue
         cost = stock_cost_of.get(spell_id, col(base, SPELL_MANACOST_COLUMN))
-        if not cost:
+        pct = stock_pct_of.get(spell_id, col(base, SPELL_MANACOSTPCT_COLUMN))
+        if not cost and not pct:
             continue
         family = col(base, SPELL_CLASSSET_COLUMN)
         mask = (col(base, SPELL_CLASSMASK_COLUMN),
@@ -544,16 +582,31 @@ def lower_talent_reduced_costs(spell_data: bytes, talent_data: bytes,
 
         power = col(base, SPELL_POWERTYPE_COLUMN)
         floor = 10 if power in (_POWER_RAGE, _POWER_RUNIC) else 1
-        new_cost = int(cost * total_mul) + total_flat
-        if new_cost < floor:
-            new_cost = floor
-        if new_cost >= cost:
-            continue
-        if col(base, SPELL_MANACOST_COLUMN) == new_cost:
-            continue                      # already there; nothing to write
-        struct.pack_into("<I", records, base + SPELL_MANACOST_COLUMN * 4,
-                         new_cost)
-        lowered += 1
+        wrote = False
+
+        if cost:
+            new_cost = int(cost * total_mul) + total_flat
+            if new_cost < floor:
+                new_cost = floor
+            if new_cost < cost and col(base, SPELL_MANACOST_COLUMN) != new_cost:
+                struct.pack_into("<I", records,
+                                 base + SPELL_MANACOST_COLUMN * 4, new_cost)
+                wrote = True
+
+        # A percentage of base mana. Only the multiplying modifiers belong here;
+        # see the note in the docstring about the flat ones, and about why this
+        # is limited to the families that are certain to be corrected.
+        if pct and total_mul != 1.0 and family in pct_families:
+            new_pct = int(pct * total_mul)
+            if new_pct < 1:
+                new_pct = 1
+            if new_pct < pct and col(base, SPELL_MANACOSTPCT_COLUMN) != new_pct:
+                struct.pack_into("<I", records,
+                                 base + SPELL_MANACOSTPCT_COLUMN * 4, new_pct)
+                wrote = True
+
+        if wrote:
+            lowered += 1
 
     header = WDBC_MAGIC + struct.pack("<4I", record_count, field_count,
                                       record_size, string_size)

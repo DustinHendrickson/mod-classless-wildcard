@@ -23,6 +23,7 @@
 #include "Optional.h"
 #include "Pet.h"
 #include <mutex>
+#include <vector>
 #include "Player.h"
 #include "ScriptMgr.h"
 #include "SpellAuraEffects.h"
@@ -114,11 +115,69 @@ public:
     // Hero is a hunter for the parry question exactly when they hold it.
     // Ranks, oldest first; HasSpell is a hash lookup and this runs only on a
     // parry.
+    // Overpower's bit in the warrior family's 96-bit class mask, column 209 of
+    // Spell.dbc. Every rank of Overpower carries it and nothing else in the
+    // family does.
+    static constexpr uint32 OVERPOWER_FAMILY_FLAG = 0x00000004;
+
     static bool OwnsCounterattack(Player const* player)
     {
         static constexpr uint32 COUNTERATTACK_RANKS[] =
             { 19306, 20909, 20910, 27067, 48998, 48999 };
         for (uint32 id : COUNTERATTACK_RANKS)
+            if (player->HasSpell(id))
+                return true;
+        return false;
+    }
+
+    // And the same question for Overpower, which is what the WARRIOR answer
+    // drives -- all of it, in three places and both directions.
+    //
+    // "Only useable after the target dodges" is not a state of its own. The
+    // core grants the warrior a COMBO POINT on the dodge (Unit.cpp, the
+    // PROC_EX_DODGE attacker branch) and Overpower carries
+    // SPELL_ATTR1_FINISHING_MOVE_DAMAGE, so NeedsComboPoints() gates it. The
+    // window is closed again by ClearComboPoints() when REACTIVE_OVERPOWER
+    // expires, and once more in ClearAllReactives.
+    //
+    // Answering yes for every Hero, as this used to, did both halves to
+    // everyone: any Hero got a combo point whenever a target dodged, which
+    // fires Overpower with no dodge of its own for anyone holding a rogue
+    // build's points -- and, five seconds after any dodge at all, wiped the
+    // combo points that build had spent its global cooldowns earning.
+    //
+    // So answer it the way the hunter question is answered: from what the Hero
+    // actually owns. A Hero who bought an Overpower line lives with warrior
+    // combo-point rules, including the wipe -- that is the ability they chose.
+    // A Hero who did not is left alone, and their points are their own.
+    //
+    // Discovered rather than listed, because the elemental variants are
+    // Overpower too: Holy Overpower and its siblings are generated into
+    // spell_dbc carrying the warrior family and Overpower's own class bit, and
+    // a hardcoded list of the four stock ranks would miss every one of them.
+    // Within SPELLFAMILY_WARRIOR that bit belongs to Overpower alone -- the
+    // only other holders in the client's table are Overpower's own NPC copies.
+    static std::vector<uint32> const& OverpowerSpells()
+    {
+        // Built once, on the first dodge a Hero lands, which is long after the
+        // spell store and spell_dbc are loaded. A `.reload spell_dbc` will not
+        // refresh it; a restart will.
+        static std::vector<uint32> const ids = []
+        {
+            std::vector<uint32> found;
+            for (uint32 id = 0; id < sSpellMgr->GetSpellInfoStoreSize(); ++id)
+                if (SpellInfo const* info = sSpellMgr->GetSpellInfo(id))
+                    if (info->SpellFamilyName == SPELLFAMILY_WARRIOR
+                        && (info->SpellFamilyFlags[0] & OVERPOWER_FAMILY_FLAG))
+                        found.push_back(id);
+            return found;
+        }();
+        return ids;
+    }
+
+    static bool OwnsOverpower(Player const* player)
+    {
+        for (uint32 id : OverpowerSpells())
             if (player->HasSpell(id))
                 return true;
         return false;
@@ -202,13 +261,30 @@ public:
             //   block  unconditional, which is why blocks worked and were the
             //          only thing that did.
             //
+            //   dodge, as the ATTACKER
+            //          `if (IsClass(CLASS_WARRIOR, ...))` grants a combo point
+            //          and starts REACTIVE_OVERPOWER; its expiry, and
+            //          ClearAllReactives, call ClearComboPoints(). That is how
+            //          "only useable after a dodge" is built, and answering yes
+            //          handed both halves to every Hero -- a free Overpower to
+            //          anyone carrying rogue combo points, and a wipe of those
+            //          points five seconds after any dodge.
+            //
             // So answer from what the Hero actually owns. A Hero holding
             // Counterattack is a hunter for the parry question and gets
-            // HUNTER_PARRY; everyone else gets DEFENSE and Revenge works.
+            // HUNTER_PARRY; everyone else gets DEFENSE and Revenge works. A
+            // Hero holding an Overpower is a warrior for the dodge question and
+            // gets the combo point and the wipe that goes with it; everyone
+            // else keeps the points they earned.
             // Nobody is a rogue here: the rogue answer exists only to DENY
             // the defense state on a dodge, and Riposte reads that same state,
             // so saying no costs a Riposte holder nothing and hands Revenge
             // back to everyone.
+            //
+            // One thing this cannot fix: a Hero who buys BOTH an Overpower and
+            // a rogue finisher shares one combo-point pool, because the core
+            // has one. Overpower's window closes by clearing it, so it clears
+            // theirs. Separating the two would mean a second pool.
             case CLASS_CONTEXT_ABILITY_REACTIVE:
                 if (playerClass == CLASS_ROGUE)
                     return false;
@@ -217,6 +293,12 @@ public:
                     if (sClasslessMgr->IsExempt(const_cast<Player*>(player)))
                         return std::nullopt;
                     return OwnsCounterattack(player);
+                }
+                if (playerClass == CLASS_WARRIOR)
+                {
+                    if (sClasslessMgr->IsExempt(const_cast<Player*>(player)))
+                        return std::nullopt;
+                    return OwnsOverpower(player);
                 }
                 break;
             // Stats are the chassis's, deliberately: the module adds its own
@@ -1066,6 +1148,114 @@ class spell_cw_pet_hit_expertise_scaling : public AuraScript
 // Only fills the gap: a real wand user already has the core's override, and
 // this leaves them alone rather than doing it twice.
 
+// -49182 Blade Barrier, and -49208 / -49467 / -54639 Death Rune
+//
+// Four Death Knight talents a Hero can buy and could never make work. Their
+// core scripts ask `getClass() != CLASS_DEATH_KNIGHT` outright -- a raw
+// comparison with no hook behind it -- and return before touching a rune, so
+// Blade Barrier never procs and Blood of the North, Reaping and Death Rune
+// Mastery never convert a rune. Everything else in them already works for a
+// Hero: the module allocates m_runes, ticks their cooldowns and refills runic
+// power, all off CLASS_CONTEXT_ABILITY.
+//
+// These are the core's own implementations with that one question asked the way
+// the rest of the module asks it. A real Death Knight answers yes through the
+// core, a Hero answers yes through this module when Death Knight content is on,
+// and anyone else answers no and keeps the core's behaviour exactly -- which
+// matters, because the rune accessors dereference m_runes with no null check
+// and a player without runes must never reach them.
+class spell_cw_dk_blade_barrier : public AuraScript
+{
+    PrepareAuraScript(spell_cw_dk_blade_barrier);
+
+    bool CheckProc(ProcEventInfo& eventInfo)
+    {
+        if (eventInfo.GetSpellInfo())
+            if (Player* player = eventInfo.GetActor()->ToPlayer())
+                if (player->IsClass(CLASS_DEATH_KNIGHT, CLASS_CONTEXT_ABILITY)
+                    && player->IsBaseRuneSlotsOnCooldown(RUNE_BLOOD))
+                    return true;
+
+        return false;
+    }
+
+    void Register() override
+    {
+        DoCheckProc += AuraCheckProcFn(spell_cw_dk_blade_barrier::CheckProc);
+    }
+};
+
+class spell_cw_dk_death_rune : public AuraScript
+{
+    PrepareAuraScript(spell_cw_dk_death_rune);
+
+    bool Load() override
+    {
+        Player* owner = GetUnitOwner() ? GetUnitOwner()->ToPlayer() : nullptr;
+        return owner && owner->IsClass(CLASS_DEATH_KNIGHT, CLASS_CONTEXT_ABILITY);
+    }
+
+    bool CheckProc(ProcEventInfo& eventInfo)
+    {
+        Unit* caster = eventInfo.GetActor();
+        if (!caster || !caster->IsPlayer())
+            return false;
+
+        return caster->ToPlayer()->IsClass(CLASS_DEATH_KNIGHT, CLASS_CONTEXT_ABILITY);
+    }
+
+    void HandleProc(ProcEventInfo& eventInfo)
+    {
+        Player* player = eventInfo.GetActor()->ToPlayer();
+        AuraEffect* aurEff = GetEffect(EFFECT_0);
+        if (!aurEff)
+            return;
+
+        // Reset amplitude - set death rune remove timer to 30s
+        aurEff->ResetPeriodic(true);
+
+        uint32 runesLeft = 1;
+        // Death Rune Mastery (SpellIconID 2622)
+        if (GetSpellInfo()->SpellIconID == 2622)
+            runesLeft = 2;
+
+        for (uint8 i = 0; i < MAX_RUNES && runesLeft; ++i)
+        {
+            if (GetSpellInfo()->SpellIconID == 2622)
+            {
+                if (player->GetBaseRune(i) == RUNE_BLOOD)
+                    continue;
+            }
+            else
+            {
+                if (player->GetBaseRune(i) != RUNE_BLOOD)
+                    continue;
+            }
+
+            // Check if rune just went on cooldown
+            if (player->GetRuneCooldown(i) != player->GetRuneBaseCooldown(i, false))
+                continue;
+
+            --runesLeft;
+            player->AddRuneByAuraEffect(i, RUNE_DEATH, aurEff);
+        }
+    }
+
+    void PeriodicTick(AuraEffect const* aurEff)
+    {
+        if (Player* player = GetTarget() ? GetTarget()->ToPlayer() : nullptr)
+            player->RemoveRunesByAuraEffect(aurEff);
+    }
+
+    void Register() override
+    {
+        DoCheckProc += AuraCheckProcFn(spell_cw_dk_death_rune::CheckProc);
+        OnProc += AuraProcFn(spell_cw_dk_death_rune::HandleProc);
+        OnEffectPeriodic += AuraEffectPeriodicFn(spell_cw_dk_death_rune::PeriodicTick,
+                                                 EFFECT_0, SPELL_AURA_PERIODIC_DUMMY);
+    }
+};
+
 void AddClasslessPlayerScripts()
 {
     new ClasslessWorldScript();
@@ -1073,4 +1263,6 @@ void AddClasslessPlayerScripts()
     RegisterSpellScript(spell_cw_frenzied_regeneration);
     RegisterSpellScript(spell_cw_judgement_of_wisdom);
     RegisterSpellScript(spell_cw_pet_hit_expertise_scaling);
+    RegisterSpellScript(spell_cw_dk_blade_barrier);
+    RegisterSpellScript(spell_cw_dk_death_rune);
 }

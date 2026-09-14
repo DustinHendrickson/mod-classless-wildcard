@@ -242,18 +242,8 @@ def build_data_patch(files, name, report, theme=False):
                   "(totems, relics; reagents untouched; from %s)"
                   % (cleared, os.path.basename(source)))
 
-    # And the other half of the same client limit. The client checks power
-    # itself before it will send a cast and cannot apply a cross-class talent to
-    # that check, so Improved Thunder Clap left the server wanting 16 rage while
-    # the client still refused at 16. Lower its copy to the least any build could
-    # pay and the server decides; the addon writes the true cost back onto the
-    # tooltip so nothing reads low.
-    talent_raw, talent_source = files.find(TALENT)
-    payload[SPELL], lowered = dbc.lower_talent_reduced_costs(
-        payload[SPELL], talent_raw, class_spells, stock_costs=raw)
-    report.append("  Spell.dbc        cost floor lowered on %d spells "
-                  "(talent-reduced costs cast at the real price; from %s)"
-                  % (lowered, os.path.basename(talent_source)))
+    # The cost floor used to run here. It runs in apply_cost_floor() now, after
+    # the generated rows have been appended -- see that function for why.
 
     # Our own items, so the client can draw them before it has ever asked the
     # server about one. Without a row here GetItemIcon returns nothing for a
@@ -283,6 +273,63 @@ def build_data_patch(files, name, report, theme=False):
         except (FileNotFoundError, outfit.OutfitError) as error:
             report.append("  CharStartOutfit.dbc  skipped (%s)" % error)
 
+    return payload
+
+
+# SpellFamilyName 14, which the generators claim for everything this module
+# forges. Its percentage costs are lowered along with the flat ones because the
+# server sends a correction for every spell in this family; no stock family is,
+# so no stock tooltip is touched. Both halves have to stay in step -- see the
+# matching note in ClasslessAddon::SendSpellCorrections.
+HERO_SPELL_FAMILY = 14
+
+
+def apply_cost_floor(files, payload, report, hero_talents=()):
+    """Lower every cost to the least any Hero build could pay. Runs LAST.
+
+    The client checks power itself before it will send a cast and cannot apply a
+    cross-class talent to that check, so Improved Thunder Clap left the server
+    wanting 16 rage while the client still refused at 16. Lower its copy to the
+    lowest cost any combination of talents could produce and the server decides;
+    the addon writes the true cost back onto the tooltip so nothing reads low.
+
+    Ordering is the whole point, and getting it wrong is not visible in the
+    report. A generated spell is written into the client by cloning a donor row
+    and overlaying the columns its manifest names, and that manifest is a DIFF
+    against the PRISTINE client row -- so every cost column it leaves out is one
+    that MATCHED the pristine row and was therefore never written. Floor the
+    table first and those rows inherit the floor instead of their own cost: 808
+    of the 1324 generated spells were priced off a row that was not theirs, and
+    Holy Overpower quoted 2 rage against a server charging 5, because the client
+    copy it cloned had already had Focused Rage taken off it.
+
+    So: append first, floor afterwards, and read the floor's baseline from the
+    table as it stands here -- which now holds each generated row at the cost its
+    own spell_dbc row carries.
+
+    The skill lines are re-read from the patched table for the same reason. A
+    generated spell is filed under its base's class tab by the append pass, and
+    the floor only considers spells on a class line; taking that list from the
+    archive copy would leave every generated spell unfloored, refused locally the
+    moment a talent made the server's price lower than the client's.
+
+    `hero_talents` is the module's own tree, which the client's Talent.dbc does
+    not contain and the floor therefore could not read. Without it Thrift took
+    30% off a forged spell on the server while the client went on refusing at
+    the full price.
+    """
+    categories = dbc.skill_line_categories(payload.get(SKILLLINE)
+                                           or files.find(SKILLLINE)[0])
+    class_spells = dbc.class_spell_ids(payload.get(SKILLLINEABILITY)
+                                       or files.find(SKILLLINEABILITY)[0], categories)
+    talent_raw, talent_source = files.find(TALENT)
+    before = payload[SPELL]
+    payload[SPELL], lowered = dbc.lower_talent_reduced_costs(
+        before, talent_raw, class_spells, stock_costs=before,
+        extra_modifier_spells=hero_talents, pct_families=(HERO_SPELL_FAMILY,))
+    report.append("  Spell.dbc        cost floor lowered on %d spells "
+                  "(talent-reduced costs cast at the real price; from %s)"
+                  % (lowered, os.path.basename(talent_source)))
     return payload
 
 
@@ -499,16 +546,22 @@ def do_install(args, wow_dir):
         # tab of their own. Runs after the elemental pass so both extend the
         # same patched Spell.dbc and SkillLineAbility.dbc rather than one
         # overwriting the other.
+        hero_talents = ()
         if args.forged:
             manifest_file = forged.manifest_path()
             if os.path.exists(manifest_file):
                 try:
                     manifest = forged.load_manifest(manifest_file)
                     forged.apply(files, dbc_payload, manifest, report)
+                    hero_talents = forged.modifier_spells(manifest)
                 except (forged.ForgedError, dbc.DbcError, FileNotFoundError) as error:
                     report.append("  forged spells       skipped (%s)" % error)
             else:
                 report.append("  forged spells       skipped (no forged_manifest.json shipped)")
+
+        # Last, and inside this block on purpose: it needs `files` for the
+        # client's Talent.dbc, and it must see the appended rows.
+        apply_cost_floor(files, dbc_payload, report, hero_talents)
     target = os.path.join(data_dir, "patch-%s.MPQ" % suffix)
     if not args.dry_run:
         mpq.write_archive(target, dbc_payload)

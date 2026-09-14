@@ -219,6 +219,8 @@ private:
     // Which ability lines each talent's spells head or teach (Pyroblast,
     // Mortal Strike, Mangle); taking the talent grants those lines.
     void ResolveTalentAbilityLines();
+    void DropUnresolvablePrerequisites();
+    std::vector<uint32> TaughtSpells() const;
     bool OwnsReplacedTalent(ClasslessWildcard::CharState const& st, uint32 talentId) const;
     // form id -> the library ability that puts you in it, built from spell data
     void BuildFormSpellMap();

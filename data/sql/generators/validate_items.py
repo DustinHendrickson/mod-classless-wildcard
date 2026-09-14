@@ -11,6 +11,10 @@ from lib import clientfs
 from lib.dbc import parse_header
 
 WORLD = r"B:\code\azerothcore-wotlk\modules\mod-classless-wildcard\data\sql\db-world"
+# item_template.class / subclass: bow, gun, thrown, crossbow, wand
+ITEM_CLASS_WEAPON = 2
+RANGED_SUBCLASSES = (2, 3, 16, 18, 19)
+
 FILES = ["cw_world_base.sql", "cw_items_pack.sql", "cw_items_pack2.sql",
          "cw_items_heirlooms.sql", "cw_items_tiered.sql"]
 
@@ -135,6 +139,9 @@ for name in FILES:
     rows = tuples(body)
 
     iE, iD = cols.index("entry"), cols.index("displayid")
+    iC = cols.index("class") if "class" in cols else None
+    iS = cols.index("subclass") if "subclass" in cols else None
+    iR = cols.index("RangedModRange") if "RangedModRange" in cols else None
     arity_bad = disp_bad = 0
     lo = hi = None
     for t in rows:
@@ -152,6 +159,23 @@ for name in FILES:
                   "does not ship -- the bag draws a question mark"
                   % (name, e, d, icon_of.get(d, "")))
             disp_bad += 1; bad += 1
+        # A ranged weapon with no RangedModRange has no RANGE. The column is the
+        # percentage of the weapon's reach, the table default is 0, and the
+        # client works the distance out from it -- so a bow with 0 answered
+        # "Out of range" at any distance. Every stock bow, gun, crossbow,
+        # thrown and wand carries 100.
+        if iC is not None and iS is not None:
+            if int(v[iC]) == ITEM_CLASS_WEAPON and int(v[iS]) in RANGED_SUBCLASSES:
+                if iR is None:
+                    print("  !! %s: entry %d is a ranged weapon but the file has no "
+                          "RangedModRange column, so it defaults to 0 and reads "
+                          "Out of range" % (name, e))
+                    bad += 1
+                elif float(v[iR]) <= 0:
+                    print("  !! %s: entry %d is a ranged weapon with RangedModRange "
+                          "%s -- it reads Out of range at any distance"
+                          % (name, e, v[iR]))
+                    bad += 1
         if e in seen:
             print("  !! entry %d duplicated: %s and %s" % (e, seen[e], name))
             bad += 1
