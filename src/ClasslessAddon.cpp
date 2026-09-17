@@ -395,7 +395,16 @@ namespace
             if (castMs)
                 player->ApplySpellMod(spellId, SPELLMOD_CASTING_TIME, castMs);
 
-            int32 const baseCdMs = int32(info->RecoveryTime);
+            // Whichever column the cooldown actually lives in. Most spells
+            // with a cooldown carry it in CategoryRecoveryTime and leave
+            // RecoveryTime at zero -- Lay on Hands, Hammer of Justice, Chain
+            // Lightning, 291 of the 471 the floor can shorten. Reading only
+            // RecoveryTime meant their client copy was lowered with nothing
+            // sent back to correct it, and the tooltip read the floor. The core
+            // picks the same one: AddSpellAndCategoryCooldowns ends with
+            // `recTime = rec ? rec : catrecTime`.
+            int32 const baseCdMs = int32(info->RecoveryTime ? info->RecoveryTime
+                                                            : info->CategoryRecoveryTime);
             int32 cdMs = baseCdMs;
             player->ApplySpellMod(spellId, SPELLMOD_COOLDOWN, cdMs);
 
@@ -505,17 +514,31 @@ namespace
             // percentage too, and that is only safe while every one of them is
             // corrected from here -- so they are sent whether anything moved or
             // not. 11 spells, none of them stock.
+            //
+            // A COOLDOWN is carried on the same terms and for the same reason.
+            // The client will not send a cast it believes is still recharging,
+            // and it cannot apply a cross-class talent to that sweep either --
+            // the server shortens the cooldown and tells the client only at
+            // login. So the patch lowers the client's copy the way it lowers a
+            // cost, and the true number has to come back from here or a Hero
+            // without the talent reads the floor.
             constexpr uint32 HERO_SPELL_FAMILY = 14;
-            if (!moved && !info->ManaCost && info->SpellFamilyName != HERO_SPELL_FAMILY)
+            if (!moved && !info->ManaCost && !info->RecoveryTime
+                && info->SpellFamilyName != HERO_SPELL_FAMILY)
                 continue;
 
             // Send only what a talent actually MOVED. A zero pair is "nothing
             // to do", so a spell whose cost changed does not drag its untouched
-            // cooldown along and have the addon rewrite a line with the number
+            // cast time along and have the addon rewrite a line with the number
             // that was already there.
             if (castMs == baseCastMs)
                 castMs = 0;
-            if (cdMs == baseCdMs)
+            // The cooldown is the exception, alongside the flat cost: the client
+            // patch lowers its copy of every cooldown a talent could shorten, so
+            // the true one is sent whether a talent moved it or not. Zero only
+            // when the spell has no cooldown at all, which is the addon's "leave
+            // the line alone" signal.
+            if (!baseCdMs)
                 cdMs = 0;
 
             // The two pairs go out as their own values rather than by zeroing

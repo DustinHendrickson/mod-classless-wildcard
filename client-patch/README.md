@@ -38,6 +38,19 @@ Required for every player on a Classless Wildcard realm. The
   it will send a cast and cannot count a cross-class talent, so its copy of
   each cost is lowered to the least any build could pay and the server
   decides. The addon writes the true cost back onto the tooltip
+- **talent-shortened cooldowns can be used when they are ready**: the server
+  shortens a cooldown and only ever tells the client at login, so the client ran
+  its own sweep and refused the cast while the ability was up. Shield Mastery
+  left Shield Block grey for the full minute on a 40 second cooldown. Its copy
+  of every cooldown a talent can shorten is lowered the same way the costs are,
+  and the addon writes the true cooldown onto the tooltip
+- **one class no longer locks out another's reactive abilities**: Blizzard files
+  Mongoose Bite, Wolverine Bite, Overpower and Revenge in one five second
+  cooldown group, and 25 other groups mix classes the same way -- Aspects with
+  Stances and Presences, Kick with Pummel and Counterspell, Taunt with Growl and
+  Feint. The server has always kept them apart by class and the client did not.
+  Each class gets its own copy of the group, so abilities of the SAME class
+  still share, as they do in stock
 - **the classless items are registered with the client**, so their icons draw
   the moment a bag is opened. A stock item's icon comes from the client's own
   Item.dbc; a custom one has no row there, so nothing can draw it until the

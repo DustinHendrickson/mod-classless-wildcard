@@ -53,6 +53,9 @@ SKILLLINE = "DBFilesClient\\SkillLine.dbc"
 # deliberately absent from _OUR_FILES.
 TALENT = "DBFilesClient\\Talent.dbc"
 ITEM = "DBFilesClient\\Item.dbc"
+# Written, unlike TALENT two lines up: the category split appends a row per
+# new cooldown group, so this one IS in _OUR_FILES.
+SPELLCATEGORY = "DBFilesClient\\SpellCategory.dbc"
 TALENTTAB = "DBFilesClient\\TalentTab.dbc"
 # the same path elemental.py uses, kept in one place so the two never diverge
 SPELL = elemental.SPELL
@@ -242,7 +245,7 @@ def build_data_patch(files, name, report, theme=False):
                   "(totems, relics; reagents untouched; from %s)"
                   % (cleared, os.path.basename(source)))
 
-    # The cost floor used to run here. It runs in apply_cost_floor() now, after
+    # The cost floor used to run here. It runs in apply_client_floors() now, after
     # the generated rows have been appended -- see that function for why.
 
     # Our own items, so the client can draw them before it has ever asked the
@@ -284,8 +287,22 @@ def build_data_patch(files, name, report, theme=False):
 HERO_SPELL_FAMILY = 14
 
 
-def apply_cost_floor(files, payload, report, hero_talents=()):
-    """Lower every cost to the least any Hero build could pay. Runs LAST.
+def apply_client_floors(files, payload, report, hero_talents=()):
+    """Make the client copy permissive enough never to refuse a legal cast.
+
+    Three passes, all the same idea: the client checks power, cooldown and
+    cooldown category itself before it will send a cast, and it cannot apply a
+    talent from another class to any of those -- the modifier packet carries a
+    class-mask bit and no spell family, so it only matches the chassis own.
+    Lower its copy to the least any build could reach and let the server decide;
+    the addon writes the true numbers back onto the tooltip.
+
+      1. costs      -- described below
+      2. cooldowns  -- lower_talent_reduced_cooldowns
+      3. categories -- split_cross_class_categories, so one class reactive
+                       ability stops locking out another
+
+    Runs LAST.
 
     The client checks power itself before it will send a cast and cannot apply a
     cross-class talent to that check, so Improved Thunder Clap left the server
@@ -330,6 +347,29 @@ def apply_cost_floor(files, payload, report, hero_talents=()):
     report.append("  Spell.dbc        cost floor lowered on %d spells "
                   "(talent-reduced costs cast at the real price; from %s)"
                   % (lowered, os.path.basename(talent_source)))
+
+    # And the cooldown, which fails the same way and was never handled. The
+    # client will not send a cast it believes is still recharging, and the
+    # server only tells it a cooldown at login -- so a talent that shortens one
+    # left the button grey while the ability was ready.
+    before = payload[SPELL]
+    payload[SPELL], shortened = dbc.lower_talent_reduced_cooldowns(
+        before, talent_raw, class_spells, stock=before,
+        extra_modifier_spells=hero_talents)
+    report.append("  Spell.dbc        cooldown floor lowered on %d spells "
+                  "(talent-shortened cooldowns are castable when they are ready)"
+                  % shortened)
+
+    # And the last way a cooldown can be wrong on the client: Blizzard files
+    # reactive abilities from different classes in one cooldown category, and
+    # the client greys the whole category while the server separates it by
+    # spell family. Mongoose Bite was locking out Overpower and Revenge.
+    category_raw, _src = files.find(SPELLCATEGORY)
+    payload[SPELL], payload[SPELLCATEGORY], moved, added = \
+        dbc.split_cross_class_categories(payload[SPELL], category_raw, class_spells)
+    report.append("  Spell.dbc        %d spell(s) moved into %d new cooldown "
+                  "categor(ies) so one class no longer locks out another"
+                  % (moved, added))
     return payload
 
 
@@ -606,7 +646,7 @@ def do_install(args, wow_dir):
 
         # Last, and inside this block on purpose: it needs `files` for the
         # client's Talent.dbc, and it must see the appended rows.
-        apply_cost_floor(files, dbc_payload, report, hero_talents)
+        apply_client_floors(files, dbc_payload, report, hero_talents)
     target = os.path.join(data_dir, "patch-%s.MPQ" % suffix)
     if not args.dry_run:
         mpq.write_archive(target, dbc_payload)
@@ -734,6 +774,7 @@ _OUR_FILES = frozenset(x.lower() for x in (
     GLUESTRINGS, CHARCREATE_LUA,
     CLASSICONS_INGAME, CLASSICONS_CREATE,
     elemental.SPELL, elemental.SPELLVISUAL, elemental.SPELLICON,
+    SPELLCATEGORY,
     forged.SKILLLINE,
 ))
 # the elemental step paints one icon per (base icon, element); the names are

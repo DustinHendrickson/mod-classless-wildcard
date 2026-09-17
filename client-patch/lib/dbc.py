@@ -398,6 +398,9 @@ def clear_spell_tools(data: bytes, class_spells):
 SPELL_POWERTYPE_COLUMN = 41
 SPELL_MANACOST_COLUMN = 42
 SPELL_MANACOSTPCT_COLUMN = 204     # nearly every caster spell prices itself here
+SPELL_CATEGORY_COLUMN = 1          # the cooldown group, NOT the GCD group
+SPELL_RECOVERY_COLUMN = 29         # the spell's own cooldown, in ms
+SPELL_CATEGORYRECOVERY_COLUMN = 30 # the cooldown shared by its category
 SPELL_EFFECT_COLUMN = 71          # +1, +2 for the other two effects
 SPELL_DIESIDES_COLUMN = 74
 SPELL_BASEPOINTS_COLUMN = 80
@@ -414,8 +417,51 @@ _SPELL_EFFECT_APPLY_AURA = 6
 _AURA_ADD_FLAT_MODIFIER = 107
 _AURA_ADD_PCT_MODIFIER = 108
 _SPELLMOD_COST = 14
+_SPELLMOD_COOLDOWN = 11
+SPELL_ATTRIBUTESEX6_COLUMN = 10
+# SPELL_ATTR6_NO_CATEGORY_COOLDOWN_MODS: the core refuses to apply a
+# cooldown modifier to the CATEGORY cooldown of a spell carrying it.
+_ATTR6_NO_CATEGORY_COOLDOWN_MODS = 0x80000000
 # rage and runic power are stored times ten and shown divided
 _POWER_RAGE, _POWER_RUNIC = 1, 6
+
+
+def _deepest_modifier(records, offset_of, spell_id, want_op):
+    """The deepest reduction of `want_op` this spell's own effects carry.
+
+    Returns (family, mask_words, is_flat, value) or None. Shared by the cost and
+    cooldown floors: both ask the same question of the same rows and differ only
+    in the SpellModOp they are looking for.
+    """
+    base = offset_of.get(spell_id)
+    if base is None:
+        return None
+
+    def col(column):
+        return struct.unpack_from("<I", records, base + column * 4)[0]
+
+    family = col(SPELL_CLASSSET_COLUMN)
+    best = None
+    for eff in range(3):
+        if col(SPELL_EFFECT_COLUMN + eff) != _SPELL_EFFECT_APPLY_AURA:
+            continue
+        aura = col(SPELL_AURA_COLUMN + eff)
+        if aura not in (_AURA_ADD_FLAT_MODIFIER, _AURA_ADD_PCT_MODIFIER):
+            continue
+        if col(SPELL_MISCVALUE_COLUMN + eff) != want_op:
+            continue
+        value = struct.unpack_from(
+            "<i", records, base + (SPELL_BASEPOINTS_COLUMN + eff) * 4)[0]
+        if col(SPELL_DIESIDES_COLUMN + eff) == 1:
+            value += 1
+        if value >= 0:
+            continue                      # only reductions lower a floor
+        start = SPELL_EFFECTCLASSMASK_COLUMN + 3 * eff
+        candidate = (family, (col(start), col(start + 1), col(start + 2)),
+                     aura == _AURA_ADD_FLAT_MODIFIER, value)
+        if best is None or value < best[3]:
+            best = candidate
+    return best
 
 
 def lower_talent_reduced_costs(spell_data: bytes, talent_data: bytes,
@@ -498,9 +544,6 @@ def lower_talent_reduced_costs(spell_data: bytes, talent_data: bytes,
     def col(base, column):
         return struct.unpack_from("<I", records, base + column * 4)[0]
 
-    def signed(base, column):
-        return struct.unpack_from("<i", records, base + column * 4)[0]
-
     # ---- what each talent can take off a cost, at its best rank -------------
     t_count, t_fields, t_size, _t_str = parse_header(talent_data)
     if t_fields < max(TALENT_RANK_COLUMNS) + 1:
@@ -508,31 +551,7 @@ def lower_talent_reduced_costs(spell_data: bytes, talent_data: bytes,
                        % t_fields)
 
     def cost_modifier(spell_id):
-        """The deepest cost reduction this spell's own effects carry, or None."""
-        base = offset_of.get(spell_id)
-        if base is None:
-            return None
-        family = col(base, SPELL_CLASSSET_COLUMN)
-        best = None
-        for eff in range(3):
-            if col(base, SPELL_EFFECT_COLUMN + eff) != _SPELL_EFFECT_APPLY_AURA:
-                continue
-            aura = col(base, SPELL_AURA_COLUMN + eff)
-            if aura not in (_AURA_ADD_FLAT_MODIFIER, _AURA_ADD_PCT_MODIFIER):
-                continue
-            if col(base, SPELL_MISCVALUE_COLUMN + eff) != _SPELLMOD_COST:
-                continue
-            value = signed(base, SPELL_BASEPOINTS_COLUMN + eff)
-            if col(base, SPELL_DIESIDES_COLUMN + eff) == 1:
-                value += 1
-            if value >= 0:
-                continue                      # only reductions lower the floor
-            start = SPELL_EFFECTCLASSMASK_COLUMN + 3 * eff
-            mask = (col(base, start), col(base, start + 1), col(base, start + 2))
-            candidate = (family, mask, aura == _AURA_ADD_FLAT_MODIFIER, value)
-            if best is None or value < best[3]:
-                best = candidate
-        return best
+        return _deepest_modifier(records, offset_of, spell_id, _SPELLMOD_COST)
 
     modifiers = []          # (family, mask_words, is_flat, value)
     for index in range(t_count):
@@ -722,3 +741,231 @@ def single_class_combos(data: bytes, shell_class: int):
     header = WDBC_MAGIC + struct.pack("<4I", len(PLAYABLE_RACES), field_count,
                                       2, 1)
     return header + bytes(records) + b"\0", len(PLAYABLE_RACES)
+
+
+def lower_talent_reduced_cooldowns(spell_data: bytes, talent_data: bytes,
+                                   class_spells, stock: bytes = None,
+                                   extra_modifier_spells=()):
+    """Lower each cooldown to the least any Hero build could reach.
+
+    The mirror of lower_talent_reduced_costs, and for the same reason. The
+    client runs its own cooldown sweep from its own Spell.dbc and will not send
+    a cast it believes is still recharging; it cannot apply a talent from
+    another class to that sweep any more than it can to a power check, because
+    the modifier packet carries a class-mask bit and no spell family. The server
+    shortens the cooldown and never says so -- it only sends a cooldown packet
+    for SPELL_AURA_MOD_COOLDOWN, and only sends the remaining time at login.
+
+    So a Hero with Shield Mastery has a 40 second Shield Block and a 60 second
+    button. Lower the client's copy and the server decides; the addon writes the
+    true cooldown onto the tooltip, for builds with the talent and without.
+
+    Both cooldown columns move: a spell can carry its own RecoveryTime, its
+    category's, or both, and the core applies SPELLMOD_COOLDOWN to each of them
+    (Player::AddSpellAndCategoryCooldowns). Never raises one, never takes one to
+    zero -- a zero prints no cooldown line at all, and then there is nothing for
+    the addon to correct.
+
+    Returns (new_dbc_bytes, rows_lowered).
+    """
+    record_count, field_count, record_size, string_size = parse_header(spell_data)
+    if field_count != SPELL_FIELDS or record_size != SPELL_FIELDS * 4:
+        raise DbcError(
+            "Spell.dbc has %d fields of %d bytes, expected %d of %d."
+            % (field_count, record_size, SPELL_FIELDS, SPELL_FIELDS * 4))
+
+    base_table = spell_data if stock is None else stock
+    s_count, _s_fields, s_size, _s_str = parse_header(base_table)
+    stock_of = {}
+    for index in range(s_count):
+        at = 20 + index * s_size
+        stock_of[struct.unpack_from("<I", base_table, at)[0]] = (
+            struct.unpack_from("<I", base_table, at + SPELL_RECOVERY_COLUMN * 4)[0],
+            struct.unpack_from("<I", base_table,
+                               at + SPELL_CATEGORYRECOVERY_COLUMN * 4)[0])
+
+    records_off = 20
+    strings_off = records_off + record_count * record_size
+    records = bytearray(spell_data[records_off:strings_off])
+    offset_of = {}
+    for index in range(record_count):
+        at = index * record_size
+        offset_of[struct.unpack_from("<I", records, at)[0]] = at
+
+    def col(base, column):
+        return struct.unpack_from("<I", records, base + column * 4)[0]
+
+    def modifier_of(spell_id):
+        return _deepest_modifier(records, offset_of, spell_id, _SPELLMOD_COOLDOWN)
+
+    t_count, t_fields, t_size, _t_str = parse_header(talent_data)
+    modifiers = []
+    for index in range(t_count):
+        row = struct.unpack_from("<%dI" % t_fields, talent_data, 20 + index * t_size)
+        best = None
+        for column in TALENT_RANK_COLUMNS:
+            candidate = modifier_of(row[column]) if row[column] else None
+            if candidate is not None and (best is None or candidate[3] < best[3]):
+                best = candidate
+        if best is not None:
+            modifiers.append(best)
+    for spell_id in extra_modifier_spells:
+        best = modifier_of(spell_id)
+        if best is not None:
+            modifiers.append(best)
+
+    lowered = 0
+    for spell_id, base in offset_of.items():
+        if spell_id not in class_spells:
+            continue
+        rec, catrec = stock_of.get(
+            spell_id, (col(base, SPELL_RECOVERY_COLUMN),
+                       col(base, SPELL_CATEGORYRECOVERY_COLUMN)))
+        if not rec and not catrec:
+            continue
+        family = col(base, SPELL_CLASSSET_COLUMN)
+        mask = (col(base, SPELL_CLASSMASK_COLUMN),
+                col(base, SPELL_CLASSMASK_COLUMN + 1),
+                col(base, SPELL_CLASSMASK_COLUMN + 2))
+
+        total_flat, total_mul = 0, 1.0
+        for mod_family, mod_mask, is_flat, value in modifiers:
+            if mod_family != family:
+                continue
+            if not any(a & b for a, b in zip(mod_mask, mask)):
+                continue
+            if is_flat:
+                total_flat += value
+            else:
+                total_mul *= (100.0 + value) / 100.0
+        if not total_flat and total_mul == 1.0:
+            continue
+
+        # The core skips the category column for a spell that says so, and the
+        # two copies have to agree or the client lets a cast through that the
+        # server then refuses. One spell in the game carries it today.
+        no_category_mods = bool(col(base, SPELL_ATTRIBUTESEX6_COLUMN)
+                                & _ATTR6_NO_CATEGORY_COOLDOWN_MODS)
+
+        wrote = False
+        for column, current in ((SPELL_RECOVERY_COLUMN, rec),
+                                (SPELL_CATEGORYRECOVERY_COLUMN, catrec)):
+            if not current:
+                continue
+            if column == SPELL_CATEGORYRECOVERY_COLUMN and no_category_mods:
+                continue
+            fresh = int(current * total_mul) + total_flat
+            if fresh < 1:
+                fresh = 1
+            if fresh < current and col(base, column) != fresh:
+                struct.pack_into("<I", records, base + column * 4, fresh)
+                wrote = True
+        if wrote:
+            lowered += 1
+
+    header = WDBC_MAGIC + struct.pack("<4I", record_count, field_count,
+                                      record_size, string_size)
+    return header + bytes(records) + spell_data[strings_off:], lowered
+
+
+# Categories start at 5000 to clear Blizzard's, which end at 1253. The id is
+# carried in a uint16 on both sides, so it must stay under 65535.
+SPLIT_CATEGORY_BASE = 5000
+SPELLCATEGORY_FIELDS = 2
+
+
+def split_cross_class_categories(spell_data: bytes, category_data: bytes,
+                                 class_spells):
+    """Give each spell family its own copy of a shared cooldown category.
+
+    A cooldown category groups spells that share one cooldown. The server only
+    ever applies that to spells of the SAME spell family (Player.cpp,
+    AddSpellAndCategoryCooldowns: "Only within the same spellfamily"), so for a
+    Hero holding Mongoose Bite and Overpower the server keeps them apart. The
+    client does not: it greys every spell in the category and then refuses to
+    send the cast, so the two disagree and the client wins.
+
+    Splitting the category per family on the CLIENT makes its grouping identical
+    to the server's. Same-class sharing is untouched -- Overpower and Revenge
+    still share, because they are both warrior.
+
+    The family with the most spells in a category keeps the original id, so the
+    fewest rows move. Spells with no family stay put: the server's family test
+    separates them from every class already.
+
+    Returns (spell_bytes, category_bytes, spells_moved, categories_added).
+    """
+    record_count, field_count, record_size, string_size = parse_header(spell_data)
+    if field_count != SPELL_FIELDS or record_size != SPELL_FIELDS * 4:
+        raise DbcError("Spell.dbc has %d fields of %d bytes, expected %d of %d."
+                       % (field_count, record_size, SPELL_FIELDS, SPELL_FIELDS * 4))
+    c_count, c_fields, c_size, c_strings = parse_header(category_data)
+    if c_fields != SPELLCATEGORY_FIELDS:
+        raise DbcError("SpellCategory.dbc has %d fields, expected %d"
+                       % (c_fields, SPELLCATEGORY_FIELDS))
+
+    records_off = 20
+    strings_off = records_off + record_count * record_size
+    records = bytearray(spell_data[records_off:strings_off])
+
+    def col(base, column):
+        return struct.unpack_from("<I", records, base + column * 4)[0]
+
+    # who is in which category, by family
+    members = {}                       # category -> family -> [record offset]
+    for index in range(record_count):
+        base = index * record_size
+        spell_id = col(base, 0)
+        if spell_id not in class_spells:
+            continue
+        category = col(base, SPELL_CATEGORY_COLUMN)
+        family = col(base, SPELL_CLASSSET_COLUMN)
+        # A category with no shared cooldown behind it groups nothing.
+        if not category or not family:
+            continue
+        if not col(base, SPELL_CATEGORYRECOVERY_COLUMN):
+            continue
+        members.setdefault(category, {}).setdefault(family, []).append(base)
+
+    c_records = bytearray(category_data[20:20 + c_count * c_size])
+    flags_of, taken = {}, set()
+    for index in range(c_count):
+        at = index * c_size
+        cid = struct.unpack_from("<I", c_records, at)[0]
+        flags_of[cid] = struct.unpack_from("<I", c_records, at + 4)[0]
+        taken.add(cid)
+
+    next_id = SPLIT_CATEGORY_BASE
+    moved, added = 0, 0
+    # sorted, so a reinstall produces the same ids as the install before it
+    for category in sorted(members):
+        families = members[category]
+        if len(families) < 2:
+            continue
+        # the biggest family keeps the original id; ties break on the lower
+        # family number so the choice does not wander between runs
+        keeps = sorted(families, key=lambda f: (-len(families[f]), f))[0]
+        for family in sorted(families):
+            if family == keeps:
+                continue
+            while next_id in taken:
+                next_id += 1
+            fresh = next_id
+            taken.add(fresh)
+            next_id += 1
+            for base in families[family]:
+                struct.pack_into("<I", records, base + SPELL_CATEGORY_COLUMN * 4,
+                                 fresh)
+                moved += 1
+            c_records += struct.pack("<II", fresh, flags_of.get(category, 0))
+            added += 1
+
+    spell_out = (WDBC_MAGIC
+                 + struct.pack("<4I", record_count, field_count, record_size,
+                               string_size)
+                 + bytes(records) + spell_data[strings_off:])
+    category_out = (WDBC_MAGIC
+                    + struct.pack("<4I", c_count + added, c_fields, c_size,
+                                  c_strings)
+                    + bytes(c_records) + category_data[20 + c_count * c_size:])
+    return spell_out, category_out, moved, added
