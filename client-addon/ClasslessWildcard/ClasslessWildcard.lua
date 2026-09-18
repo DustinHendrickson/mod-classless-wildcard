@@ -190,7 +190,18 @@ titleGlow:SetVertexColor(0.45, 0.75, 1)
 titleGlow:SetAlpha(0)
 
 function CW.RefreshPanelArt()
+    -- Torn down FIRST, then rebuilt. Re-calling SetBackdrop with the SAME table
+    -- can keep the dropped texture handle instead of resolving the file again,
+    -- so the panel stays flat however often this runs -- which is the exact
+    -- symptom this function exists to cure, and why it looked like the refresh
+    -- was not wired up when it was. Passing nil destroys the backdrop, so the
+    -- second call has no choice but to load panel_bg from disk.
+    frame:SetBackdrop(nil)
     frame:SetBackdrop(CW.PANEL_BACKDROP)
+    -- Same for the plain textures: SetTexture with the path it already holds
+    -- can be a no-op, and a no-op does not reload a dropped file.
+    titleIcon:SetTexture(nil)
+    titleGlow:SetTexture(nil)
     titleIcon:SetTexture("Interface\\AddOns\\ClasslessWildcard\\icon")
     titleGlow:SetTexture("Interface\\AddOns\\ClasslessWildcard\\glow")
 end

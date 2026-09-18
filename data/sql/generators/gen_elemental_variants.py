@@ -573,8 +573,13 @@ def build_variant(spell, sla, icon, visual, durations, base_id, base_index, rank
     # else follows as one of its own.
     inline = HIT_TEXT if kind in ("hit", "leech") else ""
     desc = DESCRIPTIONS[base_name].replace("{E}", word)                                   .replace("{payload}", inline.replace("{E}", word))
+    # The aura's own tooltip -- Spell.dbc column 187, which is what the buff or
+    # debuff ICON shows on hover. Only the payloads that actually leave an aura
+    # on the target have one; a hit and a leech put no icon up to hover over.
+    tooltip = ""
     if kind in ("dot", "aura"):
         desc += "  " + elem["text"].replace("{E}", word)
+        tooltip = elem["text"].replace("{E}", word)
     elif kind == "leech":
         desc += "  Heals you for %d%% of the damage dealt." % round(payload[1] * 100)
     bad = check_tokens(desc, slots, duration)
@@ -616,7 +621,8 @@ def build_variant(spell, sla, icon, visual, durations, base_id, base_index, rank
     lost = fell_back
     return dict(id=first_variant_id + rank_index, first=first_variant_id, base=base_id,
                 base_name=base_name, element=elem["key"], rank=rank_index + 1,
-                name=name, rank_text=rank_text, description=desc, values=new,
+                name=name, rank_text=rank_text, description=desc,
+                tooltip=tooltip, values=new,
                 overrides=overrides, visual=dict(id=visual_id, base=base_visual, impact_kit=elem["kit"]),
                 icon=dict(id=icon_id, base_icon=base_icon, base_path=base_icon_path,
                           element=elem["key"], hue=elem["hue"], glyph=elem["glyph"]),
@@ -640,7 +646,12 @@ def generation_id(variants):
     different runs can be told apart by comparing two strings."""
     h = hashlib.sha1()
     for v in sorted(variants, key=lambda x: x["id"]):
+        # tooltip is in here because it is a thing the client SHOWS -- column
+        # 187, the text on the buff icon. It was left out while it was always
+        # empty, and the day it stopped being empty the stamp did not move and
+        # a stale client patch went on looking current.
         h.update(json.dumps([v["id"], v["name"], v["rank_text"], v["description"],
+                             v["tooltip"],
                              v["values"], v["visual"], v["icon"]["id"], v["sla"]],
                             sort_keys=True, default=str).encode("utf-8"))
     return h.hexdigest()[:12]
@@ -698,7 +709,7 @@ def write_sql(variants, path, run_desc):
         vals[F["SpellName"]] = v["name"]
         vals[F["Rank"]] = v["rank_text"]
         vals[F["Description"]] = v["description"]
-        vals[F["ToolTip"]] = ""
+        vals[F["ToolTip"]] = v["tooltip"]
         end = ";" if n == len(variants) - 1 else ","
         L.append("(%s)%s" % (", ".join(sql_literal(x) for x in vals), end))
     L.append("")
@@ -746,6 +757,7 @@ def write_manifest(variants, path, run_desc):
         out["variants"].append(dict(
             id=v["id"], first=v["first"], base=v["base"], element=v["element"], rank=v["rank"],
             name=v["name"], rank_text=v["rank_text"], description=v["description"],
+            tooltip=v["tooltip"],
             fields={str(k): val for k, val in v["overrides"].items()},
             visual=v["visual"], icon=v["icon"], sla=v["sla"], note=v["note"]))
     json.dump(out, open(path, "w", encoding="utf-8", newline="\n"), indent=1)
