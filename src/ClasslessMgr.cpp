@@ -382,13 +382,31 @@ void ClasslessMgr::BuildLibrary()
     // a class and let the rest of the line inherit it. Pet and companion lines
     // have no such row anywhere, so they still resolve to zero and stay out,
     // which is what kept them out before.
+    //
+    // A MOUNT lends nothing, whatever mask its own row carries. SkillLine 777
+    // is a class line by category and holds the paladin class mounts beside
+    // every ordinary vendor mount, so the paladin bit used to inherit onto all
+    // 311 mounts whose own ClassMask is 0. They then read as paladin abilities,
+    // which put the Mounts line into _classSkillLines -- and a class line the
+    // Hero has earned nothing in is dropped with SetSkill(line, 0, 0, 0), which
+    // unlearns every spell on it. That is how a mount bought from a vendor
+    // disappeared from character_spell on the next login.
+    //
+    // Stated as "a mount is nobody's class ability" rather than as the number
+    // 777, and the two are the same thing here: against the client's own tables
+    // this changes exactly one line's mask, 777 from 2 to 0.
     std::unordered_map<uint32, uint32> lineClassMask;
     for (uint32 i = 0; i < sSkillLineAbilityStore.GetNumRows(); ++i)
         if (SkillLineAbilityEntry const* sla = sSkillLineAbilityStore.LookupEntry(i))
             if (sla->ClassMask)
                 if (SkillLineEntry const* line = sSkillLineStore.LookupEntry(sla->SkillLine))
                     if (line->categoryId == SKILL_CATEGORY_CLASS)
+                    {
+                        SpellInfo const* info = sSpellMgr->GetSpellInfo(sla->Spell);
+                        if (info && info->HasAura(SPELL_AURA_MOUNTED))
+                            continue;
                         lineClassMask[sla->SkillLine] |= sla->ClassMask;
+                    }
 
     auto classMaskOf = [&lineClassMask](SkillLineAbilityEntry const* sla) -> uint32
     {
@@ -3919,6 +3937,31 @@ void ClasslessMgr::SyncSpellbookTabs(Player* player, bool clearChassisLines)
         }
     }
 
+    // What the Hero knows on each line that did NOT come from here: a mount
+    // bought from a vendor, a Polymorph learned from a tome, a warlock ritual
+    // from a book. SetSkill unlearns every spell on a line it removes, so a
+    // line holding one of those has to stay, whatever the library says about
+    // it -- `want` is built from what the library GAVE, which is not the same
+    // question.
+    //
+    // Spells that come free WITH the line are deliberately not counted. Those
+    // are the chassis's own starter kit, StripUnearnedSpells owns them, and
+    // counting them here would keep every chassis line alive forever and
+    // defeat the sweep entirely.
+    std::set<uint16> keepForOutside;
+    for (auto const& [spellId, owned] : player->GetSpellMap())
+    {
+        if (!owned || owned->State == PLAYERSPELL_REMOVED || !owned->Active)
+            continue;
+        if (_skillLearnedClassSpells.count(spellId))
+            continue;                       // free with the line; not the Hero's doing
+        if (FindAbilityBySpell(spellId))
+            continue;                       // a library rank: `want` already has it
+        auto itr = _spellSkillLine.find(spellId);
+        if (itr != _spellSkillLine.end())
+            keepForOutside.insert(itr->second);
+    }
+
     GrantGuard guard(_applyingGrant);
 
     // Drop the chassis class's own skill lines, and any other the Hero has
@@ -3938,6 +3981,19 @@ void ClasslessMgr::SyncSpellbookTabs(Player* player, bool clearChassisLines)
         for (uint16 line : _classSkillLines)
         {
             if (line == uint16(RUNEFORGING_SKILL_LINE) && player->HasSpell(RUNEFORGING_SPELL))
+                continue;
+            // Mounts, for exactly the same reason and with a worse blast
+            // radius. Every mount a character owns lives on this one line, and
+            // they are bought with gold from a vendor rather than earned
+            // through the library -- so the Hero "has nothing in it" forever
+            // and the sweep would unlearn the lot. The attribution fix above
+            // keeps the line out of _classSkillLines on a default realm; this
+            // is what holds when IncludeRacials is on and the paladin class
+            // mounts put it back.
+            if (line == uint16(MOUNTS_SKILL_LINE))
+                continue;
+            // and anything else the Hero got from outside the module
+            if (keepForOutside.count(line))
                 continue;
             if (!want.count(line) && player->HasSkill(line))
                 player->SetSkill(line, 0, 0, 0);

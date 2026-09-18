@@ -57,6 +57,10 @@ namespace ClasslessWildcard
     // so Player::LearnDefaultSkill hands the skill to no other chassis and the
     // module sets it directly. See GrantRuneforging.
     constexpr uint32 RUNEFORGING_SKILL_LINE = 776;
+    // Every mount a character owns sits on this one line, and none of them is
+    // earned through the library. SetSkill unlearns every spell on a line it
+    // removes, so this line must never be removed.
+    constexpr uint32 MOUNTS_SKILL_LINE = 777;
     constexpr uint32 RUNEFORGING_SPELL = 53428;
 
     enum class Mode : uint8
