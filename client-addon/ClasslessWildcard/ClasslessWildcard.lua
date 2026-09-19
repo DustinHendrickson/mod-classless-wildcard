@@ -3703,6 +3703,9 @@ function rvFX.MakeInfo(parent, anchor)
     -- Every row is held to the plate's inner width, so a long description wraps
     -- inside it rather than running past the edge.
     function info:SetRowWidth(w)
+        -- Remembered, because Fill has to know how much room a row has before
+        -- it can tell whether a left/right pair will collide in it.
+        self.rowWidth = w
         for i = 1, rvFX.INFO_LINES do
             self.rows[i].left:SetWidth(w)
         end
@@ -3725,8 +3728,29 @@ function rvFX.MakeInfo(parent, anchor)
         for i = 1, rvFX.INFO_LINES do
             local row, line = self.rows[i], lines[i]
             if line then
-                row.left:SetText(line.left or "")
-                row.right:SetText(line.right or "")
+                local left, right = line.left or "", line.right or ""
+                row.left:SetText(left)
+                row.right:SetText(right)
+                -- The two share ONE rectangle: row.right is SetAllPoints(row.left)
+                -- and merely justified the other way. So the moment the pair is
+                -- wider than the plate they run into each other in the middle
+                -- rather than pushing it wider the way a real tooltip would. On
+                -- the hand's 216px card that printed Auto Shot's "Instant cast"
+                -- and "2.5 sec cooldown" as "Instant ca2s.5t sec cooldown".
+                --
+                -- When they will not both fit, hand the right-hand text to the
+                -- left string and let it wrap onto a second line. Two readable
+                -- lines beat one unreadable one, and the row measures its own
+                -- height below so the rows under it still land correctly.
+                local room = self.rowWidth or 0
+                if room > 0 and left ~= "" and right ~= "" then
+                    local lw = tonumber(row.left:GetStringWidth()) or 0
+                    local rw = tonumber(row.right:GetStringWidth()) or 0
+                    if lw + rw + 8 > room then
+                        row.left:SetText(left .. "  " .. right)
+                        row.right:SetText("")
+                    end
+                end
                 row.left:SetTextColor(line.r, line.g, line.b)
                 row.right:SetTextColor(line.r, line.g, line.b)
                 row.left:Show(); row.right:Show()
