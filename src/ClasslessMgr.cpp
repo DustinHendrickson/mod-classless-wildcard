@@ -1090,6 +1090,7 @@ void ClasslessMgr::BuildLibrary()
     ResyncVariants(overridden);
     BuildFormSpellMap();
     LoadFormKits();
+    BuildClassPassives();
     LoadArchetypes();
     StripSpellTools();
     _libraryBuilt = true;
@@ -3498,6 +3499,127 @@ uint32 ClasslessMgr::PruneCompanions(Player* player)
     return uint32(drop.size());
 }
 
+// Passives the class system hands its own members with a skill line and a Hero
+// never receives. Player::learnSkillRewardedSpells checks each row's ClassMask
+// against the real class, the chassis is a Paladin, and none of these is on a
+// trainer list -- so a Hero who owns the ability they belong to plays it
+// without them, and nothing says so.
+//
+// Kept to passives that change how an owned spell works. Rogue Passive (a flat
+// threat cut) is class identity rather than part of any ability; Improved
+// Barkskin's passive is cast by the core itself when the talent is held; and
+// Defiance Expertise Passive belongs to a talent 3.3.5a no longer has.
+namespace
+{
+    constexpr uint32 CLASS_PASSIVES[] =
+    {
+        61455,  // Runic Focus: Death Knight spells crit for double
+        71761,  // Deep Freeze Immunity State: Deep Freeze damages stun-immune targets
+        75461,  // Flame Shock Passive: Flame Shock's damage over time can crit
+        58284,  // Chaos Bolt Passive: Chaos Bolt goes through absorbs
+        75445,  // Demonic Immolate: Immolate's damage over time can crit
+    };
+}
+
+// Which owned spells need each passive, from the passive's own spell data: the
+// class mask on its effects, or its spell_proc mask when the effects carry
+// none (Deep Freeze Immunity State is a proc and keeps its mask there). Read
+// rather than listed, so the elemental variants -- separate library lines
+// that carry their base's family flags -- are covered with their bases.
+void ClasslessMgr::BuildClassPassives()
+{
+    _classPassiveOwners.clear();
+
+    for (uint32 passiveId : CLASS_PASSIVES)
+    {
+        SpellInfo const* passive = sSpellMgr->GetSpellInfo(passiveId);
+        if (!passive)
+        {
+            LOG_WARN("module.classless", "mod-classless-wildcard: class passive {} does not exist", passiveId);
+            continue;
+        }
+        // A realm that opens the pool to every class spell can make one of
+        // these a card. Then the library owns it, and StripUnearnedSpells
+        // would take back every copy this handed out.
+        if (FindAbilityBySpell(passiveId))
+            continue;
+
+        flag96 reaches;
+        for (SpellEffectInfo const& eff : passive->GetEffects())
+            reaches |= eff.SpellClassMask;
+        if (!reaches)
+            if (SpellProcEntry const* proc = sSpellMgr->GetSpellProcEntry(passiveId))
+                reaches = proc->SpellFamilyMask;
+        if (!reaches)
+        {
+            LOG_WARN("module.classless",
+                     "mod-classless-wildcard: class passive {} names no spells it affects, skipped", passiveId);
+            continue;
+        }
+
+        auto needs = [&](uint32 spellId)
+        {
+            SpellInfo const* info = sSpellMgr->GetSpellInfo(spellId);
+            return info && info->SpellFamilyName == passive->SpellFamilyName
+                && (info->SpellFamilyFlags & reaches);
+        };
+
+        std::unordered_set<uint32>& owners = _classPassiveOwners[passiveId];
+        for (auto const& [firstSpell, e] : _abilities)
+            for (uint32 rank : e.ranks)
+                if (needs(rank))
+                    owners.insert(rank);
+        for (auto const& [talentId, t] : _talents)
+            for (uint8 r = 0; r < t.maxRank && r < t.rankSpells.size(); ++r)
+                if (t.rankSpells[r] && needs(t.rankSpells[r]))
+                    owners.insert(t.rankSpells[r]);
+
+        if (owners.empty())
+            _classPassiveOwners.erase(passiveId);
+    }
+
+    LOG_INFO("module.classless", "mod-classless-wildcard: {} class passives tied to library spells",
+             _classPassiveOwners.size());
+}
+
+// Silent both ways: these are the class's own plumbing, and the spell they
+// serve is what the Hero sees. Removing is safe because a Hero cannot hold one
+// any other way -- each is masked to a class the chassis is not.
+void ClasslessMgr::SyncClassPassives(Player* player)
+{
+    if (_classPassiveOwners.empty())
+        return;
+    CharState& st = GetState(player);
+    if (st.exempt)
+        return;
+
+    std::unordered_set<uint32> owned;
+    for (auto const& [firstSpell, o] : st.abilities)
+        if (AbilityEntry const* e = GetAbility(firstSpell))
+            owned.insert(e->ranks.begin(), e->ranks.end());
+    for (auto const& [talentId, rank] : st.talents)
+        if (TalentPoolEntry const* t = GetTalent(talentId))
+            for (uint8 r = 0; r < rank && r < t->rankSpells.size(); ++r)
+                if (t->rankSpells[r])
+                    owned.insert(t->rankSpells[r]);
+
+    GrantGuard guard(_applyingGrant);
+    for (auto const& [passiveId, owners] : _classPassiveOwners)
+    {
+        bool needed = false;
+        for (uint32 spellId : owned)
+            if (owners.count(spellId))
+            {
+                needed = true;
+                break;
+            }
+        if (needed && !player->HasSpell(passiveId))
+            player->learnSpell(passiveId);
+        else if (!needed && player->HasSpell(passiveId))
+            player->removeSpell(passiveId, SPEC_MASK_ALL, false);
+    }
+}
+
 // Repair a build whose stance the library could not offer, and any build made
 // before that was fixed. GrantRequiredForm does nothing when the Hero can
 // already use the ability, so this is safe to run at every login.
@@ -3635,6 +3757,7 @@ void ClasslessMgr::RemoveAbilityInternal(Player* player, AbilityEntry const& e, 
             "DELETE FROM cw_char_abilities WHERE guid = {} AND first_spell = {}",
             player->GetGUID().GetCounter(), e.firstSpellId);
 
+    SyncClassPassives(player);
     DismissOrphanedSummons(player);
     PushCorrectionsUnlessBulk(player);
 }
@@ -3743,6 +3866,7 @@ void ClasslessMgr::RemoveTalentInternal(Player* player, TalentPoolEntry const& t
     player->SendTalentsInfoData(false);
     CW_SyncTalentPetSpell(player);   // and the pet spell it handed over
     PushSpellCorrections(player);    // the numbers it was moving go back
+    SyncClassPassives(player);       // Deep Freeze's immunity state, Chaos Bolt's
 
     // the ability line the talent handed over goes with it
     for (uint32 first : t.abilityLines)
@@ -3881,6 +4005,11 @@ void ClasslessMgr::SyncSpellbookTabs(Player* player, bool clearChassisLines)
     CharState& st = GetState(player);
     if (st.exempt)
         return;
+
+    // First, so a passive's own skill line is already in place for the
+    // sweeps below. Learning one adds that line, and the line brings its free
+    // spells with it, which the strip at the end takes back.
+    SyncClassPassives(player);
 
     // Which lines does the Hero have EARNED spells in? Built from what they
     // own, so it is exactly the set of tabs that would have something in them.

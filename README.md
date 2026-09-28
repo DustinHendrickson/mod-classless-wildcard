@@ -252,7 +252,10 @@ projected as you spend. Reallocating is free.</em>
   realm.
 - **The base class never restricts a build.** Any relic equips, shields work, and Overpower,
   Revenge, Riposte and Counterattack fire regardless of base class. A weapon's feral attack power
-  counts in Cat and Bear form, and a pet inherits its owner's hit and expertise.
+  counts in Cat and Bear form, and a pet inherits its owner's hit and expertise. The class
+  passives an ability relies on come with it: Death Knight spells crit for double, Deep Freeze
+  damages stun-immune targets, Flame Shock and Immolate can crit over time, and Chaos Bolt goes
+  through absorbs.
 - **Every item is open to every Hero.** Class armour sets, all 353 glyphs, rogue poisons, soul
   bags, quivers and class-locked relics. Done in the world database, and reversible with
   `data/sql/manual/cw_item_classes_revert.sql`.

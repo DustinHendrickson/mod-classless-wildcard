@@ -211,6 +211,9 @@ private:
     // heuristic rarity rather than its final one. Put that right.
     uint32 ResyncVariants(std::unordered_set<uint32> const& overridden);
     void LoadFormKits();
+    // Which library spells need each of the class passives in
+    // ClasslessMgr.cpp's CLASS_PASSIVES, read from the spell data.
+    void BuildClassPassives();
     // Elemental variants of pool abilities, from cw_ability_variants. They are
     // module-owned spells with no trainer, so they bypass TrainerTaughtOnly
     // and inherit their base's levels, class mask and spellbook tab.
@@ -259,6 +262,9 @@ private:
     // login, so a build that predates a form rule -- or a kit pair added to
     // cw_form_kits after the build was made -- is repaired in place.
     void SyncRequiredForms(Player* player);
+    // Hold exactly the class passives the Hero's abilities and talents rely
+    // on: learn the ones something owned needs, drop the ones nothing does.
+    void SyncClassPassives(Player* player);
     // Clear the class tool (totem/relic item) requirement from every library
     // spell. The client patch clears the same two columns and the two must
     // agree, so this is not conditional.
@@ -297,6 +303,8 @@ private:
     std::unordered_map<uint32, uint32> _spellToFirst;                  // any rank -> firstSpellId
     // form/stance spell (any rank) -> the basic spells that come with it
     std::unordered_map<uint32, std::vector<uint32>> _formKits;
+    // class passive -> every ability rank and talent rank spell that needs it
+    std::unordered_map<uint32, std::unordered_set<uint32>> _classPassiveOwners;
     // shapeshift form id -> the RANK spell that grants that form. Not the
     // first rank: Dire Bear Form is rank 2 of Bear Form and grants a
     // different form id, so the line alone cannot answer which is which.
