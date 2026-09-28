@@ -2683,6 +2683,16 @@ std::vector<uint32> ClasslessMgr::TaughtSpells() const
     if (listed(2567))
         out.push_back(2764);   // Throw
 
+    // Parry. Without the spell a Hero never parries, whatever weapon or stats
+    // they carry, and nothing else can hand it over: it lives on Defense, not
+    // a class line, so the library never stocks it, and the only teachers are
+    // class trainers. Every tank build was going without it, and Riposte and
+    // Counterattack, which fire off a parry, could never fire at all.
+    //
+    // Unconditional rather than a ProficiencySpells entry. A realm's live conf
+    // already holds the list and would never pick up a new default.
+    out.push_back(3127);
+
     return out;
 }
 

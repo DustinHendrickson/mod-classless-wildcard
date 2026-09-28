@@ -84,8 +84,47 @@ public:
         PLAYERHOOK_ON_PLAYER_IS_CLASS,
         PLAYERHOOK_ON_PLAYER_HAS_ACTIVE_POWER_TYPE,
         PLAYERHOOK_ON_BEFORE_GUARDIAN_INIT_STATS_FOR_LEVEL,
-        PLAYERHOOK_ON_UPDATE
+        PLAYERHOOK_ON_UPDATE,
+        PLAYERHOOK_ON_SPELL_CAST
     }) { }
+
+    // A rune-power spell's cooldown does not hold on the client of a Hero.
+    // Death Grip lit up again within seconds of being cast, and every press
+    // after that was refused by the server with "Spell is not ready" for the
+    // rest of its 35 seconds. It is the same client rune bookkeeping that is
+    // Death Knight only, below.
+    //
+    // So say it outright. SMSG_SPELL_COOLDOWN is the core's own way of telling
+    // the client a cooldown it would not work out for itself, and the client
+    // honours it for any class. Sent a tick after the cast so it lands behind
+    // SMSG_SPELL_GO, with what the server actually holds, so a talent that
+    // shortens the cooldown is already counted.
+    void OnPlayerSpellCast(Player* player, Spell* spell, bool /*skipCheck*/) override
+    {
+        if (!sClasslessMgr->cfg.enabled || !player || !spell)
+            return;
+        if (player->getClass() == CLASS_DEATH_KNIGHT)
+            return;   // a real Death Knight's client tracks these itself
+        SpellInfo const* info = spell->GetSpellInfo();
+        if (!info || info->PowerType != POWER_RUNE)
+            return;
+        if (!info->RecoveryTime && !info->CategoryRecoveryTime)
+            return;
+        CharState* st = sClasslessMgr->FindState(player);
+        if (!st || st->exempt || !st->runes)
+            return;
+
+        uint32 const spellId = info->Id;
+        player->m_Events.AddEventAtOffset([player, spellId]()
+        {
+            uint32 const left = player->GetSpellCooldownDelay(spellId);
+            if (!left)
+                return;
+            WorldPacket data;
+            player->BuildCooldownPacket(data, SPELL_COOLDOWN_FLAG_NONE, spellId, left);
+            player->SendDirectMessage(&data);
+        }, 1ms);
+    }
 
     // Runs before the money actually moves, with the signed delta.
     void OnPlayerMoneyChanged(Player* player, int32& amount) override
@@ -686,6 +725,30 @@ public:
                             if (!own)
                                 PushAddon(player, "RU|0|0");
                         }
+                    }
+                }
+
+                // The client does not bring a spent rune back unless the
+                // character is a real Death Knight. It takes the spend from
+                // SMSG_SPELL_GO like anyone's, then waits: Plague
+                // Strike cast twice on the two Unholy runes and then sat
+                // dimmed, full runes on the server, until a relog reset the
+                // client's copy. The core sends nothing when a rune comes
+                // back ("runes act as cooldowns"), so tell the client each
+                // time one does, the way Empower Rune Weapon tells it.
+                if (cpSt.runes && player->getClass() != CLASS_DEATH_KNIGHT)
+                {
+                    uint8 ready = 0;
+                    for (uint8 i = 0; i < MAX_RUNES; ++i)
+                        if (!player->GetRuneCooldown(i))
+                            ready |= uint8(1 << i);
+                    uint8 const back = ready & ~cpSt.lastReadyRunes;
+                    cpSt.lastReadyRunes = ready;
+                    if (back)
+                    {
+                        WorldPacket data(SMSG_ADD_RUNE_POWER, 4);
+                        data << uint32(back);
+                        player->SendDirectMessage(&data);
                     }
                 }
 

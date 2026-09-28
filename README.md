@@ -245,7 +245,7 @@ projected as you spend. Reallocating is free.</em>
   reallocated at any time for free. Because a build can point in any direction, the module also
   adds melee attack power per Agility, extra ranged attack power per Agility and spell power per
   Intellect. Hovering a stat in the addon shows what a point is worth at your level.
-- **All proficiencies at level 1.** Armor, weapons and dual wield, handed over at character
+- **All proficiencies at level 1.** Armor, weapons, dual wield and Parry, handed over at character
   creation, with the abilities that make them usable: Shoot and Auto Shot with bows, guns and
   crossbows, Throw with thrown weapons. The skills themselves are not touched after that -- each
   arrives at the rank a trainer leaves it at and rises by use, the same as for anyone else on the

@@ -584,7 +584,8 @@ ClasslessWildcard.StarterKit.Items = "2092:2,36:1,1194:1,2361:1,12282:1,35:1,250
 
 #    ClasslessWildcard.TeachProficiencies
 #        Teach every armour and weapon proficiency at login, so a Hero can use
-#        whatever gear it finds.
+#        whatever gear it finds. Parry is taught with them, whatever the list
+#        below says.
 #        Default: 1
 ClasslessWildcard.TeachProficiencies = 1
 
