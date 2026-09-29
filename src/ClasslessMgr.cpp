@@ -3793,12 +3793,14 @@ void ClasslessMgr::GrantTalentRankInternal(Player* player, TalentPoolEntry const
     player->InitTalentForLevel();
     player->SetFreeTalentPoints(0);
     player->SendTalentsInfoData(false);
+    // Recorded before the sync: it ends in StripUnearnedSpells, which takes
+    // back any talent spell the Hero's state does not list.
+    st.talents[t.talentId] = newRank;
     // a talent that teaches a spell needs its tab now, not at next login
     SyncSpellbookTabs(player);
     // and a talent that teaches the PET a spell has to reach a pet that is
     // already standing there, not wait for the next summon
     CW_SyncTalentPetSpell(player);
-    st.talents[t.talentId] = newRank;
 
     // an ability talent hands over its whole ability line, so the spell keeps
     // ranking up with level instead of stalling at the talent's rank 1
@@ -3952,7 +3954,19 @@ uint32 ClasslessMgr::StripUnearnedSpells(Player* player)
     {
         if (earned.count(spellId) || !player->HasSpell(spellId))
             return;
+        // A saved row can sit under a TEMPORARY spell. LoadFromDB loads skills
+        // before spells, so the chassis line teaches Holy Light as temporary
+        // first and the character_spell row then finds it already known and
+        // leaves it that way. removeSpell drops a temporary spell from memory
+        // without a database delete, so the row outlived every sweep: gone
+        // from the spellbook, back in memory at the next login.
+        auto itr = player->GetSpellMap().find(spellId);
+        bool const temporary = itr != player->GetSpellMap().end()
+            && itr->second->State == PLAYERSPELL_TEMPORARY;
         player->removeSpell(spellId, SPEC_MASK_ALL, false);
+        if (temporary)
+            CharacterDatabase.Execute("DELETE FROM character_spell WHERE guid = {} AND spell = {}",
+                                      player->GetGUID().GetCounter(), spellId);
         ++removed;
     };
 
@@ -3965,6 +3979,17 @@ uint32 ClasslessMgr::StripUnearnedSpells(Player* player)
     // and the free-with-the-line spells, kept by the library or not
     for (uint32 spellId : _skillLearnedClassSpells)
         take(spellId);
+
+    // and talent ranks the Hero never bought. Nothing else takes these back:
+    // a character from before the module, or one given talents by command,
+    // kept their modifiers with no row in cw_char_talents behind them.
+    for (auto const& [talentId, t] : _talents)
+        for (uint8 r = 0; r < t.maxRank && r < t.rankSpells.size(); ++r)
+            if (uint32 const spellId = t.rankSpells[r]; spellId && !earned.count(spellId) && player->HasSpell(spellId))
+            {
+                player->_removeTalent(spellId, SPEC_MASK_ALL);
+                take(spellId);
+            }
 
     return removed;
 }
