@@ -4128,6 +4128,14 @@ void ClasslessMgr::SyncSpellbookTabs(Player* player, bool clearChassisLines)
 
     GrantGuard guard(_applyingGrant);
 
+    // Line starters held as TEMPORARY over a saved row (see StripUnearnedSpells).
+    // Dropping their line below unlearns them the same way removeSpell does,
+    // from memory only, so the row is deleted here once the line has gone.
+    std::vector<uint32> shadowed;
+    for (auto const& [spellId, owned] : player->GetSpellMap())
+        if (owned && owned->State == PLAYERSPELL_TEMPORARY && _skillLearnedClassSpells.count(spellId))
+            shadowed.push_back(spellId);
+
     // Drop the chassis class's own skill lines, and any other the Hero has
     // nothing in. This is what removes the lonely "Holy" tab a Paladin chassis
     // starts with, and what stops its auto-learned spells returning.
@@ -4162,6 +4170,11 @@ void ClasslessMgr::SyncSpellbookTabs(Player* player, bool clearChassisLines)
             if (!want.count(line) && player->HasSkill(line))
                 player->SetSkill(line, 0, 0, 0);
         }
+
+    for (uint32 spellId : shadowed)
+        if (!player->HasSpell(spellId))
+            CharacterDatabase.Execute("DELETE FROM character_spell WHERE guid = {} AND spell = {}",
+                                      player->GetGUID().GetCounter(), spellId);
 
     // Then a tab for each school they actually know. The Hero line rides
     // along too: it is in `want` exactly when a forged spell is owned.
