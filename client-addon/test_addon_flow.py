@@ -647,9 +647,42 @@ def test_browser(h):
     h.recv("AB|1|0|1|100:0:1:0:0:4:1;")
     h.check(CW.abilEmpty["__shown"] is False, "and the note goes the moment there is a row")
 
+    # The baked panel art is a texture region, not the backdrop's bgFile, and
+    # opening the panel re-reads it (nil first, so the client cannot treat the
+    # second call as a no-op on a dropped handle).
+    frame["art"]["__tex"] = None
     frame["__scripts"]["OnShow"](frame)
     h.recv(state(0))
-    h.check(callable(CW.RefreshPanelArt), "panel art refresh is wired")
+    art = frame["art"]["__tex"]
+    h.check(art and "panel_bg" in str(art[1]), "opening the panel re-reads the baked art: %r" % (art and str(art[1])))
+    h.check(not frame["__scripts"]["OnUpdate"], "and when the file resolves nothing is left polling")
+    h.check("bgFile" not in CW.PANEL_BACKDROP, "the backdrop carries only the border")
+    # When the file does NOT resolve (the client is still purging after the
+    # intro cinematic) the refresh must try again by itself, and stop once it
+    # loads. Make this one texture refuse the file, then let it through. (The
+    # flag lives on the texture: a CapitalCase global read after being set nil
+    # comes back as a phantom frame from the _G stub.)
+    h.rt.execute("""
+        local art = ClasslessWildcardFrame.art
+        rawset(art, "__refuse", true)
+        rawset(art, "SetTexture", function(s, ...)
+            rawset(s, "__tex", {...})
+            if rawget(s, "__refuse") and (...) == ClasslessWildcard_API.PANEL_ART then return nil end
+            return true
+        end)
+    """)
+    CW.RefreshPanelArt()
+    tick = frame["__scripts"]["OnUpdate"]
+    h.check(callable(tick), "a load that failed queues a retry")
+    tick(frame, 0.3)
+    h.check(callable(frame["__scripts"]["OnUpdate"]) and frame["artRetries"] == 2,
+            "the retry ran and, still refused, queued another: retries=%r" % frame["artRetries"])
+    h.rt.execute("rawset(ClasslessWildcardFrame.art, \"__refuse\", nil)")
+    frame["__scripts"]["OnUpdate"](frame, 0.3)
+    h.check(not frame["__scripts"]["OnUpdate"] and frame["artRetries"] is None
+            and "panel_bg" in str(frame["art"]["__tex"][1]),
+            "once the file resolves the art is set and polling stops")
+    h.rt.execute("rawset(ClasslessWildcardFrame.art, \"SetTexture\", nil)")
 
     # Every stat says everything it is doing, from the server's own rates.
     # Three of the five used to say nothing at all and Intellect reported only

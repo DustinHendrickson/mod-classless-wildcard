@@ -145,24 +145,35 @@ frame:SetPoint("CENTER")
 frame:SetFrameStrata("HIGH")
 frame:SetToplevel(true)
 -- The whole look of the panel (pane outlines, header strips, textured
--- ground) is one baked image applied as the backdrop. RefreshPanelArt applies
--- it again on entering the world, after a cinematic and whenever the panel
--- opens: a brand-new character plays the intro movie right after addons
--- load, and the client drops textures loaded before it, which left the panel
--- flat until a reload.
+-- ground) is one baked image. It is a plain texture region, NOT the backdrop's
+-- bgFile: a backdrop resolves its files once and never asks for one again, so
+-- a new character whose intro cinematic dropped the file (the client purges
+-- every texture it loaded before the movie) kept a flat panel for the whole
+-- session however many times SetBackdrop was torn down and re-applied -- the
+-- border came back each time, the art did not. A texture region is re-read on
+-- draw, which is why the die crest and the lock icons on the same screen never
+-- went missing. The backdrop now carries only the border.
 CW.PANEL_BACKDROP = {
-    bgFile = "Interface\\AddOns\\ClasslessWildcard\\panel_bg", -- baked layout art
     edgeFile = "Interface\\DialogFrame\\UI-DialogBox-Border",
     tile = false, edgeSize = 32,
     insets = { left = 0, right = 0, top = 0, bottom = 0 },
 }
+CW.PANEL_ART = "Interface\\AddOns\\ClasslessWildcard\\panel_bg"
 frame:SetBackdrop(CW.PANEL_BACKDROP)
 -- Opaque backing UNDER the baked art: panel_bg has transparent regions, so
 -- without this the world shows through the gaps between the painted panes.
-local frameBg = frame:CreateTexture(nil, "BACKGROUND", nil, -8)
-frameBg:SetPoint("TOPLEFT", 6, -6)
-frameBg:SetPoint("BOTTOMRIGHT", -6, 6)
-frameBg:SetTexture(0.04, 0.045, 0.06, 1)
+-- Both live on the frame itself (not as locals): the main chunk sits at Lua
+-- 5.1's limit of 200 active locals.
+frame.bg = frame:CreateTexture(nil, "BACKGROUND", nil, -8)
+frame.bg:SetPoint("TOPLEFT", 6, -6)
+frame.bg:SetPoint("BOTTOMRIGHT", -6, 6)
+frame.bg:SetTexture(0.04, 0.045, 0.06, 1)
+-- The art, exactly where the backdrop's bgFile sat (the full frame, insets 0;
+-- the border overlaps its edge as before). One sublevel above the backing,
+-- below everything the panes draw.
+frame.art = frame:CreateTexture(nil, "BACKGROUND", nil, -7)
+frame.art:SetAllPoints(frame)
+frame.art:SetTexture(CW.PANEL_ART)
 
 frame:SetMovable(true); frame:EnableMouse(true)
 frame:RegisterForDrag("LeftButton")
@@ -190,20 +201,39 @@ titleGlow:SetVertexColor(0.45, 0.75, 1)
 titleGlow:SetAlpha(0)
 
 function CW.RefreshPanelArt()
-    -- Torn down FIRST, then rebuilt. Re-calling SetBackdrop with the SAME table
-    -- can keep the dropped texture handle instead of resolving the file again,
-    -- so the panel stays flat however often this runs -- which is the exact
-    -- symptom this function exists to cure, and why it looked like the refresh
-    -- was not wired up when it was. Passing nil destroys the backdrop, so the
-    -- second call has no choice but to load panel_bg from disk.
-    frame:SetBackdrop(nil)
-    frame:SetBackdrop(CW.PANEL_BACKDROP)
-    -- Same for the plain textures: SetTexture with the path it already holds
-    -- can be a no-op, and a no-op does not reload a dropped file.
+    -- Torn down FIRST, then rebuilt. SetTexture with the path a texture
+    -- already holds can be a no-op, and a no-op does not reload a dropped
+    -- file; nil clears the handle so the second call has to resolve the file
+    -- again. SetTexture reports whether the file resolved: when it did not
+    -- (the client has not finished purging after a cinematic, or the panel
+    -- opened during a loading screen) a retry is queued for the next frames
+    -- rather than leaving the panel flat until something else happens to
+    -- call this.
+    frame.art:SetTexture(nil)
     titleIcon:SetTexture(nil)
     titleGlow:SetTexture(nil)
+    local ok = frame.art:SetTexture(CW.PANEL_ART)
     titleIcon:SetTexture("Interface\\AddOns\\ClasslessWildcard\\icon")
     titleGlow:SetTexture("Interface\\AddOns\\ClasslessWildcard\\glow")
+    if ok then
+        frame.artRetries = nil
+        frame:SetScript("OnUpdate", nil)
+        return
+    end
+    frame.artRetries = (frame.artRetries or 0) + 1
+    if frame.artRetries > 20 then
+        frame.artRetries = nil
+        frame:SetScript("OnUpdate", nil)
+        return
+    end
+    frame.artWait = 0.25
+    frame:SetScript("OnUpdate", function(self, elapsed)
+        self.artWait = self.artWait - elapsed
+        if self.artWait <= 0 then
+            self:SetScript("OnUpdate", nil)
+            CW.RefreshPanelArt()
+        end
+    end)
 end
 
 titleBtn:SetScript("OnEnter", function(self)
