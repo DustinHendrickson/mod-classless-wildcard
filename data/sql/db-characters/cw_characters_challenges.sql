@@ -7,6 +7,21 @@ DROP PROCEDURE IF EXISTS cw_upgrade_char_challenges;
 DELIMITER //
 CREATE PROCEDURE cw_upgrade_char_challenges()
 BEGIN
+    -- The updater applies a directory in name order, and this file sorts
+    -- BEFORE cw_characters_rebirth.sql, so on a realm from before Rebirth the
+    -- `rebirths` column the run columns anchor on does not exist yet when
+    -- this runs. Add it here first; the rebirth file then finds it and does
+    -- nothing. (Seen live: "Unknown column 'rebirths'" stopped the whole
+    -- character update.)
+    IF EXISTS (SELECT 1 FROM information_schema.TABLES
+               WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'cw_char_state')
+       AND NOT EXISTS (SELECT 1 FROM information_schema.COLUMNS
+                       WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'cw_char_state'
+                         AND COLUMN_NAME = 'rebirths') THEN
+        ALTER TABLE `cw_char_state`
+            ADD COLUMN `rebirths` INT UNSIGNED NOT NULL DEFAULT 0
+                COMMENT 'Rebirths completed: the New Game Plus rank' AFTER `archetype`;
+    END IF;
     IF EXISTS (SELECT 1 FROM information_schema.TABLES
                WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'cw_char_state')
        AND NOT EXISTS (SELECT 1 FROM information_schema.COLUMNS
