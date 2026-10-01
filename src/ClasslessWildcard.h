@@ -184,6 +184,7 @@ namespace ClasslessWildcard
         uint32 titleId;         // CharTitles.dbc, on finishing (0 = none)
         char const* rewardRecipe;   // a forged line flagged `reward`, granted as an heirloom ("" = none)
         char const* detail;     // how the rule plays, in full, for the challenge page (no '|')
+        char const* tips;       // practical advice for playing under this rule (no '|')
     };
     // Nemesis: a creature kind that has killed this Hero, and how much it grew.
     struct NemesisMark

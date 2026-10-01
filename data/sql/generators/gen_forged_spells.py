@@ -1884,6 +1884,17 @@ def build_row(spell, recipe, rank_index, level, spell_id, next_id, companion_id)
            for e in recipe["effects"]):
         v[11] |= ATTR7_RESTORE_SECONDARY_POWER
     v[18] = 0                                   # RequiresSpellFocus
+    # An ARMOUR requirement never comes along. Shield Block's row needs a
+    # shield equipped (EquippedItemClass 4, subclass mask 64), and Unbroken
+    # Will, built on it, printed "Requires Shields" and refused the cast for
+    # any Hero holding a two-hander. A weapon requirement (class 2) stays: a
+    # strike or a shot is meant to need the weapon it swings or fires.
+    # Columns by name from SPELL_DBC_COLUMNS: 68 EquippedItemClass,
+    # 69 EquippedItemSubclass, 70 EquippedItemInvTypes.
+    if v[68] == 4:
+        v[68] = -1
+        v[69] = 0
+        v[70] = 0
     for i in range(8):
         v[52 + i] = 0                           # Reagent
         v[60 + i] = 0                           # ReagentCount

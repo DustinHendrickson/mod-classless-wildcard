@@ -887,21 +887,26 @@ namespace
                 // The space a piece breaks on is dropped and the addon joins
                 // pieces with one, so no piece ends in whitespace the chat
                 // layer might trim.
-                std::string const detail = SanitizeText(ch.detail ? ch.detail : "");
-                size_t pos = 0;
-                while (pos < detail.size())
+                auto sendPieces = [&](char const* kind, char const* raw)
                 {
-                    size_t len = std::min<size_t>(180, detail.size() - pos);
-                    size_t next = pos + len;
-                    if (next < detail.size())
-                        if (size_t sp = detail.rfind(' ', next); sp != std::string::npos && sp > pos)
-                        {
-                            len = sp - pos;
-                            next = sp + 1;
-                        }
-                    SendAddon(player, Acore::StringFormat("CD|{}|{}", uint32(ch.id), detail.substr(pos, len)));
-                    pos = next;
-                }
+                    std::string const text = SanitizeText(raw ? raw : "");
+                    size_t pos = 0;
+                    while (pos < text.size())
+                    {
+                        size_t len = std::min<size_t>(180, text.size() - pos);
+                        size_t next = pos + len;
+                        if (next < text.size())
+                            if (size_t sp = text.rfind(' ', next); sp != std::string::npos && sp > pos)
+                            {
+                                len = sp - pos;
+                                next = sp + 1;
+                            }
+                        SendAddon(player, Acore::StringFormat("{}|{}|{}", kind, uint32(ch.id), text.substr(pos, len)));
+                        pos = next;
+                    }
+                };
+                sendPieces("CD", ch.detail);   // how it plays
+                sendPieces("CT", ch.tips);     // tips, the same way
             }
             SendAddon(player, "CHE|");
         }

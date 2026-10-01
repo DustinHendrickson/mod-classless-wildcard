@@ -1163,9 +1163,13 @@ do
     CW.runFly = fly
     fly.selected = nil
     local ROWS, ROW_H, LEFT_W, RX, CW_W = 12, 29, 284, 318, 520
+    -- gold as the game draws it: the amount, then the gold coin
+    local function Coin(amount, size)
+        size = size or 14
+        return "|cffffffff" .. amount .. "|r|TInterface\\MoneyFrame\\UI-GoldIcon:" .. size .. ":" .. size .. ":2:0|t"
+    end
     local OK = "|TInterface\\RAIDFRAME\\ReadyCheck-Ready:14:14:0:-1|t "
     local NO = "|TInterface\\RAIDFRAME\\ReadyCheck-NotReady:14:14:0:-1|t "
-    local DOT = "|cff888888-|r  "
 
     fly.close = CreateFrame("Button", nil, fly, "UIPanelCloseButton")
     fly.close:SetPoint("TOPRIGHT", -2, -2)
@@ -1294,14 +1298,32 @@ do
     fly.hPlay = Header("How it plays")
     fly.detail = Body()
     fly.detail:SetTextColor(0.88, 0.88, 0.88)
-    fly.hReq = Header("To start")
+    fly.hTips = Header("Tips")
+    fly.tips = Body()
+    fly.tips:SetTextColor(0.88, 0.88, 0.88)
+    fly.hReq = Header("Starting this run")
     fly.req = Body()
     fly.hLives = Header("Lives")
     fly.lifePips = {}
     for k = 1, 6 do fly.lifePips[k] = CW.MakePip(C, 16) end
     fly.livesText = Body()
-    fly.hReward = Header("Rewards for reaching level 80 with a life in hand")
-    fly.rewardText = Body()
+    fly.hReward = Header("Rewards for finishing")
+    fly.rewardIntro = Body("GameFontHighlightSmall")
+    fly.rewardIntro:SetTextColor(0.7, 0.7, 0.7)
+    -- one label and one value per reward, the values in one column so every
+    -- line starts at the same place however long its label is
+    fly.rwLabels, fly.rwValues = {}, {}
+    for k = 1, 5 do
+        local l = C:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+        l:SetWidth(118)
+        l:SetJustifyH("LEFT"); l:SetJustifyV("TOP")
+        local v = C:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
+        v:SetWidth(CW_W - 128)
+        v:SetJustifyH("LEFT"); v:SetJustifyV("TOP")
+        v:SetSpacing(3)
+        fly.rwLabels[k], fly.rwValues[k] = l, v
+    end
+
     fly.hAbility = Header("Reward ability")
     fly.abilityBtn = CreateFrame("Button", nil, C)
     fly.abilityBtn:SetWidth(44); fly.abilityBtn:SetHeight(44)
@@ -1323,16 +1345,17 @@ do
     fly.abilityBtn:SetScript("OnLeave", function() GameTooltip:Hide() end)
     fly.abilityName = C:CreateFontString(nil, "OVERLAY", "GameFontNormalLarge")
     fly.abilityName:SetJustifyH("LEFT")
-    fly.abilityNote = C:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
-    fly.abilityNote:SetWidth(CW_W - 58)
-    fly.abilityNote:SetJustifyH("LEFT")
-    fly.abilityNote:SetJustifyV("TOP")
-    fly.abilityNote:SetText("|cffa335eeEpic|r  ability, kept as an |cffff8800heirloom|r: usable from level 1, carried through every Rebirth, never rerolled. No roll and no shop can give it.")
-    -- the spell's own tooltip rows hang under this hairline, at its width
+    fly.abilitySub = C:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+    fly.abilitySub:SetJustifyH("LEFT")
+    fly.abilitySub:SetTextColor(0.7, 0.7, 0.7)
+    fly.abilityNote = Body()
+    -- the spell's own tooltip, in a box like the tooltip it is: a dark plate
+    -- with a hairline border in the epic colour. Its rows hang under this
+    -- invisible line, at its width.
     fly.plateLine = C:CreateTexture(nil, "ARTWORK")
     fly.plateLine:SetHeight(1)
-    fly.plateLine:SetWidth(CW_W)
-    fly.plateLine:SetTexture(1, 1, 1, 0.12)
+    fly.plateLine:SetWidth(CW_W - 28)
+    fly.plateLine:SetTexture(1, 1, 1, 0)
     fly.hRecord = Header("Your record")
     fly.record = Body()
 
@@ -1391,25 +1414,49 @@ do
         Place(fly.detail, 0, y)
         y = y + H(fly.detail, 48) + 18
 
-        -- what it takes to start
-        y = PlaceHeader(fly.hReq, y)
-        local req = {}
-        if (s.run or 0) > 0 then
-            tinsert(req, NO .. "You are on a run already. Finish it, or run out of lives, to start another.")
-        end
-        -- the way that applies to this Hero comes first
-        if s.rebirthReady == 1 then
-            tinsert(req, OK .. "You are level 80, so this run starts as a |cffff8800Rebirth|r: back to level 1 on the path you choose, for |cffffd100"
-                .. (s.rebirthPrice or 0) .. " gold|r, carrying the heirlooms ticked on the Rebirth page.")
+        -- tips: what actually helps under this rule
+        if (c.tips or "") ~= "" then
+            y = PlaceHeader(fly.hTips, y)
+            fly.tips:SetText(c.tips)
+            Place(fly.tips, 0, y)
+            fly.tips:Show()
+            y = y + H(fly.tips, 48) + 18
         else
-            local path = s.mode == 0 and "|cff00ccffClassless|r" or "|cffff8800Wildcard|r"
-            tinsert(req, (s.runReady == 1 and OK or NO) .. "A fresh Hero up to level " .. (s.deadline or 5)
-                .. " can start one where they stand, on the path already chosen"
-                .. (s.runReady == 1 and (" (" .. path .. ").") or "."))
-            tinsert(req, DOT .. "At level 80 a run starts as a Rebirth instead: back to level 1 on the path you choose, with your heirlooms.")
+            fly.hTips:Hide(); fly.hTips.line:Hide(); fly.tips:Hide()
         end
-        tinsert(req, DOT .. "Either path plays exactly as it does off a run. Only the rule and the lives are added.")
-        fly.req:SetText(table.concat(req, "\n"))
+
+        -- Starting this run: whether this character can start it right now,
+        -- and exactly what happens to them when they do. One status line,
+        -- then what it means, for the one case this character is in.
+        y = PlaceHeader(fly.hReq, y)
+        local name = "|cffffffff" .. c.name .. "|r"
+        local status, what
+        local live = CW.challengesById and CW.challengesById[s.run or 0]
+        if (s.run or 0) > 0 and s.run == c.id then
+            status = "|cffff8800You are on this run now|r, with " .. (s.lives or 0) .. " of " .. (s.livesMax or 0) .. " lives left."
+            what = "It ends when you reach level 80, which pays its rewards, or when you lose your last life, which lifts the rule and pays shards."
+        elseif (s.run or 0) > 0 then
+            status = NO .. "|cffff4444You are already on another run|r" .. (live and (", " .. live.name) or "")
+                .. ", with " .. (s.lives or 0) .. " of " .. (s.livesMax or 0) .. " lives left."
+            what = "You can start " .. name .. " once that run ends, either by reaching level 80 or by losing your last life."
+        elseif s.rebirthReady == 1 then
+            status = OK .. "|cff00ff00You can start this now.|r Because you are level 80, starting it is a |cffff8800Rebirth|r."
+            what = "You go back to level 1 for |cffffd100" .. (s.rebirthPrice or 0) .. " gold|r, on the path you choose when you confirm. "
+                .. "Your quests reset, so every zone gives experience again. You keep your gold, bags, bank, reputation, riding and flight paths, "
+                .. "and the heirloom abilities you ticked on the Rebirth page. "
+                .. name .. " applies from level 1 until you reach 80 again or run out of lives."
+        elseif s.runReady == 1 then
+            local path = s.mode == 0 and "|cff00ccffClassless|r" or "|cffff8800Wildcard|r"
+            status = OK .. "|cff00ff00You can start this now.|r"
+            what = "Nothing about your character resets. You stay at level " .. (s.level or 1) .. " on the " .. path
+                .. " path with the abilities and talents you have, and level the same way you would anyway. "
+                .. name .. " applies from the moment you start until you reach level 80 or run out of lives."
+        else
+            status = NO .. "|cffff4444You cannot start a run on this character right now.|r"
+            what = "A run can be started on a new character up to level " .. (s.deadline or 5)
+                .. ", or on a character at level 80, where it begins with a Rebirth back to level 1."
+        end
+        fly.req:SetText(status .. "\n" .. what)
         Place(fly.req, 0, y)
         y = y + H(fly.req, 60) + 18
 
@@ -1430,53 +1477,93 @@ do
         Place(fly.livesText, 0, y + 24)
         y = y + 24 + H(fly.livesText, 32) + 18
 
-        -- rewards
+        -- rewards: a label column and a value column, every value a sentence
         y = PlaceHeader(fly.hReward, y)
+        fly.rewardIntro:SetText("Paid once, when you reach level 80 with at least one life left.")
+        Place(fly.rewardIntro, 0, y)
+        y = y + H(fly.rewardIntro, 12) + 10
         local title = (c.title or ""):gsub("%%s", player)
-        local lines = {
-            "|cffffd100Gold|r   " .. (GetCoinTextureString and GetCoinTextureString(c.gold * 10000) or (c.gold .. " gold")),
-            "|cffffd100Title|r   " .. (title ~= "" and ("|cffe6cc80" .. title .. "|r") or "none"),
-            "|cffffd100No life lost|r   also earns |cffe6cc80" .. player .. " the Unbroken|r and a third more shards",
-            "|cffffd100Shards|r   paid whenever the run ends, finished or not: one per level reached, two per level past 60",
+        local rows = {
+            { "Gold", Coin(c.gold) },
+            { "Title", title ~= "" and ("|cffe6cc80" .. title .. "|r") or "None" },
+            { "Flawless run", "Finish without losing a life to also earn |cffe6cc80" .. player
+                .. " the Unbroken|r and a third more shards." },
+            { "Shards", "Paid whenever the run ends, whether you finish or not. You earn one per level reached, and two per level past 60." },
         }
         if c.finished == 1 then
-            tinsert(lines, "|cffaaaaaaYou have finished this one. The gold, title and ability are paid once; running it again pays shards.|r")
+            tinsert(rows, { "Already earned", "You finished this challenge. Running it again pays shards only." })
         end
-        fly.rewardText:SetText(table.concat(lines, "\n"))
-        Place(fly.rewardText, 0, y)
-        y = y + H(fly.rewardText, 72) + 18
+        for k = 1, 5 do
+            local l, v = fly.rwLabels[k], fly.rwValues[k]
+            local row = rows[k]
+            if row then
+                l:SetText(row[1]); v:SetText(row[2])
+                Place(l, 0, y); Place(v, 128, y)
+                l:Show(); v:Show()
+                y = y + math.max(H(l, 14), H(v, 14)) + 8
+            else
+                l:Hide(); v:Hide()
+            end
+        end
+        y = y + 10
 
         -- the reward ability, in full
         y = PlaceHeader(fly.hAbility, y)
         local reward = c.reward or 0
+        local plate = fly.plate
         if reward > 0 then
-            local name = (GetSpellInfo(reward)) or "a reward ability"
-            -- set before it is measured: the last selection may have left the
-            -- no-reward line in it
-            fly.abilityNote:SetText("|cffa335eeEpic|r  ability, kept as an |cffff8800heirloom|r: usable from level 1, carried through every Rebirth, never rerolled. No roll and no shop can give it.")
+            local name = (GetSpellInfo(reward)) or "Reward ability"
             fly.abilityBtn.spellId = reward
             fly.abilityBtn.icon:SetTexture(SpellIcon(reward))
             Place(fly.abilityBtn, 2, y + 2)
             fly.abilityBtn:Show()
             fly.abilityName:SetText("|cffa335ee" .. name .. "|r")
-            Place(fly.abilityName, 58, y + 2)
+            Place(fly.abilityName, 58, y + 4)
             fly.abilityName:Show()
-            Place(fly.abilityNote, 58, y + 24)
+            fly.abilitySub:SetText("Epic ability, kept as an heirloom")
+            Place(fly.abilitySub, 58, y + 27)
+            fly.abilitySub:Show()
+            y = y + 56
+            fly.abilityNote:SetText("No roll or shop can give this ability. Once earned it is yours as an heirloom: "
+                .. "you can use it from level 1, it carries through every Rebirth, and it is never rerolled or refunded. "
+                .. "Hover the icon for the full tooltip.")
+            Place(fly.abilityNote, 0, y)
             fly.abilityNote:Show()
-            y = y + math.max(50, 24 + H(fly.abilityNote, 28)) + 10
-            Place(fly.plateLine, 0, y)
-            fly.plateLine:Show()
-            if not fly.plate then
-                fly.plate = CW.revealFX.MakeInfo(C, fly.plateLine)
-                fly.plate:SetRowWidth(CW_W)
+            y = y + H(fly.abilityNote, 42) + 12
+
+            -- the tooltip box
+            if not plate then
+                plate = CW.revealFX.MakeInfo(C, fly.plateLine)
+                plate:SetRowWidth(CW_W - 28)
+                -- the body's size, not the card's 14: this sits among
+                -- paragraphs, not under a die
+                for i = 1, #plate.rows do
+                    local face = plate.rows[i].left:GetFont()
+                    if face then
+                        plate.rows[i].left:SetFont(face, 12)
+                        plate.rows[i].right:SetFont(face, 12)
+                    end
+                end
+                fly.plate = plate
             end
-            local ph = fly.plate:Fill(reward)
-            y = y + 10 + (ph or 0) + 18
+            Place(fly.plateLine, 14, y + 2)
+            local ph = plate:Fill(reward) or 0
+            local boxH = 2 + 10 + ph + 12
+            plate.panel:ClearAllPoints()
+            plate.panel:SetPoint("TOPLEFT", C, "TOPLEFT", 0, -y)
+            plate.panel:SetWidth(CW_W)
+            plate.panel:SetHeight(boxH)
+            plate.panel:Show()
+            for _, e in ipairs(plate.edges) do
+                e:SetVertexColor(0.64, 0.21, 0.93, 0.85)
+                e:Show()
+            end
+            y = y + boxH + 18
         else
             fly.abilityBtn.spellId = nil
-            fly.abilityBtn:Hide(); fly.abilityName:Hide(); fly.plateLine:Hide()
-            if fly.plate then fly.plate:Clear() end
-            fly.abilityNote:SetText("|cffaaaaaaThis challenge pays its gold and title. It has no ability reward.|r")
+            fly.abilityBtn:Hide(); fly.abilityName:Hide(); fly.abilitySub:Hide()
+            if plate then plate:Clear() end
+            fly.abilityNote:SetText("|cffaaaaaaThis challenge pays its gold and title, but no ability.|r")
             Place(fly.abilityNote, 0, y)
             fly.abilityNote:Show()
             y = y + H(fly.abilityNote, 14) + 18
@@ -1486,11 +1573,11 @@ do
         y = PlaceHeader(fly.hRecord, y)
         local rec
         if c.finished == 1 then
-            rec = OK .. "Finished. Best: level " .. c.best .. "."
+            rec = OK .. "|cff00ff00Finished.|r Its gold, title and ability have been paid."
         elseif (c.best or 0) > 0 then
-            rec = DOT .. "Not finished yet. Best: reached level " .. c.best .. "."
+            rec = "Not finished yet. Your best on it: level " .. c.best .. "."
         else
-            rec = DOT .. "Not attempted yet."
+            rec = "You have not tried this one yet."
         end
         fly.record:SetText(rec)
         Place(fly.record, 0, y)
@@ -1518,7 +1605,7 @@ do
                 r.name:SetText((mark and "|cffffd100" or "|cffffffff") .. c.name .. "|r")
                 for k = 1, 6 do CW.SetPip(r.pips[k], k <= c.lives, true) end
                 if c.finished == 1 then r.done:Show() else r.done:Hide() end
-                r.gold:SetText("|cffffd100" .. c.gold .. "g|r")
+                r.gold:SetText(Coin(c.gold, 12))
                 if mark then
                     r.stripe:SetVertexColor(1, 0.82, 0.3, 0.16)
                     r.accent:Show()
@@ -1541,7 +1628,7 @@ do
             fly.scroll:Show()
             local lives = math.min(6, c.lives + ((s.extraLife or 0) > 0 and 1 or 0))
             fly.summary:SetText("Starts with |cffffffff" .. lives .. (lives == 1 and " life" or " lives") .. "|r"
-                .. (s.rebirthReady == 1 and ("   Rebirth  |cffffd100" .. (s.rebirthPrice or 0) .. " gold|r") or ""))
+                .. (s.rebirthReady == 1 and ("     Rebirth costs " .. Coin(s.rebirthPrice or 0)) or ""))
             local canStart = (s.run or 0) == 0 and (s.rebirthReady == 1 or s.runReady == 1)
             if canStart then fly.start:Enable() else fly.start:Disable() end
         else
@@ -6038,14 +6125,17 @@ local function HandleMessage(msg)
             reward = tonumber(p[9]) or 0,   -- the ability it pays, a spell id
             title = p[10] or "",            -- "%s the Nemesis", as the client shows it
             detail = "",                    -- how it plays, joined from CD pieces
+            tips = "",                      -- advice, joined from CT pieces
         }
         tinsert(CW.challenges, c)
         CW.challengesById[c.id] = c
-    elseif kind == "CD" then
-        -- a piece of a challenge's full text; pieces arrive in order
+    elseif kind == "CD" or kind == "CT" then
+        -- a piece of a challenge's full text (CD) or its tips (CT); pieces
+        -- arrive in order and are joined with the space they were split on
         local c = CW.challengesById and CW.challengesById[tonumber(p[2]) or 0]
+        local field = kind == "CD" and "detail" or "tips"
         if c and p[3] then
-            c.detail = (c.detail == "" and p[3]) or (c.detail .. " " .. p[3])
+            c[field] = ((c[field] or "") == "" and p[3]) or (c[field] .. " " .. p[3])
         end
     elseif kind == "CHE" then
         CW._collectingCh = false

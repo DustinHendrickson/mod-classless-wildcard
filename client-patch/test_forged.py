@@ -331,6 +331,15 @@ def main():
     check("no forged spell asks for a class tool or a spell focus",
           not tooled, "; ".join(sorted(set(tooled))[:4]))
 
+    # ---- no armour requirement ------------------------------------------------
+    # Unbroken Will inherited Shield Block's "Requires Shields" and could not be
+    # cast without a shield equipped. A weapon requirement is a strike's own
+    # business; armour (EquippedItemClass 4, column 68 by name in
+    # SPELL_DBC_COLUMNS) is never what a forged spell means.
+    armoured = ["%s (class %s, mask %s)" % (sp["name"], sp["values"][68], sp["values"][69])
+                for sp in spells if int(sp["values"][68]) == 4]
+    check("no forged spell requires armour to be equipped", not armoured, "%s" % armoured[:4])
+
     # ---- the Hero talent tab --------------------------------------------------
     # A talent reaches a line through the ordinary spell-mod path, so three
     # things have to hold or it silently does nothing (or far too much).

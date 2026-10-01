@@ -1456,6 +1456,8 @@ def test_challenge_runs(h):
     h.recv("CH|1|Nemesis|5|500|Whatever kills you grows.|0|0|961088|%s the Nemesis")
     h.recv("CD|1|A creature that kills you becomes your nemesis.")
     h.recv("CD|1|Kill one and the levels come back.")
+    h.recv("CT|1|Remember what killed you.")
+    h.recv("CT|1|Hunt it down when you are ready.")
     h.recv("CH|3|Hardcore|1|1000|One life. A death ends the run.|42|0|0|%s the Deathless")
     h.recv("CH|13|Famine|1|250|No vendors.|80|1|0|")
     h.recv("CHE|")
@@ -1468,7 +1470,8 @@ def test_challenge_runs(h):
     h.check(rows[1]["pips"][1]["gem"]["__shown"] is True, "and each pip carries its gem")
     h.check(rows[3]["done"]["__shown"] is True and rows[2]["done"]["__shown"] is False,
             "a finished challenge is ticked, an unfinished one is not")
-    h.check("1000g" in str(rows[2]["gold"]["__text"]), "each row shows its gold: %r" % str(rows[2]["gold"]["__text"]))
+    h.check("1000" in str(rows[2]["gold"]["__text"]) and "UI-GoldIcon" in str(rows[2]["gold"]["__text"]),
+            "each row shows its gold with the gold coin: %r" % str(rows[2]["gold"]["__text"]))
 
     # With the list in, the first challenge is selected and shown in full.
     h.check(runs["start"]["__enabled"] is True and rows[1]["accent"]["__shown"] is True,
@@ -1478,18 +1481,31 @@ def test_challenge_runs(h):
     h.check(str(runs["detail"]["__text"]) == "A creature that kills you becomes your nemesis. Kill one and the levels come back.",
             "the full text is joined from its pieces: %r" % str(runs["detail"]["__text"]))
     req = str(runs["req"]["__text"])
-    h.check("fresh Hero up to level 5" in req and "Wildcard" in req and "Either path" in req,
-            "To start says how this Hero can start it and on which path: %r" % req[:90])
+    h.check("You can start this now" in req and "Nothing about your character resets" in req
+            and "level 3" in req and "Wildcard" in req and "Nemesis" in req,
+            "Starting this run says it can start now and what happens to this character: %r" % req[:120])
+    h.check("Rebirth" not in req and "Either path" not in req,
+            "and says nothing that does not apply to them")
+    h.check("Remember what killed you" in str(runs["tips"]["__text"]) and runs["tips"]["__shown"] is True,
+            "the tips are joined from their pieces and shown")
     h.check("5 lives" in str(runs["livesText"]["__text"]) and "battlegrounds" in str(runs["livesText"]["__text"]),
             "Lives says how many and which deaths are free")
-    rew = str(runs["rewardText"]["__text"])
-    h.check("Tester the Nemesis" in rew and "Tester the Unbroken" in rew and "Shards" in rew,
-            "Rewards names the title with the character's name, the Unbroken, and shards: %r" % rew[:90])
+    labels = [str(runs["rwLabels"][k]["__text"]) for k in range(1, 6) if runs["rwLabels"][k]["__shown"]]
+    values = [str(runs["rwValues"][k]["__text"]) for k in range(1, 6) if runs["rwValues"][k]["__shown"]]
+    h.check(labels == ["Gold", "Title", "Flawless run", "Shards"],
+            "the rewards are a table: one label per reward, in order: %r" % labels)
+    h.check("UI-GoldIcon" in values[0] and "Tester the Nemesis" in values[1] and "Tester the Unbroken" in values[2]
+            and values[3].startswith("Paid whenever"),
+            "the gold has its coin, the title has the character's name, and every value reads as a sentence")
+    h.check(all(runs["rwValues"][k]["__point"][4] == 128 for k in range(1, 5)),
+            "every value starts in the same column")
     h.check(runs["abilityBtn"]["__shown"] is True and runs["abilityBtn"]["spellId"] == 961088
-            and "heirloom" in str(runs["abilityNote"]["__text"]),
-            "the reward ability is shown with its icon, its spell and what an heirloom means")
-    h.check(runs["plate"] is not None, "and its own tooltip rows are laid out under it")
-    h.check("Not attempted" in str(runs["record"]["__text"]), "the record says it has not been tried")
+            and str(runs["abilitySub"]["__text"]) == "Epic ability, kept as an heirloom"
+            and "never rerolled" in str(runs["abilityNote"]["__text"]),
+            "the reward ability is shown with its icon, what it is, and what an heirloom means")
+    h.check(runs["plate"] is not None and runs["plate"]["panel"]["__shown"] is True,
+            "and its own tooltip sits in a bordered box under it")
+    h.check("not tried" in str(runs["record"]["__text"]), "the record says it has not been tried")
 
     # Another row: everything on the right follows, and a challenge with no
     # ability reward says so instead of leaving a gap.
@@ -1500,7 +1516,9 @@ def test_challenge_runs(h):
             "the right pane follows: %r" % str(runs["rule"]["__text"]))
     h.check(str(runs["detail"]["__text"]) == "One life. A death ends the run.",
             "with no full text sent, the rule stands in for it")
-    h.check(runs["abilityBtn"]["__shown"] is False and "no ability reward" in str(runs["abilityNote"]["__text"]),
+    h.check(runs["tips"]["__shown"] is False and runs["hTips"]["__shown"] is False,
+            "with no tips sent, the Tips section is left out rather than shown empty")
+    h.check(runs["abilityBtn"]["__shown"] is False and "but no ability" in str(runs["abilityNote"]["__text"]),
             "no reward ability: the screen says so: %r" % str(runs["abilityNote"]["__text"]))
     h.check("level 42" in str(runs["record"]["__text"]), "the record shows the best level: %r" % str(runs["record"]["__text"]))
     h.check("1 life" in str(runs["summary"]["__text"]), "the bottom bar says the run starts with one life")
@@ -1508,7 +1526,8 @@ def test_challenge_runs(h):
             "the extra life is for sale: %r" % str(runs["life"]["__text"]))
     h.check(runs["life"]["__enabled"] is False, "but out of reach at 0 shards")
     h.click(rows[3])
-    h.check("Finished" in str(runs["record"]["__text"]) and "paid once" in str(runs["rewardText"]["__text"]),
+    h.check("Finished" in str(runs["record"]["__text"]) and "have been paid" in str(runs["record"]["__text"])
+            and str(runs["rwLabels"][5]["__text"]) == "Already earned" and runs["rwLabels"][5]["__shown"] is True,
             "a finished challenge says it was finished, and that its rewards are paid once")
     h.click(rows[2])
 
@@ -1556,8 +1575,9 @@ def test_challenge_runs(h):
     h.check(runs["__shown"] is True and CW.rebirthFly["__shown"] is False, "the picker hands over to the challenge screen")
     h.check(runs["back"] is None and runs["close"]["__shown"] is True,
             "no Back button anywhere, only the X in the corner")
-    h.check("Rebirth" in str(runs["req"]["__text"]) and "200 gold" in str(runs["req"]["__text"]),
-            "To start says this run is a Rebirth and what it costs")
+    req = str(runs["req"]["__text"])
+    h.check("Rebirth" in req and "200 gold" in req and "level 1" in req and "heirloom" in req,
+            "at level 80 it says starting is a Rebirth, its price, and what is kept: %r" % req[:120])
     h.check(runs["life"]["__enabled"] is True, "forty shards buy the extra life")
     h.click(runs["rows"][1])
     h.clear_sent()
