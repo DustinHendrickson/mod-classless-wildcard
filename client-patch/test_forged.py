@@ -1569,6 +1569,27 @@ def main():
           titles and not title_bad,
           "%d title(s), %d named in C++, stock bits end at %d; %s" % (len(titles), len(named), stock_max_bit, title_bad))
 
+    # ---- the columns a write names must be the core's ----------------------
+    # The chartitles_dbc INSERT names its columns, and the core's own dump of
+    # that table is in this checkout. "Bit_Index" was a guess from the DBC
+    # layout; the core calls that column Mask_ID, and the realm's world update
+    # stopped on it. Read the column header, every time.
+    core_dump = os.path.join(os.path.dirname(os.path.abspath(__file__)), os.pardir, os.pardir, os.pardir,
+                             "data", "sql", "base", "db_world", "chartitles_dbc.sql")
+    col_bad = []
+    if os.path.exists(core_dump):
+        core_cols = re.findall(r"^\s+`([A-Za-z0-9_]+)` ", io.open(core_dump, encoding="utf-8").read(), re.M)
+        m = re.search(r"INSERT INTO `chartitles_dbc` \(([^)]*)\)", sqltext)
+        ours = re.findall(r"`([A-Za-z0-9_]+)`", m.group(1)) if m else []
+        if not ours:
+            col_bad.append("no chartitles_dbc INSERT")
+        unknown = [c for c in ours if c not in core_cols]
+        if unknown:
+            col_bad.append("not in the core's table: %s" % unknown)
+    else:
+        col_bad.append("the core's chartitles_dbc dump is not beside this module")
+    check("the chartitles_dbc write names only columns the core's table has", not col_bad, "%s" % col_bad)
+
     # ---- the SQL ------------------------------------------------------------
     sql = io.open(SQL, encoding="utf-8").read()
     # ---- every INSERT names as many columns as it writes values --------------

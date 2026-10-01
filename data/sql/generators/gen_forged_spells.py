@@ -107,8 +107,12 @@ assert TITLES[-1]["bit"] < 192, "the known-titles field holds 192 bits"
 
 def title_sql():
     """The server's rows: chartitles_dbc, one per title, every locale filled."""
+    # The last column is the bit index, but the core's table calls it Mask_ID
+    # (data/sql/base/db_world/chartitles_dbc.sql); "Bit_Index" was a guess
+    # from the DBC layout and stopped a realm's world update cold.
+    # test_forged.py reads the column list off the core's own dump.
     cols = (["ID", "Condition_ID"] + ["Name_Lang_%s" % l for l in TITLE_LOCALES] + ["Name_Lang_Mask"]
-            + ["Name1_Lang_%s" % l for l in TITLE_LOCALES] + ["Name1_Lang_Mask", "Bit_Index"])
+            + ["Name1_Lang_%s" % l for l in TITLE_LOCALES] + ["Name1_Lang_Mask", "Mask_ID"])
     out = ["-- Titles: the Rebirth ranks, the run with no life lost, one per challenge.",
            "-- The client shows a title it has a CharTitles.dbc row for; the installer",
            "-- appends the same rows there. ClasslessMgr.cpp grants them by id.",
