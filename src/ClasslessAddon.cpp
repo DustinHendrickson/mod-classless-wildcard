@@ -866,10 +866,42 @@ namespace
                 // field 9: the reward ability's spell id (0 = gold and title only)
                 uint32 const reward = (ch.rewardRecipe && *ch.rewardRecipe)
                     ? sClasslessMgr->ForgedLine(ch.rewardRecipe) : 0;
-                SendAddon(player, Acore::StringFormat("CH|{}|{}|{}|{}|{}|{}|{}|{}",
+                // field 10: the title as the client shows it, "%s the Nemesis",
+                // read from the same table the grant uses, in the player's
+                // locale, so the page names the title the run actually pays
+                std::string title;
+                if (CharTitlesEntry const* t = sCharTitlesStore.LookupEntry(ch.titleId))
+                {
+                    char const* const* names = player->getGender() == GENDER_FEMALE ? t->nameFemale : t->nameMale;
+                    if (char const* n = names[player->GetSession()->GetSessionDbcLocale()])
+                        title = SanitizeText(n);
+                }
+                SendAddon(player, Acore::StringFormat("CH|{}|{}|{}|{}|{}|{}|{}|{}|{}",
                     uint32(ch.id), ch.name, uint32(ch.lives), ch.rewardGold, ch.rule,
                     best != st.runBest.end() ? uint32(best->second.first) : 0u,
-                    best != st.runBest.end() && best->second.second ? 1 : 0, reward));
+                    best != st.runBest.end() && best->second.second ? 1 : 0, reward, title));
+                // How the rule plays, in full, as "CD|id|text" pieces the addon
+                // joins in order. Split on spaces, because one addon message
+                // carries about 255 characters and a full explanation does not
+                // fit in one.
+                // The space a piece breaks on is dropped and the addon joins
+                // pieces with one, so no piece ends in whitespace the chat
+                // layer might trim.
+                std::string const detail = SanitizeText(ch.detail ? ch.detail : "");
+                size_t pos = 0;
+                while (pos < detail.size())
+                {
+                    size_t len = std::min<size_t>(180, detail.size() - pos);
+                    size_t next = pos + len;
+                    if (next < detail.size())
+                        if (size_t sp = detail.rfind(' ', next); sp != std::string::npos && sp > pos)
+                        {
+                            len = sp - pos;
+                            next = sp + 1;
+                        }
+                    SendAddon(player, Acore::StringFormat("CD|{}|{}", uint32(ch.id), detail.substr(pos, len)));
+                    pos = next;
+                }
             }
             SendAddon(player, "CHE|");
         }

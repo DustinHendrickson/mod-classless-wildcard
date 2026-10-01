@@ -309,21 +309,43 @@ CW.statusText = statusText   -- read by the flow test
 local subStatusText = frame:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
 subStatusText:SetPoint("TOP", 0, -56)
 
--- The challenge run's lives, as hearts under the status line: one per life
--- the run started with, the lost ones dimmed. Six is the most a run can
--- have (five plus a bought extra life). Hidden when there is no run.
+-- A life pip: the game's own combo-point socket with its red gem, which is
+-- drawn for exactly this size and reads at a glance. The socket is the pip;
+-- the gem is set into it while the life is still in hand. Used for the run's
+-- lives in the header, in the challenge list and on the challenge page, so
+-- lives look the same everywhere they appear.
+function CW.MakePip(parent, size, layer)
+    local bg = parent:CreateTexture(nil, layer or "OVERLAY")
+    bg:SetWidth(size); bg:SetHeight(size)
+    bg:SetTexture("Interface\\ComboFrame\\ComboPoint")
+    bg:SetTexCoord(0, 0.375, 0, 0.75)          -- the 12x12 socket
+    bg.gem = parent:CreateTexture(nil, layer or "OVERLAY", nil, 1)
+    bg.gem:SetWidth(size * 0.55); bg.gem:SetHeight(size * 0.46)
+    bg.gem:SetPoint("CENTER", bg, "CENTER", 0, 0)
+    bg.gem:SetTexture("Interface\\ComboFrame\\ComboPoint")
+    bg.gem:SetTexCoord(0.375, 0.5625, 0.1875, 0.5)   -- the 6x5 gem
+    bg:Hide(); bg.gem:Hide()
+    return bg
+end
+
+-- shown or not, and lit (a life in hand) or spent (an empty, dimmed socket)
+function CW.SetPip(pip, shown, alive)
+    if not shown then pip:Hide(); pip.gem:Hide() return end
+    pip:SetAlpha(alive and 1 or 0.3)
+    pip:Show()
+    if alive then pip.gem:Show() else pip.gem:Hide() end
+end
+
+-- The challenge run's lives: one pip per life the run started with, the lost
+-- ones empty and dimmed. Six is the most a run can have (five plus a bought
+-- extra life). Hidden when there is no run.
 CW.lifeIcons = {}
 for i = 1, 6 do
-    local t = frame:CreateTexture(nil, "OVERLAY")
-    t:SetWidth(14); t:SetHeight(14)
-    t:SetTexture("Interface\\Icons\\Spell_Holy_SealOfSacrifice")
-    t:SetTexCoord(0.08, 0.92, 0.08, 0.92)
-    t:Hide()
-    CW.lifeIcons[i] = t
+    CW.lifeIcons[i] = CW.MakePip(frame, 14)
 end
 -- Top-right corner, under the close button, where nothing else lives: the
 -- status lines are centred and the class strip starts at -70, so the run's
--- name sits on the status line's level and the hearts on the sub-status
+-- name sits on the status line's level and the lives on the sub-status
 -- line's, both right-aligned and clear of the strip.
 CW.runText = frame:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
 CW.runText:SetPoint("TOPRIGHT", -48, -42)
@@ -334,7 +356,7 @@ function CW.UpdateLives()
     local s = CW.state
     local icons = CW.lifeIcons
     if (s.run or 0) == 0 or (s.livesMax or 0) == 0 then
-        for i = 1, #icons do icons[i]:Hide() end
+        for i = 1, #icons do CW.SetPip(icons[i], false) end
         CW.runText:Hide()
         return
     end
@@ -347,12 +369,9 @@ function CW.UpdateLives()
         if i <= n then
             t:ClearAllPoints()
             t:SetPoint("TOPRIGHT", frame, "TOPRIGHT", -48 - (n - i) * 16, -58)
-            local alive = i <= (s.lives or 0)
-            t:SetDesaturated(not alive)
-            t:SetAlpha(alive and 1 or 0.3)
-            t:Show()
+            CW.SetPip(t, true, i <= (s.lives or 0))
         else
-            t:Hide()
+            CW.SetPip(t, false)
         end
     end
 end
@@ -845,6 +864,12 @@ rebirthBtn:SetScript("OnEnter", function(self)
     if s.rebirthReady == 1 then
         GameTooltip:SetText("|cffff8800Rebirth|r")
         GameTooltip:AddLine("Start a new life at level 1 with a permanent rank that stacks: more kill XP, a bonus to every stat, and an heirloom ability carried through.", 0.8, 0.8, 0.8, true)
+        GameTooltip:AddLine("A challenge run starts from here too.", 0.6, 0.6, 0.6, true)
+    elseif s.runReady == 1 then
+        GameTooltip:SetText("|cffff4444Challenge run|r")
+        GameTooltip:AddLine("Level from here under one rule, with a fixed number of lives.", 0.8, 0.8, 0.8, true)
+        GameTooltip:AddLine("Reach level 80 with a life in hand for gold, a title, and on most challenges an ability no roll or shop can give.", 0.8, 0.8, 0.8, true)
+        GameTooltip:AddLine("Open to see every challenge, its rule and its rewards.", 0.6, 0.6, 0.6, true)
     else
         GameTooltip:SetText("Change path")
         GameTooltip:AddLine("Wipe the build and start the other path at this level.", 0.8, 0.8, 0.8, true)
@@ -1108,13 +1133,23 @@ StaticPopupDialogs["CW_RUN_END"] = {
     timeout = 0, whileDead = 1, hideOnEscape = 1, preferredIndex = 3,
 }
 do
-    -- The same dress and size as the picker, since one opens from the other.
-    -- Measured: title -12, intro -30 (four lines, to -84), shards -92, six
-    -- rows of 26 from -112 (to -268), the rule from -276 (seven lines at
-    -- most, to -368), the page arrows at -382, the buttons at -434.
+    -- The whole body of the panel, from under the title to above the bottom
+    -- bar: 910 x 474. Two panes. On the left every challenge, all twelve at
+    -- once, each a row with its lives as pips and its gold. On the right the
+    -- one selected, in full: the rule, how it plays, what it takes to start,
+    -- its lives, every reward with the reward ability's own tooltip, and the
+    -- character's record on it. The right pane scrolls, so no amount of text
+    -- can run into anything; the bottom bar under it holds Start, and the X
+    -- in the top-right closes it.
+    --
+    -- Measured, left: title -12, subtitle -34, twelve rows of 29 from -54 (to
+    -- -402), shards at 40 from the bottom, Extra life at 10. Right: name -12,
+    -- rule -40 (two lines, to -72), divider -80, scroll from -86 to 46 from
+    -- the bottom, Start at 12, the summary at 18.
     local fly = CreateFrame("Frame", "ClasslessWildcardRuns", frame)
-    fly:SetWidth(460); fly:SetHeight(470)
-    fly:SetPoint("CENTER", frame, "CENTER", 0, 0)
+    fly:SetPoint("TOPLEFT", frame, "TOPLEFT", 20, -70)
+    fly:SetPoint("BOTTOMRIGHT", frame, "BOTTOMRIGHT", -20, 56)
+    fly:SetWidth(910); fly:SetHeight(474)
     fly:SetFrameStrata("DIALOG")
     fly:SetBackdrop({
         bgFile = "Interface\\Buttons\\WHITE8X8",
@@ -1122,170 +1157,415 @@ do
         tile = false, edgeSize = 14,
         insets = { left = 4, right = 4, top = 4, bottom = 4 },
     })
-    fly:SetBackdropColor(0.03, 0.03, 0.05, 0.97)
+    fly:SetBackdropColor(0.03, 0.03, 0.05, 0.98)
     fly:EnableMouse(true)
     fly:Hide()
     CW.runFly = fly
-    fly.page = 0
     fly.selected = nil
-    local ROWS, ROW_H = 6, 26
-    local HEART = "|TInterface\\Icons\\Spell_Holy_SealOfSacrifice:12:12:0:0:64:64:5:59:5:59|t"
+    local ROWS, ROW_H, LEFT_W, RX, CW_W = 12, 29, 284, 318, 520
+    local OK = "|TInterface\\RAIDFRAME\\ReadyCheck-Ready:14:14:0:-1|t "
+    local NO = "|TInterface\\RAIDFRAME\\ReadyCheck-NotReady:14:14:0:-1|t "
+    local DOT = "|cff888888-|r  "
 
-    fly.title = fly:CreateFontString(nil, "OVERLAY", "GameFontNormal")
-    fly.title:SetPoint("TOP", 0, -12)
-    fly.title:SetText("Challenge run")
+    fly.close = CreateFrame("Button", nil, fly, "UIPanelCloseButton")
+    fly.close:SetPoint("TOPRIGHT", -2, -2)
+    fly.close:SetScript("OnClick", function() fly:Hide() end)
 
-    fly.intro = fly:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
-    fly.intro:SetPoint("TOPLEFT", 14, -30)
-    fly.intro:SetWidth(432)
-    fly.intro:SetJustifyH("LEFT")
-    fly.intro:SetText("A life under one rule, with a fixed number of lives, on either path; the path itself plays as it always does. "
-        .. "Run out of lives and the rule lifts, you keep everything, and the run pays shards. "
-        .. "Reach the cap with a life in hand and it pays its reward and a title.")
-
-    fly.shards = fly:CreateFontString(nil, "OVERLAY", "GameFontNormal")
-    fly.shards:SetPoint("TOPLEFT", 14, -92)
-    fly.shards:SetJustifyH("LEFT")
+    -- ---- left: the list --------------------------------------------------
+    fly.listTitle = fly:CreateFontString(nil, "OVERLAY", "GameFontNormalLarge")
+    fly.listTitle:SetPoint("TOPLEFT", 16, -12)
+    fly.listTitle:SetText("Challenge Runs")
+    fly.listSub = fly:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+    fly.listSub:SetPoint("TOPLEFT", 16, -34)
+    fly.listSub:SetWidth(LEFT_W)
+    fly.listSub:SetJustifyH("LEFT")
+    fly.listSub:SetText("|cffaaaaaaOne rule, counted lives, either path.|r")
 
     fly.rows = {}
     for i = 1, ROWS do
         local r = CreateFrame("Button", nil, fly)
-        r:SetWidth(432); r:SetHeight(ROW_H)
-        r:SetPoint("TOPLEFT", 14, -112 - (i - 1) * ROW_H)
+        r:SetWidth(LEFT_W); r:SetHeight(ROW_H)
+        r:SetPoint("TOPLEFT", 12, -54 - (i - 1) * ROW_H)
         r.stripe = r:CreateTexture(nil, "BACKGROUND")
         r.stripe:SetAllPoints(r)
         r.stripe:SetTexture("Interface\\Buttons\\WHITE8X8")
-        r.stripe:SetVertexColor(1, 1, 1, i % 2 == 0 and 0.04 or 0.08)
+        r.accent = r:CreateTexture(nil, "BORDER")
+        r.accent:SetWidth(3)
+        r.accent:SetPoint("TOPLEFT", 0, 0); r.accent:SetPoint("BOTTOMLEFT", 0, 0)
+        r.accent:SetTexture("Interface\\Buttons\\WHITE8X8")
+        r.accent:SetVertexColor(1, 0.82, 0.2, 1)
+        r.accent:Hide()
         r.name = r:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
-        r.name:SetPoint("LEFT", 8, 0)
+        r.name:SetPoint("LEFT", 12, 0)
+        r.name:SetWidth(120)
         r.name:SetJustifyH("LEFT")
-        r.hearts = r:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
-        r.hearts:SetPoint("LEFT", r.name, "RIGHT", 10, 0)
-        r.hearts:SetJustifyH("LEFT")
-        r.info = r:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
-        r.info:SetPoint("RIGHT", -8, 0)
-        r.info:SetJustifyH("RIGHT")
+        r.pips = {}
+        for k = 1, 6 do
+            local pip = CW.MakePip(r, 12)
+            pip:SetPoint("LEFT", r, "LEFT", 136 + (k - 1) * 13, 0)
+            r.pips[k] = pip
+        end
+        r.done = r:CreateTexture(nil, "OVERLAY")
+        r.done:SetWidth(16); r.done:SetHeight(16)
+        r.done:SetPoint("LEFT", r, "LEFT", 218, 0)
+        r.done:SetTexture("Interface\\RAIDFRAME\\ReadyCheck-Ready")
+        r.done:Hide()
+        r.gold = r:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+        r.gold:SetPoint("RIGHT", -8, 0)
+        r.gold:SetJustifyH("RIGHT")
         r:SetHighlightTexture("Interface\\QuestFrame\\UI-QuestTitleHighlight", "ADD")
         r:SetScript("OnClick", function(self)
-            if self.id then
+            if self.id and self.id ~= fly.selected then
                 if PlaySound then pcall(PlaySound, "igMainMenuOptionCheckBoxOn") end
                 fly.selected = self.id
-                CW.RenderRuns()
+                CW.RenderRuns(true)
             end
         end)
         fly.rows[i] = r
     end
 
-    fly.rule = fly:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
-    fly.rule:SetPoint("TOPLEFT", 14, -276)
-    fly.rule:SetWidth(432)
-    fly.rule:SetHeight(92)
-    fly.rule:SetJustifyH("LEFT")
-    fly.rule:SetJustifyV("TOP")
-
-    fly.prev = CreateFrame("Button", nil, fly)
-    StyleArrow(fly.prev, true)
-    fly.prev:SetPoint("TOPLEFT", 14, -382)
-    fly.next = CreateFrame("Button", nil, fly)
-    StyleArrow(fly.next, false)
-    fly.next:SetPoint("TOPRIGHT", -14, -382)
-    fly.pageText = fly:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
-    fly.pageText:SetPoint("TOP", 0, -389)
-    fly.prev:SetScript("OnClick", function() fly.page = math.max(0, fly.page - 1); CW.RenderRuns() end)
-    fly.next:SetScript("OnClick", function() fly.page = fly.page + 1; CW.RenderRuns() end)
-
-    fly.start = CreateFrame("Button", nil, fly, "UIPanelButtonTemplate")
-    fly.start:SetWidth(120); fly.start:SetHeight(24)
-    fly.start:SetPoint("BOTTOMLEFT", 14, 12)
-    fly.start:SetText("Start run")
-    fly.start:SetScript("OnClick", function() CW.AskRun() end)
+    fly.shards = fly:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+    fly.shards:SetPoint("BOTTOMLEFT", 16, 40)
+    fly.shards:SetWidth(LEFT_W)
+    fly.shards:SetJustifyH("LEFT")
     fly.life = CreateFrame("Button", nil, fly, "UIPanelButtonTemplate")
-    fly.life:SetWidth(170); fly.life:SetHeight(24)
-    fly.life:SetPoint("BOTTOM", 0, 12)
+    fly.life:SetWidth(200); fly.life:SetHeight(24)
+    fly.life:SetPoint("BOTTOMLEFT", 12, 10)
     fly.life:SetScript("OnClick", function() Send("BUYLIFE") end)
     fly.life:SetScript("OnEnter", function(self)
         GameTooltip:SetOwner(self, "ANCHOR_TOP")
         GameTooltip:SetText("Extra life")
         GameTooltip:AddLine("One more life for your next run, " .. CW.EXTRA_LIFE_SHARDS .. " shards. One per run.", 0.8, 0.8, 0.8, true)
-        GameTooltip:AddLine("Shards come from every run that ends: one per level reached, two past 60, a third more with no life lost.", 0.6, 0.6, 0.6, true)
+        GameTooltip:AddLine("Shards come from every run that ends: one per level reached, two per level past 60, a third more with no life lost.", 0.6, 0.6, 0.6, true)
         GameTooltip:Show()
     end)
     fly.life:SetScript("OnLeave", function() GameTooltip:Hide() end)
-    fly.back = CreateFrame("Button", nil, fly, "UIPanelButtonTemplate")
-    fly.back:SetWidth(90); fly.back:SetHeight(24)
-    fly.back:SetPoint("BOTTOMRIGHT", -14, 12)
-    fly.back:SetText("Back")
-    fly.back:SetScript("OnClick", function()
-        fly:Hide()
-        if CW.state.rebirthReady == 1 and CW.rebirthFly then CW.rebirthFly:Show() end
-    end)
 
-    function CW.RunName(id)
-        for _, c in ipairs(CW.challenges) do
-            if c.id == id then return c.name end
-        end
-        return nil
+    fly.split = fly:CreateTexture(nil, "ARTWORK")
+    fly.split:SetWidth(1)
+    fly.split:SetPoint("TOPLEFT", RX - 14, -12)
+    fly.split:SetPoint("BOTTOMLEFT", RX - 14, 12)
+    fly.split:SetTexture(1, 1, 1, 0.12)
+
+    -- ---- right: the header -------------------------------------------------
+    fly.dName = fly:CreateFontString(nil, "OVERLAY", "GameFontNormalLarge")
+    fly.dName:SetPoint("TOPLEFT", RX, -12)
+    fly.dName:SetWidth(910 - RX - 40)       -- a width, not a RIGHT anchor: that would centre it vertically
+    fly.dName:SetJustifyH("LEFT")
+    fly.rule = fly:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
+    fly.rule:SetPoint("TOPLEFT", RX, -40)
+    fly.rule:SetWidth(910 - RX - 40)
+    fly.rule:SetJustifyH("LEFT")
+    fly.rule:SetJustifyV("TOP")
+    fly.rule:SetHeight(34)
+    fly.headLine = fly:CreateTexture(nil, "ARTWORK")
+    fly.headLine:SetHeight(1)
+    fly.headLine:SetPoint("TOPLEFT", RX, -80)
+    fly.headLine:SetPoint("TOPRIGHT", -16, -80)
+    fly.headLine:SetTexture(1, 0.82, 0.2, 0.35)
+
+    -- ---- right: the scrolling detail --------------------------------------
+    fly.scroll = CreateFrame("ScrollFrame", "ClasslessWildcardRunsScroll", fly, "UIPanelScrollFrameTemplate")
+    fly.scroll:SetPoint("TOPLEFT", RX, -86)
+    fly.scroll:SetPoint("BOTTOMRIGHT", -36, 46)
+    fly.content = CreateFrame("Frame", nil, fly.scroll)
+    fly.content:SetWidth(CW_W); fly.content:SetHeight(1)
+    fly.scroll:SetScrollChild(fly.content)
+    local C = fly.content
+
+    local function Header(text)
+        local h = C:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+        h:SetJustifyH("LEFT")
+        h:SetText(text)
+        h.line = C:CreateTexture(nil, "ARTWORK")
+        h.line:SetHeight(1)
+        h.line:SetTexture(1, 0.82, 0.2, 0.25)
+        return h
+    end
+    local function Body(font)
+        local b = C:CreateFontString(nil, "OVERLAY", font or "GameFontHighlight")
+        b:SetWidth(CW_W)
+        b:SetJustifyH("LEFT")
+        b:SetJustifyV("TOP")
+        b:SetSpacing(3)
+        return b
     end
 
-    function CW.RenderRuns()
+    fly.hPlay = Header("How it plays")
+    fly.detail = Body()
+    fly.detail:SetTextColor(0.88, 0.88, 0.88)
+    fly.hReq = Header("To start")
+    fly.req = Body()
+    fly.hLives = Header("Lives")
+    fly.lifePips = {}
+    for k = 1, 6 do fly.lifePips[k] = CW.MakePip(C, 16) end
+    fly.livesText = Body()
+    fly.hReward = Header("Rewards for reaching level 80 with a life in hand")
+    fly.rewardText = Body()
+    fly.hAbility = Header("Reward ability")
+    fly.abilityBtn = CreateFrame("Button", nil, C)
+    fly.abilityBtn:SetWidth(44); fly.abilityBtn:SetHeight(44)
+    fly.abilityBtn.icon = fly.abilityBtn:CreateTexture(nil, "ARTWORK")
+    fly.abilityBtn.icon:SetAllPoints(fly.abilityBtn)
+    fly.abilityBtn.icon:SetTexCoord(0.06, 0.94, 0.06, 0.94)
+    fly.abilityBtn.ring = fly.abilityBtn:CreateTexture(nil, "OVERLAY")
+    fly.abilityBtn.ring:SetWidth(76); fly.abilityBtn.ring:SetHeight(76)
+    fly.abilityBtn.ring:SetPoint("CENTER", 0, 0)
+    fly.abilityBtn.ring:SetTexture("Interface\\Buttons\\UI-ActionButton-Border")
+    fly.abilityBtn.ring:SetBlendMode("ADD")
+    fly.abilityBtn.ring:SetVertexColor(0.64, 0.21, 0.93)
+    fly.abilityBtn:SetScript("OnEnter", function(self)
+        if not self.spellId then return end
+        GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
+        GameTooltip:SetHyperlink("spell:" .. self.spellId)
+        GameTooltip:Show()
+    end)
+    fly.abilityBtn:SetScript("OnLeave", function() GameTooltip:Hide() end)
+    fly.abilityName = C:CreateFontString(nil, "OVERLAY", "GameFontNormalLarge")
+    fly.abilityName:SetJustifyH("LEFT")
+    fly.abilityNote = C:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+    fly.abilityNote:SetWidth(CW_W - 58)
+    fly.abilityNote:SetJustifyH("LEFT")
+    fly.abilityNote:SetJustifyV("TOP")
+    fly.abilityNote:SetText("|cffa335eeEpic|r  ability, kept as an |cffff8800heirloom|r: usable from level 1, carried through every Rebirth, never rerolled. No roll and no shop can give it.")
+    -- the spell's own tooltip rows hang under this hairline, at its width
+    fly.plateLine = C:CreateTexture(nil, "ARTWORK")
+    fly.plateLine:SetHeight(1)
+    fly.plateLine:SetWidth(CW_W)
+    fly.plateLine:SetTexture(1, 1, 1, 0.12)
+    fly.hRecord = Header("Your record")
+    fly.record = Body()
+
+    -- ---- the bottom bar ------------------------------------------------------
+    fly.summary = fly:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+    fly.summary:SetPoint("BOTTOMLEFT", RX, 18)
+    fly.summary:SetWidth(330)
+    fly.summary:SetJustifyH("LEFT")
+    fly.start = CreateFrame("Button", nil, fly, "UIPanelButtonTemplate")
+    fly.start:SetWidth(170); fly.start:SetHeight(26)
+    fly.start:SetPoint("BOTTOMRIGHT", -14, 12)
+    fly.start:SetText("Start this run")
+    fly.start:SetScript("OnClick", function() CW.AskRun() end)
+    -- No Back button: the X in the top-right is the one way out, as on every
+    -- other panel in the game.
+
+    function CW.RunName(id)
+        local c = CW.challengesById and CW.challengesById[id]
+        return c and c.name or nil
+    end
+
+    local function Selected()
+        for _, c in ipairs(CW.challenges) do
+            if c.id == fly.selected then return c end
+        end
+        return CW.challenges[1]
+    end
+
+    -- Stack the detail top to bottom from measured heights. Every block's top
+    -- is the bottom of the one above it plus a gap, so a long rule or a long
+    -- spell description pushes everything under it and nothing overlaps.
+    local function Place(region, x, y)
+        region:ClearAllPoints()
+        region:SetPoint("TOPLEFT", C, "TOPLEFT", x, -y)
+    end
+    local function H(region, fallback)
+        local v = tonumber(region:GetStringHeight()) or 0
+        return v > 0 and v or (fallback or 14)
+    end
+    local function PlaceHeader(h, y)
+        Place(h, 0, y)
+        h.line:ClearAllPoints()
+        h.line:SetPoint("TOPLEFT", C, "TOPLEFT", 0, -(y + 18))
+        h.line:SetWidth(CW_W)
+        h:Show(); h.line:Show()
+        return y + 26
+    end
+
+    local function FillDetail(c, s)
+        local y = 0
+        local player = UnitName("player") or "you"
+
+        -- how it plays
+        y = PlaceHeader(fly.hPlay, y)
+        fly.detail:SetText(c.detail ~= "" and c.detail or c.rule)
+        Place(fly.detail, 0, y)
+        y = y + H(fly.detail, 48) + 18
+
+        -- what it takes to start
+        y = PlaceHeader(fly.hReq, y)
+        local req = {}
+        if (s.run or 0) > 0 then
+            tinsert(req, NO .. "You are on a run already. Finish it, or run out of lives, to start another.")
+        end
+        -- the way that applies to this Hero comes first
+        if s.rebirthReady == 1 then
+            tinsert(req, OK .. "You are level 80, so this run starts as a |cffff8800Rebirth|r: back to level 1 on the path you choose, for |cffffd100"
+                .. (s.rebirthPrice or 0) .. " gold|r, carrying the heirlooms ticked on the Rebirth page.")
+        else
+            local path = s.mode == 0 and "|cff00ccffClassless|r" or "|cffff8800Wildcard|r"
+            tinsert(req, (s.runReady == 1 and OK or NO) .. "A fresh Hero up to level " .. (s.deadline or 5)
+                .. " can start one where they stand, on the path already chosen"
+                .. (s.runReady == 1 and (" (" .. path .. ").") or "."))
+            tinsert(req, DOT .. "At level 80 a run starts as a Rebirth instead: back to level 1 on the path you choose, with your heirlooms.")
+        end
+        tinsert(req, DOT .. "Either path plays exactly as it does off a run. Only the rule and the lives are added.")
+        fly.req:SetText(table.concat(req, "\n"))
+        Place(fly.req, 0, y)
+        y = y + H(fly.req, 60) + 18
+
+        -- lives
+        y = PlaceHeader(fly.hLives, y)
+        local extra = (s.extraLife or 0) > 0 and 1 or 0
+        local total = math.min(6, c.lives + extra)
+        for k = 1, 6 do
+            local pip = fly.lifePips[k]
+            pip:ClearAllPoints()
+            pip:SetPoint("TOPLEFT", C, "TOPLEFT", (k - 1) * 19, -(y + 1))
+            CW.SetPip(pip, k <= total, true)
+        end
+        fly.livesText:SetText("|cffffffff" .. c.lives .. (c.lives == 1 and " life" or " lives") .. "|r on this challenge"
+            .. (extra > 0 and ", |cff00ff00plus the extra life you hold|r" or "") .. ". "
+            .. "A death costs one. Deaths in battlegrounds, arenas and duels cost nothing. "
+            .. "Run out and the run ends: the rule lifts, and you keep your level, gear and build.")
+        Place(fly.livesText, 0, y + 24)
+        y = y + 24 + H(fly.livesText, 32) + 18
+
+        -- rewards
+        y = PlaceHeader(fly.hReward, y)
+        local title = (c.title or ""):gsub("%%s", player)
+        local lines = {
+            "|cffffd100Gold|r   " .. (GetCoinTextureString and GetCoinTextureString(c.gold * 10000) or (c.gold .. " gold")),
+            "|cffffd100Title|r   " .. (title ~= "" and ("|cffe6cc80" .. title .. "|r") or "none"),
+            "|cffffd100No life lost|r   also earns |cffe6cc80" .. player .. " the Unbroken|r and a third more shards",
+            "|cffffd100Shards|r   paid whenever the run ends, finished or not: one per level reached, two per level past 60",
+        }
+        if c.finished == 1 then
+            tinsert(lines, "|cffaaaaaaYou have finished this one. The gold, title and ability are paid once; running it again pays shards.|r")
+        end
+        fly.rewardText:SetText(table.concat(lines, "\n"))
+        Place(fly.rewardText, 0, y)
+        y = y + H(fly.rewardText, 72) + 18
+
+        -- the reward ability, in full
+        y = PlaceHeader(fly.hAbility, y)
+        local reward = c.reward or 0
+        if reward > 0 then
+            local name = (GetSpellInfo(reward)) or "a reward ability"
+            -- set before it is measured: the last selection may have left the
+            -- no-reward line in it
+            fly.abilityNote:SetText("|cffa335eeEpic|r  ability, kept as an |cffff8800heirloom|r: usable from level 1, carried through every Rebirth, never rerolled. No roll and no shop can give it.")
+            fly.abilityBtn.spellId = reward
+            fly.abilityBtn.icon:SetTexture(SpellIcon(reward))
+            Place(fly.abilityBtn, 2, y + 2)
+            fly.abilityBtn:Show()
+            fly.abilityName:SetText("|cffa335ee" .. name .. "|r")
+            Place(fly.abilityName, 58, y + 2)
+            fly.abilityName:Show()
+            Place(fly.abilityNote, 58, y + 24)
+            fly.abilityNote:Show()
+            y = y + math.max(50, 24 + H(fly.abilityNote, 28)) + 10
+            Place(fly.plateLine, 0, y)
+            fly.plateLine:Show()
+            if not fly.plate then
+                fly.plate = CW.revealFX.MakeInfo(C, fly.plateLine)
+                fly.plate:SetRowWidth(CW_W)
+            end
+            local ph = fly.plate:Fill(reward)
+            y = y + 10 + (ph or 0) + 18
+        else
+            fly.abilityBtn.spellId = nil
+            fly.abilityBtn:Hide(); fly.abilityName:Hide(); fly.plateLine:Hide()
+            if fly.plate then fly.plate:Clear() end
+            fly.abilityNote:SetText("|cffaaaaaaThis challenge pays its gold and title. It has no ability reward.|r")
+            Place(fly.abilityNote, 0, y)
+            fly.abilityNote:Show()
+            y = y + H(fly.abilityNote, 14) + 18
+        end
+
+        -- record
+        y = PlaceHeader(fly.hRecord, y)
+        local rec
+        if c.finished == 1 then
+            rec = OK .. "Finished. Best: level " .. c.best .. "."
+        elseif (c.best or 0) > 0 then
+            rec = DOT .. "Not finished yet. Best: reached level " .. c.best .. "."
+        else
+            rec = DOT .. "Not attempted yet."
+        end
+        fly.record:SetText(rec)
+        Place(fly.record, 0, y)
+        y = y + H(fly.record, 14) + 14
+
+        C:SetHeight(y)
+    end
+
+    function CW.RenderRuns(toTop)
         local s = CW.state
         local list = CW.challenges
+        if not fly.selected and list[1] then fly.selected = list[1].id end
+
         fly.shards:SetText("Shards  |cff00ff00" .. (s.shards or 0) .. "|r"
-            .. ((s.extraLife or 0) > 0 and "        |cff00ff00An extra life is held for the next run.|r" or ""))
-        fly.life:SetText((s.extraLife or 0) > 0 and "Extra life held" or ("Extra life  (" .. CW.EXTRA_LIFE_SHARDS .. " shards)"))
+            .. ((s.extraLife or 0) > 0 and "     |cff00ff00extra life held|r" or ""))
+        fly.life:SetText((s.extraLife or 0) > 0 and "Extra life held" or ("Buy an extra life  (" .. CW.EXTRA_LIFE_SHARDS .. ")"))
         if (s.extraLife or 0) > 0 or (s.shards or 0) < CW.EXTRA_LIFE_SHARDS then fly.life:Disable() else fly.life:Enable() end
-        local total = math.max(1, math.ceil(#list / ROWS))
-        if fly.page >= total then fly.page = total - 1 end
-        fly.pageText:SetText((fly.page + 1) .. " / " .. total)
-        if total > 1 then fly.prev:Show(); fly.next:Show(); fly.pageText:Show()
-        else fly.prev:Hide(); fly.next:Hide(); fly.pageText:Hide() end
-        local chosen
+
         for i = 1, ROWS do
-            local c = list[fly.page * ROWS + i]
+            local c = list[i]
             local r = fly.rows[i]
             if c then
                 r.id = c.id
                 local mark = fly.selected == c.id
                 r.name:SetText((mark and "|cffffd100" or "|cffffffff") .. c.name .. "|r")
-                r.hearts:SetText(string.rep(HEART, math.min(c.lives, 6)) .. " |cffaaaaaa" .. c.lives .. (c.lives == 1 and " life" or " lives") .. "|r")
-                r.info:SetText(c.gold .. " gold"
-                    .. (c.best > 0 and ("   best " .. c.best .. (c.finished == 1 and " |cff00ff00done|r" or "")) or ""))
-                if mark then r.stripe:SetVertexColor(1, 0.82, 0.3, 0.16)
-                else r.stripe:SetVertexColor(1, 1, 1, i % 2 == 0 and 0.04 or 0.08) end
+                for k = 1, 6 do CW.SetPip(r.pips[k], k <= c.lives, true) end
+                if c.finished == 1 then r.done:Show() else r.done:Hide() end
+                r.gold:SetText("|cffffd100" .. c.gold .. "g|r")
+                if mark then
+                    r.stripe:SetVertexColor(1, 0.82, 0.3, 0.16)
+                    r.accent:Show()
+                else
+                    r.stripe:SetVertexColor(1, 1, 1, i % 2 == 0 and 0.03 or 0.07)
+                    r.accent:Hide()
+                end
                 r:Show()
-                if mark then chosen = c end
             else
                 r.id = nil
                 r:Hide()
             end
         end
-        if not chosen then
-            for _, c in ipairs(list) do if c.id == fly.selected then chosen = c end end
-        end
-        if chosen then
-            local reward = chosen.reward or 0
-            fly.rule:SetText("|cffffd100" .. chosen.name .. "|r  " .. chosen.rule
-                .. "\n\nFinishing pays " .. chosen.gold .. " gold and a title"
-                .. (reward > 0 and (", and |cffa335ee" .. ((GetSpellInfo(reward)) or "an ability") .. "|r, an ability no roll or shop can give, kept as an heirloom.") or "."))
-            fly.start:Enable()
+
+        local c = #list > 0 and Selected() or nil
+        if c then
+            fly.dName:SetText(c.name)
+            fly.rule:SetText(c.rule)
+            FillDetail(c, s)
+            fly.scroll:Show()
+            local lives = math.min(6, c.lives + ((s.extraLife or 0) > 0 and 1 or 0))
+            fly.summary:SetText("Starts with |cffffffff" .. lives .. (lives == 1 and " life" or " lives") .. "|r"
+                .. (s.rebirthReady == 1 and ("   Rebirth  |cffffd100" .. (s.rebirthPrice or 0) .. " gold|r") or ""))
+            local canStart = (s.run or 0) == 0 and (s.rebirthReady == 1 or s.runReady == 1)
+            if canStart then fly.start:Enable() else fly.start:Disable() end
         else
-            fly.rule:SetText(#list > 0 and "|cffaaaaaaPick a challenge to read its rule.|r" or "|cffaaaaaaWaiting for the list...|r")
+            fly.dName:SetText("Challenge Runs")
+            fly.rule:SetText("|cffaaaaaaLoading the challenges...|r")
+            fly.scroll:Hide()
+            fly.summary:SetText("")
             fly.start:Disable()
         end
+        if toTop and fly.scroll.SetVerticalScroll then fly.scroll:SetVerticalScroll(0) end
     end
 
     function CW.OpenRuns()
         if CW.rebirthFly then CW.rebirthFly:Hide() end
-        fly.page = 0
+        if CW.archFly then CW.archFly:Hide() end
+        if CW.helpFly then CW.helpFly:Hide() end
         Send("CHL")
-        CW.RenderRuns()
+        CW.RenderRuns(true)
         fly:Show()
     end
 
     function CW.AskRun()
         local s = CW.state
-        local chosen
-        for _, c in ipairs(CW.challenges) do if c.id == fly.selected then chosen = c end end
+        local chosen = #CW.challenges > 0 and Selected() or nil
         if not chosen then return end
         local ids = {}
         if s.rebirthReady == 1 and CW.rebirthFly then
@@ -1861,7 +2141,7 @@ local function BuildHelpText()
 "",
 "|cffff4444==  CHALLENGE RUNS  --  one rule, counted lives  ==|r",
 "A run is a life under one rule on either path. Start one from the Rebirth button at the cap (it is a Rebirth, heirlooms and all) or as a fresh Hero up to level " .. (CW.state.deadline or 5) .. ". Pick a challenge, read its rule, go.",
-"   |cffffd100Lives|r -- the hearts under the status line. A death costs one; battlegrounds, arenas and duels are free. Rules that make the world deadlier give five, rules that change how you fight give three, and |cffffd100Hardcore|r gives one because the rule is death itself.",
+"   |cffffd100Lives|r -- the red gems in the top-right of this panel, one per life. A death costs one; battlegrounds, arenas and duels are free. Rules that make the world deadlier give five, rules that change how you fight give three, and |cffffd100Hardcore|r gives one because the rule is death itself.",
 "   |cffffd100Running out|r ends the run: the rule lifts and you keep everything. |cffffd100Reaching 80|r with a life in hand finishes it, and pays the challenge's gold, its title, and on some runs an ability no roll or shop can give, kept as an heirloom. Finish with no life lost for |cffffd100the Unbroken|r.",
 "   |cffffd100Shards|r -- every run pays them when it ends, finished or not: one per level reached, two per level past 60, a third more for a run with no life lost. They buy one |cffffd100extra life|r for your next run, on the challenge page.",
 "",
@@ -1953,7 +2233,7 @@ local function UpdateStatus()
         modeText = modeText .. "   |cffff8800Rebirth " .. s.rebirths .. "|r"
     end
     titleGlow:SetAlpha(CW.GlowBase())
-    -- The challenge run rides under the status line with its hearts, and the
+    -- The challenge run rides in the top-right with its lives, and the
     -- bottom-right button says what it will do: Rebirth at the cap, a
     -- Challenge for a fresh Wildcard Hero, otherwise the path change.
     CW.UpdateLives()
@@ -5747,19 +6027,29 @@ local function HandleMessage(msg)
 
     -- ---- challenge runs ----
     elseif kind == "CH" then
-        if not CW._collectingCh then
-            CW.challenges = {}
-            CW._collectingCh = true
+        if CW._collectingCh ~= "on" then
+            CW.challenges, CW.challengesById = {}, {}
+            CW._collectingCh = "on"
         end
-        tinsert(CW.challenges, {
+        local c = {
             id = tonumber(p[2]) or 0, name = p[3] or "", lives = tonumber(p[4]) or 1,
             gold = tonumber(p[5]) or 0, rule = p[6] or "",
             best = tonumber(p[7]) or 0, finished = tonumber(p[8]) or 0,
             reward = tonumber(p[9]) or 0,   -- the ability it pays, a spell id
-        })
+            title = p[10] or "",            -- "%s the Nemesis", as the client shows it
+            detail = "",                    -- how it plays, joined from CD pieces
+        }
+        tinsert(CW.challenges, c)
+        CW.challengesById[c.id] = c
+    elseif kind == "CD" then
+        -- a piece of a challenge's full text; pieces arrive in order
+        local c = CW.challengesById and CW.challengesById[tonumber(p[2]) or 0]
+        if c and p[3] then
+            c.detail = (c.detail == "" and p[3]) or (c.detail .. " " .. p[3])
+        end
     elseif kind == "CHE" then
         CW._collectingCh = false
-        if CW.runFly and CW.runFly:IsShown() then CW.RenderRuns() end
+        if CW.runFly and CW.runFly:IsShown() then CW.RenderRuns(true) end
         CW.UpdateLives()   -- the live run's name comes from this list
     elseif kind == "RD" then
         -- a life lost: lives left, lives at the start, what the rule did

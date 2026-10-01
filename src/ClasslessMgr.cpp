@@ -2490,21 +2490,33 @@ namespace
 
     std::vector<Challenge> const CHALLENGES = {
         // id, key, name, lives, rule, gold, title (TITLES in gen_forged_spells.py), the reward
-        // line (a forged recipe flagged `reward`). Lives follow how often the rule itself kills:
+        // line (a forged recipe flagged `reward`), and how the rule plays in full. Lives follow how often the rule itself kills:
         // five where the world is turned up, three where the fight changes shape, one only where
         // the rule IS death. The list is in the order the picker shows it.
-        { 1,  "nemesis",         "Nemesis",         5, "Whatever kills you grows. It gains five levels, becomes elite and remembers you. Kill it to take the levels back as XP.", 500, 186, "grudge_strike" },
-        { 2,  "elite_world",     "Elite World",     5, "Every enemy you fight is an elite, with triple health and double damage.", 750, 187, "giantsbane" },
-        { 14, "legion",          "Legion",          4, "Every enemy you engage calls two more of its kind to its side. More to kill, more XP, more ways to die.", 650, 191, "flashfire" },
-        { 4,  "pursued",         "Pursued",         3, "Every ten minutes a hunter two levels above you finds you and tracks you until one of you dies.", 600, 189, "turnabout" },
-        { 15, "hourglass",       "Hourglass",       3, "A level clock. Gain a level every 30 minutes played or lose a life. The clock resets with every level, runs 20 minutes below level 20 and 45 past 60.", 500, 192, "stolen_hour" },
-        { 5,  "glass",           "Glass",           3, "Your health is halved. Your damage is up by a third.", 400, 190, "shatterpoint" },
-        { 16, "spiteful",        "Spiteful",        3, "Every enemy reflects a fifth of the damage you deal back at you.", 450, 193, "" },
-        { 17, "bloodpact",       "Bloodpact",       3, "Healing from spells, potions and food is halved. Every hit you land heals you for 15% of its damage.", 450, 194, "" },
-        { 18, "berserker",       "Berserker",       3, "Below 35% health you deal double damage and nothing can slow you. Above 75% you deal 30% less.", 450, 195, "" },
-        { 19, "ironman",         "Ironman",         3, "Only white gear can be worn. Anything better is refused.", 500, 196, "" },
-        { 20, "big_game_hunter", "Big Game Hunter", 3, "Normal enemies give no XP. Elites and bosses give full, quests give double.", 400, 197, "" },
-        { 3,  "hardcore",        "Hardcore",        1, "One life. A death ends the run.", 1000, 188, "unbroken_will" },
+        { 1,  "nemesis",         "Nemesis",         5, "Whatever kills you grows. It gains five levels, becomes elite and remembers you. Kill it to take the levels back as XP.", 500, 186, "grudge_strike",
+          "A creature that kills you becomes your nemesis. Every creature of that kind gains five levels, elite health and damage, and grows larger, for the rest of the run. If that kind kills you again it gains five more, up to thirty. Kill one and the mark is lifted, and the levels it took come back to you as experience. Pets, totems and summoned creatures are never marked." },
+        { 2,  "elite_world",     "Elite World",     5, "Every enemy you fight is an elite, with triple health and double damage.", 750, 187, "giantsbane",
+          "The moment an enemy engages you or your pet it gains triple health, and every hit it lands on you or your pet deals double damage. This applies to every creature in the world, dungeons included. Pull one at a time, and use every stun, slow and snare you own." },
+        { 14, "legion",          "Legion",          4, "Every enemy you engage calls two more of its kind to its side. More to kill, more XP, more ways to die.", 650, 191, "flashfire",
+          "When an enemy engages you, two more of its kind appear beside it and join the fight. They give experience and loot like any other of their kind, and leave after five minutes if the fight never reaches them. Reinforcements never call reinforcements of their own. Bosses, critters and civilians never call at all." },
+        { 4,  "pursued",         "Pursued",         3, "Every ten minutes a hunter two levels above you finds you and tracks you until one of you dies.", 600, 189, "turnabout",
+          "Every ten minutes of play a Relentless Hunter appears near you, two levels above you, with elite health and damage. It follows you anywhere until one of you dies. Killing it gives its elite experience and starts the clock for the next one. If it kills you it leaves, and the next one comes ten minutes later. Battlegrounds and arenas are safe from it." },
+        { 15, "hourglass",       "Hourglass",       3, "A level clock. Gain a level every 30 minutes played or lose a life. The clock resets with every level, runs 20 minutes below level 20 and 45 past 60.", 500, 192, "stolen_hour",
+          "Every level has a time limit, counted while you are logged in and alive. Below level 20 you have 20 minutes per level, from 20 to 60 you have 30, and past 60 you have 45. A warning comes with five minutes left. If time runs out you lose a life and the clock restarts on the same level. Reaching the next level always resets the clock." },
+        { 5,  "glass",           "Glass",           3, "Your health is halved. Your damage is up by a third.", 400, 190, "shatterpoint",
+          "Your maximum health is halved for the whole run, and every hit you deal, melee or spell, is a third stronger. Enemies die faster, and so do you. Stamina is worth more than ever, and so is anything that keeps enemies away from you." },
+        { 16, "spiteful",        "Spiteful",        3, "Every enemy reflects a fifth of the damage you deal back at you.", 450, 193, "",
+          "Every time you damage an enemy, a fifth of that damage comes straight back to you. Big hits come back big. Armor, absorbs and healing over time all help, and killing fast is not always the safest choice." },
+        { 17, "bloodpact",       "Bloodpact",       3, "Healing from spells, potions and food is halved. Every hit you land heals you for 15% of its damage.", 450, 194, "",
+          "Every heal you receive is halved, whether it comes from your own spells, a potion, food, or another player. In return, every hit you land heals you for 15% of the damage it dealt. Resting to full is slow. Fighting is how you stay alive." },
+        { 18, "berserker",       "Berserker",       3, "Below 35% health you deal double damage and nothing can slow you. Above 75% you deal 30% less.", 450, 195, "",
+          "Below 35% health your damage is doubled, and every hit you land breaks slows and snares on you. Above 75% health your damage is reduced by 30%. Between the two you fight as normal. The rule rewards fighting hurt and punishes playing it safe." },
+        { 19, "ironman",         "Ironman",         3, "Only white gear can be worn. Anything better is refused.", 500, 196, "",
+          "Only common, white quality gear can be worn. When the run starts anything better is moved to your bags, and from then on it cannot be equipped. Weapons count. Your stats, abilities and talents carry you, not your gear." },
+        { 20, "big_game_hunter", "Big Game Hunter", 3, "Normal enemies give no XP. Elites and bosses give full, quests give double.", 400, 197, "",
+          "Normal enemies give no experience at all. Elite and rare enemies and dungeon bosses give their full experience, and quests give double. Hunt the dangerous things, run the dungeons, and do the quests." },
+        { 3,  "hardcore",        "Hardcore",        1, "One life. A death ends the run.", 1000, 188, "unbroken_will",
+          "You have one life. If you die the run is over, though you keep your level, gear and build and simply carry on without the rule. Deaths in battlegrounds, arenas and duels still do not count. The largest gold reward of any challenge." },
     };
 
     void GrantTitle(Player* player, uint32 titleId)

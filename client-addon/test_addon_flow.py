@@ -1433,48 +1433,99 @@ def test_challenge_runs(h):
     popups = g.StaticPopupDialogs
     runs = CW.runFly
 
-    # A fresh Wildcard Hero under the deadline: the button is the Challenge.
+    # A fresh Wildcard Hero under the deadline: the button is the Challenge,
+    # and its tooltip says so rather than describing a path change.
     h.recv(run_state(1, 3, run_ready=1))
     s = CW.state
     h.check(s.runReady == 1 and s.run == 0 and s.shards == 0, "run fields read from 24-29")
     h.check(str(CW.rebirthBtn["__text"]) == "Challenge", "a fresh Hero's button offers a Challenge: %r" % str(CW.rebirthBtn["__text"]))
-    h.check(all(not CW.lifeIcons[i]["__shown"] for i in range(1, 7)), "no hearts without a run")
+    # the harness's GameTooltip records every line into TIP
+    CW.rebirthBtn["__scripts"]["OnEnter"](CW.rebirthBtn)
+    tip = " ".join(str(g.TIP[i]) for i in range(1, 10) if g.TIP[i] is not None)
+    h.check("Challenge run" in tip and "Change path" not in tip,
+            "the Challenge button's tooltip describes a challenge run: %r" % tip[:80])
+    CW.rebirthBtn["__scripts"]["OnLeave"](CW.rebirthBtn)
+    h.check(all(not CW.lifeIcons[i]["__shown"] for i in range(1, 7)), "no lives shown without a run")
     h.clear_sent()
     h.click(CW.rebirthBtn)
-    h.check(runs["__shown"] is True and "CHL" in h.sent(), "the button opens the challenge page and asks for the list")
-    h.check(runs["start"]["__enabled"] is False, "nothing can start before a challenge is picked")
+    h.check(runs["__shown"] is True and "CHL" in h.sent(), "the button opens the challenge screen and asks for the list")
+    h.check(runs["start"]["__enabled"] is False, "nothing can start before the list has arrived")
 
-    # The list lands: pipes between fields, one message per challenge.
-    h.recv("CH|1|Nemesis|5|500|Whatever kills you grows.|0|0")
-    h.recv("CH|3|Hardcore|3|600|A death costs a life and a level.|42|0")
-    h.recv("CH|13|Famine|1|250|No vendors.|80|1")
+    # The list lands: pipes between fields, one message per challenge, and
+    # the full text in pieces the addon joins.
+    h.recv("CH|1|Nemesis|5|500|Whatever kills you grows.|0|0|961088|%s the Nemesis")
+    h.recv("CD|1|A creature that kills you becomes your nemesis.")
+    h.recv("CD|1|Kill one and the levels come back.")
+    h.recv("CH|3|Hardcore|1|1000|One life. A death ends the run.|42|0|0|%s the Deathless")
+    h.recv("CH|13|Famine|1|250|No vendors.|80|1|0|")
     h.recv("CHE|")
     h.check(len(list(CW.challenges.values())) == 3, "three challenges listed")
-    h.check("Hardcore" in str(runs["rows"][2]["name"]["__text"]) and "3 lives" in str(runs["rows"][2]["hearts"]["__text"])
-            and str(runs["rows"][2]["hearts"]["__text"]).count("|T") == 3,
-            "a row names the challenge and draws its lives as hearts: %r" % str(runs["rows"][2]["hearts"]["__text"]))
-    h.check("best 42" in str(runs["rows"][2]["info"]["__text"]), "and the best level reached on it: %r" % str(runs["rows"][2]["info"]["__text"]))
-    h.check("done" in str(runs["rows"][3]["info"]["__text"]), "a finished one says so: %r" % str(runs["rows"][3]["info"]["__text"]))
-    h.check("Extra life" in str(runs["life"]["__text"]) and runs["life"]["__enabled"] is False,
-            "the extra life is for sale but out of reach at 0 shards: %r" % str(runs["life"]["__text"]))
+    rows = runs["rows"]
+    h.check(all(rows[i]["__shown"] for i in range(1, 4)) and not rows[4]["__shown"],
+            "every challenge has a row on one page, nothing to page through")
+    h.check([bool(rows[1]["pips"][k]["__shown"]) for k in range(1, 7)] == [True] * 5 + [False],
+            "Nemesis draws five life pips")
+    h.check(rows[1]["pips"][1]["gem"]["__shown"] is True, "and each pip carries its gem")
+    h.check(rows[3]["done"]["__shown"] is True and rows[2]["done"]["__shown"] is False,
+            "a finished challenge is ticked, an unfinished one is not")
+    h.check("1000g" in str(rows[2]["gold"]["__text"]), "each row shows its gold: %r" % str(rows[2]["gold"]["__text"]))
 
-    # Pick one, read it, start it: the confirm, then RUN with no heirlooms.
-    h.click(runs["rows"][2])
-    h.check(runs["start"]["__enabled"] is True and "level" in str(runs["rule"]["__text"]),
-            "picking a row enables Start and shows its rule: %r" % str(runs["rule"]["__text"]))
+    # With the list in, the first challenge is selected and shown in full.
+    h.check(runs["start"]["__enabled"] is True and rows[1]["accent"]["__shown"] is True,
+            "the first challenge is selected, and a fresh Hero can start it")
+    h.check(str(runs["dName"]["__text"]) == "Nemesis" and "grows" in str(runs["rule"]["__text"]),
+            "the right pane names it and states its rule")
+    h.check(str(runs["detail"]["__text"]) == "A creature that kills you becomes your nemesis. Kill one and the levels come back.",
+            "the full text is joined from its pieces: %r" % str(runs["detail"]["__text"]))
+    req = str(runs["req"]["__text"])
+    h.check("fresh Hero up to level 5" in req and "Wildcard" in req and "Either path" in req,
+            "To start says how this Hero can start it and on which path: %r" % req[:90])
+    h.check("5 lives" in str(runs["livesText"]["__text"]) and "battlegrounds" in str(runs["livesText"]["__text"]),
+            "Lives says how many and which deaths are free")
+    rew = str(runs["rewardText"]["__text"])
+    h.check("Tester the Nemesis" in rew and "Tester the Unbroken" in rew and "Shards" in rew,
+            "Rewards names the title with the character's name, the Unbroken, and shards: %r" % rew[:90])
+    h.check(runs["abilityBtn"]["__shown"] is True and runs["abilityBtn"]["spellId"] == 961088
+            and "heirloom" in str(runs["abilityNote"]["__text"]),
+            "the reward ability is shown with its icon, its spell and what an heirloom means")
+    h.check(runs["plate"] is not None, "and its own tooltip rows are laid out under it")
+    h.check("Not attempted" in str(runs["record"]["__text"]), "the record says it has not been tried")
+
+    # Another row: everything on the right follows, and a challenge with no
+    # ability reward says so instead of leaving a gap.
+    h.click(rows[2])
+    h.check(rows[2]["accent"]["__shown"] is True and rows[1]["accent"]["__shown"] is False,
+            "clicking a row moves the selection")
+    h.check(str(runs["dName"]["__text"]) == "Hardcore" and "One life" in str(runs["rule"]["__text"]),
+            "the right pane follows: %r" % str(runs["rule"]["__text"]))
+    h.check(str(runs["detail"]["__text"]) == "One life. A death ends the run.",
+            "with no full text sent, the rule stands in for it")
+    h.check(runs["abilityBtn"]["__shown"] is False and "no ability reward" in str(runs["abilityNote"]["__text"]),
+            "no reward ability: the screen says so: %r" % str(runs["abilityNote"]["__text"]))
+    h.check("level 42" in str(runs["record"]["__text"]), "the record shows the best level: %r" % str(runs["record"]["__text"]))
+    h.check("1 life" in str(runs["summary"]["__text"]), "the bottom bar says the run starts with one life")
+    h.check("Extra life" in str(runs["life"]["__text"]) or "extra life" in str(runs["life"]["__text"]),
+            "the extra life is for sale: %r" % str(runs["life"]["__text"]))
+    h.check(runs["life"]["__enabled"] is False, "but out of reach at 0 shards")
+    h.click(rows[3])
+    h.check("Finished" in str(runs["record"]["__text"]) and "paid once" in str(runs["rewardText"]["__text"]),
+            "a finished challenge says it was finished, and that its rewards are paid once")
+    h.click(rows[2])
+
+    # Start it: the confirm, then RUN with no heirlooms.
     h.clear_sent()
     CW.AskRun()
     h.check(g.LAST_POPUP == "CW_RUN_CONFIRM_FRESH" and h.sent() == [], "a fresh Hero gets the plain confirm, nothing sent yet: %r" % g.LAST_POPUP)
     popups["CW_RUN_CONFIRM_FRESH"]["OnAccept"]()
     h.check("RUN 3 1" in h.sent(), "accepting sends RUN with the challenge and the path already chosen: %r" % h.sent())
     h.recv("OK|RUN")
-    h.check(runs["__shown"] is False, "the page closes once the run has begun")
+    h.check(runs["__shown"] is False, "the screen closes once the run has begun")
 
-    # The run is live: name and hearts under the status line.
+    # The run is live: name and lives in the top-right of the panel.
     h.recv(run_state(1, 3, run=3, lives=3, lives_max=3))
     h.check(CW.runText["__shown"] is True and "Hardcore" in str(CW.runText["__text"]) and "3 of 3" in str(CW.runText["__text"]),
             "the header names the run and counts lives: %r" % str(CW.runText["__text"]))
-    h.check(all(CW.lifeIcons[i]["__shown"] for i in range(1, 4)) and not CW.lifeIcons[4]["__shown"], "three hearts, no more")
+    h.check(all(CW.lifeIcons[i]["__shown"] for i in range(1, 4)) and not CW.lifeIcons[4]["__shown"], "three life pips, no more")
     h.check(str(CW.rebirthBtn["__text"]) == "Change path", "on a run the button is the path change again")
 
     # A death: the popup says what was lost, a heart dims, state is asked for.
@@ -1482,14 +1533,16 @@ def test_challenge_runs(h):
     h.recv("RD|2|3|You fall to level 2.")
     h.check(g.LAST_POPUP == "CW_RUN_DEATH" and "STATE" in h.sent(), "a death pops up and refreshes state")
     h.recv(run_state(1, 2, run=3, lives=2, lives_max=3))
-    h.check(CW.lifeIcons[3]["__alpha"] == 0.3 and CW.lifeIcons[2]["__alpha"] == 1, "the lost life is the dimmed heart")
+    h.check(CW.lifeIcons[3]["__alpha"] == 0.3 and CW.lifeIcons[3]["gem"]["__shown"] is False
+            and CW.lifeIcons[2]["__alpha"] == 1 and CW.lifeIcons[2]["gem"]["__shown"] is True,
+            "the lost life is an empty, dimmed socket; the others keep their gems")
 
-    # The end: shards paid, the rule lifts, the hearts go.
+    # The end: shards paid, the rule lifts, the lives go.
     h.clear_sent()
     h.recv("RE|0|17|19|0|Hardcore")
     h.check(g.LAST_POPUP == "CW_RUN_END" and "STATE" in h.sent() and "OWN" in h.sent(), "the end pops up and refreshes everything")
     h.recv(run_state(1, 17, shards=19))
-    h.check(CW.runText["__shown"] is False and not CW.lifeIcons[1]["__shown"], "no run, no hearts")
+    h.check(CW.runText["__shown"] is False and not CW.lifeIcons[1]["__shown"], "no run, no lives shown")
 
     # At the cap the picker's challenge button leads here with the heirlooms.
     h.recv(run_state(1, 80, rebirths=1, ready=1, price=200, heirlooms=2, shards=40, run_ready=1))
@@ -1500,7 +1553,11 @@ def test_challenge_runs(h):
     CW.OpenRebirth()
     CW.ToggleHeirloom(686)
     h.click(CW.rebirthFly["challenge"])
-    h.check(runs["__shown"] is True and CW.rebirthFly["__shown"] is False, "the picker hands over to the challenge page")
+    h.check(runs["__shown"] is True and CW.rebirthFly["__shown"] is False, "the picker hands over to the challenge screen")
+    h.check(runs["back"] is None and runs["close"]["__shown"] is True,
+            "no Back button anywhere, only the X in the corner")
+    h.check("Rebirth" in str(runs["req"]["__text"]) and "200 gold" in str(runs["req"]["__text"]),
+            "To start says this run is a Rebirth and what it costs")
     h.check(runs["life"]["__enabled"] is True, "forty shards buy the extra life")
     h.click(runs["rows"][1])
     h.clear_sent()
@@ -1511,9 +1568,8 @@ def test_challenge_runs(h):
     h.clear_sent()
     popups["CW_RUN_CONFIRM"]["OnAccept"]()
     h.check("RUN 1 0 686" in h.sent(), "and Classless is the other button: %r" % h.sent())
-    h.click(runs["back"])
-    h.check(runs["__shown"] is False and CW.rebirthFly["__shown"] is True, "Back returns to the picker at the cap")
-    CW.rebirthFly["__shown"] = False
+    h.click(runs["close"])
+    h.check(runs["__shown"] is False, "the X closes the screen")
 
 
 def test_reveal_layout(h):

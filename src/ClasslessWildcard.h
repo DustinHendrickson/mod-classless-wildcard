@@ -183,6 +183,7 @@ namespace ClasslessWildcard
         uint32 rewardGold;      // paid once, on finishing
         uint32 titleId;         // CharTitles.dbc, on finishing (0 = none)
         char const* rewardRecipe;   // a forged line flagged `reward`, granted as an heirloom ("" = none)
+        char const* detail;     // how the rule plays, in full, for the challenge page (no '|')
     };
     // Nemesis: a creature kind that has killed this Hero, and how much it grew.
     struct NemesisMark
