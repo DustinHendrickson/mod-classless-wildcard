@@ -1336,6 +1336,186 @@ def test_locks(h):
     frame["__shown"] = False
 
 
+# A current-server state packet with the Rebirth fields (20-23): rank, ready
+# at the cap, gold price, heirlooms allowed.
+def rebirth_state(mode, level, rebirths, ready, price, heirlooms):
+    return state(mode, level=level) + "|0|0|0|%d|%d|%d|%d" % (rebirths, ready, price, heirlooms)
+
+
+def test_rebirth(h):
+    print("--- Rebirth: the path change below the cap, the new life at it")
+    CW, g = h.CW, h.g
+    frame = g.ClasslessWildcardFrame
+    popups = g.StaticPopupDialogs
+    fly = CW.rebirthFly
+
+    # Below the cap the button is the old path change, and it says so.
+    h.recv(rebirth_state(1, 20, 0, 0, 100, 1))
+    s = CW.state
+    h.check(s.rebirths == 0 and s.rebirthReady == 0 and s.rebirthPrice == 100 and s.heirloomMax == 1,
+            "rebirth fields read from 20-23 (%s %s %s %s)" % (s.rebirths, s.rebirthReady, s.rebirthPrice, s.heirloomMax))
+    h.check(CW.rebirthBtn["__shown"] is True, "the button shows while Rebirth is enabled")
+    h.check(CW.GlowBase() == 0, "no glow on a crest that was never reborn")
+    h.clear_sent()
+    h.click(CW.rebirthBtn)
+    h.check(g.LAST_POPUP == "CW_CLASSLESS_PATH", "below the cap the button asks about a path change: %r" % g.LAST_POPUP)
+    h.check(fly["__shown"] is False, "and the picker stays closed")
+    popups["CW_CLASSLESS_PATH"]["OnAlt"]()
+    h.check("PATH 1" in h.sent(), "the path change sends PATH, not REBIRTH: %r" % h.sent())
+
+    # At the cap with two Rebirths behind them: the rank shows, the crest
+    # glows, and the button opens the picker.
+    h.recv(rebirth_state(1, 80, 2, 1, 300, 3))
+    s = CW.state
+    h.check(s.rebirthPrice == 300 and s.heirloomMax == 3, "rank 2 reads a tripled price and three heirlooms")
+    h.check("Rebirth 2" in str(CW.statusText["__text"]), "the header carries the rank: %r" % str(CW.statusText["__text"]))
+    h.check(CW.GlowBase() > 0, "a reborn crest glows on its own")
+    # what is owned: rolled, picked, came free, with a talent, and an heirloom
+    h.recv("OA|133:0:0:1;772:0:0:0;2457:0:0:3;11366:0:0:2;686:0:0:4;")
+    h.recv("OAE|")
+    cands = [e["id"] for e in list(CW.RebirthCandidates().values())]
+    h.check(sorted(cands) == [133, 686, 772],
+            "only what was picked, rolled or already an heirloom can be carried: %r" % cands)
+    h.clear_sent()
+    h.click(CW.rebirthBtn)
+    h.check(fly["__shown"] is True and "OWN" in h.sent(), "at the cap the button opens the picker and refreshes the build")
+
+    # Picking: up to the rank's allowance, and no further.
+    h.recv(rebirth_state(1, 80, 1, 1, 200, 2))
+    CW.ToggleHeirloom(133)
+    CW.ToggleHeirloom(772)
+    CW.ToggleHeirloom(686)
+    picked = sorted(int(k) for k in fly["picked"].keys())
+    h.check(picked == [133, 772], "a third heirloom is refused at two allowed: %r" % picked)
+    CW.ToggleHeirloom(772)
+    CW.ToggleHeirloom(686)
+    picked = sorted(int(k) for k in fly["picked"].keys())
+    h.check(picked == [133, 686], "unpicking frees the slot: %r" % picked)
+    h.check("2" in str(fly["count"]["__text"]) and "200" in str(fly["count"]["__text"]),
+            "the picker counts and prices: %r" % str(fly["count"]["__text"]))
+
+    # The confirm names the path and the heirlooms, and OK sends exactly them.
+    h.clear_sent()
+    CW.AskRebirth(1)
+    h.check(g.LAST_POPUP == "CW_CLASSLESS_REBIRTH", "the last word is a popup: %r" % g.LAST_POPUP)
+    h.check(h.sent() == [], "nothing is sent before the popup is accepted")
+    popups["CW_CLASSLESS_REBIRTH"]["OnAccept"]()
+    h.check("REBIRTH 1 133 686" in h.sent(), "accepting sends the path and the heirlooms: %r" % h.sent())
+    h.recv("OK|REBIRTH")
+    h.check(fly["__shown"] is False, "the picker closes once the new life has begun")
+
+    # My Build shows the heirloom for what it is, with nothing to lock or reroll.
+    h.recv(rebirth_state(1, 1, 2, 0, 300, 3))
+    h.recv("OA|133:0:0:1;686:0:0:4;")
+    h.recv("OAE|")
+    h.recv("OT|")
+    h.recv("OTE|")
+    CW.SetTab("ABIL")
+    row = CW.buildRows[2]
+    h.check("heirloom" in str(row["name"]["__text"]), "the build names the heirloom: %r" % str(row["name"]["__text"]))
+    h.check(row["lockBtn"]["__shown"] is False and row["actBtn"]["__shown"] is False,
+            "and offers no padlock or reroll on it")
+    other = CW.buildRows[1]
+    h.check(other["lockBtn"]["__shown"] is True, "while a rolled ability beside it still has its padlock")
+
+
+# The Rebirth fields (20-23) and the challenge-run fields (24-29): run id,
+# lives, lives at the start, shards, extra life held, run can start.
+def run_state(mode, level, rebirths=0, ready=0, price=100, heirlooms=1,
+              run=0, lives=0, lives_max=0, shards=0, extra=0, run_ready=0):
+    return rebirth_state(mode, level, rebirths, ready, price, heirlooms) + "|%d|%d|%d|%d|%d|%d" % (
+        run, lives, lives_max, shards, extra, run_ready)
+
+
+def test_challenge_runs(h):
+    print("--- challenge runs: the list, a run started, lives, the end")
+    CW, g = h.CW, h.g
+    popups = g.StaticPopupDialogs
+    runs = CW.runFly
+
+    # A fresh Wildcard Hero under the deadline: the button is the Challenge.
+    h.recv(run_state(1, 3, run_ready=1))
+    s = CW.state
+    h.check(s.runReady == 1 and s.run == 0 and s.shards == 0, "run fields read from 24-29")
+    h.check(str(CW.rebirthBtn["__text"]) == "Challenge", "a fresh Hero's button offers a Challenge: %r" % str(CW.rebirthBtn["__text"]))
+    h.check(all(not CW.lifeIcons[i]["__shown"] for i in range(1, 7)), "no hearts without a run")
+    h.clear_sent()
+    h.click(CW.rebirthBtn)
+    h.check(runs["__shown"] is True and "CHL" in h.sent(), "the button opens the challenge page and asks for the list")
+    h.check(runs["start"]["__enabled"] is False, "nothing can start before a challenge is picked")
+
+    # The list lands: pipes between fields, one message per challenge.
+    h.recv("CH|1|Nemesis|5|500|Whatever kills you grows.|0|0")
+    h.recv("CH|3|Hardcore|3|600|A death costs a life and a level.|42|0")
+    h.recv("CH|13|Famine|1|250|No vendors.|80|1")
+    h.recv("CHE|")
+    h.check(len(list(CW.challenges.values())) == 3, "three challenges listed")
+    h.check("Hardcore" in str(runs["rows"][2]["name"]["__text"]) and "3 lives" in str(runs["rows"][2]["hearts"]["__text"])
+            and str(runs["rows"][2]["hearts"]["__text"]).count("|T") == 3,
+            "a row names the challenge and draws its lives as hearts: %r" % str(runs["rows"][2]["hearts"]["__text"]))
+    h.check("best 42" in str(runs["rows"][2]["info"]["__text"]), "and the best level reached on it: %r" % str(runs["rows"][2]["info"]["__text"]))
+    h.check("done" in str(runs["rows"][3]["info"]["__text"]), "a finished one says so: %r" % str(runs["rows"][3]["info"]["__text"]))
+    h.check("Extra life" in str(runs["life"]["__text"]) and runs["life"]["__enabled"] is False,
+            "the extra life is for sale but out of reach at 0 shards: %r" % str(runs["life"]["__text"]))
+
+    # Pick one, read it, start it: the confirm, then RUN with no heirlooms.
+    h.click(runs["rows"][2])
+    h.check(runs["start"]["__enabled"] is True and "level" in str(runs["rule"]["__text"]),
+            "picking a row enables Start and shows its rule: %r" % str(runs["rule"]["__text"]))
+    h.clear_sent()
+    CW.AskRun()
+    h.check(g.LAST_POPUP == "CW_RUN_CONFIRM_FRESH" and h.sent() == [], "a fresh Hero gets the plain confirm, nothing sent yet: %r" % g.LAST_POPUP)
+    popups["CW_RUN_CONFIRM_FRESH"]["OnAccept"]()
+    h.check("RUN 3 1" in h.sent(), "accepting sends RUN with the challenge and the path already chosen: %r" % h.sent())
+    h.recv("OK|RUN")
+    h.check(runs["__shown"] is False, "the page closes once the run has begun")
+
+    # The run is live: name and hearts under the status line.
+    h.recv(run_state(1, 3, run=3, lives=3, lives_max=3))
+    h.check(CW.runText["__shown"] is True and "Hardcore" in str(CW.runText["__text"]) and "3 of 3" in str(CW.runText["__text"]),
+            "the header names the run and counts lives: %r" % str(CW.runText["__text"]))
+    h.check(all(CW.lifeIcons[i]["__shown"] for i in range(1, 4)) and not CW.lifeIcons[4]["__shown"], "three hearts, no more")
+    h.check(str(CW.rebirthBtn["__text"]) == "Change path", "on a run the button is the path change again")
+
+    # A death: the popup says what was lost, a heart dims, state is asked for.
+    h.clear_sent()
+    h.recv("RD|2|3|You fall to level 2.")
+    h.check(g.LAST_POPUP == "CW_RUN_DEATH" and "STATE" in h.sent(), "a death pops up and refreshes state")
+    h.recv(run_state(1, 2, run=3, lives=2, lives_max=3))
+    h.check(CW.lifeIcons[3]["__alpha"] == 0.3 and CW.lifeIcons[2]["__alpha"] == 1, "the lost life is the dimmed heart")
+
+    # The end: shards paid, the rule lifts, the hearts go.
+    h.clear_sent()
+    h.recv("RE|0|17|19|0|Hardcore")
+    h.check(g.LAST_POPUP == "CW_RUN_END" and "STATE" in h.sent() and "OWN" in h.sent(), "the end pops up and refreshes everything")
+    h.recv(run_state(1, 17, shards=19))
+    h.check(CW.runText["__shown"] is False and not CW.lifeIcons[1]["__shown"], "no run, no hearts")
+
+    # At the cap the picker's challenge button leads here with the heirlooms.
+    h.recv(run_state(1, 80, rebirths=1, ready=1, price=200, heirlooms=2, shards=40, run_ready=1))
+    h.recv("OA|133:0:0:1;686:0:0:4;")
+    h.recv("OAE|")
+    h.recv("OT|")
+    h.recv("OTE|")
+    CW.OpenRebirth()
+    CW.ToggleHeirloom(686)
+    h.click(CW.rebirthFly["challenge"])
+    h.check(runs["__shown"] is True and CW.rebirthFly["__shown"] is False, "the picker hands over to the challenge page")
+    h.check(runs["life"]["__enabled"] is True, "forty shards buy the extra life")
+    h.click(runs["rows"][1])
+    h.clear_sent()
+    CW.AskRun()
+    h.check(g.LAST_POPUP == "CW_RUN_CONFIRM", "at the cap the confirm asks for the path: %r" % g.LAST_POPUP)
+    popups["CW_RUN_CONFIRM"]["OnAlt"]()
+    h.check("RUN 1 1 686" in h.sent(), "Wildcard chosen: the run carries the path and the ticked heirlooms: %r" % h.sent())
+    h.clear_sent()
+    popups["CW_RUN_CONFIRM"]["OnAccept"]()
+    h.check("RUN 1 0 686" in h.sent(), "and Classless is the other button: %r" % h.sent())
+    h.click(runs["back"])
+    h.check(runs["__shown"] is False and CW.rebirthFly["__shown"] is True, "Back returns to the picker at the cap")
+    CW.rebirthFly["__shown"] = False
+
+
 def test_reveal_layout(h):
     print("--- reveal: the plate wraps the whole block, buttons hang off the plate")
     CW = h.CW
@@ -2406,6 +2586,8 @@ def main():
     test_hand_info(h)
     test_locks(h)
     test_lock_window(h)
+    test_rebirth(h)
+    test_challenge_runs(h)
     test_talent_reroll(h)
     test_reveal_layout(h)
     test_resource_bars(h)

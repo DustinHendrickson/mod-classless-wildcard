@@ -131,7 +131,9 @@ There are two ways to earn them:
 | Changing your mind    | `.classless respec`                                                  | `.wildcard reroll`, Reroll Scrolls, Rebirth                       |
 
 Both paths share the same resources, stats, proficiencies, NPC and addon. Players choose a path
-per character, or the realm forces one through config. **Rebirth** switches paths later for gold.
+per character, or the realm forces one through config. **Change path** switches paths later for
+gold, and **Rebirth** at the level cap starts a new life at level 1 with a permanent rank that
+stacks.
 
 The stock client still renders the class system it was built for, so the **client patch is
 required**. It renames every class to Hero, removes the class picker, restores the ranged slot,
@@ -190,8 +192,49 @@ projected as you spend. Reallocating is free.</em>
 - **Rerolls.** Every level from 10 grants 3 reroll charges, spent on abilities and talents alike.
   Anything you own can be rerolled later from **My Build**. Reroll Scrolls top the pool up, sold
   by the NPC and the addon at a price that scales with level.
-- **Rebirth.** A full reset that also switches paths, available after the mode lock and gated by
-  config. A Wildcard rebirth replays the whole roll schedule.
+- **Change path.** A full reset that switches paths at the current level, available after the
+  mode lock and gated by config. A Wildcard change replays the whole roll schedule.
+- **Rebirth.** New Game Plus, at the level cap only. The Hero starts over at level 1: the build
+  is wiped except the **heirloom** abilities they choose to carry (usable from level 1), the
+  quest log is forgotten so every zone is new again, worn gear goes into the bags, and gold,
+  bags, bank, reputation, riding and flight paths stay. Each Rebirth raises a permanent rank
+  that stacks: +100% kill and dungeon XP for the first and +50% for every one after (capped at
+  +300%), +3% to every stat per rank (capped at +15%), legacy essence on the Classless path,
+  one more heirloom next time, a title per rank ("the Reborn", "the Twice Reborn", "the Thrice
+  Reborn", "the Many-Lived", "the Eternal"), and a glow on the panel's crest. The
+  price climbs with the rank, since quests come back with their one-time rewards. The picker
+  lives on the panel's Rebirth button; the NPC only offers the path change.
+- **Challenge runs.** A life under one rule, with lives, on either path. A run starts from the
+  Rebirth picker at the cap (it is a Rebirth onto the path you pick, heirlooms and all) or on a
+  fresh Hero under the mode deadline, on the path already chosen. The path itself plays exactly
+  as it does off a run: Wildcard rolls and rerolls, Classless buys with essence. A death costs a
+  life, except in battlegrounds, arenas and duels. Running out of lives ends the run: the rule
+  lifts, the character keeps everything, and the run pays **shards**, one per level reached and
+  two past 60, a third more for a run with no life lost. Reaching the cap with a life in hand
+  pays the challenge's gold and its own title ("the Nemesis", "Bane of Giants", "the
+  Legionbreaker", "the Hunted", "the Swift", "the Unshattered", "the Scarred", "the
+  Bloodthirsty", "the Berserker", "the Ironclad", "the Big Game Hunter", "the Deathless"), plus
+  "the Unbroken" for a run with no life lost. The titles are the module's own: `TITLES` in the generator writes them to
+  `chartitles_dbc` for the server and the client patch appends them to CharTitles.dbc, on bits
+  143 and up, past everything the stock table ships.
+  Shards buy an extra life for the next run on the challenge page. Twelve challenges, each one
+  rule that changes the fight, with lives set by how often the rule itself kills: *Nemesis* (5,
+  whatever kills you gains five levels and grows, kill it for the XP back), *Elite World* (5,
+  triple health and double damage on everything), *Legion* (4, every enemy you engage calls
+  two more of its kind), *Pursued* (3, a hunter two levels above you every ten minutes until one of
+  you dies), *Hourglass* (3, a level every
+  30 minutes played or lose a life, 20 below level 20 and 45 past 60), *Glass* (3, half health,
+  a third more damage), *Spiteful* (3, enemies reflect a fifth of your damage), *Bloodpact* (3,
+  healing halved, every hit heals you for 15% of its damage), *Berserker* (3, double damage and
+  no slows below 35% health, 30% less above 75%), *Ironman* (3, white gear only), *Big Game
+  Hunter* (3, normal enemies give no XP, elites and bosses full, quests double) and *Hardcore*
+  (1, a death ends the run). The list is code (`ClasslessMgr.cpp`, `CHALLENGES`), including the
+  titles and the 30-shard price of a life. Seven of them also pay a **reward ability** that
+  exists nowhere else, granted as an heirloom so it survives every Rebirth after: Nemesis pays
+  *Grudge Strike*, Elite World *Giantsbane*, Legion *Flashfire*, Pursued *Turnabout*, Hourglass
+  *Stolen Hour*, Glass *Shatterpoint* and Hardcore *Unbroken Will*. They are forged lines
+  flagged `reward` in the generator: loaded like any other so the run can hand them over, and
+  never rolled, bought or browsed.
 - **Archetypes.** Thirteen build templates a Classless Hero can follow from 1 to 80. Six mix
   two classes (*Blade Dancer*, *Battle Mage*, *Ranger of the Light*, *Shadow Mender*, *Stealthy
   Healer*, *Storm Warrior*) and seven are built around one element's variant strikes and the
@@ -499,7 +542,11 @@ are the ones a realm usually touches; anything not listed is a detail.
 | `DefaultMode` | `0` | `0` classless, `1` wildcard |
 | `AllowModeChoice` | `1` | Let players pick. `0` forces `DefaultMode` realm-wide |
 | `ModeChoiceDeadline` | `5` | Level after which the path locks |
-| `Rebirth.Enable` / `Rebirth.CostGold` | `1` / `100` | Switching path after the lock, and its price |
+| `Rebirth.Enable` / `Rebirth.CostGold` | `1` / `100` | Path change and Rebirth; the gold price of a change, and the base price of a Rebirth (times rank + 1) |
+| `Rebirth.KillXpPctFirst` / `PerRank` / `Max` | `100` / `50` / `300` | Extra kill and dungeon XP per Rebirth rank, in percent |
+| `Rebirth.OtherXpPctPerRank` / `Max` | `25` / `100` | Extra quest, exploration and battleground XP per rank |
+| `Rebirth.StatPctPerRank` / `Max` | `3` / `15` | Percent on every primary stat per rank |
+| `Rebirth.LegacyAbilityEssence` / `LegacyTalentEssence` | `3` / `2` | Essence a reborn Classless Hero starts with, per rank |
 | **what is in the pool** | | |
 | `IncludeDeathKnight` | `1` | Death Knight abilities and talents, and runes for every Hero |
 | `Forged.Enable` | `1` | The Hero line: 33 abilities and a talent tree of their own |

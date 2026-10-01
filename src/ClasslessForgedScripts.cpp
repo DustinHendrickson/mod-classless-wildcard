@@ -223,6 +223,18 @@ public:
         SpellInfo const* info = spell->GetSpellInfo();
         ObjectGuid::LowType const guid = player->GetGUID().GetCounter();
 
+        // Only what the player PRESSED. Spell::cast reaches this hook for a
+        // triggered cast as well, and half the forged lines fire a hidden
+        // companion through SPELL_EFFECT_TRIGGER_SPELL or CastSpell(..., true):
+        // Makeshift Strike's mana return, Hurl's rage, Antipode Blast's frost
+        // half, Crossdraw's arcane half. Counted, those made one button two
+        // Repertoire stacks and two of Weave's N -- and Crossdraw's own
+        // companion is a damaging cast, so one Crossdraw satisfied the next
+        // one's condition forever, which is exactly what IsDamagingSpellCast
+        // refusing weapon strikes was meant to rule out.
+        if (spell->IsTriggered())
+            return;
+
         if (IsDamagingSpellCast(info))
             _lastDamagingCastMs[guid] = uint32(GameTime::GetGameTimeMS().count());
 
@@ -760,17 +772,25 @@ struct npc_cw_reclaimed_sentry : public NullCreatureAI
         if (int32 const faster = HeroTalentAmount(owner, ICON_OVERCLOCKED))
             _timer = std::max<uint32>(200, SENTRY_SHOT_MS - CalculatePct(SENTRY_SHOT_MS, faster));
 
+        // Wider Net promises a bigger radius on "everything you place", and
+        // the turret's reach is this constant rather than a radius column, so
+        // the spell-mod system never saw it. Asked of the owner's modifiers
+        // against the line's own id: every rank shares the line's class bit,
+        // so the first rank answers for all of them.
+        float range = SENTRY_RANGE;
+        if (uint32 const line = sClasslessMgr->ForgedLine("reclaimed_sentry"))
+            owner->ApplySpellMod(line, SPELLMOD_RADIUS, range);
 
         std::list<Unit*> nearby;
-        Acore::AnyUnfriendlyUnitInObjectRangeCheck check(me, owner, SENTRY_RANGE);
+        Acore::AnyUnfriendlyUnitInObjectRangeCheck check(me, owner, range);
         Acore::UnitListSearcher<Acore::AnyUnfriendlyUnitInObjectRangeCheck> searcher(me, nearby, check);
-        Cell::VisitObjects(me, searcher, SENTRY_RANGE);
+        Cell::VisitObjects(me, searcher, range);
 
         // Spread the armour strip before doubling up: the nearest enemy not
         // already carrying it, and only when they all are does it fall back to
         // the nearest of them.
         Unit* pick = nullptr;
-        float best = SENTRY_RANGE + 1.0f;
+        float best = range + 1.0f;
         bool fresh = false;
         for (Unit* target : nearby)
         {
@@ -1112,6 +1132,7 @@ public:
     cw_forged_talents() : UnitScript("cw_forged_talents", true, {
         UNITHOOK_MODIFY_MELEE_DAMAGE,
         UNITHOOK_MODIFY_SPELL_DAMAGE_TAKEN,
+        UNITHOOK_MODIFY_PERIODIC_DAMAGE_AURAS_TICK,
         UNITHOOK_MODIFY_HEAL_RECEIVED,
         UNITHOOK_ON_UNIT_DEATH
     }) { }
@@ -1120,6 +1141,27 @@ public:
     {
         int32 amount = int32(damage);
         ApplyHeroTalentBonus(attacker, SPELL_SCHOOL_MASK_NORMAL, amount, false);
+        damage = uint32(std::max<int32>(0, amount));
+    }
+
+    // A tick is not a cast. CalculateSpellDamageTaken, where the hook above
+    // runs, is the direct-damage path only: Bleed Over, Antipode Blast's
+    // burn, Sinkhole and the beetle's poison all tick through
+    // HandlePeriodicDamageAurasTick instead, and Jack of All Trades reached
+    // none of them. Two Schools is left out here on purpose -- it asks what
+    // you CAST last, and a bleed ticking between swings is not that.
+    //
+    // A periodic HEAL tick comes through this same hook and then through
+    // ModifyHealReceived a line later, so a heal is skipped here or Cairn and
+    // Brace would be paid twice.
+    void ModifyPeriodicDamageAurasTick(Unit* /*target*/, Unit* attacker, uint32& damage,
+                                       SpellInfo const* spellInfo) override
+    {
+        if (!spellInfo || spellInfo->HasAura(SPELL_AURA_PERIODIC_HEAL)
+            || spellInfo->HasAura(SPELL_AURA_OBS_MOD_HEALTH))
+            return;
+        int32 amount = int32(damage);
+        ApplyHeroTalentBonus(attacker, 0, amount, false);
         damage = uint32(std::max<int32>(0, amount));
     }
 

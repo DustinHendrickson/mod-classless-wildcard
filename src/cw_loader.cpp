@@ -20,6 +20,7 @@ void AddClasslessCommandScripts();
 void AddClasslessAddonScripts();
 void AddClasslessLootScripts();
 void AddClasslessForgedScripts();
+void AddClasslessChallengeScripts();
 
 // Loader entry point — name must match the module folder
 // ("mod-classless-wildcard" -> Addmod_classless_wildcardScripts).
@@ -31,4 +32,5 @@ void Addmod_classless_wildcardScripts()
     AddClasslessAddonScripts();
     AddClasslessLootScripts();
     AddClasslessForgedScripts();
+    AddClasslessChallengeScripts();
 }

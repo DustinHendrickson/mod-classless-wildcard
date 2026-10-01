@@ -68,7 +68,7 @@ def check(label, ok, detail=""):
 
 # how many rules live in check_against_client, so a bare run can say what it
 # skipped. The check below keeps this honest if a rule is added or removed.
-CLIENT_RULES = 9
+CLIENT_RULES = 10
 
 
 def check_against_client(client_dir, doc):
@@ -111,6 +111,16 @@ def check_against_client(client_dir, doc):
         check("SkillLine.dbc: the Hero row lands with its category and icon", ok,
               "category %d must be 7 or the client will not draw it as a class tab"
               % line["category"])
+
+        # the titles: every manifest row on the client's table, with its bit
+        count, rec, body = rows(forged.CHARTITLES, forged.CHARTITLES_FIELDS)
+        on_client = {}
+        for i in range(count):
+            on_client[struct.unpack_from("<I", body, i * rec)[0]] = struct.unpack_from("<I", body, i * rec + forged.CT_BIT * 4)[0]
+        missing = [t["id"] for t in doc.get("titles", [])
+                   if on_client.get(t["id"]) != t["bit"]]
+        check("CharTitles.dbc: every title lands with its bit", not missing,
+              "%d title(s); missing or wrong bit: %s" % (len(doc.get("titles", [])), missing[:5]))
 
         # every spell row
         count, rec, body = rows(forged.SPELL, 234)
@@ -1467,6 +1477,97 @@ def main():
                                % (sp["name"], m.group(1), m.group(2), m.group(3)))
     check("every tooltip variable points at something real", not bad_var,
           "%d description(s) checked; %s" % (len(spells), bad_var[:4]))
+
+    # ---- $/N; is INTEGER division in the client ----------------------------
+    # Improvised Arsenal held 500 ms and printed "drops by 0 sec" for a whole
+    # release: $/1000;s1 truncates, and ranks 2 and 3 both read "1". A divisor
+    # is only honest when every rank's value is a multiple of it; a fraction
+    # wants Blizzard's ${$s1/1000}.1 form instead, which the client evaluates.
+    truncated = []
+    for sp in spells:
+        text = sp["description"] or ""
+        for m in re.finditer(r"\$/(\d+);(\d*)([soa])(\d)", text):
+            divisor, other, kind, slot = int(m.group(1)), m.group(2), m.group(3), int(m.group(4)) - 1
+            src = by_id.get(int(other)) if other else sp
+            if src is None or kind != "s" or slot < 0 or slot > 2:
+                continue
+            value = src["values"][F["EffectBasePoints"] + slot] + 1
+            if value % divisor:
+                truncated.append("%s: %s on %d shows %d" % (sp["name"], m.group(0), value, value // divisor))
+    check("no tooltip divides a value the client would truncate", not truncated,
+          "%s" % truncated[:4])
+
+    # ---- challenge-run rewards ----------------------------------------------
+    # A reward line is paid for FINISHING a challenge run and must reach the
+    # player no other way. Three things have to agree: the recipe's flag, the
+    # SQL row the server reads it from, and the challenge table in C++ that
+    # names it. A reward nobody pays, or a payout naming a line that is not a
+    # reward (or does not exist), is a run that promises something it cannot
+    # hand over.
+    reward_lines = {ln["key"] for ln in doc["lines"] if ln.get("reward")}
+    sql_rewards = set()
+    for m in re.finditer(r"\(\d+, '([a-z_0-9]+)', \d+, \d+, 1, 1\)", io.open(SQL, encoding="utf-8").read()):
+        sql_rewards.add(m.group(1))
+    # its own name: `cpp` further down is the forged scripts file, and taking
+    # it over here made every rule that reads that file fail at once
+    mgr_cpp = io.open(os.path.join(os.path.dirname(os.path.abspath(__file__)), os.pardir, "src", "ClasslessMgr.cpp"),
+                      encoding="utf-8").read()
+    table = mgr_cpp[mgr_cpp.index("CHALLENGES = {"):mgr_cpp.index("};", mgr_cpp.index("CHALLENGES = {"))]
+    paid = set()
+    for m in re.finditer(r'\{\s*\d+,\s*"[a-z_]+",\s*"[^"]*",\s*\d+,\s*"[^"]*",\s*\d+,\s*\d+,\s*"([a-z_0-9]*)"', table):
+        if m.group(1):
+            paid.add(m.group(1))
+    reward_bad = []
+    if reward_lines != sql_rewards:
+        reward_bad.append("flag vs SQL: %s" % sorted(reward_lines ^ sql_rewards))
+    if paid - reward_lines:
+        reward_bad.append("paid but not a reward line: %s" % sorted(paid - reward_lines))
+    if reward_lines - paid:
+        reward_bad.append("a reward no challenge pays: %s" % sorted(reward_lines - paid))
+    check("every challenge-run reward is a reward line, and every reward line is paid",
+          not reward_bad and reward_lines,
+          "%d reward line(s), %d paid; %s" % (len(reward_lines), len(paid), reward_bad))
+
+    # ---- titles ---------------------------------------------------------------
+    # A title is a CharTitles.dbc row on the client and a chartitles_dbc row on
+    # the server, and the C++ grants it by id. Every id the C++ names (the
+    # Rebirth ladder, the Unbroken constant, the challenge table's column) has
+    # to be in the manifest; every manifest title has to have its SQL row; ids
+    # and bits have to be unique, past everything the stock table ships, and
+    # inside the 192 bits a character can hold.
+    titles = doc.get("titles", [])
+    title_ids = {t["id"] for t in titles}
+    title_bits = [t["bit"] for t in titles]
+    sqltext = io.open(SQL, encoding="utf-8").read()
+    sql_title_ids = {int(m.group(1)) for m in re.finditer(r"^\((\d+), 0, '", sqltext, re.M)}
+    named = set(int(x) for x in re.findall(r"^\s+(\d+),\s*// ", mgr_cpp[mgr_cpp.index("GrantRebirthTitles"):], re.M)[:5])
+    named.add(int(re.search(r"UNBROKEN_TITLE = (\d+)", mgr_cpp).group(1)))
+    for m in re.finditer(r'\{\s*\d+,\s*"[a-z_]+",\s*"[^"]*",\s*\d+,\s*"[^"]*",\s*\d+,\s*(\d+),', table):
+        named.add(int(m.group(1)))
+    title_bad = []
+    if len(title_ids) != len(titles) or len(set(title_bits)) != len(title_bits):
+        title_bad.append("duplicate id or bit")
+    stock_max_bit = 0
+    ct_path = os.path.join(_dbc_dir, "CharTitles.dbc") if _dbc_dir else None
+    if ct_path and os.path.exists(ct_path):
+        raw = io.open(ct_path, "rb").read()
+        # the header by hand: `dbc` is declared global further down main()
+        _magic, count, _fields, rec, _strsize = struct.unpack("<4sIIII", raw[:20])
+        for i in range(count):
+            stock_max_bit = max(stock_max_bit, struct.unpack_from("<I", raw, 20 + i * rec + 36 * 4)[0])
+    else:
+        title_bad.append("no CharTitles.dbc in the extract to read the stock bits from")
+    if any(b <= stock_max_bit or b >= 192 for b in title_bits):
+        title_bad.append("a bit outside %d..191" % (stock_max_bit + 1))
+    if named - title_ids:
+        title_bad.append("C++ names a title the manifest lacks: %s" % sorted(named - title_ids))
+    if title_ids - named:
+        title_bad.append("a title nothing grants: %s" % sorted(title_ids - named))
+    if title_ids != sql_title_ids:
+        title_bad.append("manifest vs chartitles_dbc rows: %s" % sorted(title_ids ^ sql_title_ids))
+    check("every title the C++ grants is a manifest row with a server row and a free bit",
+          titles and not title_bad,
+          "%d title(s), %d named in C++, stock bits end at %d; %s" % (len(titles), len(named), stock_max_bit, title_bad))
 
     # ---- the SQL ------------------------------------------------------------
     sql = io.open(SQL, encoding="utf-8").read()

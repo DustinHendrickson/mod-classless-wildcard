@@ -775,7 +775,7 @@ _OUR_FILES = frozenset(x.lower() for x in (
     CLASSICONS_INGAME, CLASSICONS_CREATE,
     elemental.SPELL, elemental.SPELLVISUAL, elemental.SPELLICON,
     SPELLCATEGORY,
-    forged.SKILLLINE,
+    forged.SKILLLINE, forged.CHARTITLES,
 ))
 # the elemental step paints one icon per (base icon, element); the names are
 # derived, so ownership of those is decided by prefix rather than by list

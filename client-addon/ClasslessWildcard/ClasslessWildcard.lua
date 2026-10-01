@@ -46,6 +46,14 @@ local CLASS_ORDER = { 1, 2, 3, 4, 5, 6, 7, 8, 9, 11, CLASS_HERO }
 local CW = {
     state = { mode = 255, ae = 0, te = 0, pity = 0, chance = 0, scrolls = 0,
               level = 1, deadline = 5, rebirth = 0, rebirthCost = 0,
+              -- Rebirth, the New Game Plus: the rank, whether this character
+              -- can be reborn now (at the cap), its gold price, and how many
+              -- heirlooms the rank lets them carry through. rebirthCost above
+              -- is the cheaper path change.
+              rebirths = 0, rebirthReady = 0, rebirthPrice = 0, heirloomMax = 1,
+              -- the challenge run: which (0 none), lives left and started
+              -- with, shards, an extra life held, and whether one can start
+              run = 0, lives = 0, livesMax = 0, shards = 0, extraLife = 0, runReady = 0,
               rerolls = 0, scrollCost = 0, scrollBuy = 0,
               -- 0 until the first state packet: the resource bars stay hidden
               -- until the server has told us this character actually has the
@@ -200,6 +208,15 @@ titleGlow:SetBlendMode("ADD")
 titleGlow:SetVertexColor(0.45, 0.75, 1)
 titleGlow:SetAlpha(0)
 
+-- A reborn Hero's crest glows on its own, brighter with each Rebirth; the
+-- hover still lifts it to full. Zero until the first state packet says
+-- otherwise, so a fresh character's crest is as plain as it always was.
+function CW.GlowBase()
+    local n = CW.state.rebirths or 0
+    if n <= 0 then return 0 end
+    return math.min(0.6, 0.15 + 0.1 * n)
+end
+
 function CW.RefreshPanelArt()
     -- Torn down FIRST, then rebuilt. SetTexture with the path a texture
     -- already holds can be a no-op, and a no-op does not reload a dropped
@@ -258,7 +275,7 @@ titleBtn:SetScript("OnEnter", function(self)
     GameTooltip:Show()
 end)
 titleBtn:SetScript("OnLeave", function()
-    titleGlow:SetAlpha(0)
+    titleGlow:SetAlpha(CW.GlowBase())
     titleIcon:SetVertexColor(1, 1, 1)
     GameTooltip:Hide()
 end)
@@ -287,9 +304,58 @@ closeBtn:SetPoint("TOPRIGHT", -8, -8)
 
 local statusText = frame:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
 statusText:SetPoint("TOP", 0, -40)
+CW.statusText = statusText   -- read by the flow test
 
 local subStatusText = frame:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
 subStatusText:SetPoint("TOP", 0, -56)
+
+-- The challenge run's lives, as hearts under the status line: one per life
+-- the run started with, the lost ones dimmed. Six is the most a run can
+-- have (five plus a bought extra life). Hidden when there is no run.
+CW.lifeIcons = {}
+for i = 1, 6 do
+    local t = frame:CreateTexture(nil, "OVERLAY")
+    t:SetWidth(14); t:SetHeight(14)
+    t:SetTexture("Interface\\Icons\\Spell_Holy_SealOfSacrifice")
+    t:SetTexCoord(0.08, 0.92, 0.08, 0.92)
+    t:Hide()
+    CW.lifeIcons[i] = t
+end
+-- Top-right corner, under the close button, where nothing else lives: the
+-- status lines are centred and the class strip starts at -70, so the run's
+-- name sits on the status line's level and the hearts on the sub-status
+-- line's, both right-aligned and clear of the strip.
+CW.runText = frame:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+CW.runText:SetPoint("TOPRIGHT", -48, -42)
+CW.runText:SetJustifyH("RIGHT")
+CW.runText:Hide()
+
+function CW.UpdateLives()
+    local s = CW.state
+    local icons = CW.lifeIcons
+    if (s.run or 0) == 0 or (s.livesMax or 0) == 0 then
+        for i = 1, #icons do icons[i]:Hide() end
+        CW.runText:Hide()
+        return
+    end
+    local name = CW.RunName and CW.RunName(s.run) or ("Challenge " .. s.run)
+    CW.runText:SetText("|cffff4444" .. name .. "|r   " .. s.lives .. " of " .. s.livesMax .. " lives")
+    CW.runText:Show()
+    local n = math.min(#icons, s.livesMax)
+    for i = 1, #icons do
+        local t = icons[i]
+        if i <= n then
+            t:ClearAllPoints()
+            t:SetPoint("TOPRIGHT", frame, "TOPRIGHT", -48 - (n - i) * 16, -58)
+            local alive = i <= (s.lives or 0)
+            t:SetDesaturated(not alive)
+            t:SetAlpha(alive and 1 or 0.3)
+            t:Show()
+        else
+            t:Hide()
+        end
+    end
+end
 
 -- Blizzard page-arrow styling
 local function StyleArrow(btn, prev)
@@ -737,14 +803,25 @@ respecBtn:SetPoint("BOTTOMRIGHT", -20, 26)
 respecBtn:SetText("Respec")
 respecBtn:SetScript("OnClick", function() Send("RESPEC") end)
 
--- Rebirth: full reset + switch path, for gold (server enforces the cost).
-StaticPopupDialogs["CW_CLASSLESS_REBIRTH"] = {
-    text = "Rebirth wipes your Hero's abilities and talents and lets you start a\nnew path for |cffffd100%d gold|r. Choose your new path:",
+-- Change path: the cheaper thing Rebirth used to be. Wipes the build at this
+-- level and starts the other path from here, for gold (the server enforces
+-- the cost). The Rebirth button opens this before the level cap.
+StaticPopupDialogs["CW_CLASSLESS_PATH"] = {
+    text = "Changing path wipes your Hero's abilities and talents and starts the\nnew path at your current level for |cffffd100%d gold|r. Choose your new path:",
     button1 = "Classless",
     button2 = "Cancel",
     button3 = "Wildcard",
-    OnAccept = function() Send("REBIRTH 0") end,   -- Classless
-    OnAlt    = function() Send("REBIRTH 1") end,   -- Wildcard
+    OnAccept = function() Send("PATH 0") end,   -- Classless
+    OnAlt    = function() Send("PATH 1") end,   -- Wildcard
+    timeout = 0, whileDead = 1, hideOnEscape = 1, preferredIndex = 3,
+}
+-- Rebirth: the new life at level 1. Confirmed last, once the heirlooms and
+-- the path are chosen in the picker below, which fills in what gets sent.
+StaticPopupDialogs["CW_CLASSLESS_REBIRTH"] = {
+    text = "%s",
+    button1 = "Be reborn",
+    button2 = "Cancel",
+    OnAccept = function() if CW.rebirthFly and CW.rebirthFly.Confirm then CW.rebirthFly.Confirm() end end,
     timeout = 0, whileDead = 1, hideOnEscape = 1, preferredIndex = 3,
 }
 local rebirthBtn = CreateFrame("Button", nil, frame, "UIPanelButtonTemplate")
@@ -753,9 +830,489 @@ rebirthBtn:SetPoint("BOTTOMRIGHT", -116, 26)
 rebirthBtn:SetText("Rebirth")
 rebirthBtn:Hide()
 rebirthBtn:SetScript("OnClick", function()
-    StaticPopup_Show("CW_CLASSLESS_REBIRTH", CW.state.rebirthCost or 0)
+    local s = CW.state
+    if s.rebirthReady == 1 then
+        CW.OpenRebirth()
+    elseif s.runReady == 1 then
+        CW.OpenRuns()      -- a fresh Wildcard Hero: a run with nothing to carry
+    else
+        StaticPopup_Show("CW_CLASSLESS_PATH", s.rebirthCost or 0)
+    end
 end)
+rebirthBtn:SetScript("OnEnter", function(self)
+    local s = CW.state
+    GameTooltip:SetOwner(self, "ANCHOR_TOP")
+    if s.rebirthReady == 1 then
+        GameTooltip:SetText("|cffff8800Rebirth|r")
+        GameTooltip:AddLine("Start a new life at level 1 with a permanent rank that stacks: more kill XP, a bonus to every stat, and an heirloom ability carried through.", 0.8, 0.8, 0.8, true)
+    else
+        GameTooltip:SetText("Change path")
+        GameTooltip:AddLine("Wipe the build and start the other path at this level.", 0.8, 0.8, 0.8, true)
+        GameTooltip:AddLine("Rebirth, the new life at level 1, opens at the level cap.", 0.6, 0.6, 0.6, true)
+    end
+    GameTooltip:Show()
+end)
+rebirthBtn:SetScript("OnLeave", function() GameTooltip:Hide() end)
 CW.rebirthBtn = rebirthBtn
+
+-- Rebirth picker ------------------------------------------------------------
+-- Which abilities come along, and which path the new life starts on. Rows
+-- are the owned abilities a Rebirth may carry: what was picked or rolled,
+-- and heirlooms already carried once. What came with a talent or free with
+-- another ability cannot be carried on its own, and the server refuses it.
+-- Everything lives on CW.rebirthFly; the main chunk is at Lua's local limit.
+do
+    -- 460 x 470, centred on the panel, in the panel's own flyout dress.
+    -- Measured top to bottom so nothing can overlap whatever the text wraps
+    -- to: title -12, intro -30 (six lines at most, to -108), count -114, eight
+    -- rows of 24 from -132 (to -324), the page arrows at -340, Challenge run
+    -- at -402, the path buttons at -434.
+    local fly = CreateFrame("Frame", "ClasslessWildcardRebirth", frame)
+    fly:SetWidth(460); fly:SetHeight(470)
+    fly:SetPoint("CENTER", frame, "CENTER", 0, 0)
+    fly:SetFrameStrata("DIALOG")
+    fly:SetBackdrop({
+        bgFile = "Interface\\Buttons\\WHITE8X8",
+        edgeFile = "Interface\\Tooltips\\UI-Tooltip-Border",
+        tile = false, edgeSize = 14,
+        insets = { left = 4, right = 4, top = 4, bottom = 4 },
+    })
+    fly:SetBackdropColor(0.03, 0.03, 0.05, 0.97) -- solid: the panes underneath must not show through
+    fly:EnableMouse(true)
+    fly:Hide()
+    CW.rebirthFly = fly
+    fly.picked = {}
+    fly.page = 0
+    local ROWS, ROW_H = 8, 24
+
+    fly.title = fly:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+    fly.title:SetPoint("TOP", 0, -12)
+    fly.title:SetText("Rebirth")
+
+    fly.intro = fly:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+    fly.intro:SetPoint("TOPLEFT", 14, -30)
+    fly.intro:SetWidth(432)
+    fly.intro:SetJustifyH("LEFT")
+    fly.intro:SetText("A new life. Back to level 1, your quests forgotten so every zone is new again. "
+        .. "Gold, bags, bank, reputation, riding and flight paths stay; worn gear goes into your bags. "
+        .. "Each Rebirth adds a permanent rank: more kill XP, a bonus to every stat, legacy essence on the Classless path, "
+        .. "one more heirloom next time, and a title. "
+        .. "Tick the abilities to carry with you. An heirloom is usable from level 1 and never rerolled.")
+
+    fly.count = fly:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+    fly.count:SetPoint("TOPLEFT", 14, -114)
+    fly.count:SetJustifyH("LEFT")
+
+    fly.rows = {}
+    for i = 1, ROWS do
+        local r = CreateFrame("Button", nil, fly)
+        r:SetWidth(432); r:SetHeight(ROW_H)
+        r:SetPoint("TOPLEFT", 14, -132 - (i - 1) * ROW_H)
+        r.stripe = r:CreateTexture(nil, "BACKGROUND")
+        r.stripe:SetAllPoints(r)
+        r.stripe:SetTexture("Interface\\Buttons\\WHITE8X8")
+        r.stripe:SetVertexColor(1, 1, 1, i % 2 == 0 and 0.04 or 0.08)
+        r.icon = r:CreateTexture(nil, "ARTWORK")
+        r.icon:SetWidth(20); r.icon:SetHeight(20)
+        r.icon:SetPoint("LEFT", 4, 0)
+        r.icon:SetTexCoord(0.06, 0.94, 0.06, 0.94)
+        r.name = r:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
+        r.name:SetPoint("LEFT", r.icon, "RIGHT", 8, 0)
+        r.name:SetPoint("RIGHT", -30, 0)
+        r.name:SetJustifyH("LEFT")
+        r.check = r:CreateTexture(nil, "OVERLAY")
+        r.check:SetWidth(18); r.check:SetHeight(18)
+        r.check:SetPoint("RIGHT", -6, 0)
+        r.check:SetTexture("Interface\\RaidFrame\\ReadyCheck-Ready")
+        r:SetHighlightTexture("Interface\\QuestFrame\\UI-QuestTitleHighlight", "ADD")
+        r:SetScript("OnClick", function(self)
+            if self.id then
+                if PlaySound then pcall(PlaySound, "igMainMenuOptionCheckBoxOn") end
+                CW.ToggleHeirloom(self.id)
+            end
+        end)
+        r:SetScript("OnEnter", function(self)
+            if not self.spellId then return end
+            GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
+            GameTooltip:SetHyperlink("spell:" .. self.spellId)
+            GameTooltip:Show()
+        end)
+        r:SetScript("OnLeave", function() GameTooltip:Hide() end)
+        fly.rows[i] = r
+    end
+
+    -- the panel's own page arrows, not text buttons
+    fly.prev = CreateFrame("Button", nil, fly)
+    StyleArrow(fly.prev, true)
+    fly.prev:SetPoint("TOPLEFT", 14, -340)
+    fly.next = CreateFrame("Button", nil, fly)
+    StyleArrow(fly.next, false)
+    fly.next:SetPoint("TOPRIGHT", -14, -340)
+    fly.pageText = fly:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+    fly.pageText:SetPoint("TOP", 0, -347)
+    fly.prev:SetScript("OnClick", function() fly.page = math.max(0, fly.page - 1); CW.RenderRebirth() end)
+    fly.next:SetScript("OnClick", function() fly.page = fly.page + 1; CW.RenderRebirth() end)
+
+    -- The third way out of the picker: a challenge run, with whatever
+    -- heirlooms are ticked above carried into it.
+    fly.challenge = CreateFrame("Button", nil, fly, "UIPanelButtonTemplate")
+    fly.challenge:SetWidth(170); fly.challenge:SetHeight(24)
+    fly.challenge:SetPoint("BOTTOMLEFT", 14, 44)
+    fly.challenge:SetText("Challenge run...")
+    fly.challenge:SetScript("OnClick", function() CW.OpenRuns() end)
+    fly.challengeNote = fly:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+    fly.challengeNote:SetPoint("LEFT", fly.challenge, "RIGHT", 10, 0)
+    fly.challengeNote:SetPoint("RIGHT", fly, "RIGHT", -14, 0)
+    fly.challengeNote:SetJustifyH("LEFT")
+    fly.challengeNote:SetText("|cffaaaaaaThe new life under one rule, with counted lives.|r")
+
+    fly.classless = CreateFrame("Button", nil, fly, "UIPanelButtonTemplate")
+    fly.classless:SetWidth(140); fly.classless:SetHeight(24)
+    fly.classless:SetPoint("BOTTOMLEFT", 14, 12)
+    fly.classless:SetText("Reborn as Classless")
+    fly.classless:SetScript("OnClick", function() CW.AskRebirth(0) end)
+    fly.wildcard = CreateFrame("Button", nil, fly, "UIPanelButtonTemplate")
+    fly.wildcard:SetWidth(140); fly.wildcard:SetHeight(24)
+    fly.wildcard:SetPoint("BOTTOM", 0, 12)
+    fly.wildcard:SetText("Reborn as Wildcard")
+    fly.wildcard:SetScript("OnClick", function() CW.AskRebirth(1) end)
+    fly.cancel = CreateFrame("Button", nil, fly, "UIPanelButtonTemplate")
+    fly.cancel:SetWidth(90); fly.cancel:SetHeight(24)
+    fly.cancel:SetPoint("BOTTOMRIGHT", -14, 12)
+    fly.cancel:SetText("Cancel")
+    fly.cancel:SetScript("OnClick", function() fly:Hide() end)
+
+    function CW.RebirthCandidates()
+        local out = {}
+        for _, e in ipairs(CW.owned or {}) do
+            if e.source == 0 or e.source == 1 or e.source == 4 then tinsert(out, e) end
+        end
+        return out
+    end
+
+    local function PickedCount()
+        local n = 0
+        for _ in pairs(fly.picked) do n = n + 1 end
+        return n
+    end
+
+    function CW.RenderRebirth()
+        local s = CW.state
+        local list = CW.RebirthCandidates()
+        local max = s.heirloomMax or 1
+        fly.count:SetText("Heirlooms  |cff00ff00" .. PickedCount() .. "|r / " .. max
+            .. "        Cost  |cffffd100" .. (s.rebirthPrice or 0) .. " gold|r")
+        local total = math.max(1, math.ceil(#list / ROWS))
+        if fly.page >= total then fly.page = total - 1 end
+        fly.pageText:SetText((fly.page + 1) .. " / " .. total)
+        if total > 1 then fly.prev:Show(); fly.next:Show(); fly.pageText:Show()
+        else fly.prev:Hide(); fly.next:Hide(); fly.pageText:Hide() end
+        for i = 1, ROWS do
+            local it = list[fly.page * ROWS + i]
+            local r = fly.rows[i]
+            if it then
+                r.id, r.spellId = it.id, it.id
+                r.icon:SetTexture(SpellIcon(it.id))
+                r.name:SetText(SpellLabel(it.id, it.rarity) .. (it.source == 4 and "  |cffff8800heirloom|r" or ""))
+                if fly.picked[it.id] then
+                    r.check:Show()
+                    r.stripe:SetVertexColor(1, 0.82, 0.3, 0.16)
+                else
+                    r.check:Hide()
+                    r.stripe:SetVertexColor(1, 1, 1, i % 2 == 0 and 0.04 or 0.08)
+                end
+                r:Show()
+            else
+                r.id, r.spellId = nil, nil
+                r:Hide()
+            end
+        end
+    end
+
+    function CW.ToggleHeirloom(id)
+        if fly.picked[id] then
+            fly.picked[id] = nil
+        else
+            local max = CW.state.heirloomMax or 1
+            if PickedCount() >= max then
+                Print("|cffff4444You may carry " .. max .. " heirloom" .. (max == 1 and "" or "s") .. " this time.|r")
+                return
+            end
+            fly.picked[id] = true
+        end
+        CW.RenderRebirth()
+    end
+
+    function CW.OpenRebirth()
+        fly.picked = {}
+        fly.page = 0
+        if CW.runFly then CW.runFly:Hide() end
+        Send("OWN")   -- the list is redrawn when the fresh answer lands
+        CW.RenderRebirth()
+        fly:Show()
+    end
+
+    -- The last word before it is sent: which path, which heirlooms, what it
+    -- costs. The popup's OK calls fly.Confirm, which sends exactly this.
+    function CW.AskRebirth(mode)
+        local s = CW.state
+        local ids = {}
+        for id in pairs(fly.picked) do tinsert(ids, id) end
+        table.sort(ids)
+        fly.pendingMode, fly.pendingIds = mode, ids
+        local names = {}
+        for _, id in ipairs(ids) do tinsert(names, (GetSpellInfo(id)) or ("#" .. id)) end
+        local path = mode == 0 and "|cff00ccffClassless|r" or "|cffff8800Wildcard|r"
+        StaticPopup_Show("CW_CLASSLESS_REBIRTH",
+            "Rebirth " .. ((s.rebirths or 0) + 1) .. " on the " .. path .. " path for |cffffd100"
+            .. (s.rebirthPrice or 0) .. " gold|r.\n\nBack to level 1. Heirlooms: "
+            .. (#names > 0 and table.concat(names, ", ") or "none") .. ".")
+    end
+
+    function fly.Confirm()
+        local parts = { "REBIRTH", tostring(fly.pendingMode or 0) }
+        for _, id in ipairs(fly.pendingIds or {}) do tinsert(parts, tostring(id)) end
+        Send(table.concat(parts, " "))
+    end
+end
+
+-- Challenge runs ------------------------------------------------------------
+-- The list the server sends (CH ... CHE): id, name, lives, reward, rule, the
+-- best this character did on it. Pick one, read its rule, start it. Shards
+-- and the extra life live here too. Everything hangs on CW.runFly.
+CW.challenges = {}
+-- At the cap a run is a Rebirth onto a path, so the last word asks which;
+-- a fresh Hero runs on the path they already chose and only confirms.
+StaticPopupDialogs["CW_RUN_CONFIRM"] = {
+    text = "%s",
+    button1 = "Classless",
+    button2 = "Cancel",
+    button3 = "Wildcard",
+    OnAccept = function() if CW.runFly and CW.runFly.Confirm then CW.runFly.Confirm(0) end end,
+    OnAlt    = function() if CW.runFly and CW.runFly.Confirm then CW.runFly.Confirm(1) end end,
+    timeout = 0, whileDead = 1, hideOnEscape = 1, preferredIndex = 3,
+}
+StaticPopupDialogs["CW_RUN_CONFIRM_FRESH"] = {
+    text = "%s",
+    button1 = "Begin the run",
+    button2 = "Cancel",
+    OnAccept = function() if CW.runFly and CW.runFly.Confirm then CW.runFly.Confirm(CW.state.mode) end end,
+    timeout = 0, whileDead = 1, hideOnEscape = 1, preferredIndex = 3,
+}
+StaticPopupDialogs["CW_RUN_DEATH"] = {
+    text = "%s", button1 = "Onward",
+    timeout = 0, whileDead = 1, hideOnEscape = 1, preferredIndex = 3,
+}
+StaticPopupDialogs["CW_RUN_END"] = {
+    text = "%s", button1 = OKAY,
+    timeout = 0, whileDead = 1, hideOnEscape = 1, preferredIndex = 3,
+}
+do
+    -- The same dress and size as the picker, since one opens from the other.
+    -- Measured: title -12, intro -30 (four lines, to -84), shards -92, six
+    -- rows of 26 from -112 (to -268), the rule from -276 (seven lines at
+    -- most, to -368), the page arrows at -382, the buttons at -434.
+    local fly = CreateFrame("Frame", "ClasslessWildcardRuns", frame)
+    fly:SetWidth(460); fly:SetHeight(470)
+    fly:SetPoint("CENTER", frame, "CENTER", 0, 0)
+    fly:SetFrameStrata("DIALOG")
+    fly:SetBackdrop({
+        bgFile = "Interface\\Buttons\\WHITE8X8",
+        edgeFile = "Interface\\Tooltips\\UI-Tooltip-Border",
+        tile = false, edgeSize = 14,
+        insets = { left = 4, right = 4, top = 4, bottom = 4 },
+    })
+    fly:SetBackdropColor(0.03, 0.03, 0.05, 0.97)
+    fly:EnableMouse(true)
+    fly:Hide()
+    CW.runFly = fly
+    fly.page = 0
+    fly.selected = nil
+    local ROWS, ROW_H = 6, 26
+    local HEART = "|TInterface\\Icons\\Spell_Holy_SealOfSacrifice:12:12:0:0:64:64:5:59:5:59|t"
+
+    fly.title = fly:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+    fly.title:SetPoint("TOP", 0, -12)
+    fly.title:SetText("Challenge run")
+
+    fly.intro = fly:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+    fly.intro:SetPoint("TOPLEFT", 14, -30)
+    fly.intro:SetWidth(432)
+    fly.intro:SetJustifyH("LEFT")
+    fly.intro:SetText("A life under one rule, with a fixed number of lives, on either path; the path itself plays as it always does. "
+        .. "Run out of lives and the rule lifts, you keep everything, and the run pays shards. "
+        .. "Reach the cap with a life in hand and it pays its reward and a title.")
+
+    fly.shards = fly:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+    fly.shards:SetPoint("TOPLEFT", 14, -92)
+    fly.shards:SetJustifyH("LEFT")
+
+    fly.rows = {}
+    for i = 1, ROWS do
+        local r = CreateFrame("Button", nil, fly)
+        r:SetWidth(432); r:SetHeight(ROW_H)
+        r:SetPoint("TOPLEFT", 14, -112 - (i - 1) * ROW_H)
+        r.stripe = r:CreateTexture(nil, "BACKGROUND")
+        r.stripe:SetAllPoints(r)
+        r.stripe:SetTexture("Interface\\Buttons\\WHITE8X8")
+        r.stripe:SetVertexColor(1, 1, 1, i % 2 == 0 and 0.04 or 0.08)
+        r.name = r:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
+        r.name:SetPoint("LEFT", 8, 0)
+        r.name:SetJustifyH("LEFT")
+        r.hearts = r:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+        r.hearts:SetPoint("LEFT", r.name, "RIGHT", 10, 0)
+        r.hearts:SetJustifyH("LEFT")
+        r.info = r:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+        r.info:SetPoint("RIGHT", -8, 0)
+        r.info:SetJustifyH("RIGHT")
+        r:SetHighlightTexture("Interface\\QuestFrame\\UI-QuestTitleHighlight", "ADD")
+        r:SetScript("OnClick", function(self)
+            if self.id then
+                if PlaySound then pcall(PlaySound, "igMainMenuOptionCheckBoxOn") end
+                fly.selected = self.id
+                CW.RenderRuns()
+            end
+        end)
+        fly.rows[i] = r
+    end
+
+    fly.rule = fly:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+    fly.rule:SetPoint("TOPLEFT", 14, -276)
+    fly.rule:SetWidth(432)
+    fly.rule:SetHeight(92)
+    fly.rule:SetJustifyH("LEFT")
+    fly.rule:SetJustifyV("TOP")
+
+    fly.prev = CreateFrame("Button", nil, fly)
+    StyleArrow(fly.prev, true)
+    fly.prev:SetPoint("TOPLEFT", 14, -382)
+    fly.next = CreateFrame("Button", nil, fly)
+    StyleArrow(fly.next, false)
+    fly.next:SetPoint("TOPRIGHT", -14, -382)
+    fly.pageText = fly:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+    fly.pageText:SetPoint("TOP", 0, -389)
+    fly.prev:SetScript("OnClick", function() fly.page = math.max(0, fly.page - 1); CW.RenderRuns() end)
+    fly.next:SetScript("OnClick", function() fly.page = fly.page + 1; CW.RenderRuns() end)
+
+    fly.start = CreateFrame("Button", nil, fly, "UIPanelButtonTemplate")
+    fly.start:SetWidth(120); fly.start:SetHeight(24)
+    fly.start:SetPoint("BOTTOMLEFT", 14, 12)
+    fly.start:SetText("Start run")
+    fly.start:SetScript("OnClick", function() CW.AskRun() end)
+    fly.life = CreateFrame("Button", nil, fly, "UIPanelButtonTemplate")
+    fly.life:SetWidth(170); fly.life:SetHeight(24)
+    fly.life:SetPoint("BOTTOM", 0, 12)
+    fly.life:SetScript("OnClick", function() Send("BUYLIFE") end)
+    fly.life:SetScript("OnEnter", function(self)
+        GameTooltip:SetOwner(self, "ANCHOR_TOP")
+        GameTooltip:SetText("Extra life")
+        GameTooltip:AddLine("One more life for your next run, " .. CW.EXTRA_LIFE_SHARDS .. " shards. One per run.", 0.8, 0.8, 0.8, true)
+        GameTooltip:AddLine("Shards come from every run that ends: one per level reached, two past 60, a third more with no life lost.", 0.6, 0.6, 0.6, true)
+        GameTooltip:Show()
+    end)
+    fly.life:SetScript("OnLeave", function() GameTooltip:Hide() end)
+    fly.back = CreateFrame("Button", nil, fly, "UIPanelButtonTemplate")
+    fly.back:SetWidth(90); fly.back:SetHeight(24)
+    fly.back:SetPoint("BOTTOMRIGHT", -14, 12)
+    fly.back:SetText("Back")
+    fly.back:SetScript("OnClick", function()
+        fly:Hide()
+        if CW.state.rebirthReady == 1 and CW.rebirthFly then CW.rebirthFly:Show() end
+    end)
+
+    function CW.RunName(id)
+        for _, c in ipairs(CW.challenges) do
+            if c.id == id then return c.name end
+        end
+        return nil
+    end
+
+    function CW.RenderRuns()
+        local s = CW.state
+        local list = CW.challenges
+        fly.shards:SetText("Shards  |cff00ff00" .. (s.shards or 0) .. "|r"
+            .. ((s.extraLife or 0) > 0 and "        |cff00ff00An extra life is held for the next run.|r" or ""))
+        fly.life:SetText((s.extraLife or 0) > 0 and "Extra life held" or ("Extra life  (" .. CW.EXTRA_LIFE_SHARDS .. " shards)"))
+        if (s.extraLife or 0) > 0 or (s.shards or 0) < CW.EXTRA_LIFE_SHARDS then fly.life:Disable() else fly.life:Enable() end
+        local total = math.max(1, math.ceil(#list / ROWS))
+        if fly.page >= total then fly.page = total - 1 end
+        fly.pageText:SetText((fly.page + 1) .. " / " .. total)
+        if total > 1 then fly.prev:Show(); fly.next:Show(); fly.pageText:Show()
+        else fly.prev:Hide(); fly.next:Hide(); fly.pageText:Hide() end
+        local chosen
+        for i = 1, ROWS do
+            local c = list[fly.page * ROWS + i]
+            local r = fly.rows[i]
+            if c then
+                r.id = c.id
+                local mark = fly.selected == c.id
+                r.name:SetText((mark and "|cffffd100" or "|cffffffff") .. c.name .. "|r")
+                r.hearts:SetText(string.rep(HEART, math.min(c.lives, 6)) .. " |cffaaaaaa" .. c.lives .. (c.lives == 1 and " life" or " lives") .. "|r")
+                r.info:SetText(c.gold .. " gold"
+                    .. (c.best > 0 and ("   best " .. c.best .. (c.finished == 1 and " |cff00ff00done|r" or "")) or ""))
+                if mark then r.stripe:SetVertexColor(1, 0.82, 0.3, 0.16)
+                else r.stripe:SetVertexColor(1, 1, 1, i % 2 == 0 and 0.04 or 0.08) end
+                r:Show()
+                if mark then chosen = c end
+            else
+                r.id = nil
+                r:Hide()
+            end
+        end
+        if not chosen then
+            for _, c in ipairs(list) do if c.id == fly.selected then chosen = c end end
+        end
+        if chosen then
+            local reward = chosen.reward or 0
+            fly.rule:SetText("|cffffd100" .. chosen.name .. "|r  " .. chosen.rule
+                .. "\n\nFinishing pays " .. chosen.gold .. " gold and a title"
+                .. (reward > 0 and (", and |cffa335ee" .. ((GetSpellInfo(reward)) or "an ability") .. "|r, an ability no roll or shop can give, kept as an heirloom.") or "."))
+            fly.start:Enable()
+        else
+            fly.rule:SetText(#list > 0 and "|cffaaaaaaPick a challenge to read its rule.|r" or "|cffaaaaaaWaiting for the list...|r")
+            fly.start:Disable()
+        end
+    end
+
+    function CW.OpenRuns()
+        if CW.rebirthFly then CW.rebirthFly:Hide() end
+        fly.page = 0
+        Send("CHL")
+        CW.RenderRuns()
+        fly:Show()
+    end
+
+    function CW.AskRun()
+        local s = CW.state
+        local chosen
+        for _, c in ipairs(CW.challenges) do if c.id == fly.selected then chosen = c end end
+        if not chosen then return end
+        local ids = {}
+        if s.rebirthReady == 1 and CW.rebirthFly then
+            for id in pairs(CW.rebirthFly.picked or {}) do tinsert(ids, id) end
+            table.sort(ids)
+        end
+        fly.pendingId, fly.pendingIds = chosen.id, ids
+        local lives = chosen.lives + ((s.extraLife or 0) > 0 and 1 or 0)
+        local text = "|cffff4444" .. chosen.name .. "|r with " .. lives .. (lives == 1 and " life" or " lives") .. ".\n\n" .. chosen.rule
+        if s.rebirthReady == 1 then
+            text = text .. "\n\nThis is a Rebirth: back to level 1 for |cffffd100" .. (s.rebirthPrice or 0)
+                .. " gold|r, carrying " .. #ids .. (#ids == 1 and " heirloom" or " heirlooms") .. ". Choose the path for the new life:"
+            StaticPopup_Show("CW_RUN_CONFIRM", text)
+        else
+            text = text .. "\n\nOn the " .. (s.mode == 0 and "|cff00ccffClassless|r" or "|cffff8800Wildcard|r") .. " path, from where you stand."
+            StaticPopup_Show("CW_RUN_CONFIRM_FRESH", text)
+        end
+    end
+
+    function fly.Confirm(mode)
+        local parts = { "RUN", tostring(fly.pendingId or 0), tostring(mode or 0) }
+        for _, id in ipairs(fly.pendingIds or {}) do tinsert(parts, tostring(id)) end
+        Send(table.concat(parts, " "))
+    end
+end
+CW.EXTRA_LIFE_SHARDS = 30   -- what the server charges; the label only
+
 
 -- Help: opens the "how advancement works" panel (wired to helpFly below).
 local helpBtn = CreateFrame("Button", nil, frame, "UIPanelButtonTemplate")
@@ -1253,7 +1810,7 @@ local function BuildHelpText()
     return table.concat({
 "|cffffd100You are a Hero.|r |cffffffffThere is no class to pick|r -- character creation offers races only, and every character becomes a Hero. Every Hero runs on the same hidden base class, which grants no special abilities and locks nothing away. Your |cffffffffrace|r is the choice that carries anything: its racial traits are yours to keep. Everything else -- every ability and talent -- you earn yourself, and you can take it from |cffffffffany class in the game|r.",
 "",
-"You gain that power one of two ways. You choose a path per character, and can |cffffd100Rebirth|r later to switch.",
+"You gain that power one of two ways. You choose a path per character, and can |cffffd100Change path|r later for gold. At the level cap, |cffffd100Rebirth|r starts a new life with a permanent rank, and a |cffffd100Challenge run|r is a life under one rule. Both are explained at the bottom.",
 "",
 "|cff00ccff==  CLASSLESS  --  you choose  ==|r",
 "Spend two currencies to buy exactly what you want:",
@@ -1291,7 +1848,22 @@ local function BuildHelpText()
 "   |cffffd100Riding|r -- trained for you too, free, at the levels a trainer would sell it: Apprentice at 20, Journeyman at 40, flying at 60, Northrend flying at 68 and epic flying at 70. Mounts themselves are bought and earned as they always were. The class mounts (Warhorse, Charger, Felsteed, Dreadsteed, Deathcharger) are the exception: those are abilities, so they come from a roll or from Ability Essence like anything else.",
 "   |cffffd100Abilities that come as a set|r -- an ability that can only be used in a stance or a form brings that form with it, and an ability that needs others to be any use brings those: Rend and Charge bring Battle Stance, Cat Form brings Claw and Prowl, Tame Beast brings Call Pet, Revive Pet, Feed Pet and Dismiss Pet. These extras are free, they are not one of your rolls, and they leave when nothing you own still needs them. To be rid of one, reroll or unlearn the ability it came with.",
 "   |cffffd100No class tools|r -- spells that ask for a class item, such as Stoneskin Totem asking for an Earth Totem, cast without it. Reagents still apply.",
-"   |cffffd100Rebirth|r -- after your path locks in, Rebirth wipes everything and lets you start fresh on either path for gold.",
+"   |cffffd100Change path|r -- after your path locks in, the |cffffd100Rebirth|r button wipes your build and starts the other path at your current level, for gold. Your level, quests and gear stay.",
+"",
+"|cffff8800==  REBIRTH  --  a new life at the cap  ==|r",
+"At level 80 the Rebirth button starts you over at level 1. Your quests are forgotten, so every zone pays XP again; worn gear goes into your bags; your gold, bank, reputation, riding and flight paths all stay. You wake at your race's starting area, on the path you choose.",
+"Each Rebirth raises a |cffffd100rank|r that is yours for good:",
+"   |cff00ff00+100% kill and dungeon XP|r for the first, +50% more for each after, up to +300%. Quest XP climbs more gently.",
+"   |cff00ff00+3% to every stat|r per rank, up to +15%.",
+"   |cffffd100Heirlooms|r -- carry one ability through, usable from level 1 and never rerolled or refunded. Each rank lets you carry one more.",
+"   Classless Heroes start the new life with extra essence per rank. A title per rank: the Reborn, the Twice Reborn, and on.",
+"The price climbs with the rank, since the quests come back with their one-time rewards.",
+"",
+"|cffff4444==  CHALLENGE RUNS  --  one rule, counted lives  ==|r",
+"A run is a life under one rule on either path. Start one from the Rebirth button at the cap (it is a Rebirth, heirlooms and all) or as a fresh Hero up to level " .. (CW.state.deadline or 5) .. ". Pick a challenge, read its rule, go.",
+"   |cffffd100Lives|r -- the hearts under the status line. A death costs one; battlegrounds, arenas and duels are free. Rules that make the world deadlier give five, rules that change how you fight give three, and |cffffd100Hardcore|r gives one because the rule is death itself.",
+"   |cffffd100Running out|r ends the run: the rule lifts and you keep everything. |cffffd100Reaching 80|r with a life in hand finishes it, and pays the challenge's gold, its title, and on some runs an ability no roll or shop can give, kept as an heirloom. Finish with no life lost for |cffffd100the Unbroken|r.",
+"   |cffffd100Shards|r -- every run pays them when it ends, finished or not: one per level reached, two per level past 60, a third more for a run with no life lost. They buy one |cffffd100extra life|r for your next run, on the challenge page.",
 "",
 "|cffaaaaaaEverything here can also be done at the Hero Advancement NPC, found in every major city beside the guild master. Open this panel any time with |r|cffffff00N|r|cffaaaaaa (the old Talents key -- talents live here now), |r|cffffff00/cw|r|cffaaaaaa, or the dice button on your minimap. Rebind the key under Key Bindings > ClasslessWildcard.|r",
 }, "\n")
@@ -1376,6 +1948,16 @@ local function UpdateStatus()
     UpdateStatsButton()
     local s = CW.state
     local modeText = s.mode == 0 and "|cff00ccffClassless|r" or (s.mode == 1 and "|cffff8800Wildcard|r" or "|cffff0000Path not chosen|r")
+    -- The Rebirth rank rides next to the path, and the crest glows for it.
+    if (s.rebirths or 0) > 0 then
+        modeText = modeText .. "   |cffff8800Rebirth " .. s.rebirths .. "|r"
+    end
+    titleGlow:SetAlpha(CW.GlowBase())
+    -- The challenge run rides under the status line with its hearts, and the
+    -- bottom-right button says what it will do: Rebirth at the cap, a
+    -- Challenge for a fresh Wildcard Hero, otherwise the path change.
+    CW.UpdateLives()
+    CW.rebirthBtn:SetText(s.rebirthReady == 1 and "Rebirth" or (s.runReady == 1 and "Challenge" or "Change path"))
     if s.mode == 0 then
         statusText:SetText(modeText .. "   Ability Essence: |cff00ff00" .. s.ae .. "|r   Talent Essence: |cff00ff00" .. s.te .. "|r")
         subStatusText:SetText("Level " .. s.level)
@@ -1597,10 +2179,14 @@ local function RenderBuild()
             -- ability. Neither was a roll and neither cost essence, so there is
             -- nothing to reroll, unlearn or lock: each leaves with whatever
             -- brought it in. No buttons, and a note saying where it came from.
-            local freebie = it.kind == "A" and (it.source == 2 or it.source == 3)
+            -- Source 4 is an heirloom carried through Rebirth: it cost
+            -- nothing this life, is never rerolled and never refunded, so it
+            -- gets the same treatment, with its own note.
+            local freebie = it.kind == "A" and (it.source == 2 or it.source == 3 or it.source == 4)
             if freebie then
-                suffix = suffix .. (it.source == 3 and "  |cffaaaaaacame free|r"
-                                                    or "  |cffaaaaaawith a talent|r")
+                suffix = suffix .. (it.source == 4 and "  |cffff8800heirloom|r"
+                                    or it.source == 3 and "  |cffaaaaaacame free|r"
+                                    or "  |cffaaaaaawith a talent|r")
             end
             r.name:SetText(SpellLabel(it.spell, it.rarity) .. suffix)
             if freebie then
@@ -4544,6 +5130,7 @@ handKeep:SetWidth(150); handKeep:SetHeight(26)
 handKeep:SetPoint("BOTTOMRIGHT", -40, 20)
 handKeep:SetText("Keep Abilities")
 
+
 -- keep every surviving (e.g. locked) card in its exact slot across rerolls;
 -- replacements drop into the slots that were vacated
 --
@@ -4596,6 +5183,55 @@ local function HandCardX(i, n)
     return (i - (n + 1) / 2) * HG.col
 end
 
+-- Deal-in animation. The die bounces in from off the left, rolls along the
+-- row, and each card appears as the die reaches it; past the last card the
+-- die runs on and fades out. Everything the OnUpdate below needs is worked
+-- out here, where the layout is already known.
+function hand.DealIn(n)
+    if CW.handAnimatePending then
+        CW.handAnimatePending = nil
+        if n > 0 then
+            -- x of each card's centre, as an offset from the frame's centre,
+            -- and the y the row sits on
+            local xs = {}
+            for i = 1, n do xs[i] = HandCardX(i, n) end
+            CW.handAnim = {
+                t0 = GetTime(), phase = "in", n = n, xs = xs, popped = {},
+                -- the row's own line, from the frame's centre: the cards hang
+                -- HG.top from the top and are HG.die tall
+                rowY = hand:GetHeight() / 2 + HG.top - HG.die / 2, spin = 0,
+                fromX = xs[1] - 200,        -- off the left edge
+                toX = xs[n] + 200,          -- off the right edge
+            }
+            handDie:Show()
+            handDie:SetAlpha(0)
+            for i = 1, HAND_SLOTS do
+                handSlots[i]:SetAlpha(0)
+                handSlots[i].glow:Hide(); handSlots[i].rays:Hide()
+            end
+        else
+            CW.handAnim = nil
+            handDie:Hide()
+        end
+    elseif not CW.handAnim then
+        for i = 1, HAND_SLOTS do
+            handSlots[i]:SetAlpha(1)
+            if i <= n then rvFX.CardFX(handSlots[i], handSlots[i].rarity, 0) end
+        end
+    end
+end
+
+-- A slot with nothing on it, in either mode.
+function hand.ClearSlot(slot)
+    slot.abilityId = nil
+    slot.spellId = nil
+    slot.entryRef = nil
+    slot.blockH = nil
+    slot.glow:Hide(); slot.rays:Hide()
+    slot.info:Clear()
+    slot:Hide()
+end
+
 local function RenderHand()
     local list = OrderedHand()
     local n = math.min(#list, HAND_SLOTS)
@@ -4629,13 +5265,7 @@ local function RenderHand()
             end
             slot:Show()
         else
-            slot.abilityId = nil
-            slot.spellId = nil
-            slot.entryRef = nil
-            slot.blockH = nil
-            slot.glow:Hide(); slot.rays:Hide()
-            slot.info:Clear()
-            slot:Hide()
+            hand.ClearSlot(slot)
         end
     end
 
@@ -4650,42 +5280,7 @@ local function RenderHand()
     handRoll:SetPoint("TOP", hand, "TOP", -84, y)
     handKeep:SetPoint("TOP", hand, "TOP", 84, y)
 
-    -- Deal-in animation. The die bounces in from off the left, rolls along the
-    -- row, and each card appears as the die reaches it; past the last card the
-    -- die runs on and fades out. Everything the OnUpdate below needs is worked
-    -- out here, where the layout is already known.
-    if CW.handAnimatePending then
-        CW.handAnimatePending = nil
-        if n > 0 then
-            -- x of each card's centre, as an offset from the frame's centre,
-            -- and the y the row sits on
-            local xs = {}
-            for i = 1, n do xs[i] = HandCardX(i, n) end
-            CW.handAnim = {
-                t0 = GetTime(), phase = "in", n = n, xs = xs, popped = {},
-                -- the row's own line, from the frame's centre: the cards hang
-                -- HG.top from the top and are HG.die tall
-                rowY = hand:GetHeight() / 2 + HG.top - HG.die / 2, spin = 0,
-                fromX = xs[1] - 200,        -- off the left edge
-                toX = xs[n] + 200,          -- off the right edge
-            }
-            handDie:Show()
-            handDie:SetAlpha(0)
-            for i = 1, HAND_SLOTS do
-                handSlots[i]:SetAlpha(0)
-                handSlots[i].glow:Hide(); handSlots[i].rays:Hide()
-            end
-        else
-            CW.handAnim = nil
-            handDie:Hide()
-        end
-    elseif not CW.handAnim then
-        for i = 1, HAND_SLOTS do
-            handSlots[i]:SetAlpha(1)
-            if i <= n then rvFX.CardFX(handSlots[i], handSlots[i].rarity, 0) end
-        end
-    end
-
+    hand.DealIn(n)
 end
 CW.RenderHand = RenderHand
 
@@ -4807,12 +5402,12 @@ end)
 
 hand:SetScript("OnShow", function()
     hand.ApplyLayers()
-    ClasslessWildcardCharDB = ClasslessWildcardCharDB or {}
-    ClasslessWildcardCharDB.handSeen = true   -- opened by any route: don't auto-open again
     -- the level free rolls end at is the server's to decide, so say what it says
     handHint:SetText("Click an ability to lock it in: |cffffd100gold ring + closed padlock = kept|r." ..
         " Roll Abilities rerolls only the unlocked ones. Free until level "
         .. (CW.state.freeReroll or 10) .. "!")
+    ClasslessWildcardCharDB = ClasslessWildcardCharDB or {}
+    ClasslessWildcardCharDB.handSeen = true   -- opened by any route: don't auto-open again
     CW.suppressReveals = true -- the hand shows results directly, no popups
     -- kill any reveal that slipped in before the hand opened
     CW.revealQueue = {}
@@ -4830,6 +5425,7 @@ CW.revealFrame, CW.revealKeep, CW.revealReroll = reveal, rvKeep, rvReroll
 CW.revealDie = rvDie   -- exposed for tests
 CW.handFrame, CW.handRoll, CW.handKeep = hand, handRoll, handKeep
 CW.handSlots, CW.handDie = handSlots, handDie
+
 
 -- ---------------------------------------------------------------------------
 -- protocol handling
@@ -4896,6 +5492,24 @@ local function HandleMessage(msg)
         s.tuBase = tonumber(p[17]) or 0
         s.tuPerScroll = tonumber(p[18]) or 0
         s.tuMaxScrolls = tonumber(p[19]) or 0
+        -- Rebirth: rank, ready now, gold price, heirlooms allowed
+        s.rebirths = tonumber(p[20]) or 0
+        s.rebirthReady = tonumber(p[21]) or 0
+        s.rebirthPrice = tonumber(p[22]) or 0
+        s.heirloomMax = tonumber(p[23]) or 1
+        -- the challenge run
+        s.run = tonumber(p[24]) or 0
+        s.lives = tonumber(p[25]) or 0
+        s.livesMax = tonumber(p[26]) or 0
+        s.shards = tonumber(p[27]) or 0
+        s.extraLife = tonumber(p[28]) or 0
+        s.runReady = tonumber(p[29]) or 0
+        -- the live run is named from the challenge list, which a fresh login
+        -- has not fetched yet: ask once, so the header does not say "Challenge 3"
+        if s.run > 0 and #CW.challenges == 0 and not CW._askedChallenges then
+            CW._askedChallenges = true
+            Send("CHL")
+        end
         -- a scroll bought from the reveal changes what its own button says
         if reveal:IsShown() and rvFX.SetRerollButton then rvFX.SetRerollButton() end
         CW.UpdateBarsVisibility()
@@ -4994,6 +5608,7 @@ local function HandleMessage(msg)
         CW._collectingOwned = false
         RenderList()
         if hand:IsShown() then CW.RenderHand() end
+        if CW.rebirthFly and CW.rebirthFly:IsShown() then CW.RenderRebirth() end
 
     elseif kind == "SF" then
         -- What a spell really costs, casts, waits and prints once the Hero's
@@ -5130,10 +5745,49 @@ local function HandleMessage(msg)
                                maxRank = tonumber(p[8]) or 0 })
         end
 
+    -- ---- challenge runs ----
+    elseif kind == "CH" then
+        if not CW._collectingCh then
+            CW.challenges = {}
+            CW._collectingCh = true
+        end
+        tinsert(CW.challenges, {
+            id = tonumber(p[2]) or 0, name = p[3] or "", lives = tonumber(p[4]) or 1,
+            gold = tonumber(p[5]) or 0, rule = p[6] or "",
+            best = tonumber(p[7]) or 0, finished = tonumber(p[8]) or 0,
+            reward = tonumber(p[9]) or 0,   -- the ability it pays, a spell id
+        })
+    elseif kind == "CHE" then
+        CW._collectingCh = false
+        if CW.runFly and CW.runFly:IsShown() then CW.RenderRuns() end
+        CW.UpdateLives()   -- the live run's name comes from this list
+    elseif kind == "RD" then
+        -- a life lost: lives left, lives at the start, what the rule did
+        local lives, max, what = tonumber(p[2]) or 0, tonumber(p[3]) or 0, p[4] or ""
+        StaticPopup_Show("CW_RUN_DEATH", "|cffff4444A life lost.|r " .. lives .. " of " .. max
+            .. (lives == 1 and " life" or " lives") .. " left." .. (what ~= "" and ("\n\n" .. what) or ""))
+        Send("STATE")
+    elseif kind == "RE" then
+        -- the run is over: finished or not, level, shards, gold, name
+        local finished, level, shards, gold, name = tonumber(p[2]) or 0, tonumber(p[3]) or 1,
+            tonumber(p[4]) or 0, tonumber(p[5]) or 0, p[6] or "the run"
+        StaticPopup_Show("CW_RUN_END", finished == 1
+            and ("|cff00ff00" .. name .. " complete.|r\n\n" .. shards .. " shards and " .. gold .. " gold. The rule lifts.")
+            or ("|cffff4444" .. name .. " is over.|r\n\nYou reached level " .. level .. " and earned " .. shards .. " shards. The rule lifts."))
+        Send("STATE")
+        Send("OWN")
+
     elseif kind == "OK" then
         if p[2] == "MODE" then
             CW.pendingHand = true -- open the starting hand once state arrives
         end
+        -- the new life has begun: the picker has nothing left to pick
+        if p[2] == "REBIRTH" and CW.rebirthFly then CW.rebirthFly:Hide() end
+        if p[2] == "RUN" then
+            if CW.rebirthFly then CW.rebirthFly:Hide() end
+            if CW.runFly then CW.runFly:Hide() end
+        end
+        if p[2] == "BUYLIFE" and CW.runFly and CW.runFly:IsShown() then CW.RenderRuns() end
         -- refresh whatever list is open after a successful operation
         if frame:IsShown() then CW.SetTab(CW.tab) end
         -- LOCK is the exception: the server pushes the owned list itself, so

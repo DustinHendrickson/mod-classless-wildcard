@@ -76,6 +76,7 @@ public:
         PLAYERHOOK_ON_LOGOUT,
         PLAYERHOOK_ON_DELETE_FROM_DB,
         PLAYERHOOK_ON_LEVEL_CHANGED,
+        PLAYERHOOK_ON_GIVE_EXP,
         PLAYERHOOK_ON_CALCULATE_TALENTS_POINTS,
         PLAYERHOOK_CAN_LEARN_TALENT,
         PLAYERHOOK_ON_LEARN_SPELL,
@@ -630,6 +631,9 @@ public:
     {
         std::lock_guard<std::mutex> spendGuard(_lastSpendLock);
         _lastSpend.erase(player->GetGUID().GetCounter());
+        // a hunter with nobody to hunt leaves; before the state goes, which
+        // is where its guid lives
+        sClasslessMgr->DespawnHunter(player);
         sClasslessMgr->UnloadState(player->GetGUID());
     }
 
@@ -863,6 +867,17 @@ public:
             }
         }
 
+    }
+
+    // Rebirth's XP rate. Kills and dungeons are where a reborn Hero levels,
+    // since the quests they already did are the ones they forgot; everything
+    // else gets the gentler curve.
+    void OnPlayerGiveXP(Player* player, uint32& amount, Unit* /*victim*/, uint8 xpSource) override
+    {
+        if (!sClasslessMgr->cfg.enabled || !amount)
+            return;
+        if (uint32 const pct = sClasslessMgr->RebirthXpPct(player, xpSource == XPSOURCE_KILL))
+            amount += CalculatePct(amount, pct);
     }
 
     void OnPlayerLevelChanged(Player* player, uint8 oldLevel) override

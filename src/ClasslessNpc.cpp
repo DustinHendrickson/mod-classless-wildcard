@@ -136,7 +136,8 @@ namespace
 
         if (st.mode != Mode::Unchosen && cfg.rebirthEnable)
             AddGossipItemFor(player, GOSSIP_ICON_BATTLE,
-                Acore::StringFormat("|cffff4444Rebirth|r: full reset or switch path ({} gold)", cfg.rebirthCostGold),
+                Acore::StringFormat("|cffff4444Change path|r: wipe the build and start the other path at this level ({} gold)",
+                                    cfg.rebirthCostGold),
                 GOSSIP_SENDER_MAIN, ACT_REBIRTH);
 
         SendGossipMenuFor(player, DEFAULT_GOSSIP_MESSAGE, creature->GetGUID());
@@ -582,17 +583,24 @@ public:
             case ACT_REBIRTH:
                 ClearGossipMenuFor(player);
                 AddGossipItemFor(player, GOSSIP_ICON_TRAINER,
-                    "|cffff4444Confirm Rebirth|r into the Classless path (everything is wiped)",
+                    "|cffff4444Confirm|r: the Classless path from here (every ability and talent is wiped)",
                     GOSSIP_SENDER_MAIN, ACT_REBIRTH_CLASSLESS);
                 AddGossipItemFor(player, GOSSIP_ICON_BATTLE,
-                    "|cffff4444Confirm Rebirth|r into the Wildcard path (everything is wiped and rerolled)",
+                    "|cffff4444Confirm|r: the Wildcard path from here (everything is wiped and rerolled)",
                     GOSSIP_SENDER_MAIN, ACT_REBIRTH_WILDCARD);
+                // Rebirth proper -- the new life at level 1 -- picks heirlooms,
+                // and a gossip menu has no way to pick from a build. The panel
+                // does it, so the menu says where to go rather than offering a
+                // Rebirth with nothing carried through.
+                AddGossipItemFor(player, GOSSIP_ICON_CHAT,
+                    "Rebirth into a new life at level 1 is done from the Character Advancement panel (/cw), at the level cap.",
+                    GOSSIP_SENDER_MAIN, ACT_REBIRTH);
                 AddGossipItemFor(player, GOSSIP_ICON_TALK, "<- Back", GOSSIP_SENDER_MAIN, ACT_MAIN);
                 SendGossipMenuFor(player, DEFAULT_GOSSIP_MESSAGE, creature->GetGUID());
                 break;
             case ACT_REBIRTH_CLASSLESS:
             case ACT_REBIRTH_WILDCARD:
-                if (!sClasslessMgr->Rebirth(player, action == ACT_REBIRTH_CLASSLESS ? Mode::Classless : Mode::Wildcard, &err) && !err.empty())
+                if (!sClasslessMgr->SwitchPath(player, action == ACT_REBIRTH_CLASSLESS ? Mode::Classless : Mode::Wildcard, &err) && !err.empty())
                     ChatHandler(player->GetSession()).SendSysMessage(err);
                 ShowMain(player, creature);
                 break;

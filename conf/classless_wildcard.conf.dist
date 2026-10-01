@@ -836,17 +836,67 @@ ClasslessWildcard.WorldDrops.HeirloomChance = 2.0
 ########################################################################
 
 #    ClasslessWildcard.Rebirth.Enable
-#        Allow a full reset that wipes every ability and talent and lets a
-#        character switch path after the mode-choice deadline, for gold. A
-#        Wildcard rebirth replays the whole roll schedule for the character's
-#        level.
+#        Two things share this switch and the base price below.
+#
+#        REBIRTH is New Game Plus. At the level cap a Hero starts over at
+#        level 1: the build is wiped except the heirloom abilities they choose
+#        to carry, the quest log is forgotten so every zone is new again, worn
+#        gear goes into the bags, and gold, bags, bank, reputation, riding and
+#        flight paths all stay. Each Rebirth raises a permanent rank that
+#        stacks: more kill XP, a percent on every stat, legacy essence on the
+#        Classless path, one more heirloom next time, and a title per rank.
+#        The character wakes at their race's starting area.
+#
+#        CHANGE PATH is the cheaper thing Rebirth used to be: wipe the build
+#        at the current level and start the other path from there. A Wildcard
+#        change replays the roll schedule for the character's level.
 #        Default: 1
 ClasslessWildcard.Rebirth.Enable = 1
 
 #    ClasslessWildcard.Rebirth.CostGold
-#        Gold cost of a Rebirth.
+#        Gold cost of a path change, and the base price of a Rebirth: a
+#        Rebirth costs this times (rank + 1), so the second one costs double,
+#        the third triple. Quests come back with their one-time rewards, which
+#        is why the price climbs.
 #        Default: 100
 ClasslessWildcard.Rebirth.CostGold = 100
+
+#    ClasslessWildcard.Rebirth.KillXpPctFirst
+#    ClasslessWildcard.Rebirth.KillXpPctPerRank
+#    ClasslessWildcard.Rebirth.KillXpPctMax
+#        Extra kill and dungeon XP, in percent: the first Rebirth gives
+#        KillXpPctFirst, every Rebirth after it adds KillXpPctPerRank, capped
+#        at KillXpPctMax. Kills are where a reborn Hero levels, since the
+#        quests they forgot are the ones they already did once.
+#        Default: 100, 50, 300
+ClasslessWildcard.Rebirth.KillXpPctFirst = 100
+ClasslessWildcard.Rebirth.KillXpPctPerRank = 50
+ClasslessWildcard.Rebirth.KillXpPctMax = 300
+
+#    ClasslessWildcard.Rebirth.OtherXpPctPerRank
+#    ClasslessWildcard.Rebirth.OtherXpPctMax
+#        Extra quest, exploration and battleground XP, in percent per rank,
+#        capped. Gentler than kills so the kill grind stays the fast lane.
+#        Default: 25, 100
+ClasslessWildcard.Rebirth.OtherXpPctPerRank = 25
+ClasslessWildcard.Rebirth.OtherXpPctMax = 100
+
+#    ClasslessWildcard.Rebirth.StatPctPerRank
+#    ClasslessWildcard.Rebirth.StatPctMax
+#        Percent added to all five primary stats per rank, capped. Applied as
+#        a stat modifier at login, not as a buff that can be clicked off.
+#        Default: 3, 15
+ClasslessWildcard.Rebirth.StatPctPerRank = 3
+ClasslessWildcard.Rebirth.StatPctMax = 15
+
+#    ClasslessWildcard.Rebirth.LegacyAbilityEssence
+#    ClasslessWildcard.Rebirth.LegacyTalentEssence
+#        Essence a reborn Hero on the Classless path starts the new life with,
+#        per rank, on top of the normal starting amount. The Wildcard path
+#        rolls its starting hand instead and gets no essence, as ever.
+#        Default: 3, 2
+ClasslessWildcard.Rebirth.LegacyAbilityEssence = 3
+ClasslessWildcard.Rebirth.LegacyTalentEssence = 2
 
 ########################################################################
 # 15  Hero Advancement NPC

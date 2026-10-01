@@ -95,7 +95,7 @@ namespace
         // realm that tuned Wildcard.FreeRerollLevel got an addon that disagreed
         // with its own server. Fields are read by position now, and anything the
         // addon does not know about is ignored, so the packet can simply grow.
-        SendAddon(player, Acore::StringFormat("S|{}|{}|{}|{}|{}|{}|{}|{}|{}|{}|{}|{}|{}|{}|{}|{}|{}|{}",
+        SendAddon(player, Acore::StringFormat("S|{}|{}|{}|{}|{}|{}|{}|{}|{}|{}|{}|{}|{}|{}|{}|{}|{}|{}|{}|{}|{}|{}|{}|{}|{}|{}|{}|{}",
             uint32(st.mode), st.abilityEssence, st.talentEssence, st.pity, chance,
             scrolls, player->GetLevel(), cfg.modeChoiceDeadline,
             cfg.rebirthEnable ? 1 : 0, cfg.rebirthCostGold,
@@ -111,7 +111,19 @@ namespace
             // fields 17-19: what a scroll buys on a talent reroll, so the
             // addon can show the odds instead of guessing them
             cfg.wcTalentUpgradeBase, cfg.wcTalentUpgradePerScroll,
-            cfg.wcTalentUpgradeMaxScrolls));
+            cfg.wcTalentUpgradeMaxScrolls,
+            // fields 20-23: Rebirth. The rank, whether this character may be
+            // reborn now (at the cap), what it costs in gold, and how many
+            // heirlooms the rank lets them carry through.
+            st.rebirths, sClasslessMgr->RebirthEligible(player) ? 1 : 0,
+            sClasslessMgr->RebirthCost(st), sClasslessMgr->MaxHeirlooms(st),
+            // fields 24-29: the challenge run. Which (0 = none), lives left
+            // and lives it started with, shards, whether an extra life is
+            // held for the next run, and whether a run could start now (at
+            // the cap, or fresh and under the mode deadline on Wildcard).
+            uint32(st.run), uint32(st.lives), uint32(st.livesMax), st.shards, uint32(st.extraLife),
+            (!st.run && (sClasslessMgr->RebirthEligible(player)
+                         || (player->GetLevel() <= cfg.modeChoiceDeadline && st.mode != Mode::Unchosen))) ? 1 : 0));
 
         // Talent pricing, so the browser can label what a talent actually
         // costs instead of assuming. Sent as its own message rather than more
@@ -827,7 +839,67 @@ namespace
         else if (cmd == "ARCHAPPLY")
             sClasslessMgr->ApplyArchetype(player, argNum(1), &err) ? SendOk(player, "ARCH") : SendErr(player, err);
         else if (cmd == "REBIRTH")
-            sClasslessMgr->Rebirth(player, Mode(uint8(argNum(1))), &err) ? SendOk(player, "REBIRTH") : SendErr(player, err);
+        {
+            // "REBIRTH <mode> [heirloom ability id ...]": New Game Plus. The
+            // ids are the owned lines carried through, as many as the rank
+            // allows; the server refuses the rest.
+            std::vector<uint32> heirlooms;
+            for (size_t i = 2; i < args.size(); ++i)
+                if (uint32 id = argNum(i))
+                    heirlooms.push_back(id);
+            sClasslessMgr->Rebirth(player, Mode(uint8(argNum(1))), heirlooms, &err)
+                ? SendOk(player, "REBIRTH") : SendErr(player, err);
+        }
+        else if (cmd == "PATH")
+            // "PATH <mode>": the cheaper path change at the current level
+            sClasslessMgr->SwitchPath(player, Mode(uint8(argNum(1))), &err) ? SendOk(player, "PATH") : SendErr(player, err);
+        else if (cmd == "CHL")
+        {
+            // The challenge list, one message per challenge: id, name, lives,
+            // reward gold, the rule, the best level this character reached on
+            // it and whether they ever finished it. Pipes between fields and
+            // no ':' or ';' in a rule, so the addon's splitter is enough.
+            CharState& st = sClasslessMgr->GetState(player);
+            for (Challenge const& ch : ClasslessMgr::Challenges())
+            {
+                auto best = st.runBest.find(ch.id);
+                // field 9: the reward ability's spell id (0 = gold and title only)
+                uint32 const reward = (ch.rewardRecipe && *ch.rewardRecipe)
+                    ? sClasslessMgr->ForgedLine(ch.rewardRecipe) : 0;
+                SendAddon(player, Acore::StringFormat("CH|{}|{}|{}|{}|{}|{}|{}|{}",
+                    uint32(ch.id), ch.name, uint32(ch.lives), ch.rewardGold, ch.rule,
+                    best != st.runBest.end() ? uint32(best->second.first) : 0u,
+                    best != st.runBest.end() && best->second.second ? 1 : 0, reward));
+            }
+            SendAddon(player, "CHE|");
+        }
+        else if (cmd == "RUN")
+        {
+            // "RUN <challenge> <mode> [heirloom ability id ...]": a challenge
+            // run, which is a Rebirth with a rule onto that path (or a fresh
+            // Hero's first life on the path they already chose)
+            std::vector<uint32> heirlooms;
+            for (size_t i = 3; i < args.size(); ++i)
+                if (uint32 id = argNum(i))
+                    heirlooms.push_back(id);
+            if (sClasslessMgr->StartRun(player, uint8(argNum(1)), Mode(uint8(argNum(2))), heirlooms, &err))
+            {
+                SendOk(player, "RUN");
+                SendState(player);
+            }
+            else
+                SendErr(player, err);
+        }
+        else if (cmd == "BUYLIFE")
+        {
+            if (sClasslessMgr->BuyExtraLife(player, &err))
+            {
+                SendOk(player, "BUYLIFE");
+                SendState(player);
+            }
+            else
+                SendErr(player, err);
+        }
         else if (cmd == "BUYSCROLL")
             // Any argument an older addon still sends is ignored: there is one
             // scroll now, good for abilities and talents alike.

@@ -23,7 +23,9 @@
 #include "ScriptMgr.h"
 #include "SpellInfo.h"
 #include "SpellMgr.h"
+#include "StringConvert.h"
 #include "StringFormat.h"
+#include "Tokenize.h"
 
 #include <algorithm>
 
@@ -51,6 +53,9 @@ public:
             { "archetypes", HandleArchetypes, SEC_PLAYER, Console::No },
             { "archetype", HandleArchetype,   SEC_PLAYER, Console::No },
             { "rebirth", HandleRebirth,       SEC_PLAYER, Console::No },
+            { "path",    HandlePath,          SEC_PLAYER, Console::No },
+            { "challenges", HandleChallenges, SEC_PLAYER, Console::No },
+            { "run",     HandleRun,           SEC_PLAYER, Console::No },
         };
         static ChatCommandTable wildcardTable =
         {
@@ -285,22 +290,103 @@ public:
         return true;
     }
 
-    static bool HandleRebirth(ChatHandler* handler, std::string modeArg)
+    static bool ParsePath(std::string const& modeArg, Mode& target)
     {
-        if (!CheckEnabled(handler))
-            return true;
-        std::string err;
-        Mode target;
         if (modeArg == "classless")
             target = Mode::Classless;
         else if (modeArg == "wildcard")
             target = Mode::Wildcard;
         else
+            return false;
+        return true;
+    }
+
+    // ".classless rebirth classless|wildcard [heirloom ability id ...]":
+    // New Game Plus, at the level cap. The ids are owned ability lines
+    // carried through; the panel is the friendlier way to choose them.
+    static bool HandleRebirth(ChatHandler* handler, std::string modeArg, Tail heirloomArgs)
+    {
+        if (!CheckEnabled(handler))
+            return true;
+        std::string err;
+        Mode target;
+        if (!ParsePath(modeArg, target))
         {
-            handler->SendSysMessage("Usage: .classless rebirth classless | wildcard (full reset, costs gold)");
+            handler->SendSysMessage("Usage: .classless rebirth classless | wildcard [heirloom spell id ...] "
+                                    "(level cap only: back to level 1 with a permanent Rebirth rank)");
             return true;
         }
-        if (!sClasslessMgr->Rebirth(handler->GetSession()->GetPlayer(), target, &err) && !err.empty())
+        std::vector<uint32> heirlooms;
+        for (std::string_view token : Acore::Tokenize(heirloomArgs, ' ', false))
+            if (Optional<uint32> id = Acore::StringTo<uint32>(token))
+                heirlooms.push_back(*id);
+        if (!sClasslessMgr->Rebirth(handler->GetSession()->GetPlayer(), target, heirlooms, &err) && !err.empty())
+            handler->SendSysMessage(err);
+        return true;
+    }
+
+    // ".classless challenges": the list, with lives, reward and best result.
+    static bool HandleChallenges(ChatHandler* handler)
+    {
+        if (!CheckEnabled(handler))
+            return true;
+        Player* player = handler->GetSession()->GetPlayer();
+        CharState& st = sClasslessMgr->GetState(player);
+        handler->SendSysMessage("Challenge runs (.classless run <id> [heirloom spell id ...]):");
+        for (Challenge const& ch : ClasslessMgr::Challenges())
+        {
+            auto best = st.runBest.find(ch.id);
+            handler->SendSysMessage(Acore::StringFormat("  {}. |cffffd100{}|r  {} {}, {} gold.  {}{}",
+                uint32(ch.id), ch.name, uint32(ch.lives), ch.lives == 1 ? "life" : "lives", ch.rewardGold, ch.rule,
+                best == st.runBest.end() ? ""
+                    : Acore::StringFormat("  Best: level {}{}", uint32(best->second.first),
+                                          best->second.second ? ", finished" : "")));
+        }
+        if (st.run)
+            if (Challenge const* ch = ClasslessMgr::GetChallenge(st.run))
+                handler->SendSysMessage(Acore::StringFormat("Live: |cffff4444{}|r, {} of {} lives. Shards: {}.",
+                    ch->name, uint32(st.lives), uint32(st.livesMax), st.shards));
+        return true;
+    }
+
+    // ".classless run <id> classless|wildcard [heirloom spell id ...]": start a
+    // challenge run. The path is the one a Rebirth at the cap lands on; a
+    // fresh Hero runs on the path they already chose whatever is typed.
+    static bool HandleRun(ChatHandler* handler, uint32 challengeId, std::string modeArg, Tail heirloomArgs)
+    {
+        if (!CheckEnabled(handler))
+            return true;
+        std::string err;
+        Mode target;
+        if (!ParsePath(modeArg, target))
+        {
+            handler->SendSysMessage("Usage: .classless run <id> classless | wildcard [heirloom spell id ...] "
+                                    "(.classless challenges lists the ids)");
+            return true;
+        }
+        std::vector<uint32> heirlooms;
+        for (std::string_view token : Acore::Tokenize(heirloomArgs, ' ', false))
+            if (Optional<uint32> id = Acore::StringTo<uint32>(token))
+                heirlooms.push_back(*id);
+        if (!sClasslessMgr->StartRun(handler->GetSession()->GetPlayer(), uint8(challengeId), target, heirlooms, &err) && !err.empty())
+            handler->SendSysMessage(err);
+        return true;
+    }
+
+    // ".classless path classless|wildcard": the cheaper path change at the
+    // current level, which is what "rebirth" used to mean.
+    static bool HandlePath(ChatHandler* handler, std::string modeArg)
+    {
+        if (!CheckEnabled(handler))
+            return true;
+        std::string err;
+        Mode target;
+        if (!ParsePath(modeArg, target))
+        {
+            handler->SendSysMessage("Usage: .classless path classless | wildcard (wipes the build at this level, costs gold)");
+            return true;
+        }
+        if (!sClasslessMgr->SwitchPath(handler->GetSession()->GetPlayer(), target, &err) && !err.empty())
             handler->SendSysMessage(err);
         return true;
     }

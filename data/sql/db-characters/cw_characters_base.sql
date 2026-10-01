@@ -15,8 +15,35 @@ CREATE TABLE IF NOT EXISTS `cw_char_state` (
   `stat_spi` INT UNSIGNED NOT NULL DEFAULT 0,
   `display_power` TINYINT UNSIGNED NOT NULL DEFAULT 255 COMMENT '0 mana, 1 rage, 3 energy, 255 chassis default',
   `archetype` INT UNSIGNED NOT NULL DEFAULT 0 COMMENT 'cw_archetypes.id the Hero follows, 0 none',
+  `rebirths` INT UNSIGNED NOT NULL DEFAULT 0 COMMENT 'Rebirths completed: the New Game Plus rank',
+  `run` TINYINT UNSIGNED NOT NULL DEFAULT 0 COMMENT 'challenge run live (ClasslessMgr.cpp CHALLENGES id), 0 none',
+  `lives` TINYINT UNSIGNED NOT NULL DEFAULT 0 COMMENT 'lives left on the live run',
+  `lives_max` TINYINT UNSIGNED NOT NULL DEFAULT 0 COMMENT 'lives the live run started with',
+  `run_data` INT UNSIGNED NOT NULL DEFAULT 0 COMMENT 'what the live rule remembers',
+  `shards` INT UNSIGNED NOT NULL DEFAULT 0 COMMENT 'paid out by runs, spent at the panel',
+  `extra_life` TINYINT UNSIGNED NOT NULL DEFAULT 0 COMMENT 'a life bought for the next run',
   PRIMARY KEY (`guid`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='Classless/Wildcard character state';
+
+CREATE TABLE IF NOT EXISTS `cw_char_runs` (
+  `id` INT UNSIGNED NOT NULL AUTO_INCREMENT,
+  `guid` INT UNSIGNED NOT NULL,
+  `challenge` TINYINT UNSIGNED NOT NULL,
+  `level_reached` TINYINT UNSIGNED NOT NULL DEFAULT 1,
+  `lives_used` TINYINT UNSIGNED NOT NULL DEFAULT 0,
+  `finished` TINYINT UNSIGNED NOT NULL DEFAULT 0,
+  `finished_at` INT UNSIGNED NOT NULL DEFAULT 0,
+  PRIMARY KEY (`id`),
+  KEY `guid` (`guid`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='Challenge runs, one row per run ended';
+
+CREATE TABLE IF NOT EXISTS `cw_char_nemeses` (
+  `guid` INT UNSIGNED NOT NULL,
+  `creature_entry` INT UNSIGNED NOT NULL,
+  `levels` TINYINT UNSIGNED NOT NULL DEFAULT 0,
+  `kills` TINYINT UNSIGNED NOT NULL DEFAULT 0,
+  PRIMARY KEY (`guid`, `creature_entry`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='Nemesis marks on the live run';
 
 -- (databases created by an older version are upgraded to this shape by
 --  cw_characters_rerolls.sql, which runs after this file)

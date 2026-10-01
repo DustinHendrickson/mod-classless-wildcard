@@ -36,7 +36,14 @@ SPELLVISUAL = "DBFilesClient\\SpellVisual.dbc"
 SKILLLINEABILITY = "DBFilesClient\\SkillLineAbility.dbc"
 SKILLRACECLASSINFO = "DBFilesClient\\SkillRaceClassInfo.dbc"
 
+CHARTITLES = "DBFilesClient\\CharTitles.dbc"
 SKILLLINE_FIELDS = 56
+# CharTitles.dbc: ID, Condition_ID, 16 male name columns and their mask, 16
+# female name columns and their mask, Bit_Index.
+CHARTITLES_FIELDS = 37
+CT_MALE_FIRST, CT_MALE_MASK = 2, 18
+CT_FEMALE_FIRST, CT_FEMALE_MASK = 19, 35
+CT_BIT = 36
 SPELLVISUAL_FIELDS = 32
 # SkillRaceClassInfo.dbc, 3.3.5a: 0 ID, 1 SkillID, 2 RaceMask, 3 ClassMask,
 # 4 Flags, 5 MinLevel, 6 SkillTierID, 7 SkillCostIndex. Confirmed against the
@@ -89,6 +96,36 @@ def append_skill_line(data: bytes, line: dict):
     struct.pack_into("<I", row, SL_NAME_MASK * 4, 0xFF)
     records += row
     return _join(count + 1, fields, rec, records, strings), 1
+
+
+def append_char_titles(data: bytes, titles):
+    """The module's titles. Returns (bytes, added, skipped).
+
+    A title the client has no CharTitles.dbc row for draws as nothing at all,
+    however surely the server granted it. The same text goes in every locale
+    column and in both the male and the female form; an id already present is
+    skipped, so re-running over our own output changes nothing."""
+    count, fields, rec, records, strings = _split(data, CHARTITLES_FIELDS, "CharTitles.dbc")
+    ids = _ids(records, rec, count)
+    added = skipped = 0
+    for t in titles:
+        if t["id"] in ids:
+            skipped += 1
+            continue
+        row = bytearray(rec)
+        struct.pack_into("<I", row, 0, t["id"])
+        off = _add_string(strings, t["name"])
+        for col in range(CT_MALE_FIRST, CT_MALE_MASK):
+            struct.pack_into("<I", row, col * 4, off)
+        struct.pack_into("<I", row, CT_MALE_MASK * 4, 0xFF)
+        for col in range(CT_FEMALE_FIRST, CT_FEMALE_MASK):
+            struct.pack_into("<I", row, col * 4, off)
+        struct.pack_into("<I", row, CT_FEMALE_MASK * 4, 0xFF)
+        struct.pack_into("<I", row, CT_BIT * 4, t["bit"])
+        records += row
+        ids[t["id"]] = count + added   # _ids is id -> row index
+        added += 1
+    return _join(count + added, fields, rec, records, strings), added, skipped
 
 
 def append_skill_race_class(data: bytes, rci: dict):
@@ -196,6 +233,14 @@ def apply(files, payload: dict, manifest: dict, report: list):
         payload[SKILLRACECLASSINFO] = patched
         report.append("    SkillRaceClassInfo.dbc  %d row added: the %s line's race/class row"
                       % (added, manifest["skill_line"]["name"]))
+
+    titles = manifest.get("titles", [])
+    if titles:
+        raw, _ = table(CHARTITLES)
+        patched, added, skipped = append_char_titles(raw, titles)
+        payload[CHARTITLES] = patched
+        report.append("    CharTitles.dbc    %d title(s) added%s"
+                      % (added, (", %d already there" % skipped) if skipped else ""))
 
     visuals = manifest.get("visuals", [])
     if visuals:

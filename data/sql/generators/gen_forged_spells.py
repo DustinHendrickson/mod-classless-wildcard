@@ -62,6 +62,65 @@ BLOCK_END = SPELL_BASE + 64 * PER_RECIPE - 1
 
 HERO_LINE = 990              # highest SkillLine.dbc id the client ships is 788
 HERO_LINE_NAME = "Hero"
+
+# ---- custom titles -----------------------------------------------------------
+# CharTitles.dbc ends at id 177 and bit 142, and the known-titles field on a
+# character holds 192 bits, so 143 to 191 are free. The server reads these
+# rows from chartitles_dbc (the same override table mechanism as spell_dbc)
+# and the client from its patched CharTitles.dbc; both come from this list,
+# and ClasslessMgr.cpp names the ids. The male and female forms are the same
+# text, written to every locale column so a client of any locale shows it.
+# APPEND ONLY: a title is a bit on every character that ever earned it.
+TITLE_ID_BASE, TITLE_BIT_BASE = 180, 143
+TITLE_LOCALES = ("enUS", "enGB", "koKR", "frFR", "deDE", "enCN", "zhCN", "enTW",
+                 "zhTW", "esES", "esMX", "ruRU", "ptPT", "ptBR", "itIT", "Unk")
+TITLES = [
+    # the Rebirth rank, one per rank up to five
+    dict(key="reborn_1",      name="%s the Reborn"),
+    dict(key="reborn_2",      name="%s the Twice Reborn"),
+    dict(key="reborn_3",      name="%s the Thrice Reborn"),
+    dict(key="reborn_4",      name="%s the Many-Lived"),
+    dict(key="reborn_5",      name="%s the Eternal"),
+    # a challenge run finished without losing a life
+    dict(key="unbroken",      name="%s the Unbroken"),
+    # one per challenge (ClasslessMgr.cpp names the id of each). Ids 191 to
+    # 197 were reassigned when the first set of rules was cut, before any
+    # realm had shipped them; from here on a title is only ever appended.
+    dict(key="nemesis",         name="%s the Nemesis"),
+    dict(key="elite_world",     name="%s, Bane of Giants"),
+    dict(key="hardcore",        name="%s the Deathless"),
+    dict(key="pursued",         name="%s the Hunted"),
+    dict(key="glass",           name="%s the Unshattered"),
+    dict(key="legion",          name="%s the Legionbreaker"),
+    dict(key="hourglass",       name="%s the Swift"),
+    dict(key="spiteful",        name="%s the Scarred"),
+    dict(key="bloodpact",       name="%s the Bloodthirsty"),
+    dict(key="berserker",       name="%s the Berserker"),
+    dict(key="ironman",         name="%s the Ironclad"),
+    dict(key="big_game_hunter", name="%s the Big Game Hunter"),
+]
+for _i, _t in enumerate(TITLES):
+    _t["id"] = TITLE_ID_BASE + _i
+    _t["bit"] = TITLE_BIT_BASE + _i
+assert TITLES[-1]["bit"] < 192, "the known-titles field holds 192 bits"
+
+
+def title_sql():
+    """The server's rows: chartitles_dbc, one per title, every locale filled."""
+    cols = (["ID", "Condition_ID"] + ["Name_Lang_%s" % l for l in TITLE_LOCALES] + ["Name_Lang_Mask"]
+            + ["Name1_Lang_%s" % l for l in TITLE_LOCALES] + ["Name1_Lang_Mask", "Bit_Index"])
+    out = ["-- Titles: the Rebirth ranks, the run with no life lost, one per challenge.",
+           "-- The client shows a title it has a CharTitles.dbc row for; the installer",
+           "-- appends the same rows there. ClasslessMgr.cpp grants them by id.",
+           "DELETE FROM `chartitles_dbc` WHERE `ID` BETWEEN %d AND %d;" % (TITLE_ID_BASE, TITLE_ID_BASE + len(TITLES) - 1),
+           "INSERT INTO `chartitles_dbc` (%s) VALUES" % ", ".join("`%s`" % c for c in cols)]
+    for n, t in enumerate(TITLES):
+        name = sql_literal(t["name"])
+        row = ([str(t["id"]), "0"] + [name] * len(TITLE_LOCALES) + ["16712190"]
+               + [name] * len(TITLE_LOCALES) + ["16712190", str(t["bit"])])
+        out.append("(%s)%s" % (", ".join(row), ";" if n == len(TITLES) - 1 else ","))
+    out.append("")
+    return out
 HERO_LINE_ICON = 3411        # Ability_Hunter_FocusedAim, unused by any pool spell
 SKILL_CATEGORY_CLASS = 7
 RCI_ID = 990500              # skillraceclassinfo_dbc, clear of cw_world_skillraceclass
@@ -353,6 +412,11 @@ FORGED_COLUMNS = [
     ("type", "TINYINT UNSIGNED NOT NULL DEFAULT 255",
      "0 utility 1 melee 2 ranged 3 spell 4 heal 5 passive, 255 = classify from the spell"),
     ("enabled", "TINYINT UNSIGNED NOT NULL DEFAULT 1", ""),
+    # A reward is loaded like any other line, so a finished challenge run can
+    # hand it over, but it is never rolled, bought or browsed: the server
+    # reads this and files it as disabled for everything but the grant.
+    ("reward", "TINYINT UNSIGNED NOT NULL DEFAULT 0",
+     "1 = paid for finishing a challenge run; never rolled or bought"),
 ]
 
 META_COLUMNS = [
@@ -1259,6 +1323,134 @@ RECIPES = [
         compare="1.6x the anchor for a 3 minute cooldown. Capped at +40%: uncapped, a lucky "
                 "hero reached +90% and an unlucky one got nothing.",
     ),
+    # ---- the challenge-run rewards --------------------------------------------
+    # Paid for FINISHING a challenge run (ClasslessMgr.cpp CHALLENGES names the
+    # key), granted as an heirloom, so it comes along through every Rebirth
+    # after. `reward` keeps each out of the roll pool, the essence shop and
+    # the browser: nothing but the run hands one over. Epic, every one, and
+    # priced like an Epic in power: a step above the rolled lines, not a
+    # replacement for a build.
+    dict(
+        # Nemesis. Hemorrhage's stab (a real swing with a cut that lingers).
+        key="grudge_strike", name="Grudge Strike", rarity=3, type=1, reward=True,
+        first_level=10, ranks=5, step=14, donor=16511, school=1,
+        icon=153, visual=5119, power=("energy", 40),
+        range_idx=RANGE_MELEE, cast_idx=CAST_INSTANT, cooldown_ms=12000,
+        duration_idx=DUR_12S,
+        effects=[
+            dict(eff=E_WEAPON_PERCENT, base=150, tgt=T_ENEMY),
+            dict(eff=E_APPLY_AURA, aura=A_PERIODIC_DAMAGE, base=dmg(0.12),
+                 tgt=T_ENEMY, amplitude=3000),
+        ],
+        desc="Strikes the target for $s1% weapon damage and opens a grudge that bleeds for $o2 damage over $d.",
+        compare="Mortal Strike is 85% weapon damage plus a flat amount on 6s; Rupture bleeds "
+                "for four ticks. Both on one swing, on twice the cooldown, for the Hero who "
+                "killed their nemesis.",
+    ),
+    dict(
+        # Elite World. Mortal Strike's swing, and the enemy hits softer after it.
+        key="giantsbane", name="Giantsbane", rarity=3, type=1, reward=True,
+        first_level=10, ranks=5, step=14, donor=12294, school=1,
+        icon=564, visual=39, power=("energy", 40),
+        range_idx=RANGE_MELEE, cast_idx=CAST_INSTANT, cooldown_ms=15000,
+        duration_idx=DUR_10S,
+        effects=[
+            dict(eff=E_WEAPON_PERCENT, base=130, tgt=T_ENEMY),
+            dict(eff=E_APPLY_AURA, aura=A_MOD_DAMAGE_DONE_PCT, base=-10, misc=ALL_SCHOOLS,
+                 tgt=T_ENEMY),
+        ],
+        desc="Strikes the target for $s1% weapon damage. For $d the target deals 10% less damage.",
+        compare="Demoralizing Shout takes attack power off everything nearby; this takes a "
+                "tenth of one enemy's damage, all of it, after a swing bigger than Mortal "
+                "Strike's. Earned by finishing a world of elites.",
+    ),
+    dict(
+        # Hardcore. Shield Block's look (a raised guard), a heal and a wall.
+        key="unbroken_will", name="Unbroken Will", rarity=3, type=0, reward=True,
+        first_level=10, ranks=5, step=14, donor=2565, school=2,
+        # Shield Block's row has no burst; Brace's (9264) is the guard going up
+        icon=177, visual=3442, visual_kits=dict(instant_area=9264),
+        power=("mana", 10), power_is_pct=True,
+        range_idx=RANGE_SELF, cast_idx=CAST_INSTANT, cooldown_ms=180000,
+        duration_idx=DUR_8S,
+        effects=[
+            dict(eff=E_HEAL, base=heal(1.5), tgt=T_SELF),
+            dict(eff=E_APPLY_AURA, aura=A_MOD_DAMAGE_TAKEN_PCT, base=-20, tgt=T_SELF),
+        ],
+        desc="Heals you for $s1 and reduces all damage you take by 20% for $d.",
+        compare="Shield Wall is -60% for 12s on 5 minutes and heals nothing; this is a heal "
+                "and a half-strength wall on 3 minutes, for the Hero who levelled with a "
+                "death costing a level.",
+    ),
+    dict(
+        # Pursued. Dash's look: the hunted turns and runs AT something.
+        key="turnabout", name="Turnabout", rarity=3, type=0, reward=True,
+        first_level=10, ranks=5, step=14, donor=1850, school=1,
+        # Dash's row draws nothing on the runner; Bolt Forward's burst (3394) does
+        icon=959, visual=2276, visual_kits=dict(instant_area=3394), power=("energy", 20),
+        range_idx=RANGE_SELF, cast_idx=CAST_INSTANT, cooldown_ms=90000,
+        duration_idx=DUR_8S,
+        effects=[
+            dict(eff=E_APPLY_AURA, aura=A_MOD_INCREASE_SPEED, base=60, tgt=T_SELF),
+            dict(eff=E_APPLY_AURA, aura=A_MOD_DAMAGE_DONE_PCT, base=20, misc=ALL_SCHOOLS,
+                 tgt=T_SELF),
+        ],
+        desc="Increases your movement speed by $s1% and all damage you deal by $s2% for $d.",
+        compare="Sprint is +70% for 15s; Death Wish is +20% damage for 30s. A shorter burst "
+                "of both on 90 seconds, for the Hero who outlived the hunters.",
+    ),
+    dict(
+        # Glass. Arcane Blast's cast and flash: one big hit, a long wait.
+        key="shatterpoint", name="Shatterpoint", rarity=3, type=3, reward=True,
+        first_level=10, ranks=5, step=14, donor=30451, school=64,
+        # Arcane Blast's row has no impact of its own; Arcane Barrage's
+        # (9849, the one Wildcard Surge lands) is the flash on the target.
+        icon=2294, visual=7749, visual_kits=dict(impact=9849),
+        power=("mana", 25), power_is_pct=True,
+        range_idx=RANGE_30, cast_idx=CAST_2500, cooldown_ms=45000,
+        effects=[
+            dict(eff=E_SCHOOL_DAMAGE, base=dmg(2.2), tgt=T_ENEMY),
+        ],
+        desc="Deals $s1 Arcane damage to the target.",
+        compare="Pyroblast is 1.9x the anchor on a six second cast with no cooldown; this is "
+                "2.2x on 2.5s and 45 seconds, for the Hero who levelled on half a health bar.",
+    ),
+    dict(
+        # Wildfire. Blast Wave's shape and burst: the ring of fire around you.
+        key="flashfire", name="Flashfire", rarity=3, type=3, reward=True,
+        first_level=10, ranks=5, step=14, donor=11113, school=4,
+        icon=292, visual=963, power=("mana", 18), power_is_pct=True,
+        range_idx=RANGE_SELF, cast_idx=CAST_INSTANT, cooldown_ms=20000,
+        duration_idx=DUR_6S,
+        effects=[
+            dict(eff=E_SCHOOL_DAMAGE, base=dmg(0.9), tgt=T_SRC_CASTER, tgtb=T_AREA_ENEMY_SRC,
+                 radius=RADIUS_10YD),
+            dict(eff=E_APPLY_AURA, aura=A_MOD_DECREASE_SPEED, base=-30, tgt=T_SRC_CASTER,
+                 tgtb=T_AREA_ENEMY_SRC, radius=RADIUS_10YD),
+        ],
+        desc="Burns enemies within $a1 yards of you for $s1 Fire damage and slows them by 30% for $d.",
+        compare="Blast Wave's own numbers at a fraction of the cooldown: 0.9x the anchor to "
+                "everything in ten yards every 20 seconds, for the Hero whose abilities "
+                "would not sit still.",
+    ),
+    dict(
+        # Borrowed Time. Icy Veins' look: time, taken back.
+        key="stolen_hour", name="Stolen Hour", rarity=3, type=0, reward=True,
+        first_level=10, ranks=5, step=14, donor=12472, school=16,
+        # a self buff draws its burst at the caster's feet (9159, Ward Off's)
+        icon=2162, visual=10148, visual_kits=dict(instant_area=9159),
+        power=("mana", 10), power_is_pct=True,
+        range_idx=RANGE_SELF, cast_idx=CAST_INSTANT, cooldown_ms=120000,
+        duration_idx=DUR_15S,
+        effects=[
+            dict(eff=E_APPLY_AURA, aura=A_MOD_MELEE_HASTE, base=20, tgt=T_SELF),
+            dict(eff=E_APPLY_AURA, aura=A_MOD_CASTING_SPEED, base=20, misc=ALL_SCHOOLS,
+                 tgt=T_SELF),
+        ],
+        desc="Increases your attack speed and casting speed by $s1% for $d.",
+        compare="Icy Veins is +20% casting for 20s on 3 minutes; this is both speeds for 15s "
+                "on 2, for the Hero who paid for every death in XP.",
+    ),
 ]
 
 # ---- id assignment ----------------------------------------------------------
@@ -1321,10 +1513,14 @@ TALENTS = [
     # every time the strike lands. Makeshift Strike has no cooldown of its own
     # and Hurl has six seconds, so the two improvised weapons feed each other
     # instead of sitting in the same bar doing the same thing.
+    # The value is milliseconds. $/1000;s1 is the client's INTEGER division, so
+    # rank 1's 500 printed as "0 sec" and ranks 2 and 3 both as "1". The
+    # ${...}.1 form is how Blizzard's own talents print a fraction of a second
+    # ("Reduces the global cooldown of your Curses by ${$m2/-1000}.1 sec").
     dict(key="improvised_arsenal", name="Improvised Arsenal", row=0, col=0, ranks=5,
          icon=2185, dummy=True, values=[500, 1000, 1500, 2000, 2500],
          desc="Each time Makeshift Strike deals damage, the remaining cooldown of "
-              "Hurl drops by $/1000;s1 sec."),
+              "Hurl drops by ${$s1/1000}.1 sec."),
     # One point, one clear promise. Restoring your reserves while rooted was
     # the moment both of these spells felt pointless.
     dict(key="field_repairs", name="Field Repairs", row=1, col=0, ranks=1,
@@ -1466,6 +1662,9 @@ ID_ORDER = [
     # drill_ground's recipe was replaced by quicksilver rather than edited, so
     # its block is retired and every other id stays where it is
     "quicksilver",
+    # the challenge-run rewards, appended in the order the challenges pay them
+    "grudge_strike", "giantsbane", "unbroken_will", "turnabout", "shatterpoint",
+    "flashfire", "stolen_hour",
 ]
 
 _recipe_keys = {r["key"] for r in RECIPES}
@@ -1902,7 +2101,8 @@ def build(spell, only=None):
                                visual=ps["visual"], icon=ps["icon"], sla=None))
 
         lines.append(dict(key=recipe["key"], first=first, rarity=recipe["rarity"],
-                          type=recipe.get("type", 255), name=recipe["name"], ids=ids))
+                          type=recipe.get("type", 255), name=recipe["name"], ids=ids,
+                          reward=bool(recipe.get("reward"))))
         meta.append(dict(key=recipe["key"], compare=recipe["compare"]))
     # The Hero talent tab. Its rank spells ride in the same list as everything
     # else, so they reach the client through the one installer and the one
@@ -1933,6 +2133,10 @@ def generation_id(spells, visuals=(), creatures=()):
         h.update(json.dumps(v, sort_keys=True, default=str).encode("utf-8"))
     for c in sorted(creatures):
         h.update(json.dumps(c, sort_keys=True, default=str).encode("utf-8"))
+    # and the titles: a renamed or added title is a client table the realm
+    # has to reinstall, the same as a spell
+    for t in TITLES:
+        h.update(json.dumps([t["id"], t["bit"], t["name"]], sort_keys=True).encode("utf-8"))
     return h.hexdigest()[:12]
 
 
@@ -2009,6 +2213,7 @@ def write_sql(spells, lines, gen, path, talents=()):
          "`MinLevel`,`SkillTierID`,`SkillCostIndex`) VALUES",
          "(%d, %d, 0, 0, %d, 0, 0, 0);" % (RCI_ID, HERO_LINE, RCI_FLAGS),
          "",
+         *title_sql(),
          "DELETE FROM `spell_dbc` WHERE `ID` BETWEEN %d AND %d;" % (SPELL_BASE, BLOCK_END),
          "DELETE FROM `skilllineability_dbc` WHERE `Spell` BETWEEN %d AND %d;" % (SPELL_BASE, BLOCK_END),
          "DELETE FROM `spell_ranks` WHERE `first_spell_id` BETWEEN %d AND %d;" % (SPELL_BASE, BLOCK_END),
@@ -2209,12 +2414,12 @@ def write_sql(spells, lines, gen, path, talents=()):
                         ", ".join(["0"] * 14), end))
         L.append("")
 
-    L.append("INSERT INTO `cw_forged_spells` (`first_spell`, `recipe`, `rarity`, `type`, `enabled`) "
+    L.append("INSERT INTO `cw_forged_spells` (`first_spell`, `recipe`, `rarity`, `type`, `enabled`, `reward`) "
              "VALUES")
     for n, ln in enumerate(lines):
         end = ";" if n == len(lines) - 1 else ","
-        L.append("(%d, '%s', %d, %d, 1)%s"
-                 % (ln["first"], ln["key"], ln["rarity"], ln["type"], end))
+        L.append("(%d, '%s', %d, %d, 1, %d)%s"
+                 % (ln["first"], ln["key"], ln["rarity"], ln["type"], 1 if ln["reward"] else 0, end))
     L.append("")
 
     io.open(path, "w", encoding="utf-8", newline="\n").write("\n".join(L) + "\n")
@@ -2233,7 +2438,9 @@ def write_manifest(spells, lines, visuals, gen, path, run_desc):
                skill_race_class=dict(id=RCI_ID, skill=HERO_LINE, race_mask=0,
                                      class_mask=0, flags=RCI_FLAGS, min_level=0,
                                      tier=0, cost_index=0),
-               lines=[dict(key=l["key"], name=l["name"], first=l["first"]) for l in lines],
+               lines=[dict(key=l["key"], name=l["name"], first=l["first"], reward=l["reward"]) for l in lines],
+               # the titles, for CharTitles.dbc; the same rows the SQL writes
+               titles=[dict(key=t["key"], id=t["id"], bit=t["bit"], name=t["name"]) for t in TITLES],
                visuals=visuals,
                spells=[dict(id=s["id"], first=s["first"], rank=s["rank"], level=s["level"],
                             key=s["key"], name=s["values"][F["SpellName"]],

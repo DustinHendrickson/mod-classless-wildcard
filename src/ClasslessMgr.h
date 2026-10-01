@@ -20,6 +20,8 @@
 #include <mutex>
 
 class Player;
+class Creature;
+class Unit;
 
 class ClasslessMgr
 {
@@ -135,9 +137,53 @@ public:
     // What the build still has to buy, in order, with each unlock level.
     std::vector<std::pair<uint32, uint8>> ArchetypeQueue(Player* player);
     static uint32 LevelsEarned(uint8 level, uint8 startLevel);
-    // Full reset + (optional) mode switch for gold — the late "exit" once the
-    // level-based mode lock has passed.
-    bool Rebirth(Player* player, ClasslessWildcard::Mode target, std::string* err);
+    // Rebirth: New Game Plus. Level cap only. Back to level 1 with the quest
+    // log forgotten and the build wiped, except the heirlooms named here
+    // (owned ability line ids, at most MaxHeirlooms of them). Gold, bags,
+    // reputation, riding and flight paths stay. The Hero's Rebirth rank goes
+    // up by one and pays out from then on: XP rate, stat bonus, legacy
+    // essence, one more heirloom next time, a title.
+    bool Rebirth(Player* player, ClasslessWildcard::Mode target,
+                 std::vector<uint32> const& heirlooms, std::string* err);
+    // The cheaper thing Rebirth used to be: wipe the build at the current
+    // level and start the chosen path from there, for the flat price.
+    bool SwitchPath(Player* player, ClasslessWildcard::Mode target, std::string* err);
+    uint32 RebirthCost(ClasslessWildcard::CharState const& st) const;  // gold
+    uint32 MaxHeirlooms(ClasslessWildcard::CharState const& st) const;
+    bool   RebirthEligible(Player* player) const;                      // at the cap
+    // Percent added to an XP award for this Hero's rank; kill and dungeon XP
+    // on one curve, everything else on a gentler one.
+    uint32 RebirthXpPct(Player* player, bool kill) const;
+    // The rank's stat percent and titles, applied at login and after a Rebirth.
+    void ApplyRebirthMods(Player* player);
+    void GrantRebirthTitles(Player* player);
+
+    // ------- challenge runs -------
+    // The list is code (ClasslessMgr.cpp), in id order; the addon is sent it.
+    static std::vector<ClasslessWildcard::Challenge> const& Challenges();
+    static ClasslessWildcard::Challenge const* GetChallenge(uint8 id);
+    static constexpr uint32 HUNTER_ENTRY = 990131;      // Pursued's hunter, cw_world_challenges.sql
+    static constexpr uint32 EXTRA_LIFE_SHARDS = 30;
+    // A run is a Rebirth at the cap (heirlooms and all, onto the path asked
+    // for) or a fresh Hero still under the mode deadline on whatever path
+    // they chose. Either path plays exactly as it does off a run; only the
+    // rule and the lives are added.
+    bool StartRun(Player* player, uint8 challengeId, ClasslessWildcard::Mode target,
+                  std::vector<uint32> const& heirlooms, std::string* err);
+    bool OnRun(Player* player, ClasslessWildcard::ChallengeId id);   // this rule, live, on this character
+    // A death on a run. Battleground, arena and duel deaths are free.
+    void LoseLife(Player* player, Unit* killer);
+    void EndRun(Player* player, bool finished);
+    bool BuyExtraLife(Player* player, std::string* err);
+    // Nemesis and the hunter, driven from the rules in ClasslessChallenges.cpp.
+    std::string MarkNemesis(Player* player, Creature* killer);
+    bool ApplyNemesis(Player* player, Creature* creature);   // on engage; true when it is one
+    void NemesisSlain(Player* player, Creature* creature);
+    void ForgetCreature(ObjectGuid guid);                    // a scaled creature died
+    void HunterTick(Player* player, uint32 diffMs);
+    void SpawnHunter(Player* player);
+    void DespawnHunter(Player* player);
+    void HunterSlain(Player* player, Creature* creature);
 
     // Buy a Reroll Scroll for gold straight from the addon panel. Cost scales
     // with level. One scroll covers abilities and talents alike -- the split
@@ -283,6 +329,17 @@ private:
     void RemoveTalentInternal(Player* player, ClasslessWildcard::TalentPoolEntry const& t, bool persist = true);
     void TickBans(ClasslessWildcard::CharState& st, ObjectGuid guid);
     void SaveBans(ObjectGuid guid, ClasslessWildcard::CharState const& st);
+    // The pick behind a roll, without the grant: what RollAbility / RollTalent
+    // hand over. `exclude` is what the caller holds back from the pick.
+    ClasslessWildcard::AbilityEntry const* ChooseAbility(Player* player, ClasslessWildcard::CharState& st,
+                                                         std::vector<uint32> const& exclude, bool& synergy);
+    ClasslessWildcard::TalentPoolEntry const* ChooseTalent(Player* player, ClasslessWildcard::CharState& st,
+                                                           std::vector<uint32> const& exclude, bool& synergy);
+    void SaveNemeses(ObjectGuid guid, ClasslessWildcard::CharState const& st);
+    void ApplyNemesisTo(Player* player, Creature* creature, ClasslessWildcard::NemesisMark const& mark);
+    // Nemesis levels already applied to a live creature, by guid: a creature
+    // engaged twice is not grown twice, and one that died is forgotten.
+    std::unordered_map<ObjectGuid, uint8> _nemesisApplied;
     bool IsBanned(ClasslessWildcard::CharState const& st, bool isTalent, uint32 entry) const;
     // Release every reroll cooldown of one kind. Used when the level-legal pool
     // has been starved by them; returns true if anything was actually freed.

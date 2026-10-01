@@ -90,7 +90,12 @@ namespace ClasslessWildcard
         // attacks, Tame Beast's pet handling). It is not part of the starting
         // hand, it cannot be rerolled on its own, and it leaves when nothing
         // the Hero earned needs it any more.
-        Companion = 3
+        Companion = 3,
+        // carried through a Rebirth. Owned like a pick, but it survives the
+        // wipe, is usable from level 1 (rank 1 is always learned), and is
+        // never rerolled or refunded. How many a Hero may carry is one more
+        // than the Rebirths already behind them.
+        Heirloom  = 4
     };
 
     // What an ability is for, from its rank-1 spell: the browser sorts and
@@ -154,6 +159,38 @@ namespace ClasslessWildcard
         bool locked = false;
     };
 
+    // ---- challenge runs ----------------------------------------------------
+    // A run is a Wildcard life lived under one rule with a fixed number of
+    // lives. The rules are code; this is only what the server needs to tell
+    // one from another and to tell the client about it.
+    enum class ChallengeId : uint8
+    {
+        None = 0,
+        Nemesis = 1, EliteWorld = 2, Hardcore = 3, Pursued = 4, Glass = 5,
+        // 6 to 13 were Borrowed Time, Bare Shoulders, Silent, One Pool,
+        // Wildfire, Ironborn, Pacifist Opening and Famine: cut before release,
+        // rules that took something away instead of changing the fight
+        Legion = 14, Hourglass = 15, Spiteful = 16, Bloodpact = 17,
+        Berserker = 18, Ironman = 19, BigGameHunter = 20
+    };
+    struct Challenge
+    {
+        uint8 id;
+        char const* key;
+        char const* name;
+        uint8 lives;
+        char const* rule;       // player-facing, one sentence or two; no ':' or ';' (the addon splits on them)
+        uint32 rewardGold;      // paid once, on finishing
+        uint32 titleId;         // CharTitles.dbc, on finishing (0 = none)
+        char const* rewardRecipe;   // a forged line flagged `reward`, granted as an heirloom ("" = none)
+    };
+    // Nemesis: a creature kind that has killed this Hero, and how much it grew.
+    struct NemesisMark
+    {
+        uint8 levels = 0;
+        uint8 kills = 0;
+    };
+
     struct RollBan
     {
         uint32 entry = 0;
@@ -183,6 +220,26 @@ namespace ClasslessWildcard
         uint32 rerolls = 0;
         uint8  lastProcessedLevel = 0;
         uint32 archetype = 0;            // cw_archetypes.id the Hero follows (0 = none)
+        // Rebirths completed: the New Game Plus rank. Each one is a run from
+        // 1 to the cap, and the rank sets the XP rate, the stat bonus, the
+        // heirloom count and the legacy essence of every run after it.
+        uint32 rebirths = 0;
+        int32  appliedRebirthPct = 0;    // stat percent currently applied, runtime only
+
+        // The challenge run, if one is live (ChallengeId, 0 = none), its lives,
+        // what the live rule remembers (One Pool's bar, Borrowed Time's levels
+        // left), the shards runs have paid, and a life bought for the next run.
+        uint8  run = 0;
+        uint8  lives = 0;
+        uint8  livesMax = 0;
+        uint32 runData = 0;
+        uint32 shards = 0;
+        uint8  extraLife = 0;
+        std::unordered_map<uint32, NemesisMark> nemeses;  // by creature entry
+        std::unordered_map<uint8, std::pair<uint8, bool>> runBest;  // challenge -> (level reached, finished)
+        uint32 hunterTimerMs = 0;        // runtime: Pursued's clock
+        uint32 ruleTickMs = 0;           // runtime: the five-second rule tick
+        ObjectGuid hunterGuid;           // runtime: the hunter out now, if any
 
         // which resource bar the default unit frame displays
         // (0 mana, 1 rage, 3 energy, 255 = chassis default)
@@ -469,9 +526,22 @@ namespace ClasslessWildcard
         uint32 statPointsPerLevel = 2;
         uint32 statValuePerPoint = 1;      // stat granted per point
 
-        // rebirth (late mode switch / full reset)
+        // Rebirth: New Game Plus. At the level cap a Hero starts over at 1
+        // with the quest log forgotten, keeps gold, bags, reputation, riding
+        // and flight paths, and carries a permanent rank that stacks. The
+        // same switch and base price also cover the cheaper path change,
+        // which wipes the build at the current level and rolls it again.
         bool   rebirthEnable = true;
-        uint32 rebirthCostGold = 100;
+        uint32 rebirthCostGold = 100;      // path change; a Rebirth costs this x (rank + 1)
+        uint32 rebirthKillXpFirst = 100;   // percent extra kill and dungeon XP at rank 1
+        uint32 rebirthKillXpPerRank = 50;  // added for every rank after the first
+        uint32 rebirthKillXpMax = 300;     // cap
+        uint32 rebirthOtherXpPerRank = 25; // quest, exploration and battleground XP, per rank
+        uint32 rebirthOtherXpMax = 100;    // cap
+        uint32 rebirthStatPctPerRank = 3;  // all five primary stats, per rank
+        uint32 rebirthStatPctMax = 15;     // cap
+        uint32 rebirthLegacyAbilityEssence = 3;  // Classless path: per rank, at level 1
+        uint32 rebirthLegacyTalentEssence = 2;   // Classless path: per rank, at level 1
 
         uint32 npcEntry = 990100;
     };

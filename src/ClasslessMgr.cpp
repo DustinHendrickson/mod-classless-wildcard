@@ -16,13 +16,20 @@
 #include "ClasslessMgr.h"
 #include "Chat.h"
 #include "Config.h"
+#include "Creature.h"
+#include "CreatureAI.h"
 #include "DBCStores.h"
+#include "ObjectAccessor.h"
+#include "TemporarySummon.h"
 #include "DatabaseEnv.h"
 #include "Log.h"
+#include "Item.h"
+#include "Mail.h"
 #include "ObjectMgr.h"
 #include "Pet.h"
 #include "Player.h"
 #include "Random.h"
+#include "World.h"
 #include "SharedDefines.h"
 #include "SpellInfo.h"
 #include "SpellMgr.h"
@@ -344,6 +351,15 @@ void ClasslessMgr::LoadConfig(bool /*reload*/)
 
     cfg.rebirthEnable = sConfigMgr->GetOption<bool>("ClasslessWildcard.Rebirth.Enable", true);
     cfg.rebirthCostGold = sConfigMgr->GetOption<uint32>("ClasslessWildcard.Rebirth.CostGold", 100);
+    cfg.rebirthKillXpFirst = sConfigMgr->GetOption<uint32>("ClasslessWildcard.Rebirth.KillXpPctFirst", 100);
+    cfg.rebirthKillXpPerRank = sConfigMgr->GetOption<uint32>("ClasslessWildcard.Rebirth.KillXpPctPerRank", 50);
+    cfg.rebirthKillXpMax = sConfigMgr->GetOption<uint32>("ClasslessWildcard.Rebirth.KillXpPctMax", 300);
+    cfg.rebirthOtherXpPerRank = sConfigMgr->GetOption<uint32>("ClasslessWildcard.Rebirth.OtherXpPctPerRank", 25);
+    cfg.rebirthOtherXpMax = sConfigMgr->GetOption<uint32>("ClasslessWildcard.Rebirth.OtherXpPctMax", 100);
+    cfg.rebirthStatPctPerRank = sConfigMgr->GetOption<uint32>("ClasslessWildcard.Rebirth.StatPctPerRank", 3);
+    cfg.rebirthStatPctMax = sConfigMgr->GetOption<uint32>("ClasslessWildcard.Rebirth.StatPctMax", 15);
+    cfg.rebirthLegacyAbilityEssence = sConfigMgr->GetOption<uint32>("ClasslessWildcard.Rebirth.LegacyAbilityEssence", 3);
+    cfg.rebirthLegacyTalentEssence = sConfigMgr->GetOption<uint32>("ClasslessWildcard.Rebirth.LegacyTalentEssence", 2);
 
     cfg.npcEntry = sConfigMgr->GetOption<uint32>("ClasslessWildcard.NpcEntry", 990100);
 }
@@ -1415,7 +1431,7 @@ void ClasslessMgr::LoadForgedSpells()
 
     _forgedByRecipe.clear();
     QueryResult result = WorldDatabase.Query(
-        "SELECT first_spell, recipe, rarity, type FROM cw_forged_spells WHERE enabled = 1");
+        "SELECT first_spell, recipe, rarity, type, reward FROM cw_forged_spells WHERE enabled = 1");
     if (!result)
     {
         LOG_INFO("module.classless", "mod-classless-wildcard: no forged spells configured");
@@ -1431,6 +1447,7 @@ void ClasslessMgr::LoadForgedSpells()
         std::string const recipe = f[1].Get<std::string>();
         uint8 const rarityRow = f[2].Get<uint8>();
         uint8 const typeRow = f[3].Get<uint8>();
+        bool const reward = f[4].Get<uint8>() != 0;
 
         SpellInfo const* firstInfo = sSpellMgr->GetSpellInfo(firstSpell);
         if (!firstInfo)
@@ -1459,6 +1476,11 @@ void ClasslessMgr::LoadForgedSpells()
             ? static_cast<AbilityType>(typeRow)
             : ClassifyAbility(firstInfo, e.passive);
         e.forged = true;
+        // A challenge-run reward is in the library so EndRun can hand it over,
+        // and disabled for everything else: the roll pool, the essence shop
+        // and the browser all read `enabled`, and GrantAbilityInternal does
+        // not.
+        e.enabled = !reward;
         // No class owns these, so every class can buy and roll them. The
         // browser reads the forged flag instead of the mask, or an all-classes
         // ability would be listed eleven times over.
@@ -2052,7 +2074,10 @@ std::vector<std::pair<uint32, uint8>> ClasslessMgr::ArchetypeQueue(Player* playe
     return out;
 }
 
-bool ClasslessMgr::Rebirth(Player* player, Mode target, std::string* err)
+// The path change: what Rebirth was before it became New Game Plus. Wipes
+// the build at the CURRENT level and starts the chosen path from there, for
+// the flat price. Nothing about the character's level, quests or gear moves.
+bool ClasslessMgr::SwitchPath(Player* player, Mode target, std::string* err)
 {
     CharState& st = GetState(player);
     if (!cfg.rebirthEnable)
@@ -2069,17 +2094,19 @@ bool ClasslessMgr::Rebirth(Player* player, Mode target, std::string* err)
     int32 costCopper = int32(cfg.rebirthCostGold) * GOLD;
     if (!player->HasEnoughMoney(costCopper))
     {
-        if (err) *err = Acore::StringFormat("Rebirth costs {} gold.", cfg.rebirthCostGold);
+        if (err) *err = Acore::StringFormat("Changing path costs {} gold.", cfg.rebirthCostGold);
         return false;
     }
     player->ModifyMoney(-costCopper);
 
     uint32 guid = player->GetGUID().GetCounter();
 
-    // wipe everything
+    // wipe everything -- except an heirloom, which a Rebirth promised would
+    // stay for this whole life, whichever path it is lived on
     std::vector<uint32> ownedAbilities;
     for (auto const& [firstSpell, owned] : st.abilities)
-        ownedAbilities.push_back(firstSpell);
+        if (owned.source != GrantSource::Heirloom)
+            ownedAbilities.push_back(firstSpell);
     for (uint32 firstSpell : ownedAbilities)
         if (AbilityEntry const* e = GetAbility(firstSpell))
             RemoveAbilityInternal(player, *e);
@@ -2102,10 +2129,12 @@ bool ClasslessMgr::Rebirth(Player* player, Mode target, std::string* err)
 
     if (target == Mode::Classless)
     {
-        st.abilityEssence = cfg.startingAbilityEssence + LevelsEarned(level, cfg.essenceStartLevel) * cfg.abilityEssencePerLevel;
-        st.talentEssence = LevelsEarned(level, cfg.talentEssenceStartLevel) * cfg.talentEssencePerLevel;
+        st.abilityEssence = cfg.startingAbilityEssence + LevelsEarned(level, cfg.essenceStartLevel) * cfg.abilityEssencePerLevel
+            + st.rebirths * cfg.rebirthLegacyAbilityEssence;
+        st.talentEssence = LevelsEarned(level, cfg.talentEssenceStartLevel) * cfg.talentEssencePerLevel
+            + st.rebirths * cfg.rebirthLegacyTalentEssence;
         SaveState(player);
-        Msg(player, Acore::StringFormat("|cffff8800Rebirth complete.|r You walk the Classless path anew. "
+        Msg(player, Acore::StringFormat("|cffff8800Path changed.|r You walk the Classless path anew. "
             "AE: |cff00ff00{}|r, TE: |cff00ff00{}|r.", st.abilityEssence, st.talentEssence));
     }
     else
@@ -2113,7 +2142,7 @@ bool ClasslessMgr::Rebirth(Player* player, Mode target, std::string* err)
         st.abilityEssence = 0;
         st.talentEssence = 0;
         SaveState(player);
-        Msg(player, "|cffff8800Rebirth complete.|r The Wildcard takes your fate. Rolling your Hero...");
+        Msg(player, "|cffff8800Path changed.|r The Wildcard takes your fate. Rolling your Hero...");
 
         GrantGuard noReveal(_revealSuppress); // bulk regrant: no popup spam
         for (uint32 i = 0; i < cfg.wcStartingAbilities; ++i)
@@ -2139,6 +2168,733 @@ bool ClasslessMgr::Rebirth(Player* player, Mode target, std::string* err)
     // them now rather than leave stale empty tabs until the next login.
     SyncSpellbookTabs(player, true);
     return true;
+}
+
+// =========================================================================
+// Rebirth: New Game Plus.
+//
+// A Hero at the cap starts over at level 1. The build is wiped except the
+// heirlooms they name, the quest log is forgotten so every zone is new again,
+// worn gear goes into the bags, and the character keeps what they EARNED:
+// gold, bags, bank, reputation, riding and every flight path. Each Rebirth
+// raises a rank that stacks for good -- XP rate, a stat percent, legacy
+// essence, one more heirloom next time, and a title per rank.
+// =========================================================================
+namespace
+{
+    // Worn gear into the bags. A level-80 set on a level-1 body would make
+    // the run a formality, and CanUseItem only runs at equip time, so the
+    // core would have left it on. What the bags cannot hold goes by mail, the
+    // same way the core returns a piece a character could no longer wear at
+    // login.
+    void UnequipToBags(Player* player, std::vector<uint8> const& slots)
+    {
+        for (uint8 slot : slots)
+        {
+            Item* item = player->GetItemByPos(INVENTORY_SLOT_BAG_0, slot);
+            if (!item)
+                continue;
+            ItemPosCountVec dest;
+            if (player->CanStoreItem(NULL_BAG, NULL_SLOT, dest, item, false) == EQUIP_ERR_OK)
+            {
+                player->RemoveItem(INVENTORY_SLOT_BAG_0, slot, true);
+                player->StoreItem(dest, item, true);
+                continue;
+            }
+            player->MoveItemFromInventory(INVENTORY_SLOT_BAG_0, slot, true);
+            CharacterDatabaseTransaction trans = CharacterDatabase.BeginTransaction();
+            item->DeleteFromInventoryDB(trans);
+            item->SaveToDB(trans);
+            MailDraft("Rebirth", "Your bags were full when you were reborn. This was on your back.")
+                .AddItem(item)
+                .SendMailTo(trans, player, MailSender(player, MAIL_STATIONERY_GM), MAIL_CHECK_MASK_COPIED);
+            CharacterDatabase.CommitTransaction(trans);
+        }
+    }
+
+    void UnequipAllToBags(Player* player)
+    {
+        std::vector<uint8> slots;
+        for (uint8 slot = EQUIPMENT_SLOT_START; slot < EQUIPMENT_SLOT_END; ++slot)
+            slots.push_back(slot);
+        UnequipToBags(player, slots);
+    }
+
+    // The quest log forgotten: everything in progress dropped, everything
+    // ever turned in unmarked, the map unexplored. This is what gives a
+    // second run its XP -- a Hero who has done every quest once has no
+    // quests left, and kills alone would make 1 to 80 a grind.
+    void ForgetQuests(Player* player)
+    {
+        for (uint16 slot = 0; slot < MAX_QUEST_LOG_SIZE; ++slot)
+            if (uint32 questId = player->GetQuestSlotQuestId(slot))
+            {
+                player->RemoveActiveQuest(questId, false);
+                player->SetQuestSlot(slot, 0);
+            }
+        // a copy: each removal edits the set being walked
+        RewardedQuestSet const rewarded = player->getRewardedQuests();
+        for (uint32 questId : rewarded)
+            player->RemoveRewardedQuest(questId, false);
+        player->ResetDailyQuestStatus();
+        player->ResetWeeklyQuestStatus();
+        player->ResetMonthlyQuestStatus();
+        for (uint16 i = 0; i < PLAYER_EXPLORED_ZONES_SIZE; ++i)
+            player->SetUInt32Value(PLAYER_EXPLORED_ZONES_1 + i, 0);
+        // The "!" over every quest giver is not pushed from here: the client
+        // asks for the lot again when it loads a map, and Rebirth ends with
+        // the teleport to the starting area.
+    }
+}
+
+uint32 ClasslessMgr::RebirthCost(CharState const& st) const
+{
+    return cfg.rebirthCostGold * (st.rebirths + 1);
+}
+
+uint32 ClasslessMgr::MaxHeirlooms(CharState const& st) const
+{
+    return st.rebirths + 1;
+}
+
+bool ClasslessMgr::RebirthEligible(Player* player) const
+{
+    return player && player->GetLevel() >= sWorld->getIntConfig(CONFIG_MAX_PLAYER_LEVEL);
+}
+
+uint32 ClasslessMgr::RebirthXpPct(Player* player, bool kill) const
+{
+    if (!player)
+        return 0;
+    CharState const& st = const_cast<ClasslessMgr*>(this)->GetState(player);
+    if (st.exempt || !st.rebirths)
+        return 0;
+    if (kill)
+        return std::min(cfg.rebirthKillXpFirst + cfg.rebirthKillXpPerRank * (st.rebirths - 1),
+                        cfg.rebirthKillXpMax);
+    return std::min(cfg.rebirthOtherXpPerRank * st.rebirths, cfg.rebirthOtherXpMax);
+}
+
+// The rank's stat percent, as a modifier on the five primary stats -- not an
+// aura, which a player could right-click off and which a cinematic or a
+// death could drop. Reapplied at login and after every Rebirth.
+void ClasslessMgr::ApplyRebirthMods(Player* player)
+{
+    CharState& st = GetState(player);
+    int32 const want = st.exempt ? 0
+        : int32(std::min(cfg.rebirthStatPctPerRank * st.rebirths, cfg.rebirthStatPctMax));
+    if (want == st.appliedRebirthPct)
+        return;
+    for (uint8 i = 0; i < MAX_STATS; ++i)
+    {
+        UnitMods const mod = UnitMods(UNIT_MOD_STAT_START + i);
+        // ApplyStatPctModifier MULTIPLIES, so taking a percent off again is
+        // the inverse factor, not the negative: x * (1 + p) * (1 + q) == x.
+        if (st.appliedRebirthPct)
+            player->ApplyStatPctModifier(mod, TOTAL_PCT,
+                -100.0f * float(st.appliedRebirthPct) / (100.0f + float(st.appliedRebirthPct)));
+        if (want)
+            player->ApplyStatPctModifier(mod, TOTAL_PCT, float(want));
+    }
+    st.appliedRebirthPct = want;
+}
+
+// One title per rank, in order. The module's own: gen_forged_spells.py's
+// TITLES, which the forged SQL writes to chartitles_dbc for this server and
+// the client patch appends to CharTitles.dbc. The ids here are that list's,
+// and test_forged.py refuses a build where the two disagree.
+void ClasslessMgr::GrantRebirthTitles(Player* player)
+{
+    static constexpr uint32 TITLES[] = {
+        180,    // the Reborn
+        181,    // the Twice Reborn
+        182,    // the Thrice Reborn
+        183,    // the Many-Lived
+        184,    // the Eternal
+    };
+    CharState& st = GetState(player);
+    if (st.exempt)
+        return;
+    for (uint32 i = 0; i < st.rebirths && i < std::size(TITLES); ++i)
+        if (CharTitlesEntry const* title = sCharTitlesStore.LookupEntry(TITLES[i]))
+            if (!player->HasTitle(title))
+                player->SetTitle(title);
+}
+
+bool ClasslessMgr::Rebirth(Player* player, Mode target, std::vector<uint32> const& heirlooms,
+                           std::string* err)
+{
+    CharState& st = GetState(player);
+    if (!cfg.rebirthEnable)
+    {
+        if (err) *err = "Rebirth is disabled on this realm.";
+        return false;
+    }
+    if (st.exempt)
+    {
+        if (err) *err = "This character does not walk the Hero's path.";
+        return false;
+    }
+    if (target != Mode::Classless && target != Mode::Wildcard)
+    {
+        if (err) *err = "Choose a valid path: classless or wildcard.";
+        return false;
+    }
+    if (!RebirthEligible(player))
+    {
+        if (err) *err = Acore::StringFormat("Rebirth is for Heroes at level {}. Finish this life first.",
+                                            sWorld->getIntConfig(CONFIG_MAX_PLAYER_LEVEL));
+        return false;
+    }
+
+    // The heirlooms: owned, earned in their own right, and no more of them
+    // than the rank allows.
+    std::vector<uint32> keep;
+    for (uint32 id : heirlooms)
+    {
+        if (!id || std::find(keep.begin(), keep.end(), id) != keep.end())
+            continue;
+        auto itr = st.abilities.find(id);
+        if (itr == st.abilities.end())
+        {
+            if (err) *err = "You can only carry an ability you own.";
+            return false;
+        }
+        if (itr->second.source == GrantSource::Companion || itr->second.source == GrantSource::Talent)
+        {
+            if (err) *err = Acore::StringFormat("{} came with something else and cannot be carried on its own.",
+                                                SpellName(id));
+            return false;
+        }
+        keep.push_back(id);
+    }
+    if (keep.size() > MaxHeirlooms(st))
+    {
+        if (err) *err = Acore::StringFormat("You may carry {} heirloom{} into this Rebirth.",
+                                            MaxHeirlooms(st), MaxHeirlooms(st) == 1 ? "" : "s");
+        return false;
+    }
+
+    uint32 const costGold = RebirthCost(st);
+    int32 const costCopper = int32(costGold) * GOLD;
+    if (!player->HasEnoughMoney(costCopper))
+    {
+        if (err) *err = Acore::StringFormat("Rebirth costs {} gold.", costGold);
+        return false;
+    }
+    player->ModifyMoney(-costCopper);
+
+    uint32 const guid = player->GetGUID().GetCounter();
+    GrantGuard bulk(_bulkCorrections);   // one push at the end, not one per spell
+
+    UnequipAllToBags(player);
+
+    // The build: everything but the heirlooms.
+    std::vector<uint32> ownedAbilities;
+    for (auto const& [firstSpell, owned] : st.abilities)
+        ownedAbilities.push_back(firstSpell);
+    for (uint32 firstSpell : ownedAbilities)
+    {
+        if (std::find(keep.begin(), keep.end(), firstSpell) != keep.end())
+            continue;
+        if (AbilityEntry const* e = GetAbility(firstSpell))
+            RemoveAbilityInternal(player, *e);
+    }
+    for (uint32 firstSpell : keep)
+    {
+        OwnedAbility& owned = st.abilities[firstSpell];
+        owned.source = GrantSource::Heirloom;
+        owned.locked = false;
+        CharacterDatabase.Execute(
+            "UPDATE cw_char_abilities SET source = {}, locked = 0 WHERE guid = {} AND first_spell = {}",
+            uint32(GrantSource::Heirloom), guid, firstSpell);
+    }
+
+    std::vector<uint32> ownedTalents;
+    for (auto const& [talentId, rank] : st.talents)
+        ownedTalents.push_back(talentId);
+    for (uint32 talentId : ownedTalents)
+        if (TalentPoolEntry const* t = GetTalent(talentId))
+            RemoveTalentInternal(player, *t);
+
+    st.bans.clear();
+    st.pity = 0;
+    st.rerolls = 0;
+    st.archetype = 0;
+    CharacterDatabase.Execute("DELETE FROM cw_char_bans WHERE guid = {}", guid);
+
+    // Stat points are earned by level and there are none at level 1.
+    st.statAlloc = { 0, 0, 0, 0, 0 };
+    ApplyStatMods(player);
+
+    ForgetQuests(player);
+
+    // Level 1. GiveLevel downward reaches HandleLevelUp, which refuses to pay
+    // for a level below the one already settled, so nothing is handed out
+    // twice; the settled level is then moved down with the character so the
+    // climb back up pays every level again.
+    player->GiveLevel(1);
+    player->InitTalentForLevel();
+    player->SetUInt32Value(PLAYER_XP, 0);
+    st.lastProcessedLevel = 1;
+
+    ++st.rebirths;
+    st.mode = target;
+    if (target == Mode::Classless)
+    {
+        st.abilityEssence = cfg.startingAbilityEssence + st.rebirths * cfg.rebirthLegacyAbilityEssence;
+        st.talentEssence = st.rebirths * cfg.rebirthLegacyTalentEssence;
+        SaveState(player);
+    }
+    else
+    {
+        st.abilityEssence = 0;
+        st.talentEssence = 0;
+        SaveState(player);
+        GrantGuard noReveal(_revealSuppress);   // a starting hand, shown in bulk
+        for (uint32 i = 0; i < cfg.wcStartingAbilities; ++i)
+            RollAbility(player);
+        SaveState(player);
+    }
+
+    UpdateAbilityRanks(player);
+    SyncSpellbookTabs(player, true);
+    ApplyRebirthMods(player);
+    GrantRebirthTitles(player);
+
+    Msg(player, Acore::StringFormat(
+        "|cffff8800Rebirth {}.|r You wake at the beginning with {} heirloom{}, +{}% kill XP and +{}% to every stat. "
+        "Your quests are forgotten; your gold, reputation, riding and flight paths are not.",
+        st.rebirths, keep.size(), keep.size() == 1 ? "" : "s",
+        RebirthXpPct(player, true), std::min(cfg.rebirthStatPctPerRank * st.rebirths, cfg.rebirthStatPctMax)));
+
+    // Where this character first stood.
+    player->TeleportTo(player->GetStartPosition());
+    return true;
+}
+
+// =========================================================================
+// Challenge runs: a Wildcard life under one rule, with lives.
+//
+// The rules themselves are hooks in ClasslessChallenges.cpp. This is the run:
+// starting one, the lives, the end, and
+// the two rules that need the manager's state (Nemesis marks, the hunter).
+// =========================================================================
+namespace
+{
+    constexpr uint32 UNBROKEN_TITLE = 185;        // "the Unbroken": a run with no life lost (TITLES, gen_forged_spells.py)
+    constexpr uint32 HUNTER_EVERY_MS = 10 * MINUTE * IN_MILLISECONDS;
+    constexpr uint8  NEMESIS_LEVELS_PER_KILL = 5;
+    constexpr uint8  NEMESIS_LEVEL_CAP = 83;
+    constexpr float  NEMESIS_SCALE = 1.25f;        // the one cue the client cannot ignore
+
+    std::vector<Challenge> const CHALLENGES = {
+        // id, key, name, lives, rule, gold, title (TITLES in gen_forged_spells.py), the reward
+        // line (a forged recipe flagged `reward`). Lives follow how often the rule itself kills:
+        // five where the world is turned up, three where the fight changes shape, one only where
+        // the rule IS death. The list is in the order the picker shows it.
+        { 1,  "nemesis",         "Nemesis",         5, "Whatever kills you grows. It gains five levels, becomes elite and remembers you. Kill it to take the levels back as XP.", 500, 186, "grudge_strike" },
+        { 2,  "elite_world",     "Elite World",     5, "Every enemy you fight is an elite, with triple health and double damage.", 750, 187, "giantsbane" },
+        { 14, "legion",          "Legion",          4, "Every enemy you engage calls two more of its kind to its side. More to kill, more XP, more ways to die.", 650, 191, "flashfire" },
+        { 4,  "pursued",         "Pursued",         3, "Every ten minutes a hunter two levels above you finds you and tracks you until one of you dies.", 600, 189, "turnabout" },
+        { 15, "hourglass",       "Hourglass",       3, "A level clock. Gain a level every 30 minutes played or lose a life. The clock resets with every level, runs 20 minutes below level 20 and 45 past 60.", 500, 192, "stolen_hour" },
+        { 5,  "glass",           "Glass",           3, "Your health is halved. Your damage is up by a third.", 400, 190, "shatterpoint" },
+        { 16, "spiteful",        "Spiteful",        3, "Every enemy reflects a fifth of the damage you deal back at you.", 450, 193, "" },
+        { 17, "bloodpact",       "Bloodpact",       3, "Healing from spells, potions and food is halved. Every hit you land heals you for 15% of its damage.", 450, 194, "" },
+        { 18, "berserker",       "Berserker",       3, "Below 35% health you deal double damage and nothing can slow you. Above 75% you deal 30% less.", 450, 195, "" },
+        { 19, "ironman",         "Ironman",         3, "Only white gear can be worn. Anything better is refused.", 500, 196, "" },
+        { 20, "big_game_hunter", "Big Game Hunter", 3, "Normal enemies give no XP. Elites and bosses give full, quests give double.", 400, 197, "" },
+        { 3,  "hardcore",        "Hardcore",        1, "One life. A death ends the run.", 1000, 188, "unbroken_will" },
+    };
+
+    void GrantTitle(Player* player, uint32 titleId)
+    {
+        if (!titleId)
+            return;
+        CharTitlesEntry const* title = sCharTitlesStore.LookupEntry(titleId);
+        if (!title)
+        {
+            // The module's titles reach the server through chartitles_dbc in
+            // cw_spells_forged.sql, read at startup. Missing here means the
+            // SQL was not applied, or the worldserver has not restarted since.
+            LOG_WARN("module.classless",
+                     "mod-classless-wildcard: title {} is not loaded; apply cw_spells_forged.sql and restart",
+                     titleId);
+            return;
+        }
+        if (!player->HasTitle(title))
+            player->SetTitle(title);
+    }
+}
+
+std::vector<Challenge> const& ClasslessMgr::Challenges()
+{
+    return CHALLENGES;
+}
+
+Challenge const* ClasslessMgr::GetChallenge(uint8 id)
+{
+    for (Challenge const& c : CHALLENGES)
+        if (c.id == id)
+            return &c;
+    return nullptr;
+}
+
+bool ClasslessMgr::OnRun(Player* player, ChallengeId id)
+{
+    CharState* st = player ? FindState(player) : nullptr;
+    return st && !st->exempt && st->run == uint8(id);
+}
+
+bool ClasslessMgr::StartRun(Player* player, uint8 challengeId, Mode target,
+                            std::vector<uint32> const& heirlooms, std::string* err)
+{
+    CharState& st = GetState(player);
+    Challenge const* ch = GetChallenge(challengeId);
+    if (!cfg.rebirthEnable)
+    {
+        if (err) *err = "Rebirth is disabled on this realm, and a challenge run is a Rebirth.";
+        return false;
+    }
+    if (st.exempt)
+    {
+        if (err) *err = "This character does not walk the Hero's path.";
+        return false;
+    }
+    if (!ch)
+    {
+        if (err) *err = "That challenge does not exist.";
+        return false;
+    }
+    if (st.run)
+    {
+        if (err) *err = Acore::StringFormat("You are already on a run: {}. Finish it, or run out of lives.",
+                                            GetChallenge(st.run) ? GetChallenge(st.run)->name : "a challenge");
+        return false;
+    }
+
+    uint32 const cap = sWorld->getIntConfig(CONFIG_MAX_PLAYER_LEVEL);
+    // A fresh Hero runs on the path they already chose; the target only
+    // matters at the cap, where the run is a Rebirth onto it.
+    bool const fresh = player->GetLevel() <= cfg.modeChoiceDeadline && st.mode != Mode::Unchosen;
+    if (RebirthEligible(player))
+    {
+        if (!Rebirth(player, target, heirlooms, err))
+            return false;
+    }
+    else if (!fresh)
+    {
+        if (err) *err = Acore::StringFormat(
+            "A challenge run starts at level {} as a Rebirth, or on a fresh Hero who has chosen a path, up to level {}.",
+            cap, uint32(cfg.modeChoiceDeadline));
+        return false;
+    }
+
+    st.run = ch->id;
+    st.livesMax = ch->lives + st.extraLife;
+    st.lives = st.livesMax;
+    st.extraLife = 0;
+    st.runData = 0;
+    st.nemeses.clear();
+    SaveNemeses(player->GetGUID(), st);
+    st.hunterTimerMs = 0;
+
+    switch (ChallengeId(st.run))
+    {
+        case ChallengeId::Glass:
+            player->UpdateMaxHealth();
+            break;
+        case ChallengeId::Ironman:
+        {
+            // whatever is worn above white comes off now; the equip hook
+            // refuses it from here on
+            std::vector<uint8> slots;
+            for (uint8 slot = EQUIPMENT_SLOT_START; slot < EQUIPMENT_SLOT_END; ++slot)
+                if (Item* item = player->GetItemByPos(INVENTORY_SLOT_BAG_0, slot))
+                    if (item->GetTemplate()->Quality > ITEM_QUALITY_NORMAL)
+                        slots.push_back(slot);
+            UnequipToBags(player, slots);
+            break;
+        }
+        default:
+            break;
+    }
+
+    SaveState(player);
+    Msg(player, Acore::StringFormat("|cffff4444{}|r begins. {} You have {} {}.",
+        ch->name, ch->rule, uint32(st.lives), st.lives == 1 ? "life" : "lives"));
+    return true;
+}
+
+void ClasslessMgr::LoseLife(Player* player, Unit* killer)
+{
+    CharState* st = player ? FindState(player) : nullptr;
+    if (!st || !st->run || st->exempt)
+        return;
+    // A death the rule does not count: these would otherwise be the cheapest
+    // way to throw a run, or to end someone else's.
+    if (player->InBattleground() || player->InArena() || player->duel)
+        return;
+    Challenge const* ch = GetChallenge(st->run);
+    if (!ch)
+        return;
+
+    if (st->lives)
+        --st->lives;
+
+    std::string what;
+    switch (ChallengeId(st->run))
+    {
+        case ChallengeId::Nemesis:
+            if (Creature* creature = killer ? killer->ToCreature() : nullptr)
+                what = MarkNemesis(player, creature);
+            break;
+        case ChallengeId::Hourglass:
+            st->runData = 0;    // the clock starts again with the new life
+            what = "The clock starts again.";
+            break;
+        case ChallengeId::Pursued:
+            DespawnHunter(player);   // the one that got you leaves; the clock brings the next
+            what = "The hunter leaves you where you fell. Another is coming.";
+            break;
+        default:
+            break;
+    }
+
+    SaveState(player);
+    PushAddon(player, Acore::StringFormat("RD|{}|{}|{}", uint32(st->lives), uint32(st->livesMax), what));
+    Msg(player, Acore::StringFormat("|cffff4444A life lost.|r {} {} of {} left.{}{}",
+        ch->name, uint32(st->lives), uint32(st->livesMax), what.empty() ? "" : " ", what));
+
+    if (!st->lives)
+        EndRun(player, false);
+}
+
+void ClasslessMgr::EndRun(Player* player, bool finished)
+{
+    CharState& st = GetState(player);
+    Challenge const* ch = GetChallenge(st.run);
+    if (!ch)
+        return;
+
+    uint8 const level = player->GetLevel();
+    uint8 const used = st.livesMax > st.lives ? st.livesMax - st.lives : 0;
+    uint32 shards = level + (level > 60 ? uint32(level - 60) : 0);
+    if (!used)
+        shards += shards / 3;
+    st.shards += shards;
+
+    uint32 gold = 0;
+    std::string rewardName;
+    if (finished)
+    {
+        gold = ch->rewardGold;
+        player->ModifyMoney(int32(gold) * GOLD);
+        GrantTitle(player, ch->titleId);
+        if (!used)
+            GrantTitle(player, UNBROKEN_TITLE);
+        // The reward line, as an heirloom: it exists nowhere else and it
+        // comes along through every Rebirth after this one.
+        if (ch->rewardRecipe && *ch->rewardRecipe)
+            if (uint32 const first = ForgedLine(ch->rewardRecipe))
+                if (AbilityEntry const* e = GetAbility(first))
+                {
+                    rewardName = SpellName(first);
+                    if (!st.abilities.count(first))
+                        GrantAbilityInternal(player, *e, GrantSource::Heirloom, true, true);
+                }
+    }
+
+    CharacterDatabase.Execute(
+        "INSERT INTO cw_char_runs (guid, challenge, level_reached, lives_used, finished, finished_at) "
+        "VALUES ({}, {}, {}, {}, {}, UNIX_TIMESTAMP())",
+        player->GetGUID().GetCounter(), uint32(ch->id), uint32(level), uint32(used), finished ? 1 : 0);
+    auto& best = st.runBest[ch->id];
+    best.first = std::max(best.first, level);
+    best.second = best.second || finished;
+
+    // The rule lifts.
+    uint8 const run = st.run;
+    st.run = 0;
+    st.lives = 0;
+    st.livesMax = 0;
+    st.runData = 0;
+    st.nemeses.clear();
+    SaveNemeses(player->GetGUID(), st);
+    DespawnHunter(player);
+    switch (ChallengeId(run))
+    {
+        case ChallengeId::Glass:
+            player->UpdateMaxHealth();
+            break;
+        default:
+            break;
+    }
+
+    SaveState(player);
+    PushAddon(player, Acore::StringFormat("RE|{}|{}|{}|{}|{}", finished ? 1 : 0, uint32(level), shards, gold, ch->name));
+    if (finished)
+        Msg(player, Acore::StringFormat("|cff00ff00{} complete.|r {} shard{} and {} gold{}. The rule lifts.",
+            ch->name, shards, shards == 1 ? "" : "s", gold,
+            rewardName.empty() ? "" : Acore::StringFormat(", and |cffa335ee{}|r is yours to keep", rewardName)));
+    else
+        Msg(player, Acore::StringFormat("|cffff4444{} is over.|r You reached level {} and earned {} shard{}. The rule lifts.",
+            ch->name, uint32(level), shards, shards == 1 ? "" : "s"));
+}
+
+bool ClasslessMgr::BuyExtraLife(Player* player, std::string* err)
+{
+    CharState& st = GetState(player);
+    if (st.extraLife)
+    {
+        if (err) *err = "You already hold an extra life for your next run.";
+        return false;
+    }
+    if (st.shards < EXTRA_LIFE_SHARDS)
+    {
+        if (err) *err = Acore::StringFormat("An extra life costs {} shards. You have {}.", EXTRA_LIFE_SHARDS, st.shards);
+        return false;
+    }
+    st.shards -= EXTRA_LIFE_SHARDS;
+    st.extraLife = 1;
+    SaveState(player);
+    Msg(player, "An extra life, for your next run.");
+    return true;
+}
+
+// ---- Nemesis --------------------------------------------------------------
+void CW_ReLevelCreature(Creature* creature, uint8 level, bool elite);
+
+void ClasslessMgr::ApplyNemesisTo(Player* player, Creature* creature, NemesisMark const& mark)
+{
+    uint8& applied = _nemesisApplied[creature->GetGUID()];
+    if (applied == mark.levels)
+        return;
+    uint8 const base = creature->GetLevel() > applied ? creature->GetLevel() - applied : 1;
+    uint8 const level = uint8(std::min<uint32>(uint32(base) + mark.levels, NEMESIS_LEVEL_CAP));
+    CW_ReLevelCreature(creature, level, true);
+    creature->SetObjectScale(NEMESIS_SCALE);
+    applied = mark.levels;
+}
+
+std::string ClasslessMgr::MarkNemesis(Player* player, Creature* killer)
+{
+    // a pet or a summon is somebody's, not a kind of creature that can grow
+    if (!killer || killer->IsPet() || killer->IsTotem() || killer->GetOwnerGUID())
+        return "";
+    CharState& st = GetState(player);
+    NemesisMark& mark = st.nemeses[killer->GetEntry()];
+    mark.levels = uint8(std::min<uint32>(uint32(mark.levels) + NEMESIS_LEVELS_PER_KILL, 30));
+    ++mark.kills;
+    SaveNemeses(player->GetGUID(), st);
+    ApplyNemesisTo(player, killer, mark);
+    return Acore::StringFormat("{} is now level {} and elite. It remembers you.",
+                               killer->GetName(), uint32(killer->GetLevel()));
+}
+
+bool ClasslessMgr::ApplyNemesis(Player* player, Creature* creature)
+{
+    CharState* st = player ? FindState(player) : nullptr;
+    if (!st || st->run != uint8(ChallengeId::Nemesis) || !creature)
+        return false;
+    auto itr = st->nemeses.find(creature->GetEntry());
+    if (itr == st->nemeses.end())
+        return false;
+    ApplyNemesisTo(player, creature, itr->second);
+    return true;
+}
+
+void ClasslessMgr::NemesisSlain(Player* player, Creature* creature)
+{
+    CharState* st = player ? FindState(player) : nullptr;
+    if (!st || st->run != uint8(ChallengeId::Nemesis) || !creature)
+        return;
+    auto itr = st->nemeses.find(creature->GetEntry());
+    if (itr == st->nemeses.end())
+        return;
+    // the levels come back as XP: a twentieth of a level for each
+    uint32 const xp = player->GetUInt32Value(PLAYER_NEXT_LEVEL_XP) * itr->second.levels / 20;
+    st->nemeses.erase(itr);
+    SaveNemeses(player->GetGUID(), *st);
+    if (xp)
+        player->GiveXP(xp, nullptr);
+    Msg(player, Acore::StringFormat("|cff00ff00Your nemesis is dead.|r {} falls, and {} XP comes back to you.",
+        creature->GetName(), xp));
+}
+
+void ClasslessMgr::ForgetCreature(ObjectGuid guid)
+{
+    _nemesisApplied.erase(guid);
+}
+
+// ---- the hunter ------------------------------------------------------------
+void ClasslessMgr::HunterTick(Player* player, uint32 diffMs)
+{
+    CharState* st = player ? FindState(player) : nullptr;
+    if (!st || st->run != uint8(ChallengeId::Pursued) || !player->IsAlive())
+        return;
+    // a hunter already out keeps its home where the Hero is, so it never
+    // evades back to the spot it was born on
+    if (st->hunterGuid)
+    {
+        if (Creature* hunter = ObjectAccessor::GetCreature(*player, st->hunterGuid))
+        {
+            if (hunter->IsAlive())
+            {
+                hunter->SetHomePosition(player->GetPosition());
+                if (!hunter->IsInCombat() && hunter->AI())
+                    hunter->AI()->AttackStart(player);
+                return;
+            }
+        }
+        st->hunterGuid.Clear();
+    }
+    st->hunterTimerMs += diffMs;
+    if (st->hunterTimerMs < HUNTER_EVERY_MS)
+        return;
+    st->hunterTimerMs = 0;
+    SpawnHunter(player);
+}
+
+void ClasslessMgr::SpawnHunter(Player* player)
+{
+    CharState& st = GetState(player);
+    if (!player->IsInWorld() || !player->IsAlive() || player->InBattleground() || player->InArena())
+        return;
+    DespawnHunter(player);
+    Position const pos = player->GetNearPosition(8.0f, frand(0.0f, 2.0f * float(M_PI)));
+    TempSummon* hunter = player->SummonCreature(HUNTER_ENTRY, pos, TEMPSUMMON_CORPSE_TIMED_DESPAWN, 30 * IN_MILLISECONDS);
+    if (!hunter)
+        return;
+    hunter->SetFaction(14);
+    CW_ReLevelCreature(hunter, uint8(std::min<uint32>(player->GetLevel() + 2, NEMESIS_LEVEL_CAP)), true);
+    hunter->SetReactState(REACT_AGGRESSIVE);
+    hunter->SetHomePosition(player->GetPosition());
+    if (hunter->AI())
+        hunter->AI()->AttackStart(player);
+    st.hunterGuid = hunter->GetGUID();
+    Msg(player, "|cffff4444A hunter has found you.|r");
+}
+
+void ClasslessMgr::DespawnHunter(Player* player)
+{
+    CharState* st = player ? FindState(player) : nullptr;
+    if (!st || !st->hunterGuid)
+        return;
+    if (Creature* hunter = ObjectAccessor::GetCreature(*player, st->hunterGuid))
+        hunter->DespawnOrUnsummon();
+    st->hunterGuid.Clear();
+}
+
+void ClasslessMgr::HunterSlain(Player* player, Creature* creature)
+{
+    CharState* st = player ? FindState(player) : nullptr;
+    if (!st || st->run != uint8(ChallengeId::Pursued) || !creature || creature->GetEntry() != HUNTER_ENTRY)
+        return;
+    st->hunterGuid.Clear();
+    // Nothing on top of the kill itself: an elite two levels up pays its own
+    // XP and loot, and anything more would be a thumb on one path's scale.
+    Msg(player, "|cff00ff00The hunter is dead.|r The next is ten minutes out.");
 }
 
 // Price in COPPER so the cost reads as silver in the early game and only grows
@@ -2399,7 +3155,8 @@ void ClasslessMgr::LoadCharacter(Player* player, CharState& st)
 
     if (QueryResult result = CharacterDatabase.Query(
         "SELECT mode, ability_essence, talent_essence, pity, rerolls, last_level, "
-        "stat_str, stat_agi, stat_sta, stat_int, stat_spi, display_power, archetype FROM cw_char_state WHERE guid = {}", guid))
+        "stat_str, stat_agi, stat_sta, stat_int, stat_spi, display_power, archetype, rebirths, "
+        "run, lives, lives_max, run_data, shards, extra_life FROM cw_char_state WHERE guid = {}", guid))
     {
         Field* f = result->Fetch();
         st.mode = Mode(f[0].Get<uint8>());
@@ -2412,6 +3169,37 @@ void ClasslessMgr::LoadCharacter(Player* player, CharState& st)
             st.statAlloc[i] = f[6 + i].Get<uint32>();
         st.displayPower = f[11].Get<uint8>();
         st.archetype = f[12].Get<uint32>();
+        st.rebirths = f[13].Get<uint32>();
+        st.run = f[14].Get<uint8>();
+        st.lives = f[15].Get<uint8>();
+        st.livesMax = f[16].Get<uint8>();
+        st.runData = f[17].Get<uint32>();
+        st.shards = f[18].Get<uint32>();
+        st.extraLife = f[19].Get<uint8>();
+    }
+
+    if (QueryResult result = CharacterDatabase.Query(
+        "SELECT creature_entry, levels, kills FROM cw_char_nemeses WHERE guid = {}", guid))
+    {
+        do
+        {
+            Field* f = result->Fetch();
+            NemesisMark mark;
+            mark.levels = f[1].Get<uint8>();
+            mark.kills = f[2].Get<uint8>();
+            st.nemeses[f[0].Get<uint32>()] = mark;
+        } while (result->NextRow());
+    }
+
+    // The best each challenge has gone, for the picker.
+    if (QueryResult result = CharacterDatabase.Query(
+        "SELECT challenge, MAX(level_reached), MAX(finished) FROM cw_char_runs WHERE guid = {} GROUP BY challenge", guid))
+    {
+        do
+        {
+            Field* f = result->Fetch();
+            st.runBest[f[0].Get<uint8>()] = { f[1].Get<uint8>(), f[2].Get<uint8>() != 0 };
+        } while (result->NextRow());
     }
 
     if (QueryResult result = CharacterDatabase.Query(
@@ -2459,11 +3247,24 @@ void ClasslessMgr::SaveState(Player* player)
     CharState& st = GetState(player);
     CharacterDatabase.Execute(
         "REPLACE INTO cw_char_state (guid, mode, ability_essence, talent_essence, pity, rerolls, last_level, "
-        "stat_str, stat_agi, stat_sta, stat_int, stat_spi, display_power, archetype) VALUES ({}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {})",
+        "stat_str, stat_agi, stat_sta, stat_int, stat_spi, display_power, archetype, rebirths, "
+        "run, lives, lives_max, run_data, shards, extra_life) "
+        "VALUES ({}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {})",
         player->GetGUID().GetCounter(), uint32(st.mode), st.abilityEssence, st.talentEssence, st.pity,
         st.rerolls, st.lastProcessedLevel,
         st.statAlloc[0], st.statAlloc[1], st.statAlloc[2], st.statAlloc[3], st.statAlloc[4],
-        uint32(st.displayPower), st.archetype);
+        uint32(st.displayPower), st.archetype, st.rebirths,
+        uint32(st.run), uint32(st.lives), uint32(st.livesMax), st.runData, st.shards, uint32(st.extraLife));
+}
+
+void ClasslessMgr::SaveNemeses(ObjectGuid guid, CharState const& st)
+{
+    uint32 const low = guid.GetCounter();
+    CharacterDatabase.Execute("DELETE FROM cw_char_nemeses WHERE guid = {}", low);
+    for (auto const& [entry, mark] : st.nemeses)
+        CharacterDatabase.Execute(
+            "INSERT INTO cw_char_nemeses (guid, creature_entry, levels, kills) VALUES ({}, {}, {}, {})",
+            low, entry, uint32(mark.levels), uint32(mark.kills));
 }
 
 bool ClasslessMgr::SetDisplayPower(Player* player, uint8 powerIdx, std::string* err)
@@ -2926,6 +3727,8 @@ void ClasslessMgr::HandleLogin(Player* player)
     GrantRidingSkill(player);
     GrantRuneforging(player);
     ApplyStatMods(player);
+    ApplyRebirthMods(player);
+    GrantRebirthTitles(player);
     // characters who passed the line before this rule existed, or while
     // logged out
     ClearStaleLocks(player);
@@ -3151,6 +3954,7 @@ void ClasslessMgr::HandleLevelUp(Player* player, uint8 oldLevel)
             st.rerolls += cfg.wcRerollsPerLevel;
         }
 
+
         // optional extra scroll faucet at level milestones (off by default)
         if (st.mode == Mode::Wildcard && cfg.wcFreeScrollEveryLevels
             && lvl % cfg.wcFreeScrollEveryLevels == 0 && cfg.wcFreeScrollCount)
@@ -3165,6 +3969,10 @@ void ClasslessMgr::HandleLevelUp(Player* player, uint8 oldLevel)
     UpdateAbilityRanks(player);
     GrantRidingSkill(player);
     GrantRuneforging(player);
+
+    // A run ends the moment the cap is reached with a life in hand.
+    if (st.run && newLevel >= sWorld->getIntConfig(CONFIG_MAX_PLAYER_LEVEL))
+        EndRun(player, true);
 
     if (uint32 freed = ClearStaleLocks(player))
         Msg(player, Acore::StringFormat(
@@ -4297,6 +5105,13 @@ bool ClasslessMgr::UnlearnAbility(Player* player, uint32 firstSpellId, std::stri
         if (err) *err = "That came free with another ability. Unlearn the one it came with instead.";
         return false;
     }
+    // An heirloom cost nothing this life either, and it is the one thing a
+    // Rebirth promised would stay.
+    if (st.abilities[e->firstSpellId].source == GrantSource::Heirloom)
+    {
+        if (err) *err = "That is an heirloom carried through Rebirth. It stays with you.";
+        return false;
+    }
 
     RemoveAbilityInternal(player, *e);
     if (cfg.refundOnUnlearn)
@@ -4436,9 +5251,11 @@ bool ClasslessMgr::Respec(Player* player, std::string* err)
     // Charging for the fast path would price convenience, not power. Rebirth
     // still costs, because a Wildcard Hero cannot unlearn at all and it is the
     // only way out of a build.
+    // An heirloom cost nothing and refunds nothing: it stays.
     std::vector<uint32> ownedAbilities;
     for (auto const& [firstSpell, owned] : st.abilities)
-        ownedAbilities.push_back(firstSpell);
+        if (owned.source != GrantSource::Heirloom)
+            ownedAbilities.push_back(firstSpell);
     for (uint32 firstSpell : ownedAbilities)
         if (AbilityEntry const* e = GetAbility(firstSpell))
             RemoveAbilityInternal(player, *e);
@@ -4450,10 +5267,13 @@ bool ClasslessMgr::Respec(Player* player, std::string* err)
         if (TalentPoolEntry const* t = GetTalent(talentId))
             RemoveTalentInternal(player, *t);
 
-    // rebuild full essence pools from the schedule
+    // rebuild full essence pools from the schedule, legacy essence included:
+    // a reborn Hero's bonus is part of what they are owed at every level
     uint8 level = player->GetLevel();
-    st.abilityEssence = cfg.startingAbilityEssence + LevelsEarned(level, cfg.essenceStartLevel) * cfg.abilityEssencePerLevel;
-    st.talentEssence = LevelsEarned(level, cfg.talentEssenceStartLevel) * cfg.talentEssencePerLevel;
+    st.abilityEssence = cfg.startingAbilityEssence + LevelsEarned(level, cfg.essenceStartLevel) * cfg.abilityEssencePerLevel
+        + st.rebirths * cfg.rebirthLegacyAbilityEssence;
+    st.talentEssence = LevelsEarned(level, cfg.talentEssenceStartLevel) * cfg.talentEssencePerLevel
+        + st.rebirths * cfg.rebirthLegacyTalentEssence;
     if (st.archetype)
     {
         Msg(player, Acore::StringFormat("You no longer follow |cffffff00{}|r.", ArchetypeName(st.archetype)));
@@ -4604,17 +5424,24 @@ uint32 ClasslessMgr::OwnedClassMask(CharState const& st) const
     return mask;
 }
 
-uint32 ClasslessMgr::RollAbility(Player* player, GrantSource source)
+// The pick behind an ability roll. Everything RollAbility used to do up to the
+// moment it handed the ability over; `exclude` is what the caller holds back.
+AbilityEntry const* ClasslessMgr::ChooseAbility(Player* player, CharState& st,
+                                                std::vector<uint32> const& exclude, bool& synergy)
 {
-    CharState& st = GetState(player);
     ObjectGuid guid = player->GetGUID();
-    TickBans(st, guid);
+    synergy = false;
 
     // never deal an ability whose NAME the Hero already owns (duplicate spell
     // ids with identical names exist in the DBC)
     std::unordered_set<std::string> ownedNames;
     for (auto const& [ownedFirst, ownedAb] : st.abilities)
         if (AbilityEntry const* oe = GetAbility(ownedFirst))
+            if (!oe->name.empty())
+                ownedNames.insert(oe->name);
+    // nor one the caller holds back, by id or by name
+    for (uint32 id : exclude)
+        if (AbilityEntry const* oe = GetAbility(id))
             if (!oe->name.empty())
                 ownedNames.insert(oe->name);
 
@@ -4630,6 +5457,8 @@ uint32 ClasslessMgr::RollAbility(Player* player, GrantSource source)
         for (auto const& [firstSpell, e] : _abilities)
         {
             if (!e.enabled || st.abilities.count(firstSpell) || IsBanned(st, false, firstSpell))
+                continue;
+            if (std::find(exclude.begin(), exclude.end(), firstSpell) != exclude.end())
                 continue;
             if (e.variant && !cfg.elementalInPool)
                 continue;
@@ -4664,10 +5493,9 @@ uint32 ClasslessMgr::RollAbility(Player* player, GrantSource source)
     }
 
     if (candidates.empty())
-        return 0;
+        return nullptr;
 
     // synergy roll?
-    bool synergy = false;
     uint32 ownedMask = OwnedClassMask(st);
     if (ownedMask)
     {
@@ -4704,6 +5532,18 @@ uint32 ClasslessMgr::RollAbility(Player* player, GrantSource source)
             pick -= w;
         }
     }
+    return chosen;
+}
+
+uint32 ClasslessMgr::RollAbility(Player* player, GrantSource source)
+{
+    CharState& st = GetState(player);
+    TickBans(st, player->GetGUID());
+
+    bool synergy = false;
+    AbilityEntry const* chosen = ChooseAbility(player, st, {}, synergy);
+    if (!chosen)
+        return 0;
 
     if (synergy)
     {
@@ -4746,19 +5586,14 @@ uint8 ClasslessMgr::OwnedClassCount(Player* player) const
     return count;
 }
 
-uint32 ClasslessMgr::RollTalent(Player* player)
+// The pick behind a talent roll, without the grant; see ChooseAbility.
+TalentPoolEntry const* ClasslessMgr::ChooseTalent(Player* player, CharState& st,
+                                                  std::vector<uint32> const& exclude, bool& synergy)
 {
-    CharState& st = GetState(player);
     ObjectGuid guid = player->GetGUID();
-    TickBans(st, guid);
-
     uint32 ownedMask = OwnedClassMask(st);
-    uint32 lastGranted = 0;
+    synergy = false;
 
-    // ONE roll, ONE talent. This used to chain: landing on a talent already
-    // owned upgraded it and rolled again, up to four times, and a talent
-    // reroll ran the whole thing once per rank refunded. A single reroll of a
-    // rank 5 talent could therefore hand over twenty grants.
     {
         // tiered: a talent in tree row R unlocks at level 10 + R*5 (the level a
         // vanilla character could first reach that row); fall back to the full
@@ -4773,6 +5608,8 @@ uint32 ClasslessMgr::RollTalent(Player* player)
             for (auto const& [talentId, t] : _talents)
             {
                 if (!t.enabled || IsBanned(st, true, talentId))
+                    continue;
+                if (std::find(exclude.begin(), exclude.end(), talentId) != exclude.end())
                     continue;
                 // A roll only ever hands over a talent the Hero does not
                 // have. Deepening one already held is what a reroll with
@@ -4804,9 +5641,8 @@ uint32 ClasslessMgr::RollTalent(Player* player)
         }
 
         if (candidates.empty())
-            return lastGranted;
+            return nullptr;
 
-        bool synergy = false;
         if (ownedMask)
         {
             uint32 chance = std::min<uint32>(cfg.wcSynergyBaseChance + st.pity * cfg.wcSynergyIncrement, 100);
@@ -4841,6 +5677,25 @@ uint32 ClasslessMgr::RollTalent(Player* player)
                 pick -= w;
             }
         }
+        return chosen;
+    }
+}
+
+uint32 ClasslessMgr::RollTalent(Player* player)
+{
+    CharState& st = GetState(player);
+    TickBans(st, player->GetGUID());
+    uint32 lastGranted = 0;
+
+    // ONE roll, ONE talent. This used to chain: landing on a talent already
+    // owned upgraded it and rolled again, up to four times, and a talent
+    // reroll ran the whole thing once per rank refunded. A single reroll of a
+    // rank 5 talent could therefore hand over twenty grants.
+    {
+        bool synergy = false;
+        TalentPoolEntry const* chosen = ChooseTalent(player, st, {}, synergy);
+        if (!chosen)
+            return lastGranted;
 
         if (synergy)
         {
@@ -4997,6 +5852,11 @@ bool ClasslessMgr::Reroll(Player* player, bool isTalent, uint32 entry, std::stri
             if (err) *err = "That came free with another ability. Reroll the one it came with instead.";
             return false;
         }
+        if (st.abilities[e->firstSpellId].source == GrantSource::Heirloom)
+        {
+            if (err) *err = "That is an heirloom carried through Rebirth. It is not rerolled.";
+            return false;
+        }
 
         if (!free)
         {
@@ -5046,7 +5906,8 @@ uint32 ClasslessMgr::RerollUnlockedAbilities(Player* player, std::string* err)
     uint32 kept = 0;
     for (auto const& [firstSpell, owned] : st.abilities)
     {
-        if (owned.source == GrantSource::Talent || owned.source == GrantSource::Companion)
+        if (owned.source == GrantSource::Talent || owned.source == GrantSource::Companion
+            || owned.source == GrantSource::Heirloom)
             continue;
         if (owned.locked)
         {
@@ -5098,11 +5959,13 @@ bool ClasslessMgr::SetLock(Player* player, uint32 firstSpellId, bool locked, std
     // them. Refusing here keeps the chat command in step with the addon and the
     // NPC, which show no padlock on either.
     if (GrantSource const source = st.abilities[e->firstSpellId].source;
-        source == GrantSource::Companion || source == GrantSource::Talent)
+        source == GrantSource::Companion || source == GrantSource::Talent || source == GrantSource::Heirloom)
     {
         if (err) *err = source == GrantSource::Companion
             ? "That came free with another ability. It cannot be rerolled, so there is nothing to lock."
-            : "That came with a talent. It cannot be rerolled, so there is nothing to lock.";
+            : source == GrantSource::Talent
+            ? "That came with a talent. It cannot be rerolled, so there is nothing to lock."
+            : "That is an heirloom. It is never rerolled, so there is nothing to lock.";
         return false;
     }
 
