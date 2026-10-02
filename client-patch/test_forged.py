@@ -50,6 +50,22 @@ def recipe_key(key):
     return re.sub(r"_(companion|pet\d+)$", "", key)
 
 
+_RECIPE_BY_KEY = {r["key"]: r for r in RECIPES}
+
+
+def recipe_asks(sp, field):
+    """What the recipe itself asked for on this row. A passive or a stack the
+    recipe declares is meant; the same bit arriving from a donor is a fault.
+    A companion is built from its parent recipe with its own keys on top, so
+    its own key wins and the parent's is the fallback."""
+    r = _RECIPE_BY_KEY.get(recipe_key(sp["key"]))
+    if r is None:
+        return None
+    if sp["key"].endswith("_companion"):
+        return r.get("companion", {}).get(field, r.get(field))
+    return r.get(field)
+
+
 def is_line(key):
     """A forged ability line, as opposed to a Hero talent rank. Talents live in
     the same spell list and the same manifest, but they are not lines: they
@@ -339,6 +355,44 @@ def main():
     armoured = ["%s (class %s, mask %s)" % (sp["name"], sp["values"][68], sp["values"][69])
                 for sp in spells if int(sp["values"][68]) == 4]
     check("no forged spell requires armour to be equipped", not armoured, "%s" % armoured[:4])
+
+    # ---- a school-masked aura names at least one school ----------------------
+    # These auras read MiscValue as a school mask and the core applies them only
+    # to the schools in it. Eight lines shipped with 0 and did nothing in game:
+    # Brace's and Unbroken Will's damage reduction, Ward Off's whole absorb,
+    # Bulwark Anchor, Signal Fire, Borrowed Stance, Rally Point, Repertoire.
+    MASKED_AURAS = {13: "MOD_DAMAGE_DONE", 14: "MOD_DAMAGE_TAKEN", 69: "SCHOOL_ABSORB",
+                    72: "MOD_POWER_COST_SCHOOL_PCT", 79: "MOD_DAMAGE_PERCENT_DONE",
+                    87: "MOD_DAMAGE_PERCENT_TAKEN", 135: "MOD_HEALING_DONE"}
+    APPLIERS = {6, 27, 35, 65, 119, 128, 129, 143}
+    schoolless = []
+    for sp in spells:
+        vals = sp["values"]
+        for i in range(3):
+            if (vals[F["Effect"] + i] in APPLIERS and vals[F["EffectApplyAuraName"] + i] in MASKED_AURAS
+                    and int(vals[F["EffectMiscValue"] + i]) == 0):
+                schoolless.append("%s effect %d (%s)" % (sp["name"], i + 1,
+                                  MASKED_AURAS[vals[F["EffectApplyAuraName"] + i]]))
+    check("every school-masked aura names at least one school", not schoolless,
+          "%d found; %s" % (len(schoolless), sorted(set(schoolless))[:4]))
+
+    # ---- physical damage over time is marked as a bleed ------------------------
+    # The core lets physical damage over time through armour only when the
+    # effect's mechanic is a bleed. Grudge Strike's unmarked bleed lost most of
+    # every tick to armour.
+    from gen_forged_spells import SPELL_DBC_COLUMNS as _SPELL_COLS
+    MECHANIC_COL = _SPELL_COLS.index("Mechanic")      # by name, never by guess
+    unbled = []
+    for sp in spells:
+        vals = sp["values"]
+        if not (int(vals[F["SchoolMask"]]) & 1):
+            continue
+        for i in range(3):
+            if (vals[F["EffectApplyAuraName"] + i] in (3, 53)
+                    and int(vals[F["EffectMechanic"] + i]) != 15 and int(vals[MECHANIC_COL]) != 15):
+                unbled.append("%s effect %d" % (sp["name"], i + 1))
+    check("every physical damage-over-time effect is marked as a bleed", not unbled,
+          "%s" % sorted(set(unbled))[:4])
 
     # ---- the Hero talent tab --------------------------------------------------
     # A talent reaches a line through the ordinary spell-mod path, so three
@@ -769,6 +823,8 @@ def main():
     for sp in spells:
         if sp["sla"] is None:
             continue          # a hidden half is meant to be unseen
+        if recipe_asks(sp, "passive"):
+            continue          # a passive is never cast; there is no moment to draw
         v = sp["values"]
         tg = set()
         for i in range(3):
@@ -1001,7 +1057,7 @@ def main():
                          (0x00008000, "outdoors only"),
                          (0x00020000, "stealth only"),
                          (0x00000040, "passive")):
-            if v[4] & bit:
+            if v[4] & bit and not (bit == 0x00000040 and recipe_asks(sp, "passive")):
                 inherited.append("%s: %s" % (who, why))
     check("no forged spell inherits its donor's form, focus or reagent",
           not inherited, "%d row(s) checked; %s" % (len(spells), inherited[:3]))
@@ -1077,7 +1133,7 @@ def main():
                                  % (sp["name"], i))
         # A talent's passive has no duration on purpose: it lasts as long as
         # the talent is owned. Everything else that applies an aura needs one.
-        if has_aura and not v[F["DurationIndex"]] and is_line(sp["key"]):
+        if has_aura and not v[F["DurationIndex"]] and is_line(sp["key"]) and not recipe_asks(sp, "passive"):
             coherence.append("%s: applies an aura with no duration" % sp["name"])
     check("effects, targets and durations agree", not coherence,
           "%d row(s) checked; %s" % (len(spells), coherence[:3]))
@@ -1095,7 +1151,10 @@ def main():
                "SPELL_EFFECT_CHARGE": 96, "SPELL_EFFECT_NORMALIZED_WEAPON_DMG": 121}
     A_CONST = {"SPELL_AURA_MOD_DAMAGE_PERCENT_DONE": 79, "SPELL_AURA_PERIODIC_DAMAGE": 3,
                "SPELL_AURA_MOD_MELEE_RANGED_HASTE": 192, "SPELL_AURA_DUMMY": 4,
-               "SPELL_AURA_MOD_CASTING_SPEED_NOT_STACK": 65}
+               "SPELL_AURA_MOD_CASTING_SPEED_NOT_STACK": 65,
+               # the challenge-run rewards' hooks
+               "SPELL_AURA_SCHOOL_ABSORB": 69, "SPELL_AURA_PERIODIC_DUMMY": 226,
+               "SPELL_AURA_MOD_RESISTANCE": 22}
     # Implicit targets a target-select hook can name, from the table in
     # SpellInfo.cpp. A name that is not here fails rather than being skipped.
     T_CONST = {"TARGET_UNIT_TARGET_ENEMY": 6, "TARGET_UNIT_SRC_AREA_ENEMY": 15,
@@ -1299,7 +1358,7 @@ def main():
             continue          # a talent rank IS a passive, on purpose
         v = sp["values"]
         for col, bit, nm in STUCK_BITS:
-            if v[col] & bit:
+            if v[col] & bit and not (nm == "PASSIVE" and recipe_asks(sp, "passive")):
                 stuck.append("%s: kept %s from its donor" % (sp["name"], nm))
         if v[4] & 0x00000002 and sp["name"] not in RANGED_OK:
             stuck.append("%s: kept USES_RANGED_SLOT from its donor" % sp["name"])
@@ -1336,7 +1395,7 @@ def main():
                 function.append("%s: effect %d applies aura 0" % (who, i))
         if v[1]:
             function.append("%s: kept its donor's cooldown category %d" % (who, v[1]))
-        if v[49]:
+        if v[49] and v[49] != (recipe_asks(sp, "stack") or 0):
             function.append("%s: kept its donor's StackAmount %d" % (who, v[49]))
         if v[27] and not any(v[F["EffectApplyAuraName"] + i] in (42, 43, 109)
                              for i in range(3)):

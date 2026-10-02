@@ -229,12 +229,35 @@ projected as you spend. Reallocating is free.</em>
   no slows below 35% health, 30% less above 75%), *Ironman* (3, white gear only), *Big Game
   Hunter* (3, normal enemies give no XP, elites and bosses full, quests double) and *Hardcore*
   (1, a death ends the run). The list is code (`ClasslessMgr.cpp`, `CHALLENGES`), including the
-  titles and the 30-shard price of a life. Seven of them also pay a **reward ability** that
-  exists nowhere else, granted as an heirloom so it survives every Rebirth after: Nemesis pays
-  *Grudge Strike*, Elite World *Giantsbane*, Legion *Flashfire*, Pursued *Turnabout*, Hourglass
-  *Stolen Hour*, Glass *Shatterpoint* and Hardcore *Unbroken Will*. They are forged lines
-  flagged `reward` in the generator: loaded like any other so the run can hand them over, and
-  never rolled, bought or browsed.
+  titles and the 30-shard price of a life. Every challenge also pays a **reward ability** that
+  exists nowhere else and plays like the rule it was earned under, granted as an heirloom so it
+  survives every Rebirth after:
+  - *Mark of the Nemesis* (Nemesis): a marked enemy takes 15% more damage from you; if it dies
+    marked you regain 20% health and mana and the mark leaps to the nearest enemy.
+  - *Giantsbane* (Elite World): a strike that deals 1% more for every 1% of maximum health the
+    target has over you, up to double.
+  - *One Against Many* (Legion): 5% more damage and 5% less taken per enemy within 10 yards, up
+    to five.
+  - *Turnabout* (Pursued): the next enemy to hit you is answered; you appear behind it and stun
+    it, and hit it 50% harder while it is stunned.
+  - *Rewind* (Hourglass): after six seconds, or when cancelled, you return to where you stood
+    with the health and power you had.
+  - *Shatterpoint* (Glass): spend 30% of current health for a frost shard that adds three times
+    the health spent and shatters into nearby enemies for half.
+  - *Spite Mirror* (Spiteful): a third of all damage taken is sent back as Shadow damage.
+  - *Sanguine Pact* (Bloodpact): hits heal you for 30% of their damage, and overhealing becomes
+    a shield of up to 20% of maximum health.
+  - *Brink* (Berserker): eight seconds in which no blow kills you, with 2% more damage per 1% of
+    health missing.
+  - *Ironbound* (Ironman): armour equal to half your maximum health, and immunity to stuns.
+  - *Trophy Hunt* (Big Game Hunter): mark an elite, rare or boss; if it dies marked you take a
+    trophy, 5% more damage and healing for five minutes, stacking three times.
+  - *Last Breath* (Hardcore): passive; once every five minutes a killing blow leaves you at 1
+    health, and for six seconds every hit you land heals you for its full damage.
+
+  They are forged lines flagged `reward` in the generator, loaded like any other so the run can
+  hand them over and never rolled, bought or browsed. Each is scripted in
+  `src/ClasslessForgedScripts.cpp` (the challenge-run rewards section).
 - **Archetypes.** Thirteen build templates a Classless Hero can follow from 1 to 80. Six mix
   two classes (*Blade Dancer*, *Battle Mage*, *Ranger of the Light*, *Shadow Mender*, *Stealthy
   Healer*, *Storm Warrior*) and seven are built around one element's variant strikes and the

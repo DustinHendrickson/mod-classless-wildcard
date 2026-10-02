@@ -32,6 +32,7 @@
 #include "ClasslessMgr.h"
 #include "Duration.h"      // the 1ms the Weave refund is scheduled by
 #include "GameTime.h"
+#include "Chat.h"           // Last Breath says it fired
 #include "Group.h"          // Healing Spit reads the party
 #include "Player.h"
 #include "ScriptMgr.h"
@@ -1237,6 +1238,515 @@ public:
     }
 };
 
+
+// =====================================================================
+// The challenge-run rewards.
+//
+// Twelve abilities, one per challenge, each paid for finishing a run and
+// each doing something no class can. The rows (gen_forged_spells.py) carry
+// the shape and the look; this is the part a row cannot say. Lines are
+// found by recipe key through ForgedLine, never by a written-in id, and a
+// line's hidden companion is its first rank plus the same 16 Crossdraw and
+// Ricochet use.
+//
+// Most live in the spell and aura scripts below. Six answer to a hit or a
+// death rather than to their own cast, so they are one UnitScript at the end
+// of the section: Mark of the Nemesis, Turnabout, Spite Mirror, Sanguine
+// Pact, Last Breath's healing and Brink's damage, and Trophy Hunt's trophy.
+// =====================================================================
+namespace
+{
+    constexpr uint32 REWARD_COMPANION_OFFSET = 16;      // matches PER_RECIPE / 2
+
+    uint32 RewardLine(char const* key)
+    {
+        return sClasslessMgr->ForgedLine(key);
+    }
+
+    uint32 RewardCompanion(char const* key)
+    {
+        uint32 const first = RewardLine(key);
+        return first ? first + REWARD_COMPANION_OFFSET : 0;
+    }
+
+    // every hostile, living, attackable unit within `range` of `centre`, as
+    // `asker` judges hostility
+    std::vector<Unit*> EnemiesNear(WorldObject* centre, Unit* asker, float range)
+    {
+        std::list<Unit*> nearby;
+        Acore::AnyUnfriendlyUnitInObjectRangeCheck check(centre, asker, range);
+        Acore::UnitListSearcher<Acore::AnyUnfriendlyUnitInObjectRangeCheck> searcher(centre, nearby, check);
+        Cell::VisitObjects(centre, searcher, range);
+        std::vector<Unit*> out;
+        for (Unit* u : nearby)
+            if (u != centre && u->IsAlive() && asker->IsValidAttackTarget(u))
+                out.push_back(u);
+        return out;
+    }
+
+    constexpr int32  NEMESIS_BONUS_PCT = 15;
+    constexpr float  NEMESIS_LEAP_RANGE = 30.0f;
+    constexpr int32  NEMESIS_RESTORE_PCT = 20;
+    constexpr int32  ONE_AGAINST_MANY_STEP = 5;
+    constexpr uint32 ONE_AGAINST_MANY_MAX = 5;
+    constexpr float  ONE_AGAINST_MANY_RANGE = 10.0f;
+    constexpr int32  TURNABOUT_BONUS_PCT = 50;
+    constexpr int32  SHATTER_COST_PCT = 30;
+    constexpr float  SHATTER_RANGE = 8.0f;
+    constexpr uint32 LAST_BREATH_COOLDOWN_MS = 5 * MINUTE * IN_MILLISECONDS;
+    constexpr int32  SANGUINE_HEAL_PCT = 30;
+    constexpr int32  SANGUINE_SHIELD_CAP_PCT = 20;
+    constexpr uint32 BRINK_MAX_PCT = 100;
+}
+
+// Giantsbane: a strike that grows with how much bigger the target is.
+class spell_cw_giantsbane : public SpellScript
+{
+    PrepareSpellScript(spell_cw_giantsbane);
+
+    // OnHit runs after the damage is worked out and before it is dealt.
+    void Scale()
+    {
+        Unit* caster = GetCaster();
+        Unit* target = GetHitUnit();
+        if (!caster || !target || !caster->GetMaxHealth())
+            return;
+        float const ratio = float(target->GetMaxHealth()) / float(caster->GetMaxHealth());
+        int32 const bonus = std::clamp(int32((ratio - 1.0f) * 100.0f), 0, 100);
+        if (bonus)
+            SetHitDamage(GetHitDamage() * (100 + bonus) / 100);
+    }
+
+    void Register() override
+    {
+        OnHit += SpellHitFn(spell_cw_giantsbane::Scale);
+    }
+};
+
+// One Against Many: recounts the enemies around you once a second and sets
+// the damage done and taken to match.
+class spell_cw_one_against_many : public AuraScript
+{
+    PrepareAuraScript(spell_cw_one_against_many);
+
+    void Count()
+    {
+        Unit* owner = GetUnitOwner();
+        if (!owner)
+            return;
+        uint32 const n = std::min<uint32>(uint32(EnemiesNear(owner, owner, ONE_AGAINST_MANY_RANGE).size()),
+                                          ONE_AGAINST_MANY_MAX);
+        if (AuraEffect* up = GetAura()->GetEffect(EFFECT_1))
+            up->ChangeAmount(ONE_AGAINST_MANY_STEP * int32(n));
+        if (AuraEffect* down = GetAura()->GetEffect(EFFECT_2))
+            down->ChangeAmount(-ONE_AGAINST_MANY_STEP * int32(n));
+    }
+
+    void Applied(AuraEffect const* /*aurEff*/, AuraEffectHandleModes /*mode*/)
+    {
+        Count();
+    }
+
+    void Tick(AuraEffect const* /*aurEff*/)
+    {
+        Count();
+    }
+
+    void Register() override
+    {
+        AfterEffectApply += AuraEffectApplyFn(spell_cw_one_against_many::Applied, EFFECT_0,
+                                              SPELL_AURA_PERIODIC_DUMMY, AURA_EFFECT_HANDLE_REAL);
+        OnEffectPeriodic += AuraEffectPeriodicFn(spell_cw_one_against_many::Tick, EFFECT_0,
+                                                 SPELL_AURA_PERIODIC_DUMMY);
+    }
+};
+
+// Rewind: keeps where you stood and what you had, and puts you back when the
+// mark runs out or is cancelled. A death in the six seconds is not undone.
+class spell_cw_rewind : public AuraScript
+{
+    PrepareAuraScript(spell_cw_rewind);
+
+    uint32 _map = 0;
+    uint32 _instance = 0;
+    float _x = 0.0f, _y = 0.0f, _z = 0.0f, _o = 0.0f;
+    uint32 _health = 0;
+    int32 _mana = 0, _rage = 0, _energy = 0;
+    bool _marked = false;
+
+    void Mark(AuraEffect const* /*aurEff*/, AuraEffectHandleModes /*mode*/)
+    {
+        Player* player = GetUnitOwner() ? GetUnitOwner()->ToPlayer() : nullptr;
+        if (!player)
+            return;
+        _map = player->GetMapId();
+        _instance = player->GetInstanceId();
+        player->GetPosition(_x, _y, _z, _o);
+        _health = player->GetHealth();
+        _mana = player->GetPower(POWER_MANA);
+        _rage = player->GetPower(POWER_RAGE);
+        _energy = player->GetPower(POWER_ENERGY);
+        _marked = true;
+    }
+
+    void Return(AuraEffect const* /*aurEff*/, AuraEffectHandleModes /*mode*/)
+    {
+        AuraRemoveMode const how = GetTargetApplication()->GetRemoveMode();
+        if (!_marked || (how != AURA_REMOVE_BY_EXPIRE && how != AURA_REMOVE_BY_CANCEL))
+            return;
+        Player* player = GetUnitOwner() ? GetUnitOwner()->ToPlayer() : nullptr;
+        if (!player || !player->IsAlive() || player->GetMapId() != _map || player->GetInstanceId() != _instance)
+            return;
+        uint32 const flash = GetId() + REWARD_COMPANION_OFFSET;
+        float const x = _x, y = _y, z = _z, o = _o;
+        uint32 const health = _health;
+        int32 const mana = _mana, rage = _rage, energy = _energy;
+        // A tick out, not here: this runs inside the aura's own removal, and a
+        // teleport is not something to start from the middle of that.
+        player->m_Events.AddEventAtOffset([player, flash, x, y, z, o, health, mana, rage, energy]()
+        {
+            if (!player->IsInWorld() || !player->IsAlive())
+                return;
+            player->NearTeleportTo(x, y, z, o);
+            player->SetHealth(std::min<uint32>(std::max<uint32>(health, 1), player->GetMaxHealth()));
+            player->SetPower(POWER_MANA, std::min<int32>(mana, player->GetMaxPower(POWER_MANA)));
+            player->SetPower(POWER_RAGE, std::min<int32>(rage, player->GetMaxPower(POWER_RAGE)));
+            player->SetPower(POWER_ENERGY, std::min<int32>(energy, player->GetMaxPower(POWER_ENERGY)));
+            if (sSpellMgr->GetSpellInfo(flash))
+                player->CastSpell(player, flash, true);
+        }, 1ms);
+    }
+
+    void Register() override
+    {
+        AfterEffectApply += AuraEffectApplyFn(spell_cw_rewind::Mark, EFFECT_0, SPELL_AURA_DUMMY,
+                                              AURA_EFFECT_HANDLE_REAL);
+        AfterEffectRemove += AuraEffectRemoveFn(spell_cw_rewind::Return, EFFECT_0, SPELL_AURA_DUMMY,
+                                                AURA_EFFECT_HANDLE_REAL);
+    }
+};
+
+// Shatterpoint: health spent as power. The shard carries three times what
+// was paid, then bursts into everything near the target for half.
+class spell_cw_shatterpoint : public SpellScript
+{
+    PrepareSpellScript(spell_cw_shatterpoint);
+
+    uint32 _spent = 0;
+    int32 _total = 0;
+
+    // paid when the cast completes, as the shard leaves the hand
+    void Spend()
+    {
+        Unit* caster = GetCaster();
+        if (!caster)
+            return;
+        _spent = caster->CountPctFromCurHealth(SHATTER_COST_PCT);
+        if (_spent >= caster->GetHealth())
+            _spent = caster->GetHealth() > 1 ? caster->GetHealth() - 1 : 0;
+        if (_spent)
+            caster->ModifyHealth(-int32(_spent));
+    }
+
+    void Empower()
+    {
+        _total = GetHitDamage() + int32(3 * _spent);
+        SetHitDamage(_total);
+    }
+
+    // Each shard is cast BY the target at an enemy near it, with the Hero as
+    // original caster, the way Ricochet Shot's bounces are: the missile is
+    // drawn from the shattering point and the damage is the Hero's.
+    void Shatter()
+    {
+        Unit* target = GetHitUnit();
+        Player* owner = GetCaster() ? GetCaster()->ToPlayer() : nullptr;
+        if (!target || !owner || _total < 2)
+            return;
+        uint32 const shard = GetSpellInfo()->Id + REWARD_COMPANION_OFFSET;
+        if (!sSpellMgr->GetSpellInfo(shard))
+            return;
+        for (Unit* next : EnemiesNear(target, owner, SHATTER_RANGE))
+        {
+            CustomSpellValues values;
+            values.AddSpellMod(SPELLVALUE_BASE_POINT0, _total / 2);
+            target->CastCustomSpell(shard, values, next, TRIGGERED_FULL_MASK, nullptr, nullptr, owner->GetGUID());
+        }
+    }
+
+    void Register() override
+    {
+        OnCast += SpellCastFn(spell_cw_shatterpoint::Spend);
+        OnHit += SpellHitFn(spell_cw_shatterpoint::Empower);
+        AfterHit += SpellHitFn(spell_cw_shatterpoint::Shatter);
+    }
+};
+
+// Last Breath: an unlimited absorb that answers only a killing blow, once
+// every five minutes, the way the rogue's Cheat Death is built. The cooldown
+// sits on the companion, which is the buff that follows.
+class spell_cw_last_breath : public AuraScript
+{
+    PrepareAuraScript(spell_cw_last_breath);
+
+    void Unlimited(AuraEffect const* /*aurEff*/, int32& amount, bool& /*canBeRecalculated*/)
+    {
+        amount = -1;
+    }
+
+    void Absorb(AuraEffect* /*aurEff*/, DamageInfo& dmgInfo, uint32& absorbAmount)
+    {
+        absorbAmount = 0;
+        Player* player = GetTarget() ? GetTarget()->ToPlayer() : nullptr;
+        if (!player || dmgInfo.GetDamage() < player->GetHealth())
+            return;
+        uint32 const buff = GetId() + REWARD_COMPANION_OFFSET;
+        if (!sSpellMgr->GetSpellInfo(buff) || player->HasSpellCooldown(buff))
+            return;
+        absorbAmount = dmgInfo.GetDamage() - player->GetHealth() + 1;
+        player->CastSpell(player, buff, true);
+        player->AddSpellCooldown(buff, 0, LAST_BREATH_COOLDOWN_MS);
+        ChatHandler(player->GetSession()).SendSysMessage("|cffff8800Last Breath|r: you refuse to fall.");
+    }
+
+    void Register() override
+    {
+        DoEffectCalcAmount += AuraEffectCalcAmountFn(spell_cw_last_breath::Unlimited, EFFECT_0,
+                                                     SPELL_AURA_SCHOOL_ABSORB);
+        OnEffectAbsorb += AuraEffectAbsorbFn(spell_cw_last_breath::Absorb, EFFECT_0);
+    }
+};
+
+// Brink: for its duration no blow is a killing blow. The damage it adds is
+// in cw_reward_effects.
+class spell_cw_brink : public AuraScript
+{
+    PrepareAuraScript(spell_cw_brink);
+
+    void Unlimited(AuraEffect const* /*aurEff*/, int32& amount, bool& /*canBeRecalculated*/)
+    {
+        amount = -1;
+    }
+
+    void Absorb(AuraEffect* /*aurEff*/, DamageInfo& dmgInfo, uint32& absorbAmount)
+    {
+        absorbAmount = 0;
+        Unit* target = GetTarget();
+        if (target && dmgInfo.GetDamage() >= target->GetHealth())
+            absorbAmount = dmgInfo.GetDamage() - target->GetHealth() + 1;
+    }
+
+    void Register() override
+    {
+        DoEffectCalcAmount += AuraEffectCalcAmountFn(spell_cw_brink::Unlimited, EFFECT_0,
+                                                     SPELL_AURA_SCHOOL_ABSORB);
+        OnEffectAbsorb += AuraEffectAbsorbFn(spell_cw_brink::Absorb, EFFECT_0);
+    }
+};
+
+// Ironbound: armour equal to half the caster's maximum health, worked out as
+// the aura goes up.
+class spell_cw_ironbound : public AuraScript
+{
+    PrepareAuraScript(spell_cw_ironbound);
+
+    void Armor(AuraEffect const* /*aurEff*/, int32& amount, bool& /*canBeRecalculated*/)
+    {
+        if (Unit* caster = GetCaster())
+            amount = int32(caster->CountPctFromMaxHealth(50));
+    }
+
+    void Register() override
+    {
+        DoEffectCalcAmount += AuraEffectCalcAmountFn(spell_cw_ironbound::Armor, EFFECT_0,
+                                                     SPELL_AURA_MOD_RESISTANCE);
+    }
+};
+
+// Trophy Hunt: only big game. The trophy itself is paid in cw_reward_effects
+// when the quarry dies.
+class spell_cw_trophy_hunt : public SpellScript
+{
+    PrepareSpellScript(spell_cw_trophy_hunt);
+
+    SpellCastResult Quarry()
+    {
+        Creature* creature = GetExplTargetUnit() ? GetExplTargetUnit()->ToCreature() : nullptr;
+        if (!creature)
+            return SPELL_FAILED_BAD_TARGETS;
+        CreatureTemplate const* tmpl = creature->GetCreatureTemplate();
+        if ((tmpl && tmpl->rank != CREATURE_ELITE_NORMAL) || creature->IsDungeonBoss())
+            return SPELL_CAST_OK;
+        return SPELL_FAILED_BAD_TARGETS;
+    }
+
+    void Register() override
+    {
+        OnCheckCast += SpellCheckCastFn(spell_cw_trophy_hunt::Quarry);
+    }
+};
+
+// What the rewards do when somebody is hit or dies.
+class cw_reward_effects : public UnitScript
+{
+public:
+    cw_reward_effects() : UnitScript("cw_reward_effects", true, {
+        UNITHOOK_MODIFY_MELEE_DAMAGE,
+        UNITHOOK_MODIFY_SPELL_DAMAGE_TAKEN,
+        UNITHOOK_ON_UNIT_DEATH
+    }) { }
+
+    void ModifyMeleeDamage(Unit* target, Unit* attacker, uint32& damage) override
+    {
+        Apply(target, attacker, damage, nullptr);
+    }
+
+    void ModifySpellDamageTaken(Unit* target, Unit* attacker, int32& damage, SpellInfo const* spellInfo) override
+    {
+        if (damage <= 0)
+            return;
+        uint32 amount = uint32(damage);
+        Apply(target, attacker, amount, spellInfo);
+        damage = int32(amount);
+    }
+
+    void OnUnitDeath(Unit* unit, Unit* /*killer*/) override
+    {
+        if (!unit || !unit->IsInWorld())
+            return;
+
+        // Mark of the Nemesis: the marker is paid back, and the mark leaps.
+        if (uint32 const mark = RewardLine("mark_of_the_nemesis"))
+            if (Aura* aura = unit->GetAura(mark))
+                if (Player* player = aura->GetCaster() ? aura->GetCaster()->ToPlayer() : nullptr)
+                    if (player->IsAlive())
+                    {
+                        player->ModifyHealth(int32(player->CountPctFromMaxHealth(NEMESIS_RESTORE_PCT)));
+                        player->ModifyPower(POWER_MANA, int32(CalculatePct(player->GetMaxPower(POWER_MANA), NEMESIS_RESTORE_PCT)));
+                        if (uint32 const due = mark + REWARD_COMPANION_OFFSET; sSpellMgr->GetSpellInfo(due))
+                            player->CastSpell(player, due, true);   // the golden surge
+                        Unit* next = nullptr;
+                        float best = NEMESIS_LEAP_RANGE + 1.0f;
+                        for (Unit* u : EnemiesNear(player, player, NEMESIS_LEAP_RANGE))
+                            if (u != unit && !u->HasAura(mark, player->GetGUID()))
+                                if (float const d = player->GetDistance(u); d < best)
+                                {
+                                    next = u;
+                                    best = d;
+                                }
+                        if (next)
+                            player->CastSpell(next, mark, TRIGGERED_FULL_MASK);
+                    }
+
+        // Trophy Hunt: big game down, a trophy taken.
+        if (uint32 const quarry = RewardLine("trophy_hunt"))
+            if (Aura* aura = unit->GetAura(quarry))
+                if (Player* player = aura->GetCaster() ? aura->GetCaster()->ToPlayer() : nullptr)
+                    if (uint32 const trophy = quarry + REWARD_COMPANION_OFFSET;
+                        player->IsAlive() && sSpellMgr->GetSpellInfo(trophy))
+                        player->CastSpell(player, trophy, true);
+    }
+
+private:
+    void Apply(Unit* target, Unit* attacker, uint32& damage, SpellInfo const* spellInfo)
+    {
+        if (!target || !attacker || !damage || target == attacker)
+            return;
+
+        // ---- the Hero dealing it ----------------------------------------------
+        if (Player* dealer = attacker->ToPlayer())
+        {
+            int32 pct = 100;
+            if (uint32 const mark = RewardLine("mark_of_the_nemesis"); mark && target->HasAura(mark, dealer->GetGUID()))
+                pct += NEMESIS_BONUS_PCT;
+            if (uint32 const stun = RewardCompanion("turnabout"); stun && target->HasAura(stun, dealer->GetGUID()))
+                pct += TURNABOUT_BONUS_PCT;
+            if (uint32 const brink = RewardLine("brink"); brink && dealer->HasAura(brink))
+                pct += int32(std::min<uint32>(BRINK_MAX_PCT, uint32((100.0f - dealer->GetHealthPct()) * 2.0f)));
+            if (pct != 100)
+                damage = uint32(uint64(damage) * uint32(pct) / 100);
+
+            if (dealer->IsAlive())
+            {
+                if (uint32 const breath = RewardCompanion("last_breath"); breath && dealer->HasAura(breath))
+                    dealer->ModifyHealth(int32(damage));
+                else if (uint32 const pact = RewardLine("sanguine_pact"); pact && dealer->HasAura(pact))
+                    Sanguine(dealer, CalculatePct(damage, SANGUINE_HEAL_PCT));
+            }
+        }
+
+        // ---- the Hero taking it -----------------------------------------------
+        Player* victim = target->ToPlayer();
+        if (!victim || !victim->IsAlive())
+            return;
+        // the third Spite Mirror sends back must not be sent back again
+        uint32 const spite = RewardLine("spite_mirror");
+        uint32 const spiteBolt = RewardCompanion("spite_mirror");
+        if (spite && victim->HasAura(spite) && !(spellInfo && spellInfo->Id == spiteBolt))
+            Later(victim, attacker, spiteBolt, int32(damage / 3));
+        if (uint32 const turn = RewardLine("turnabout"); turn && victim->HasAura(turn) && victim->IsValidAttackTarget(attacker))
+        {
+            victim->RemoveAurasDueToSpell(turn);
+            Turn(victim, attacker);
+        }
+    }
+
+    // Heal by the hit; what spills over full health grows the shield, held
+    // to a fifth of maximum health.
+    static void Sanguine(Player* dealer, uint32 heal)
+    {
+        uint32 const missing = dealer->GetMaxHealth() - dealer->GetHealth();
+        uint32 const healed = std::min(heal, missing);
+        if (healed)
+            dealer->ModifyHealth(int32(healed));
+        uint32 const over = heal - healed;
+        uint32 const shield = RewardCompanion("sanguine_pact");
+        if (!over || !shield)
+            return;
+        int32 const cap = int32(dealer->CountPctFromMaxHealth(SANGUINE_SHIELD_CAP_PCT));
+        if (AuraEffect* eff = dealer->GetAuraEffect(shield, EFFECT_0))
+            eff->ChangeAmount(std::min<int32>(cap, eff->GetAmount() + int32(over)));
+        else
+            Later(dealer, dealer, shield, std::min<int32>(cap, int32(over)));
+    }
+
+    // A cast a tick out, never from inside the damage being worked out: the
+    // other unit is looked up again by guid when it runs.
+    static void Later(Player* caster, Unit* target, uint32 spellId, int32 amount)
+    {
+        if (!spellId || amount < 1 || !sSpellMgr->GetSpellInfo(spellId))
+            return;
+        ObjectGuid const targetGuid = target->GetGUID();
+        caster->m_Events.AddEventAtOffset([caster, targetGuid, spellId, amount]()
+        {
+            Unit* to = ObjectAccessor::GetUnit(*caster, targetGuid);
+            if (!to || !to->IsAlive() || !caster->IsAlive())
+                return;
+            CustomSpellValues values;
+            values.AddSpellMod(SPELLVALUE_BASE_POINT0, amount);
+            caster->CastCustomSpell(spellId, values, to, TRIGGERED_FULL_MASK);
+        }, 1ms);
+    }
+
+    // Turnabout: step behind the one who struck, and stun it.
+    static void Turn(Player* victim, Unit* attacker)
+    {
+        uint32 const stun = RewardCompanion("turnabout");
+        ObjectGuid const attackerGuid = attacker->GetGUID();
+        victim->m_Events.AddEventAtOffset([victim, attackerGuid, stun]()
+        {
+            Unit* foe = ObjectAccessor::GetUnit(*victim, attackerGuid);
+            if (!foe || !foe->IsAlive() || !victim->IsAlive())
+                return;
+            Position behind = foe->GetNearPosition(1.5f, float(M_PI));
+            victim->NearTeleportTo(behind.GetPositionX(), behind.GetPositionY(), behind.GetPositionZ(),
+                                   behind.GetAngle(foe));
+            if (stun && sSpellMgr->GetSpellInfo(stun))
+                victim->CastSpell(foe, stun, TRIGGERED_FULL_MASK);
+        }, 1ms);
+    }
+};
+
 void AddClasslessForgedScripts()
 {
     new cw_forged_pet_model();
@@ -1256,4 +1766,14 @@ void AddClasslessForgedScripts()
     RegisterSpellScript(spell_cw_emberfeed);
     RegisterSpellScript(spell_cw_overflow);
     RegisterSpellScript(spell_cw_healing_spit);
+    // the challenge-run rewards
+    new cw_reward_effects();
+    RegisterSpellScript(spell_cw_giantsbane);
+    RegisterSpellScript(spell_cw_one_against_many);
+    RegisterSpellScript(spell_cw_rewind);
+    RegisterSpellScript(spell_cw_shatterpoint);
+    RegisterSpellScript(spell_cw_last_breath);
+    RegisterSpellScript(spell_cw_brink);
+    RegisterSpellScript(spell_cw_ironbound);
+    RegisterSpellScript(spell_cw_trophy_hunt);
 }

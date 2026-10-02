@@ -336,7 +336,7 @@ private:
     ClasslessWildcard::TalentPoolEntry const* ChooseTalent(Player* player, ClasslessWildcard::CharState& st,
                                                            std::vector<uint32> const& exclude, bool& synergy);
     void SaveNemeses(ObjectGuid guid, ClasslessWildcard::CharState const& st);
-    void ApplyNemesisTo(Player* player, Creature* creature, ClasslessWildcard::NemesisMark const& mark);
+    void ApplyNemesisTo(Creature* creature, ClasslessWildcard::NemesisMark const& mark);
     // Nemesis levels already applied to a live creature, by guid: a creature
     // engaged twice is not grown twice, and one that died is forgotten.
     std::unordered_map<ObjectGuid, uint8> _nemesisApplied;

@@ -327,6 +327,29 @@ T_CONE_ENEMY = 104                   # a cone in front of the caster. The only c
                                      # the player pool uses: Cone of Cold and
                                      # Dragon's Breath, both with radius index 13
 ALL_SCHOOLS = 0x7F                   # MAX_SPELL_SCHOOL is 7
+# The effects that apply an aura (APPLY_AURA, PERSISTENT_AREA_AURA and the
+# area auras), and the auras among them whose MiscValue is a school mask the
+# core filters by. See build_row: a 0 there means no school, which means the
+# aura does nothing, so a recipe that names none gets ALL_SCHOOLS.
+AURA_EFFECTS = {6, 27, 35, 65, 119, 128, 129, 143}
+SCHOOL_MASKED_AURAS = {
+    13,     # MOD_DAMAGE_DONE
+    14,     # MOD_DAMAGE_TAKEN
+    69,     # SCHOOL_ABSORB
+    72,     # MOD_POWER_COST_SCHOOL_PCT
+    79,     # MOD_DAMAGE_PERCENT_DONE
+    87,     # MOD_DAMAGE_PERCENT_TAKEN
+    135,    # MOD_HEALING_DONE
+}
+MECHANIC_BLEED = 15
+MECHANIC_SNARE = 11
+MECHANIC_STUN = 12
+A_MOD_STUN = 12                      # Cheap Shot, Kidney Shot
+A_MOD_RESISTANCE = 22                # misc 1 is armour
+A_MECHANIC_IMMUNITY = 77             # misc is the mechanic: 12 stun
+A_MOD_HEALING_DONE_PCT = 136         # healing done, all schools (aura 136, not effect 136)
+A_PERIODIC_DUMMY = 226               # a tick with no effect of its own, for a script
+DUR_3S, DUR_60S, DUR_5M = 27, 3, 5   # SpellDuration.dbc: 3000, 60000, 300000 ms
 
 RANGE_SELF, RANGE_MELEE, RANGE_20, RANGE_30, RANGE_40 = 1, 2, 3, 4, 5
 RANGE_RANGED = 114                   # "Hunter Range", 0 to 35 yards: every shot uses it
@@ -1331,129 +1354,265 @@ RECIPES = [
     # Paid for FINISHING a challenge run (ClasslessMgr.cpp CHALLENGES names the
     # key), granted as an heirloom, so it comes along through every Rebirth
     # after. `reward` keeps each out of the roll pool, the essence shop and
-    # the browser: nothing but the run hands one over. Epic, every one, and
-    # priced like an Epic in power: a step above the rolled lines, not a
-    # replacement for a build.
+    # the browser: nothing but the run hands one over.
+    #
+    # Each one plays like the rule it was earned under and does something no
+    # class can, so every one is scripted (src/ClasslessForgedScripts.cpp,
+    # the "challenge-run rewards" section). The rows carry the shape and the
+    # look; the C++ carries the part a row cannot say. Single rank unless the
+    # damage has to climb with level.
     dict(
-        # Nemesis. Hemorrhage's stab (a real swing with a cut that lingers).
-        key="grudge_strike", name="Grudge Strike", rarity=3, type=1, reward=True,
-        first_level=10, ranks=5, step=14, donor=16511, school=1,
-        icon=153, visual=5119, power=("energy", 40),
-        range_idx=RANGE_MELEE, cast_idx=CAST_INSTANT, cooldown_ms=12000,
-        duration_idx=DUR_12S,
-        effects=[
-            dict(eff=E_WEAPON_PERCENT, base=150, tgt=T_ENEMY),
-            dict(eff=E_APPLY_AURA, aura=A_PERIODIC_DAMAGE, base=dmg(0.12),
-                 tgt=T_ENEMY, amplitude=3000),
-        ],
-        desc="Strikes the target for $s1% weapon damage and opens a grudge that bleeds for $o2 damage over $d.",
-        compare="Mortal Strike is 85% weapon damage plus a flat amount on 6s; Rupture bleeds "
-                "for four ticks. Both on one swing, on twice the cooldown, for the Hero who "
-                "killed their nemesis.",
+        # Nemesis. A mark that chains through a pack. The bonus damage and the
+        # leap are in the C++ (cw_reward_effects): a stock "damage from
+        # caster" aura only counts Hero spells, never a melee swing. Mark of
+        # Blood's look, and a golden surge (Sweeping Strikes' InnerFire_Base)
+        # when a marked enemy falls.
+        key="mark_of_the_nemesis", name="Mark of the Nemesis", rarity=3, type=0, reward=True,
+        first_level=10, ranks=1, step=1, donor=172, school=32,
+        icon=2285, visual=11513, power=("mana", 4), power_is_pct=True,
+        range_idx=RANGE_30, cast_idx=CAST_INSTANT, cooldown_ms=20000,
+        duration_idx=DUR_30S,
+        effects=[dict(eff=E_APPLY_AURA, aura=A_DUMMY, base=15, tgt=T_ENEMY)],
+        companion=dict(
+            name="Mark of the Nemesis", school=32, visual=211, icon=2285, donor=1044,
+            range_idx=RANGE_SELF, cast_idx=CAST_INSTANT, cooldown_ms=0, power=("mana", 0),
+            # The look only: the 20% of health and mana is paid in C++, since
+            # no player spell restores a percent of health with effect 136.
+            duration_idx=DUR_NONE, desc="Your nemesis falls.",
+            effects=[dict(eff=E_DUMMY, base=0, tgt=T_SELF)],
+        ),
+        desc=("Marks an enemy as your nemesis for $d. It takes 15% more damage from you. If it dies "
+              "while marked, you regain 20% of your health and mana, and the mark leaps to the nearest "
+              "enemy within 30 yards."),
+        compare="Hunter's Mark is a flat ranged bonus for anyone; this is personal, 15%, and leaps "
+                "on a kill, so a pack is marked one after another.",
     ),
     dict(
-        # Elite World. Mortal Strike's swing, and the enemy hits softer after it.
-        key="giantsbane", name="Giantsbane", rarity=3, type=1, reward=True,
-        first_level=10, ranks=5, step=14, donor=12294, school=1,
+        # Elite World. A strike that scales with how much bigger the target
+        # is (spell_cw_giantsbane). Mortal Strike's swing.
+        key="giantsbane", name="Giantsbane", rarity=3, type=1, reward=True, script=True,
+        first_level=10, ranks=1, step=1, donor=12294, school=1,
         icon=564, visual=39, power=("energy", 40),
-        range_idx=RANGE_MELEE, cast_idx=CAST_INSTANT, cooldown_ms=15000,
+        range_idx=RANGE_MELEE, cast_idx=CAST_INSTANT, cooldown_ms=12000,
+        effects=[dict(eff=E_WEAPON_PERCENT, base=120, tgt=T_ENEMY)],
+        desc=("Strikes the target for $s1% weapon damage, increased by 1% for every 1% of maximum "
+              "health the target has over you, up to double damage."),
+        compare="Against a target your own size it is a 120% strike on 12 seconds; against an elite "
+                "with twice your health it is 240%. Small foes are not what it is for.",
+    ),
+    dict(
+        # Legion. Stronger for every enemy around you (spell_cw_one_against_many
+        # recounts once a second). Retaliation's look: the warrior's own
+        # answer to being surrounded.
+        key="one_against_many", name="One Against Many", rarity=3, type=0, reward=True, script=True,
+        first_level=10, ranks=1, step=1, donor=1044, school=1,
+        icon=278, visual=7395, visual_kits=dict(impact=10234), power=("energy", 30),
+        range_idx=RANGE_SELF, cast_idx=CAST_INSTANT, cooldown_ms=60000,
         duration_idx=DUR_10S,
         effects=[
-            dict(eff=E_WEAPON_PERCENT, base=130, tgt=T_ENEMY),
-            dict(eff=E_APPLY_AURA, aura=A_MOD_DAMAGE_DONE_PCT, base=-10, misc=ALL_SCHOOLS,
-                 tgt=T_ENEMY),
+            dict(eff=E_APPLY_AURA, aura=A_PERIODIC_DUMMY, base=0, tgt=T_SELF, amplitude=1000),
+            dict(eff=E_APPLY_AURA, aura=A_MOD_DAMAGE_DONE_PCT, base=0, tgt=T_SELF),
+            dict(eff=E_APPLY_AURA, aura=A_MOD_DAMAGE_TAKEN_PCT, base=0, tgt=T_SELF),
         ],
-        desc="Strikes the target for $s1% weapon damage. For $d the target deals 10% less damage.",
-        compare="Demoralizing Shout takes attack power off everything nearby; this takes a "
-                "tenth of one enemy's damage, all of it, after a swing bigger than Mortal "
-                "Strike's. Earned by finishing a world of elites.",
+        desc=("For $d you deal 5% more damage and take 5% less damage for every enemy within 10 yards "
+              "of you, up to five enemies."),
+        compare="Up to 25% each way for ten seconds, but only when you are surrounded. Alone it does "
+                "nothing.",
     ),
     dict(
-        # Hardcore. Shield Block's look (a raised guard), a heal and a wall.
-        key="unbroken_will", name="Unbroken Will", rarity=3, type=0, reward=True,
-        first_level=10, ranks=5, step=14, donor=2565, school=2,
-        # Shield Block's row has no burst; Brace's (9264) is the guard going up
-        icon=177, visual=3442, visual_kits=dict(instant_area=9264),
-        power=("mana", 10), power_is_pct=True,
-        range_idx=RANGE_SELF, cast_idx=CAST_INSTANT, cooldown_ms=180000,
-        duration_idx=DUR_8S,
-        effects=[
-            dict(eff=E_HEAL, base=heal(1.5), tgt=T_SELF),
-            dict(eff=E_APPLY_AURA, aura=A_MOD_DAMAGE_TAKEN_PCT, base=-20, tgt=T_SELF),
-        ],
-        desc="Heals you for $s1 and reduces all damage you take by 20% for $d.",
-        compare="Shield Wall is -60% for 12s on 5 minutes and heals nothing; this is a heal "
-                "and a half-strength wall on 3 minutes, for the Hero who levelled with a "
-                "death costing a level.",
-    ),
-    dict(
-        # Pursued. Dash's look: the hunted turns and runs AT something.
+        # Pursued. A counter that waits for the next hit (cw_reward_effects
+        # springs it). Death Wish's red rage while it waits; Cheap Shot's stun
+        # on the one who struck.
         key="turnabout", name="Turnabout", rarity=3, type=0, reward=True,
-        first_level=10, ranks=5, step=14, donor=1850, school=1,
-        # Dash's row draws nothing on the runner; Bolt Forward's burst (3394) does
-        icon=959, visual=2276, visual_kits=dict(instant_area=3394), power=("energy", 20),
+        first_level=10, ranks=1, step=1, donor=1044, school=1,
+        icon=2909, visual=4599, visual_kits=dict(impact=10234), power=("energy", 20),
+        range_idx=RANGE_SELF, cast_idx=CAST_INSTANT, cooldown_ms=45000,
+        duration_idx=DUR_8S,
+        effects=[dict(eff=E_APPLY_AURA, aura=A_DUMMY, base=50, tgt=T_SELF)],
+        companion=dict(
+            name="Turnabout", school=1, visual=266, icon=2909, donor=172,
+            range_idx=RANGE_MELEE, cast_idx=CAST_INSTANT, cooldown_ms=0, power=("energy", 0),
+            duration_idx=DUR_4S, desc="Stunned by a Turnabout.",
+            effects=[dict(eff=E_APPLY_AURA, aura=A_MOD_STUN, base=0, tgt=T_ENEMY,
+                          mechanic=MECHANIC_STUN)],
+        ),
+        desc=("For $d, the next enemy to strike you is answered: you appear behind it and stun it for "
+              "${companion}d, and your attacks on it deal 50% more damage while it is stunned."),
+        compare="Kidney Shot is a 6 second stun from behind on combo points; this is 4 seconds, "
+                "costs a hit taken, and puts you behind the attacker.",
+    ),
+    dict(
+        # Hourglass. Undo the last six seconds (spell_cw_rewind keeps where you
+        # stood and what you had). Presence of Mind's time magic; Blink's
+        # flash when time snaps back.
+        key="rewind", name="Rewind", rarity=3, type=0, reward=True, script=True,
+        first_level=10, ranks=1, step=1, donor=1044, school=64,
+        icon=58, visual=4600, visual_kits=dict(impact=1005),
+        power=("mana", 6), power_is_pct=True,
         range_idx=RANGE_SELF, cast_idx=CAST_INSTANT, cooldown_ms=90000,
+        duration_idx=DUR_6S,
+        effects=[dict(eff=E_APPLY_AURA, aura=A_DUMMY, base=0, tgt=T_SELF)],
+        companion=dict(
+            name="Rewind", school=64, visual=263, icon=58, donor=1044,
+            range_idx=RANGE_SELF, cast_idx=CAST_INSTANT, cooldown_ms=0, power=("mana", 0),
+            duration_idx=DUR_NONE, desc="Time snaps back.",
+            effects=[dict(eff=E_DUMMY, base=0, tgt=T_SELF)],
+        ),
+        desc=("Marks this moment. After $d, or when you cancel the effect, you return to where you "
+              "stood with the health, mana, rage and energy you had then."),
+        compare="No class can undo time. Ninety seconds between uses, and a death in the six "
+                "seconds is a death.",
+    ),
+    dict(
+        # Glass. Health spent as power (spell_cw_shatterpoint): the shard grows
+        # by three times what you paid and bursts into everything near the
+        # target. Ice Lance's shard and shatter, Frostbolt's wind-up.
+        key="shatterpoint", name="Shatterpoint", rarity=3, type=3, reward=True, script=True,
+        first_level=10, ranks=5, step=14, donor=30451, school=16,
+        icon=2945, visual=7906, visual_kits=dict(precast=194), speed=38.0,
+        power=("mana", 10), power_is_pct=True,
+        range_idx=RANGE_30, cast_idx=CAST_2500, cooldown_ms=30000,
+        effects=[dict(eff=E_SCHOOL_DAMAGE, base=dmg(1.2), tgt=T_ENEMY)],
+        companion=dict(
+            # one shard of the burst, cast BY the target at each enemy near it
+            name="Shatterpoint", school=16, visual=7906, icon=2945, donor=133, speed=38.0,
+            range_idx=RANGE_20, cast_idx=CAST_INSTANT, cooldown_ms=0, power=("mana", 0),
+            duration_idx=DUR_NONE, desc="A shard of Shatterpoint.",
+            effects=[dict(eff=E_SCHOOL_DAMAGE, base=dmg(0.6), tgt=T_ENEMY)],
+        ),
+        desc=("Spends 30% of your current health to hurl a shard of ice at the target for $s1 Frost "
+              "damage plus three times the health spent. The shard shatters into every enemy within "
+              "8 yards of the target for half as much."),
+        compare="A Pyroblast's damage before the health is added; with it, a Glass build can trade "
+                "a third of its health for a pack-clearing burst.",
+    ),
+    dict(
+        # Hardcore. Survive the blow that should have ended it (spell_cw_last_breath,
+        # an unlimited absorb that only answers a killing blow, the way the
+        # rogue's Cheat Death does), then heal back by fighting. Passive: its
+        # row is a talent's (11242), and its look is the companion's -- Enraged
+        # Regeneration's surge, when it fires.
+        key="last_breath", name="Last Breath", rarity=3, type=5, reward=True, script=True,
+        passive=True,
+        first_level=10, ranks=1, step=1, donor=TALENT_DONOR, school=1,
+        icon=2775, visual=0, power=("mana", 0),
+        range_idx=RANGE_SELF, cast_idx=CAST_INSTANT, cooldown_ms=0,
+        duration_idx=DUR_NONE,
+        effects=[dict(eff=E_APPLY_AURA, aura=A_SCHOOL_ABSORB, base=0, tgt=T_SELF)],
+        companion=dict(
+            name="Last Breath", passive=False, school=1, visual=12582, icon=2775, donor=1044,
+            range_idx=RANGE_SELF, cast_idx=CAST_INSTANT, cooldown_ms=0, power=("mana", 0),
+            duration_idx=DUR_6S, desc="Every hit you land heals you for its full damage.",
+            effects=[dict(eff=E_APPLY_AURA, aura=A_DUMMY, base=100, tgt=T_SELF)],
+        ),
+        desc=("Once every 5 minutes, a blow that would kill you leaves you at 1 health instead. For "
+              "the next ${companion}d, every hit you land heals you for its full damage."),
+        compare="Cheat Death saves a rogue at a random chance once a minute; this always fires, "
+                "once in five, and the six seconds after are the way back.",
+    ),
+    dict(
+        # Spiteful. The rule, in your hands (cw_reward_effects returns the
+        # damage). Cloak of Shadows' dark veil while it holds; Death Coil's
+        # bolt is the third that flies back.
+        key="spite_mirror", name="Spite Mirror", rarity=3, type=0, reward=True,
+        first_level=10, ranks=1, step=1, donor=1044, school=32,
+        icon=1933, visual=3619, power=("mana", 6), power_is_pct=True,
+        range_idx=RANGE_SELF, cast_idx=CAST_INSTANT, cooldown_ms=60000,
+        duration_idx=DUR_6S,
+        effects=[dict(eff=E_APPLY_AURA, aura=A_DUMMY, base=33, tgt=T_SELF)],
+        companion=dict(
+            # cast by the Hero at whoever struck them, its base set per hit
+            name="Spite Mirror", school=32, visual=9152, icon=1933, donor=133, speed=24.0,
+            range_idx=RANGE_40, cast_idx=CAST_INSTANT, cooldown_ms=0, power=("mana", 0),
+            duration_idx=DUR_NONE, desc="Spite returned.",
+            effects=[dict(eff=E_SCHOOL_DAMAGE, base=1, tgt=T_ENEMY)],
+        ),
+        desc="For $d, a third of all damage you take is sent back to whoever dealt it as Shadow damage.",
+        compare="Thorns returns a flat amount to melee attackers; this returns a third of anything, "
+                "spells included, for six seconds a minute.",
+    ),
+    dict(
+        # Bloodpact. Healing by hitting, and the excess kept as a shield
+        # (cw_reward_effects heals and grows the shield). Vampiric Embrace's
+        # look; Blood Presence's on the shield.
+        key="sanguine_pact", name="Sanguine Pact", rarity=3, type=0, reward=True,
+        first_level=10, ranks=1, step=1, donor=1044, school=32,
+        icon=150, visual=3582, power=("mana", 6), power_is_pct=True,
+        range_idx=RANGE_SELF, cast_idx=CAST_INSTANT, cooldown_ms=60000,
+        duration_idx=DUR_10S,
+        effects=[dict(eff=E_APPLY_AURA, aura=A_DUMMY, base=30, tgt=T_SELF)],
+        companion=dict(
+            # the shield; its amount is set and grown by the C++
+            name="Sanguine Pact", school=32, visual=11114, icon=150, donor=17,
+            range_idx=RANGE_SELF, cast_idx=CAST_INSTANT, cooldown_ms=0, power=("mana", 0),
+            duration_idx=DUR_10S, desc="Absorbs damage.",
+            effects=[dict(eff=E_APPLY_AURA, aura=A_SCHOOL_ABSORB, base=1, tgt=T_SELF)],
+        ),
+        desc=("For $d, every hit you land heals you for 30% of its damage. Healing beyond your "
+              "maximum health becomes a shield that absorbs damage, up to 20% of your maximum health."),
+        compare="Vampiric Embrace heals the party for a share of shadow damage; this heals only you, "
+                "from every hit, and keeps what spills over.",
+    ),
+    dict(
+        # Berserker. Unkillable for eight seconds and stronger the closer to
+        # death (spell_cw_brink absorbs only a killing blow; cw_reward_effects
+        # scales the damage). Berserker Rage's look.
+        key="brink", name="Brink", rarity=3, type=0, reward=True, script=True,
+        first_level=10, ranks=1, step=1, donor=1044, school=1,
+        icon=1465, visual=47, power=("mana", 0),
+        range_idx=RANGE_SELF, cast_idx=CAST_INSTANT, cooldown_ms=120000,
         duration_idx=DUR_8S,
         effects=[
-            dict(eff=E_APPLY_AURA, aura=A_MOD_INCREASE_SPEED, base=60, tgt=T_SELF),
-            dict(eff=E_APPLY_AURA, aura=A_MOD_DAMAGE_DONE_PCT, base=20, misc=ALL_SCHOOLS,
-                 tgt=T_SELF),
+            dict(eff=E_APPLY_AURA, aura=A_SCHOOL_ABSORB, base=0, tgt=T_SELF),
+            dict(eff=E_APPLY_AURA, aura=A_DUMMY, base=2, tgt=T_SELF),
         ],
-        desc="Increases your movement speed by $s1% and all damage you deal by $s2% for $d.",
-        compare="Sprint is +70% for 15s; Death Wish is +20% damage for 30s. A shorter burst "
-                "of both on 90 seconds, for the Hero who outlived the hunters.",
+        desc=("For $d you cannot die: a blow that would kill you leaves you at 1 health instead. Your "
+              "damage rises by 2% for every 1% of health you are missing, up to double."),
+        compare="Free, on two minutes. When it ends you are wherever the fight left you, which is "
+                "usually close to dead.",
     ),
     dict(
-        # Glass. Arcane Blast's cast and flash: one big hit, a long wait.
-        key="shatterpoint", name="Shatterpoint", rarity=3, type=3, reward=True,
-        first_level=10, ranks=5, step=14, donor=30451, school=64,
-        # Arcane Blast's row has no impact of its own; Arcane Barrage's
-        # (9849, the one Wildcard Surge lands) is the flash on the target.
-        icon=2294, visual=7749, visual_kits=dict(impact=9849),
-        power=("mana", 25), power_is_pct=True,
-        range_idx=RANGE_30, cast_idx=CAST_2500, cooldown_ms=45000,
-        effects=[
-            dict(eff=E_SCHOOL_DAMAGE, base=dmg(2.2), tgt=T_ENEMY),
-        ],
-        desc="Deals $s1 Arcane damage to the target.",
-        compare="Pyroblast is 1.9x the anchor on a six second cast with no cooldown; this is "
-                "2.2x on 2.5s and 45 seconds, for the Hero who levelled on half a health bar.",
-    ),
-    dict(
-        # Wildfire. Blast Wave's shape and burst: the ring of fire around you.
-        key="flashfire", name="Flashfire", rarity=3, type=3, reward=True,
-        first_level=10, ranks=5, step=14, donor=11113, school=4,
-        icon=292, visual=963, power=("mana", 18), power_is_pct=True,
-        range_idx=RANGE_SELF, cast_idx=CAST_INSTANT, cooldown_ms=20000,
-        duration_idx=DUR_6S,
-        effects=[
-            dict(eff=E_SCHOOL_DAMAGE, base=dmg(0.9), tgt=T_SRC_CASTER, tgtb=T_AREA_ENEMY_SRC,
-                 radius=RADIUS_10YD),
-            dict(eff=E_APPLY_AURA, aura=A_MOD_DECREASE_SPEED, base=-30, tgt=T_SRC_CASTER,
-                 tgtb=T_AREA_ENEMY_SRC, radius=RADIUS_10YD),
-        ],
-        desc="Burns enemies within $a1 yards of you for $s1 Fire damage and slows them by 30% for $d.",
-        compare="Blast Wave's own numbers at a fraction of the cooldown: 0.9x the anchor to "
-                "everything in ten yards every 20 seconds, for the Hero whose abilities "
-                "would not sit still.",
-    ),
-    dict(
-        # Borrowed Time. Icy Veins' look: time, taken back.
-        key="stolen_hour", name="Stolen Hour", rarity=3, type=0, reward=True,
-        first_level=10, ranks=5, step=14, donor=12472, school=16,
-        # a self buff draws its burst at the caster's feet (9159, Ward Off's)
-        icon=2162, visual=10148, visual_kits=dict(instant_area=9159),
-        power=("mana", 10), power_is_pct=True,
+        # Ironman. Armour from health, not from gear (spell_cw_ironbound sets the
+        # armour to half your maximum health), and stun immunity, the way
+        # Icebound Fortitude grants it. Icebound Fortitude's look.
+        key="ironbound", name="Ironbound", rarity=3, type=0, reward=True, script=True,
+        first_level=10, ranks=1, step=1, donor=1044, school=1,
+        icon=2739, visual=11151, visual_kits=dict(impact=203),
+        power=("mana", 8), power_is_pct=True,
         range_idx=RANGE_SELF, cast_idx=CAST_INSTANT, cooldown_ms=120000,
-        duration_idx=DUR_15S,
+        duration_idx=DUR_10S,
         effects=[
-            dict(eff=E_APPLY_AURA, aura=A_MOD_MELEE_HASTE, base=20, tgt=T_SELF),
-            dict(eff=E_APPLY_AURA, aura=A_MOD_CASTING_SPEED, base=20, misc=ALL_SCHOOLS,
-                 tgt=T_SELF),
+            dict(eff=E_APPLY_AURA, aura=A_MOD_RESISTANCE, base=1, tgt=T_SELF, misc=1),
+            dict(eff=E_APPLY_AURA, aura=A_MECHANIC_IMMUNITY, base=0, tgt=T_SELF, misc=MECHANIC_STUN),
         ],
-        desc="Increases your attack speed and casting speed by $s1% for $d.",
-        compare="Icy Veins is +20% casting for 20s on 3 minutes; this is both speeds for 15s "
-                "on 2, for the Hero who paid for every death in XP.",
+        desc=("For $d your armor rises by an amount equal to half your maximum health, and you cannot "
+              "be stunned."),
+        compare="Icebound Fortitude grants stun immunity and a flat reduction; this turns health into "
+                "armor, so it grows with Stamina rather than gear.",
+    ),
+    dict(
+        # Big Game Hunter. Hunt the dangerous things for a stacking trophy
+        # (spell_cw_trophy_hunt refuses anything that is not; cw_reward_effects
+        # pays the trophy). Hunter's Mark over the quarry, Rapid Fire's flare
+        # on the trophy.
+        key="trophy_hunt", name="Trophy Hunt", rarity=3, type=0, reward=True, script=True,
+        first_level=10, ranks=1, step=1, donor=172, school=1,
+        icon=538, visual=3239, power=("mana", 4), power_is_pct=True,
+        range_idx=RANGE_40, cast_idx=CAST_INSTANT, cooldown_ms=10000,
+        duration_idx=DUR_60S,
+        effects=[dict(eff=E_APPLY_AURA, aura=A_DUMMY, base=0, tgt=T_ENEMY)],
+        companion=dict(
+            name="Trophy", school=1, visual=13245, icon=538, donor=1044, stack=3,
+            range_idx=RANGE_SELF, cast_idx=CAST_INSTANT, cooldown_ms=0, power=("mana", 0),
+            duration_idx=DUR_5M, desc="Damage and healing increased by $s1%.",
+            effects=[dict(eff=E_APPLY_AURA, aura=A_MOD_DAMAGE_DONE_PCT, base=5, tgt=T_SELF),
+                     dict(eff=E_APPLY_AURA, aura=A_MOD_HEALING_DONE_PCT, base=5, tgt=T_SELF)],
+        ),
+        desc=("Marks an elite, rare or boss enemy as your quarry for $d. If it dies while marked you "
+              "take a trophy, increasing your damage and healing by 5% for ${companion}d. Stacks up "
+              "to 3 times."),
+        compare="15% damage and healing at three trophies, held for five minutes, earned only from "
+                "the enemies most worth fighting.",
     ),
 ]
 
@@ -1667,8 +1826,11 @@ ID_ORDER = [
     # its block is retired and every other id stays where it is
     "quicksilver",
     # the challenge-run rewards, appended in the order the challenges pay them
-    "grudge_strike", "giantsbane", "unbroken_will", "turnabout", "shatterpoint",
-    "flashfire", "stolen_hour",
+    # renamed in place when the rewards were redesigned, before any character
+    # had earned one, so each keeps the ids it was given
+    "mark_of_the_nemesis", "giantsbane", "last_breath", "turnabout", "shatterpoint",
+    "one_against_many", "rewind",
+    "spite_mirror", "sanguine_pact", "brink", "ironbound", "trophy_hunt",
 ]
 
 _recipe_keys = {r["key"] for r in RECIPES}
@@ -1884,6 +2046,10 @@ def build_row(spell, recipe, rank_index, level, spell_id, next_id, companion_id)
            for e in recipe["effects"]):
         v[11] |= ATTR7_RESTORE_SECONDARY_POWER
     v[18] = 0                                   # RequiresSpellFocus
+    # How many times the aura stacks; the donor's own value otherwise. Trophy
+    # Hunt's trophy is the one that asks.
+    if "stack" in recipe:
+        v[49] = int(recipe["stack"])
     # An ARMOUR requirement never comes along. Shield Block's row needs a
     # shield equipped (EquippedItemClass 4, subclass mask 64), and Unbroken
     # Will, built on it, printed "Requires Shields" and refused the cast for
@@ -1971,7 +2137,11 @@ def build_row(spell, recipe, rank_index, level, spell_id, next_id, companion_id)
         setf("EffectDieSides", 1 if e else 0, slot)
         setf("EffectRealPointsPerLevel", 0.0, slot)
         setf("EffectPointsPerComboPoint", 0.0, slot)
-        setf("EffectMechanic", 0, slot)
+        # A bleed is marked per effect, and the mark is load-bearing: the
+        # core's IsDamageReducedByArmor lets a physical damage-over-time
+        # effect through armour ONLY when its effect mechanic is a bleed.
+        # Unmarked, Grudge Strike's few points a tick came out near nothing.
+        setf("EffectMechanic", (e.get("mechanic", 0) if e else 0), slot)
         setf("EffectItemType", 0, slot)
         trig = 0
         base = 0
@@ -1980,6 +2150,16 @@ def build_row(spell, recipe, rank_index, level, spell_id, next_id, companion_id)
             if isinstance(misc, tuple) and misc[0] == "rank":
                 # one creature per rank: rank 2's beetle is not rank 1's
                 misc = misc[1][min(rank_index, len(misc[1]) - 1)]
+            # These auras read MiscValue as a SCHOOL MASK, and the core
+            # applies them only to the schools in it (GetTotalAuraMultiplier-
+            # ByMiscMask; the absorb loop skips an absorb whose mask misses the
+            # hit's school). Written as 0 they did nothing at all: Brace,
+            # Ward Off, Unbroken Will, Bulwark Anchor, Signal Fire, Borrowed
+            # Stance, Rally Point and Repertoire all shipped that way. A
+            # recipe that names no schools means every school, so 0 becomes
+            # all of them; a recipe that names some keeps its own.
+            if e.get("eff") in AURA_EFFECTS and e.get("aura") in SCHOOL_MASKED_AURAS and not misc:
+                misc = ALL_SCHOOLS
             setf("EffectMiscValue", misc, slot)
             if e.get("trigger") == "companion":
                 trig = companion_id or 0

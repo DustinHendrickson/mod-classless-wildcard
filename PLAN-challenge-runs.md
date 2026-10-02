@@ -17,12 +17,13 @@ differs from the plan below:
   query response and never asks again, so `SetName` on one creature changes nothing on
   screen. A nemesis is marked by its level, its elite stats and a 25% larger model
   instead. The chat line still names it.
-- **Step 5 is built for abilities, not talents.** Seven reward lines (`reward=True` in
-  `gen_forged_spells.py`: Grudge Strike, Giantsbane, Unbroken Will, Turnabout,
-  Shatterpoint, Flashfire, Stolen Hour) are paid by Nemesis, Elite World, Hardcore,
-  Pursued, Glass, Wildfire and Borrowed Time as heirlooms. The six one- and two-life
-  challenges pay gold and a title only. No reward talents and no shard shop for the
-  rewards of finished challenges; `test_forged.py` ties the flag, the SQL row and the
+- **Step 5 is built for abilities, not talents.** Every challenge pays a scripted reward
+  ability that plays like its rule (redesigned 2026-10-01 after the first seven read as
+  stat buffs): Mark of the Nemesis, Giantsbane, One Against Many, Turnabout, Rewind,
+  Shatterpoint, Spite Mirror, Sanguine Pact, Brink, Ironbound, Trophy Hunt and the passive
+  Last Breath. Recipes are `reward=True` in `gen_forged_spells.py`; the C++ is the
+  challenge-run rewards section of `ClasslessForgedScripts.cpp`. No reward talents and no
+  shard shop for rewards already earned; `test_forged.py` ties the flag, the SQL row and the
   C++ table together.
 - The challenge list is a table in `ClasslessMgr.cpp`, not a world table: the rules are
   code, so a database row would only have held the lives and the gold.
