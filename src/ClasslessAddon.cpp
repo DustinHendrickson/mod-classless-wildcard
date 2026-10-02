@@ -376,6 +376,196 @@ namespace
     // receives carry a class-mask bit and no family, and it only ever expected
     // its own class's talents. These come from the core's own arithmetic,
     // which matches on family and is right for all ten.
+    //
+    // One spell's correction record, the body of an SF entry (see below).
+    // False when nothing about it needs correcting: no talent moved it and the
+    // client patch never lowered its copy. Shared by the login list, which
+    // covers what the Hero owns, and SFQ, which answers one spell the panel is
+    // showing before it is bought.
+    bool CorrectionRecord(Player* player, uint32 spellId, SpellInfo const* info, std::string& out)
+    {
+        // ONLY the spell-mod contribution. CalcPowerCost and CalcCastTime
+        // fold in haste and cost auras as well, and the client already
+        // shows those -- correcting for them again would be wrong twice
+        // over and would put every cast-time spell in this list.
+        int32 baseCost = int32(info->ManaCost);
+        if (info->ManaCostPercentage && player->GetCreateMana())
+            baseCost = int32(CalculatePct(player->GetCreateMana(), info->ManaCostPercentage));
+        int32 cost = baseCost;
+        player->ApplySpellMod(spellId, SPELLMOD_COST, cost);
+        // rage and runic power are stored times ten and shown divided
+        int32 const div = (info->PowerType == POWER_RAGE || info->PowerType == POWER_RUNIC_POWER) ? 10 : 1;
+
+        int32 const baseCastMs = info->CastTimeEntry ? int32(info->CastTimeEntry->CastTime) : 0;
+        int32 castMs = baseCastMs;
+        if (castMs)
+            player->ApplySpellMod(spellId, SPELLMOD_CASTING_TIME, castMs);
+
+        // Whichever column the cooldown actually lives in. Most spells
+        // with a cooldown carry it in CategoryRecoveryTime and leave
+        // RecoveryTime at zero -- Lay on Hands, Hammer of Justice, Chain
+        // Lightning, 291 of the 471 the floor can shorten. Reading only
+        // RecoveryTime meant their client copy was lowered with nothing
+        // sent back to correct it, and the tooltip read the floor. The core
+        // picks the same one: AddSpellAndCategoryCooldowns ends with
+        // `recTime = rec ? rec : catrecTime`.
+        int32 const baseCdMs = int32(info->RecoveryTime ? info->RecoveryTime
+                                                        : info->CategoryRecoveryTime);
+        int32 cdMs = baseCdMs;
+        player->ApplySpellMod(spellId, SPELLMOD_COOLDOWN, cdMs);
+
+        // ---- the numbers the description itself prints ----------------
+        //
+        // $s1/$s2/$s3 resolve to the effect's own value, and the client
+        // applies SPELLMOD_ALL_EFFECTS and EFFECT1/2/3 to them -- those and
+        // nothing else. SPELLMOD_DAMAGE is applied at damage time in
+        // Unit::SpellDamageBonusDone, not to the printed value, so a stock
+        // client does not show it and neither does this.
+        //
+        // Sent as a pair: what the client WILL print, and what it SHOULD.
+        // The addon swaps the first for the second only where it finds the
+        // first exactly once, so an ambiguous sentence is left alone rather
+        // than guessed at, and a value computed slightly differently simply
+        // does not match and changes nothing.
+        int32 effBase[MAX_SPELL_EFFECTS] = {};
+        int32 effMod[MAX_SPELL_EFFECTS] = {};
+        bool effMoved = false;
+        for (uint8 ei = 0; ei < MAX_SPELL_EFFECTS; ++ei)
+        {
+            SpellEffectInfo const& e = info->Effects[ei];
+            if (!e.Effect || !e.BasePoints)
+                continue;
+            // A die of more than one side prints as a range, and a spell
+            // that pays per combo point prints a list. Neither is a single
+            // number to swap.
+            if (e.DieSides > 1 || e.PointsPerComboPoint != 0.0f)
+                continue;
+
+            // SpellEffectInfo::CalcValue, minus the parts that do not apply
+            // to a player casting at their own level.
+            int32 baseVal = e.BasePoints + (e.DieSides == 1 ? 1 : 0);
+            if (e.RealPointsPerLevel != 0.0f)
+            {
+                int32 level = int32(player->GetLevel());
+                if (info->MaxLevel > 0 && level > int32(info->MaxLevel))
+                    level = int32(info->MaxLevel);
+                else if (level < int32(info->BaseLevel))
+                    level = int32(info->BaseLevel);
+                uint32 const floorLevel = info->BaseLevel > info->SpellLevel
+                                          ? info->BaseLevel : info->SpellLevel;
+                level -= int32(floorLevel);
+                baseVal += int32(level * e.RealPointsPerLevel);
+            }
+
+            int32 modVal = baseVal;
+            player->ApplySpellMod(spellId, SPELLMOD_ALL_EFFECTS, modVal);
+            player->ApplySpellMod(spellId, ei == 0 ? SPELLMOD_EFFECT1
+                                         : (ei == 1 ? SPELLMOD_EFFECT2 : SPELLMOD_EFFECT3), modVal);
+            if (modVal == baseVal)
+                continue;
+
+            // The sentence prints the magnitude: "Reduces all damage taken
+            // by 60%" comes from a base of -60.
+            effBase[ei] = baseVal < 0 ? -baseVal : baseVal;
+            effMod[ei] = modVal < 0 ? -modVal : modVal;
+            effMoved = true;
+        }
+
+        int32 const baseDurMs = info->GetDuration();
+        int32 durMs = baseDurMs;
+        if (baseDurMs > 0)
+            player->ApplySpellMod(spellId, SPELLMOD_DURATION, durMs);
+
+        int32 const baseRange = int32(info->GetMaxRange(false));
+        int32 modRange = baseRange;
+        if (baseRange > 0)
+        {
+            float r = float(baseRange);
+            player->ApplySpellMod(spellId, SPELLMOD_RANGE, r);
+            modRange = int32(r);
+        }
+
+        // Decided BEFORE the fields are zeroed below, or a talent that
+        // takes a cast time down to zero -- an instant -- would read as
+        // "nothing moved" and the spell's other corrections would go with
+        // it.
+        bool const moved = cost != baseCost || castMs != baseCastMs
+            || cdMs != baseCdMs || durMs != baseDurMs
+            || modRange != baseRange || effMoved;
+
+        // A spell with a FLAT cost always carries it, moved or not.
+        //
+        // The client cannot apply a cross-class talent to its own power
+        // check, so it refused to send the cast at all -- with Improved
+        // Thunder Clap the server wanted 16 rage and the client still said
+        // "Not enough rage" at 16. The client patch answers that by
+        // lowering Spell.dbc's ManaCost to the least any build could pay,
+        // so the true number has to be sent or a Hero WITHOUT the talent
+        // would read the lowered one.
+        //
+        // ManaCost, which is the column the patch lowers on everything
+        // stock. A caster spell prices itself from ManaCostPercentage
+        // instead and is left alone there, so its tooltip is already right:
+        // sending a correction for it just overwrote a correct number with
+        // this side's arithmetic, on every mana spell in the game. Those are
+        // corrected only when a talent actually moves them, which is what
+        // Convection does to Lightning Bolt.
+        //
+        // This module's own spells are the exception, and they are the
+        // reason the exception exists. A Hero talent lives in a world table
+        // the client's Talent.dbc has never seen, so the client cannot apply
+        // one to its own power check any more than it can to a cross-class
+        // talent: Thrift took 30% off Ward Off on the server while the
+        // client went on refusing at the full price. The patch lowers their
+        // percentage too, and that is only safe while every one of them is
+        // corrected from here -- so they are sent whether anything moved or
+        // not. 11 spells, none of them stock.
+        //
+        // A COOLDOWN is carried on the same terms and for the same reason.
+        // The client will not send a cast it believes is still recharging,
+        // and it cannot apply a cross-class talent to that sweep either --
+        // the server shortens the cooldown and tells the client only at
+        // login. So the patch lowers the client's copy the way it lowers a
+        // cost, and the true number has to come back from here or a Hero
+        // without the talent reads the floor. Either cooldown column: the
+        // patch lowers both, and most cooldowns live in CategoryRecoveryTime
+        // (Revenge, Overpower, Hammer of Justice), which this test used to
+        // miss for any of them without a flat cost.
+        constexpr uint32 HERO_SPELL_FAMILY = 14;
+        if (!moved && !info->ManaCost && !info->RecoveryTime && !info->CategoryRecoveryTime
+            && info->SpellFamilyName != HERO_SPELL_FAMILY)
+            return false;
+
+        // Send only what a talent actually MOVED. A zero pair is "nothing
+        // to do", so a spell whose cost changed does not drag its untouched
+        // cast time along and have the addon rewrite a line with the number
+        // that was already there.
+        if (castMs == baseCastMs)
+            castMs = 0;
+        // The cooldown is the exception, alongside the flat cost: the client
+        // patch lowers its copy of every cooldown a talent could shorten, so
+        // the true one is sent whether a talent moved it or not. Zero only
+        // when the spell has no cooldown at all, which is the addon's "leave
+        // the line alone" signal.
+        if (!baseCdMs)
+            cdMs = 0;
+
+        // The two pairs go out as their own values rather than by zeroing
+        // the measurements, which are const and are still needed above.
+        int32 const durBaseOut = durMs == baseDurMs ? 0 : baseDurMs;
+        int32 const durModOut = durMs == baseDurMs ? 0 : durMs;
+        int32 const rangeBaseOut = modRange == baseRange ? 0 : baseRange;
+        int32 const rangeModOut = modRange == baseRange ? 0 : modRange;
+
+        // id, cost, then a base/moved pair per number the tooltip prints.
+        out = Acore::StringFormat(
+            "{}:{}:{}:{}:{}:{}:{}:{}:{}:{}:{}:{}:{}:{};",
+            spellId, cost / div, castMs, cdMs,
+            durBaseOut, durModOut, rangeBaseOut, rangeModOut,
+            effBase[0], effMod[0], effBase[1], effMod[1], effBase[2], effMod[2]);
+        return true;
+    }
+
     void SendSpellCorrections(Player* player)
     {
         std::string body = "SF|";
@@ -393,182 +583,9 @@ namespace
             if (!info || info->IsPassive())
                 continue;
 
-            // ONLY the spell-mod contribution. CalcPowerCost and CalcCastTime
-            // fold in haste and cost auras as well, and the client already
-            // shows those -- correcting for them again would be wrong twice
-            // over and would put every cast-time spell in this list.
-            int32 baseCost = int32(info->ManaCost);
-            if (info->ManaCostPercentage && player->GetCreateMana())
-                baseCost = int32(CalculatePct(player->GetCreateMana(), info->ManaCostPercentage));
-            int32 cost = baseCost;
-            player->ApplySpellMod(spellId, SPELLMOD_COST, cost);
-            // rage and runic power are stored times ten and shown divided
-            int32 const div = (info->PowerType == POWER_RAGE || info->PowerType == POWER_RUNIC_POWER) ? 10 : 1;
-
-            int32 const baseCastMs = info->CastTimeEntry ? int32(info->CastTimeEntry->CastTime) : 0;
-            int32 castMs = baseCastMs;
-            if (castMs)
-                player->ApplySpellMod(spellId, SPELLMOD_CASTING_TIME, castMs);
-
-            // Whichever column the cooldown actually lives in. Most spells
-            // with a cooldown carry it in CategoryRecoveryTime and leave
-            // RecoveryTime at zero -- Lay on Hands, Hammer of Justice, Chain
-            // Lightning, 291 of the 471 the floor can shorten. Reading only
-            // RecoveryTime meant their client copy was lowered with nothing
-            // sent back to correct it, and the tooltip read the floor. The core
-            // picks the same one: AddSpellAndCategoryCooldowns ends with
-            // `recTime = rec ? rec : catrecTime`.
-            int32 const baseCdMs = int32(info->RecoveryTime ? info->RecoveryTime
-                                                            : info->CategoryRecoveryTime);
-            int32 cdMs = baseCdMs;
-            player->ApplySpellMod(spellId, SPELLMOD_COOLDOWN, cdMs);
-
-            // ---- the numbers the description itself prints ----------------
-            //
-            // $s1/$s2/$s3 resolve to the effect's own value, and the client
-            // applies SPELLMOD_ALL_EFFECTS and EFFECT1/2/3 to them -- those and
-            // nothing else. SPELLMOD_DAMAGE is applied at damage time in
-            // Unit::SpellDamageBonusDone, not to the printed value, so a stock
-            // client does not show it and neither does this.
-            //
-            // Sent as a pair: what the client WILL print, and what it SHOULD.
-            // The addon swaps the first for the second only where it finds the
-            // first exactly once, so an ambiguous sentence is left alone rather
-            // than guessed at, and a value computed slightly differently simply
-            // does not match and changes nothing.
-            int32 effBase[MAX_SPELL_EFFECTS] = {};
-            int32 effMod[MAX_SPELL_EFFECTS] = {};
-            bool effMoved = false;
-            for (uint8 ei = 0; ei < MAX_SPELL_EFFECTS; ++ei)
-            {
-                SpellEffectInfo const& e = info->Effects[ei];
-                if (!e.Effect || !e.BasePoints)
-                    continue;
-                // A die of more than one side prints as a range, and a spell
-                // that pays per combo point prints a list. Neither is a single
-                // number to swap.
-                if (e.DieSides > 1 || e.PointsPerComboPoint != 0.0f)
-                    continue;
-
-                // SpellEffectInfo::CalcValue, minus the parts that do not apply
-                // to a player casting at their own level.
-                int32 baseVal = e.BasePoints + (e.DieSides == 1 ? 1 : 0);
-                if (e.RealPointsPerLevel != 0.0f)
-                {
-                    int32 level = int32(player->GetLevel());
-                    if (info->MaxLevel > 0 && level > int32(info->MaxLevel))
-                        level = int32(info->MaxLevel);
-                    else if (level < int32(info->BaseLevel))
-                        level = int32(info->BaseLevel);
-                    uint32 const floorLevel = info->BaseLevel > info->SpellLevel
-                                              ? info->BaseLevel : info->SpellLevel;
-                    level -= int32(floorLevel);
-                    baseVal += int32(level * e.RealPointsPerLevel);
-                }
-
-                int32 modVal = baseVal;
-                player->ApplySpellMod(spellId, SPELLMOD_ALL_EFFECTS, modVal);
-                player->ApplySpellMod(spellId, ei == 0 ? SPELLMOD_EFFECT1
-                                             : (ei == 1 ? SPELLMOD_EFFECT2 : SPELLMOD_EFFECT3), modVal);
-                if (modVal == baseVal)
-                    continue;
-
-                // The sentence prints the magnitude: "Reduces all damage taken
-                // by 60%" comes from a base of -60.
-                effBase[ei] = baseVal < 0 ? -baseVal : baseVal;
-                effMod[ei] = modVal < 0 ? -modVal : modVal;
-                effMoved = true;
-            }
-
-            int32 const baseDurMs = info->GetDuration();
-            int32 durMs = baseDurMs;
-            if (baseDurMs > 0)
-                player->ApplySpellMod(spellId, SPELLMOD_DURATION, durMs);
-
-            int32 const baseRange = int32(info->GetMaxRange(false));
-            int32 modRange = baseRange;
-            if (baseRange > 0)
-            {
-                float r = float(baseRange);
-                player->ApplySpellMod(spellId, SPELLMOD_RANGE, r);
-                modRange = int32(r);
-            }
-
-            // Decided BEFORE the fields are zeroed below, or a talent that
-            // takes a cast time down to zero -- an instant -- would read as
-            // "nothing moved" and the spell's other corrections would go with
-            // it.
-            bool const moved = cost != baseCost || castMs != baseCastMs
-                || cdMs != baseCdMs || durMs != baseDurMs
-                || modRange != baseRange || effMoved;
-
-            // A spell with a FLAT cost always carries it, moved or not.
-            //
-            // The client cannot apply a cross-class talent to its own power
-            // check, so it refused to send the cast at all -- with Improved
-            // Thunder Clap the server wanted 16 rage and the client still said
-            // "Not enough rage" at 16. The client patch answers that by
-            // lowering Spell.dbc's ManaCost to the least any build could pay,
-            // so the true number has to be sent or a Hero WITHOUT the talent
-            // would read the lowered one.
-            //
-            // ManaCost, which is the column the patch lowers on everything
-            // stock. A caster spell prices itself from ManaCostPercentage
-            // instead and is left alone there, so its tooltip is already right:
-            // sending a correction for it just overwrote a correct number with
-            // this side's arithmetic, on every mana spell in the game. Those are
-            // corrected only when a talent actually moves them, which is what
-            // Convection does to Lightning Bolt.
-            //
-            // This module's own spells are the exception, and they are the
-            // reason the exception exists. A Hero talent lives in a world table
-            // the client's Talent.dbc has never seen, so the client cannot apply
-            // one to its own power check any more than it can to a cross-class
-            // talent: Thrift took 30% off Ward Off on the server while the
-            // client went on refusing at the full price. The patch lowers their
-            // percentage too, and that is only safe while every one of them is
-            // corrected from here -- so they are sent whether anything moved or
-            // not. 11 spells, none of them stock.
-            //
-            // A COOLDOWN is carried on the same terms and for the same reason.
-            // The client will not send a cast it believes is still recharging,
-            // and it cannot apply a cross-class talent to that sweep either --
-            // the server shortens the cooldown and tells the client only at
-            // login. So the patch lowers the client's copy the way it lowers a
-            // cost, and the true number has to come back from here or a Hero
-            // without the talent reads the floor.
-            constexpr uint32 HERO_SPELL_FAMILY = 14;
-            if (!moved && !info->ManaCost && !info->RecoveryTime
-                && info->SpellFamilyName != HERO_SPELL_FAMILY)
+            std::string piece;
+            if (!CorrectionRecord(player, spellId, info, piece))
                 continue;
-
-            // Send only what a talent actually MOVED. A zero pair is "nothing
-            // to do", so a spell whose cost changed does not drag its untouched
-            // cast time along and have the addon rewrite a line with the number
-            // that was already there.
-            if (castMs == baseCastMs)
-                castMs = 0;
-            // The cooldown is the exception, alongside the flat cost: the client
-            // patch lowers its copy of every cooldown a talent could shorten, so
-            // the true one is sent whether a talent moved it or not. Zero only
-            // when the spell has no cooldown at all, which is the addon's "leave
-            // the line alone" signal.
-            if (!baseCdMs)
-                cdMs = 0;
-
-            // The two pairs go out as their own values rather than by zeroing
-            // the measurements, which are const and are still needed above.
-            int32 const durBaseOut = durMs == baseDurMs ? 0 : baseDurMs;
-            int32 const durModOut = durMs == baseDurMs ? 0 : durMs;
-            int32 const rangeBaseOut = modRange == baseRange ? 0 : baseRange;
-            int32 const rangeModOut = modRange == baseRange ? 0 : modRange;
-
-            // id, cost, then a base/moved pair per number the tooltip prints.
-            std::string piece = Acore::StringFormat(
-                "{}:{}:{}:{}:{}:{}:{}:{}:{}:{}:{}:{}:{}:{};",
-                spellId, cost / div, castMs, cdMs,
-                durBaseOut, durModOut, rangeBaseOut, rangeModOut,
-                effBase[0], effMod[0], effBase[1], effMod[1], effBase[2], effMod[2]);
             if (body.size() + piece.size() > MAX_BODY)
             {
                 SendAddon(player, body);
@@ -773,6 +790,21 @@ namespace
             SendOwnedTalents(player);
             // the build just changed, so the numbers may have too
             SendSpellCorrections(player);
+        }
+        else if (cmd == "SFQ")
+        {
+            // One spell the panel is showing that the Hero does not own yet,
+            // so the login list never covered it: the Abilities list read
+            // Heroic Strike at 9 rage, the client patch's lowered copy. The
+            // answer is the same record SF carries, or "-" for a spell with
+            // nothing to correct, so the addon stops asking.
+            uint32 const spellId = argNum(1);
+            SpellInfo const* info = spellId ? sSpellMgr->GetSpellInfo(spellId) : nullptr;
+            std::string piece;
+            if (info && !info->IsPassive() && CorrectionRecord(player, spellId, info, piece))
+                SendAddon(player, "SQ|" + piece);
+            else if (spellId)
+                SendAddon(player, Acore::StringFormat("SQ|{}:-;", spellId));
         }
         else if (cmd == "ARCH")
             SendArchetypes(player);

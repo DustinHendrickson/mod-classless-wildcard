@@ -348,37 +348,49 @@ end
 -- for the whole challenge (how it plays, lives, the clock where there is one,
 -- what level 80 pays); click it for the challenge page. Hidden with no run.
 --
--- Measured: 190 x 46 at -44/-30 from the top-right corner, clear of the close
+-- Measured: 196 x 50 at -44/-28 from the top-right corner, clear of the close
 -- button (-8 to -40) and, to the left, of the centred status lines: its left
--- edge is 241 from the centre, and the longest of them (Classless, both
--- essences in four figures and a Rebirth rank) is about 440 wide. Icon 34 at 6; name on the icon's top, hearts on its
--- bottom; the count right-aligned on the hearts' line.
+-- edge is 235 from the centre, and the longest of them (Classless, both
+-- essences in four figures and a Rebirth rank) is about 440 wide. The panel's
+-- own colours: a dark plate in a gold rim, like the confirm popups. The icon
+-- is 30 inside a black 32 frame, 10 in from the left, so it sits clear of the
+-- rim's rounded corner (at 34 and 6 in it ran into it). Name level with the
+-- icon's top, hearts with its bottom, the count right-aligned on that line.
 do
     local b = CreateFrame("Button", "ClasslessWildcardRunBadge", frame)
-    b:SetWidth(190); b:SetHeight(46)
-    b:SetPoint("TOPRIGHT", frame, "TOPRIGHT", -44, -30)
+    b:SetWidth(196); b:SetHeight(50)
+    b:SetPoint("TOPRIGHT", frame, "TOPRIGHT", -44, -28)
     b:SetBackdrop({
         bgFile = "Interface\\Buttons\\WHITE8X8",
         edgeFile = "Interface\\Tooltips\\UI-Tooltip-Border",
         tile = false, edgeSize = 12,
         insets = { left = 3, right = 3, top = 3, bottom = 3 },
     })
-    b:SetBackdropColor(0.10, 0.02, 0.02, 0.88)
-    b:SetBackdropBorderColor(0.70, 0.18, 0.12, 1)
-    b:SetHighlightTexture("Interface\\QuestFrame\\UI-QuestTitleHighlight", "ADD")
+    b:SetBackdropColor(0.05, 0.045, 0.04, 0.94)
+    b:SetBackdropBorderColor(0.80, 0.62, 0.22, 1)
+    -- the hover glow stays inside the rim instead of washing over it
+    b.hl = b:CreateTexture(nil, "HIGHLIGHT")
+    b.hl:SetPoint("TOPLEFT", 4, -4)
+    b.hl:SetPoint("BOTTOMRIGHT", -4, 4)
+    b.hl:SetTexture("Interface\\QuestFrame\\UI-QuestTitleHighlight")
+    b.hl:SetBlendMode("ADD")
+    b.iconFrame = b:CreateTexture(nil, "BORDER")
+    b.iconFrame:SetWidth(32); b.iconFrame:SetHeight(32)
+    b.iconFrame:SetPoint("LEFT", b, "LEFT", 9, 0)
+    b.iconFrame:SetTexture(0, 0, 0, 1)
     b.icon = b:CreateTexture(nil, "ARTWORK")
-    b.icon:SetWidth(34); b.icon:SetHeight(34)
-    b.icon:SetPoint("LEFT", b, "LEFT", 6, 0)
+    b.icon:SetWidth(30); b.icon:SetHeight(30)
+    b.icon:SetPoint("CENTER", b.iconFrame, "CENTER", 0, 0)
     b.icon:SetTexCoord(0.07, 0.93, 0.07, 0.93)
     b:Hide()
     CW.runBadge = b
 
     CW.runText = b:CreateFontString(nil, "OVERLAY", "GameFontNormal")
-    CW.runText:SetPoint("TOPLEFT", b.icon, "TOPRIGHT", 8, -1)
-    CW.runText:SetPoint("RIGHT", b, "RIGHT", -8, 0)
+    CW.runText:SetPoint("TOPLEFT", b.iconFrame, "TOPRIGHT", 9, -2)
+    CW.runText:SetPoint("RIGHT", b, "RIGHT", -10, 0)
     CW.runText:SetJustifyH("LEFT")
     CW.runCount = b:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
-    CW.runCount:SetPoint("BOTTOMRIGHT", b, "BOTTOMRIGHT", -8, 8)
+    CW.runCount:SetPoint("BOTTOMRIGHT", b, "BOTTOMRIGHT", -10, 10)
     CW.runCount:SetJustifyH("RIGHT")
 
     -- One pip per life the run started with, the lost ones empty. Six is the
@@ -386,8 +398,23 @@ do
     CW.lifeIcons = {}
     for i = 1, 6 do
         local t = CW.MakePip(b, 14)
-        t:SetPoint("BOTTOMLEFT", b.icon, "BOTTOMRIGHT", 8 + (i - 1) * 16, 0)
+        t:SetPoint("BOTTOMLEFT", b.iconFrame, "BOTTOMRIGHT", 8 + (i - 1) * 16, 1)
         CW.lifeIcons[i] = t
+    end
+
+    -- What the reward ability does, read off the game's own tooltip for it
+    -- (the reveal's scanner): every line but the name, the description last
+    -- and wrapped. 3.3.5 has no call that returns a spell's description.
+    function CW.AddAbilityLines(spellId)
+        local fx = CW.revealFX
+        local lines = fx and fx.ScanSpell and fx.ScanSpell(spellId) or {}
+        for _, l in ipairs(lines) do
+            if l.left and l.right then
+                GameTooltip:AddDoubleLine(l.left, l.right, 0.75, 0.75, 0.75, 0.75, 0.75, 0.75)
+            elseif l.left then
+                GameTooltip:AddLine(l.left, l.r or 1, l.g or 0.82, l.b or 0, true)
+            end
+        end
     end
 
     local function Minutes(sec)
@@ -435,6 +462,9 @@ do
         if (c.reward or 0) > 0 then
             GameTooltip:AddDoubleLine("Ability", (GetSpellInfo(c.reward)) or "Reward ability",
                 0.8, 0.8, 0.8, 0.64, 0.21, 0.93)
+            CW.AddAbilityLines(c.reward)
+            GameTooltip:AddLine("Yours for good as an heirloom: usable from level 1 and kept through every Rebirth.",
+                0.6, 0.6, 0.6, true)
         end
         if c.finished == 1 then
             GameTooltip:AddLine("You finished this challenge before: this time it pays shards only.", 0.6, 0.6, 0.6, true)
@@ -4989,6 +5019,15 @@ function rvFX.ScanSpell(spellId)
     if not tip or not spellId then return out end
     if tip.ClearLines then tip:ClearLines() end
     if not pcall(tip.SetHyperlink, tip, "spell:" .. spellId) then return out end
+    -- The client's own lines carry the client patch's LOWERED cost and
+    -- cooldown, so they get the same correction GameTooltip does, and a spell
+    -- with none yet is put to the server (the answer redraws whatever showed it).
+    if CW.spellFix and CW.spellFix[spellId] then
+        CW.ApplyTooltipFix(tip, spellId)
+    elseif CW.spellFixAsked and not CW.spellFixAsked[spellId] then
+        CW.spellFixAsked[spellId] = true
+        Send("SFQ " .. spellId)
+    end
     local n = tonumber(tip.NumLines and tip:NumLines()) or 0
     -- line 1 is the spell's name, which the reveal already shows large
     for i = 2, math.min(n, rvFX.INFO_LINES + 1) do
@@ -5945,6 +5984,19 @@ local function ParseEntries(blob, fieldCount)
     return out
 end
 
+-- One spell correction (an SF or SQ record, already split by ParseEntries).
+function CW.ReadFix(f)
+    local function num(i) return tonumber(f[i]) or 0 end
+    return {
+        cost = tonumber(f[2]), cast = num(3), cd = num(4),
+        durBase = num(5), durMod = num(6),
+        rangeBase = num(7), rangeMod = num(8),
+        -- each pair is (what the client will print, what it should)
+        pairs = { { num(9), num(10) }, { num(11), num(12) },
+                  { num(13), num(14) } },
+    }
+end
+
 local collectingArch = false
 
 local function HandleMessage(msg)
@@ -6102,21 +6154,16 @@ local function HandleMessage(msg)
         -- outside its own class: the modifier packet carries a class-mask bit
         -- and no spell family, so it matches those bits only against the
         -- chassis's family.
+        -- A fresh list replaces everything, the one-off answers to SFQ
+        -- included: the build changed, so those numbers may have too.
         if not CW._collectingFix then
             CW.spellFix, CW.spellFixByName, CW._collectingFix = {}, {}, true
+            CW.spellFixAsked = {}
         end
         for _, f in ipairs(ParseEntries(p[2], 14)) do
             local id = tonumber(f[1])
             if id then
-                local function num(i) return tonumber(f[i]) or 0 end
-                CW.spellFix[id] = {
-                    cost = tonumber(f[2]), cast = num(3), cd = num(4),
-                    durBase = num(5), durMod = num(6),
-                    rangeBase = num(7), rangeMod = num(8),
-                    -- each pair is (what the client will print, what it should)
-                    pairs = { { num(9), num(10) }, { num(11), num(12) },
-                              { num(13), num(14) } },
-                }
+                CW.spellFix[id] = CW.ReadFix(f)
                 local name, rank = GetSpellInfo(id)
                 if name then
                     CW.spellFixByName[name .. "|" .. (rank or "")] = id
@@ -6125,6 +6172,25 @@ local function HandleMessage(msg)
         end
     elseif kind == "SFE" then
         CW._collectingFix = false
+    elseif kind == "SQ" then
+        -- The answer to SFQ: one spell the panel showed before it was bought,
+        -- which the login list (spells the Hero owns) never covers. "-" is a
+        -- spell with nothing to correct. Kept by id only: the spellbook and
+        -- action bar look spells up by name, and those are owned ones. The
+        -- tooltip still up for it is drawn again, now with the true numbers.
+        local id, rest = (p[2] or ""):match("^(%d+):(.*)$")
+        id = tonumber(id)
+        if id then
+            if rest:sub(1, 1) ~= "-" then
+                local f = ParseEntries(p[2], 14)[1]
+                if f then CW.spellFix[id] = CW.ReadFix(f) end
+            end
+            if CW.tipSpell == id and GameTooltip:IsShown() and CW.spellFix[id] then
+                GameTooltip:SetHyperlink("spell:" .. id)
+            elseif CW.spellFix[id] and CW.runBadge and GameTooltip:IsOwned(CW.runBadge) then
+                CW.RunTooltip(CW.runBadge)   -- the run card quotes its reward ability
+            end
+        end
 
     elseif kind == "OT" then
         if not CW._collectingOwnedT then
@@ -6325,6 +6391,7 @@ do
     local T = {}
     CW.spellFix = CW.spellFix or {}
     CW.spellFixByName = CW.spellFixByName or {}
+    CW.spellFixAsked = CW.spellFixAsked or {}   -- spells already put to the server with SFQ
 
     -- the client's own power names, so the cost line is found without matching
     -- English. Anything absent is simply skipped.
@@ -6548,10 +6615,27 @@ do
         -- Every tooltip the panel itself raises goes through SetHyperlink
         -- ("spell:<id>"), which hands us the id outright -- no name matching.
         -- Missing this hook is why the Abilities list still read 20 Rage.
+        --
+        -- A spell the Hero does not own yet has no correction from the login
+        -- list, and the client's copy of it is the client patch's lowered one:
+        -- the Abilities list read Heroic Strike at 9 rage and Revenge at a
+        -- 1 sec cooldown. So the first time one comes up without a record the
+        -- server is asked (SFQ), once, and its answer (SQ) draws this tooltip
+        -- again if it is still up.
         hooksecurefunc(GameTooltip, "SetHyperlink", function(self, link)
             local id = link and tonumber(link:match("^spell:(%d+)"))
-            if id then T.decorate(self, id) end
+            if not id then return end
+            if self == GameTooltip then CW.tipSpell = id end
+            if T.fixFor(id) then
+                T.decorate(self, id)
+            elseif not CW.spellFixAsked[id] then
+                CW.spellFixAsked[id] = true
+                Send("SFQ " .. id)
+            end
         end)
+        -- the tooltip moved on: an answer arriving now must not redraw it
+        GameTooltip:HookScript("OnTooltipCleared", function() CW.tipSpell = nil end)
+        GameTooltip:HookScript("OnHide", function() CW.tipSpell = nil end)
         hooksecurefunc(GameTooltip, "SetAction", function(self, slot)
             local kind, id = GetActionInfo(slot)
             if kind ~= "spell" or not id or id == 0 then return end

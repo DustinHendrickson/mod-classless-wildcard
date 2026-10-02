@@ -89,40 +89,77 @@ public:
         PLAYERHOOK_ON_SPELL_CAST
     }) { }
 
-    // A rune-power spell's cooldown does not hold on the client of a Hero.
-    // Death Grip lit up again within seconds of being cast, and every press
-    // after that was refused by the server with "Spell is not ready" for the
-    // rest of its 35 seconds. It is the same client rune bookkeeping that is
-    // Death Knight only, below.
+    // A cooldown the client holds short of the server's, for two reasons.
+    //
+    // A rune-power spell: Death Grip lit up again within seconds of being
+    // cast, and every press after that was refused by the server with "Spell
+    // is not ready" for the rest of its 35 seconds. It is the same client rune
+    // bookkeeping that is Death Knight only, below.
+    //
+    // And every spell whose cooldown a talent anywhere could shorten. The
+    // client cannot apply a cross-class talent to its own cooldown sweep, so
+    // the client patch lowers its copy to the shortest any build could reach
+    // (lower_talent_reduced_cooldowns), letting a Hero WITH the talent cast the
+    // moment the server agrees. A Hero without it was left with the floor:
+    // Revenge's 5 seconds read 1 on the client, the button lit up after one
+    // second, and every press for four more was refused.
     //
     // So say it outright. SMSG_SPELL_COOLDOWN is the core's own way of telling
     // the client a cooldown it would not work out for itself, and the client
     // honours it for any class. Sent a tick after the cast so it lands behind
     // SMSG_SPELL_GO, with what the server actually holds, so a talent that
-    // shortens the cooldown is already counted.
+    // shortens the cooldown is already counted. Every Hero cast with a
+    // cooldown, not only the floored ones: where the two already agree it
+    // changes nothing, and a list of which rows the patch lowered would be one
+    // more thing to fall out of step with the client.
+    //
+    // And the cooldown it SHARES. The shocks are one category: Frost Shock
+    // puts Earth and Flame Shock on its 6 seconds too, and the client takes
+    // that from its own lowered copy (3 seconds), so they lit up early just
+    // the same. The core gives every same-family spell in the category the
+    // cooldown (Player::AddSpellAndCategoryCooldowns); each one the Hero
+    // knows goes out in the same packet with what the server holds for it.
     void OnPlayerSpellCast(Player* player, Spell* spell, bool /*skipCheck*/) override
     {
-        if (!sClasslessMgr->cfg.enabled || !player || !spell)
+        if (!sClasslessMgr->cfg.enabled || !player || !spell || spell->IsTriggered())
             return;
-        if (player->getClass() == CLASS_DEATH_KNIGHT)
-            return;   // a real Death Knight's client tracks these itself
         SpellInfo const* info = spell->GetSpellInfo();
-        if (!info || info->PowerType != POWER_RUNE)
-            return;
-        if (!info->RecoveryTime && !info->CategoryRecoveryTime)
+        if (!info || (!info->RecoveryTime && !info->CategoryRecoveryTime))
             return;
         CharState* st = sClasslessMgr->FindState(player);
-        if (!st || st->exempt || !st->runes)
+        if (!st || st->exempt)
             return;
+        if (info->PowerType == POWER_RUNE
+            && (player->getClass() == CLASS_DEATH_KNIGHT || !st->runes))
+            return;   // a real Death Knight's client tracks these itself
 
         uint32 const spellId = info->Id;
-        player->m_Events.AddEventAtOffset([player, spellId]()
+        uint32 const category = info->CategoryRecoveryTime ? info->GetCategory() : 0;
+        uint32 const family = info->SpellFamilyName;
+        player->m_Events.AddEventAtOffset([player, spellId, category, family]()
         {
-            uint32 const left = player->GetSpellCooldownDelay(spellId);
-            if (!left)
+            PacketCooldowns cooldowns;
+            if (uint32 const left = player->GetSpellCooldownDelay(spellId))
+                cooldowns[spellId] = left;
+            if (category)
+            {
+                auto const set = sSpellsByCategoryStore.find(category);
+                if (set != sSpellsByCategoryStore.end())
+                    for (auto const& [fromItem, otherId] : set->second)
+                    {
+                        if (fromItem || otherId == spellId || !player->HasSpell(otherId))
+                            continue;
+                        SpellInfo const* other = sSpellMgr->GetSpellInfo(otherId);
+                        if (!other || other->SpellFamilyName != family)
+                            continue;
+                        if (uint32 const left = player->GetSpellCooldownDelay(otherId))
+                            cooldowns[otherId] = left;
+                    }
+            }
+            if (cooldowns.empty())
                 return;
             WorldPacket data;
-            player->BuildCooldownPacket(data, SPELL_COOLDOWN_FLAG_NONE, spellId, left);
+            player->BuildCooldownPacket(data, SPELL_COOLDOWN_FLAG_NONE, cooldowns);
             player->SendDirectMessage(&data);
         }, 1ms);
     }

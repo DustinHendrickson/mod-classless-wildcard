@@ -306,6 +306,36 @@ function GameTooltip:Show() TIP.shown = true end
 function GameTooltip:Hide() TIP.shown = false end
 function GameTooltip:IsOwned(o) return TIP.owner == o and TIP.shown == true end
 function TipText() return table.concat(TIP, " | ") end
+-- A spell link drawn the way the client draws it, line by line into
+-- GameTooltipTextLeftN / TextRightN, from SPELL_TIPS[id]. A REAL function, so
+-- the addon's hooksecurefunc on it installs: on a stub it found nothing to hook
+-- and the tooltip corrections never ran here at all.
+SPELL_TIPS = {}
+HYPERLINKS = 0
+for i = 1, 8 do
+    Stub("FontString", "GameTooltipTextLeft" .. i)
+    Stub("FontString", "GameTooltipTextRight" .. i)
+end
+function GameTooltip:SetHyperlink(link)
+    HYPERLINKS = HYPERLINKS + 1
+    local cleared = rawget(GameTooltip, "__scripts").OnTooltipCleared
+    if cleared then cleared(GameTooltip) end
+    local lines = SPELL_TIPS[tonumber(tostring(link):match("^spell:(%d+)")) or 0] or {}
+    for i = 1, 8 do
+        local l = lines[i] or {}
+        _G["GameTooltipTextLeft" .. i]:SetText(l[1] or "")
+        _G["GameTooltipTextRight" .. i]:SetText(l[2] or "")
+    end
+    TIP.shown = true
+end
+function GameTooltip:IsShown() return TIP.shown == true end
+SPELL_RECAST_TIME_SEC = "%.3g sec cooldown"
+SPELL_RECAST_TIME_MIN = "%.3g min cooldown"
+SPELL_CAST_TIME_SEC = "%.3g sec cast"
+SPELL_CAST_TIME_MIN = "%.3g min cast"
+SPELL_RANGE = "%s yd range"
+RAGE = "Rage"
+MANA = "Mana"
 
 for i = 1, 6 do CreateFrame("Frame", "PlayerStatFrameLeft" .. i) end
 
@@ -1619,6 +1649,31 @@ def test_challenge_runs(h):
             and "Click for the challenge page" in tip and "clock" not in tip,
             "the badge's hover card has the rule, the lives and the rewards: %r" % tip[:300])
     h.check(("Title" in tip) == (str(hc.title or "") != ""), "the title is named when the challenge has one")
+
+    # It says what the reward ability DOES: the game's own lines for it, read
+    # by the reveal's scanner, description and all; and since those carry the
+    # client's lowered numbers, the server is asked for the true ones.
+    h.rt.execute("""
+        ClasslessWildcard_API.challengesById[3].reward = 99001
+        SCANNED = nil
+        REAL_SCAN = ClasslessWildcard_API.revealFX.ScanSpell
+        ClasslessWildcard_API.revealFX.ScanSpell = function(id)
+            SCANNED = id
+            return { { left = "Instant", right = "2 min cooldown" },
+                     { left = "Leap behind your attacker and stun it for 3 sec.", r = 1, g = 0.82, b = 0 } }
+        end
+    """)
+    badge["__scripts"]["OnEnter"](badge)
+    tip = str(g.TipText())
+    h.check(g.SCANNED == 99001 and "Leap behind your attacker and stun it for 3 sec." in tip
+            and "Instant 2 min cooldown" in tip and "heirloom" in tip,
+            "the card says what the reward ability does: %r" % tip[-260:])
+    # an answer about that ability redraws the open card
+    h.rt.execute("SCANNED = nil")
+    h.recv("SQ|99001:0:0:90000:0:0:0:0:0:0:0:0:0:0;")
+    h.check(g.SCANNED == 99001 and g.TIP.shown is True, "an answer for the reward ability redraws the open card")
+    h.rt.execute("ClasslessWildcard_API.challengesById[3].reward = 0; ClasslessWildcard_API.revealFX.ScanSpell = REAL_SCAN")
+    badge["__scripts"]["OnEnter"](badge)
     # a fresh state while the card is up redraws it with the new count
     h.recv(run_state(1, 3, run=3, lives=3, lives_max=3, clock=725))
     tip = str(g.TipText())
@@ -2660,6 +2715,78 @@ def test_default_scope(h):
     CW.LoadBrowseChoices()
 
 
+def test_spell_corrections(h):
+    print("--- spell corrections: owned spells from the login list, the rest asked for")
+    g = h.g
+    tip = g.GameTooltip
+
+    def line(side, i):
+        return str(g["GameTooltipText%s%d" % (side, i)]["__text"])
+
+    # What the client draws from the client patch's LOWERED copies: Heroic
+    # Strike at 9 rage and Revenge at 2 rage on a 1 sec cooldown.
+    h.rt.execute("""
+        SPELL_TIPS[78] = { { "Heroic Strike", "Rank 1" }, { "9 Rage", "Melee Range" },
+                           { "Next melee" }, { "A strong attack that increases melee damage by 11." } }
+        SPELL_TIPS[6572] = { { "Revenge", "Rank 1" }, { "2 Rage", "Melee Range" },
+                             { "Instant", "1 sec cooldown" },
+                             { "Instantly counterattack an enemy for 81 to 99 damage." } }
+        SPELL_TIPS[100] = { { "Charge", "Rank 1" }, { "8-25 yd range" }, { "Instant", "15 sec cooldown" } }
+    """)
+    # The login list: Heroic Strike is owned, with its true 15 rage.
+    h.recv("SF|78:15:0:0:0:0:0:0:0:0:0:0:0:0;")
+    h.recv("SFE|")
+
+    h.clear_sent()
+    tip.SetHyperlink(tip, "spell:78")
+    h.check(line("Left", 2) == "15 Rage" and h.sent() == [],
+            "an owned spell is corrected from the login list, nothing asked: %r %r" % (line("Left", 2), h.sent()))
+
+    # Revenge is not owned: the first hover asks, once, and shows the client's
+    # copy until the answer comes.
+    tip.SetHyperlink(tip, "spell:6572")
+    h.check(h.sent() == ["SFQ 6572"], "an unowned spell is asked about: %r" % h.sent())
+    tip.SetHyperlink(tip, "spell:6572")
+    h.check(h.sent() == ["SFQ 6572"], "and only once: %r" % h.sent())
+
+    # The answer redraws the tooltip still up for it, with the true numbers.
+    drawn = g.HYPERLINKS
+    h.recv("SQ|6572:5:0:5000:0:0:0:0:0:0:0:0:0:0;")
+    h.check(g.HYPERLINKS == drawn + 1 and line("Left", 2) == "5 Rage" and line("Right", 3) == "5 sec cooldown",
+            "the answer redraws it: %r, %r" % (line("Left", 2), line("Right", 3)))
+    h.check(line("Right", 1) == "Rank 1" and line("Right", 2) == "Melee Range" and line("Left", 3) == "Instant",
+            "and touches nothing else on it")
+    # hovering it again is corrected straight away, nothing asked
+    h.clear_sent()
+    tip.SetHyperlink(tip, "spell:6572")
+    h.check(line("Left", 2) == "5 Rage" and h.sent() == [], "from then on it is corrected at once")
+
+    # "-" is a spell with nothing to correct: no redraw, never asked again.
+    tip.SetHyperlink(tip, "spell:100")
+    drawn = g.HYPERLINKS
+    h.recv("SQ|100:-;")
+    h.check(g.HYPERLINKS == drawn and line("Right", 3) == "15 sec cooldown", "a '-' answer leaves the tooltip alone")
+    h.clear_sent()
+    tip.SetHyperlink(tip, "spell:100")
+    h.check(h.sent() == [], "and the spell is not asked about again")
+
+    # An answer arriving after the tooltip moved on must not redraw it.
+    h.rt.execute("SPELL_TIPS[1715] = { { 'Hamstring' }, { '7 Rage' } }")
+    tip.SetHyperlink(tip, "spell:1715")
+    tip["__scripts"]["OnHide"](tip)
+    drawn = g.HYPERLINKS
+    h.recv("SQ|1715:10:0:0:0:0:0:0:0:0:0:0:0:0;")
+    h.check(g.HYPERLINKS == drawn, "an answer for a tooltip already gone draws nothing")
+
+    # A new login list (the build changed) forgets the answers and asks again.
+    h.recv("SF|78:12:0:0:0:0:0:0:0:0:0:0:0:0;")
+    h.recv("SFE|")
+    h.clear_sent()
+    tip.SetHyperlink(tip, "spell:6572")
+    h.check(h.sent() == ["SFQ 6572"] and line("Left", 2) == "2 Rage",
+            "a new build drops the old answers and asks again: %r" % h.sent())
+
+
 def test_layering(h):
     print("--- layering: what draws over what")
     CW = h.CW
@@ -2756,6 +2883,7 @@ def main():
     test_resource_bars(h)
     test_settings(h)
     test_layering(h)
+    test_spell_corrections(h)
     test_default_scope(h)
     test_paperdoll(h)
     test_stats(h)
