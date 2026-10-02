@@ -1635,8 +1635,30 @@ def test_challenge_runs(h):
     # The run is live: name and lives in the top-right of the panel.
     h.recv(run_state(1, 3, run=3, lives=3, lives_max=3))
     badge = CW.runBadge
-    h.check(badge["__shown"] is True and "Hardcore" in str(CW.runText["__text"]) and str(CW.runCount["__text"]) == "3 of 3",
-            "the header badge names the run and counts lives: %r, %r" % (str(CW.runText["__text"]), str(CW.runCount["__text"])))
+    h.check(badge["__shown"] is True and "Hardcore" in str(CW.runText["__text"]),
+            "the header badge names the run: %r" % str(CW.runText["__text"]))
+
+    # The badge sits in the gap between the class strip and the close button,
+    # measured from the frames: every class button the strip CAN show (the
+    # worst case is all of them, centred on the 950 panel), each with its slot
+    # frame 1.72x the button, against the badge's own width and anchor.
+    panel = badge["__parent"]
+    strip = [f for f in g.FRAMES.values()
+             if g.rawequal(f["__parent"], panel) and f["__w"] == f["__h"] and f["__point"] is not None
+             and f["__point"][1] == "TOPLEFT" and f["__point"][3] == -70]
+    xs = sorted(float(f["__point"][2]) for f in strip if f["__shown"])
+    bw = float(strip[0]["__w"]) if strip else 0
+    gap = (xs[1] - xs[0]) if len(xs) > 1 else 0
+    worst_right = (950 + len(strip) * gap - (gap - bw)) / 2 + bw * 0.72 / 2
+    bp = badge["__point"]
+    badge_right = 950 + float(bp[4])
+    badge_left = badge_right - float(badge["__w"])
+    badge_bottom = float(bp[5]) - float(badge["__h"])
+    h.check(len(strip) == 11 and gap > bw > 0 and str(bp[1]) == "TOPRIGHT"
+            and badge_left > worst_right and badge_right <= 950 - 40,
+            "the badge clears the class strip (ends %.1f, badge starts %.1f) and the close button (badge ends %.1f, X starts 910)"
+            % (worst_right, badge_left, badge_right))
+    h.check(badge_bottom > -70 - 38 - 20, "and stays in the header, above the panes (bottom %.0f)" % badge_bottom)
     h.check(all(CW.lifeIcons[i]["__shown"] for i in range(1, 4)) and not CW.lifeIcons[4]["__shown"], "three life pips, no more")
     h.check(all(g.rawequal(CW.lifeIcons[i]["__parent"], badge) for i in range(1, 7)), "the hearts sit in the badge")
 

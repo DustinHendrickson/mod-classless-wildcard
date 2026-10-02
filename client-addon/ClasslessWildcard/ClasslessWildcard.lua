@@ -348,18 +348,23 @@ end
 -- for the whole challenge (how it plays, lives, the clock where there is one,
 -- what level 80 pays); click it for the challenge page. Hidden with no run.
 --
--- Measured: 196 x 50 at -44/-28 from the top-right corner, clear of the close
--- button (-8 to -40) and, to the left, of the centred status lines: its left
--- edge is 235 from the centre, and the longest of them (Classless, both
--- essences in four figures and a Rebirth rank) is about 440 wide. The panel's
--- own colours: a dark plate in a gold rim, like the confirm popups. The icon
--- is 30 inside a black 32 frame, 10 in from the left, so it sits clear of the
--- rim's rounded corner (at 34 and 6 in it ran into it). Name level with the
--- icon's top, hearts with its bottom, the count right-aligned on that line.
+-- Measured, because it has to fit a gap: 164 x 50, right edge at -42, top at
+-- -28. To its right the close button starts at -40. To its left is the class
+-- strip, centred, 11 buttons of 38 with 8 between (498 wide, so it ends at 724)
+-- plus the 1.72x slot frame each wears, which reaches 13.7 past the button:
+-- 738. The badge starts at 744. At 196 wide it started at 710 and sat over
+-- the last class icons, which was the whole complaint about it. The test
+-- measures the same numbers from the frames themselves.
+--
+-- The panel's own colours: a dark plate in a gold rim, like the confirm
+-- popups. The icon is 30 inside a black 32 frame, 9 in from the left, clear of
+-- the rim's rounded corner. Name level with the icon's top, hearts with its
+-- bottom. No "2 of 3" beside them: six hearts and a count do not fit in 164,
+-- the hearts already show it, and the hover card says it in words.
 do
     local b = CreateFrame("Button", "ClasslessWildcardRunBadge", frame)
-    b:SetWidth(196); b:SetHeight(50)
-    b:SetPoint("TOPRIGHT", frame, "TOPRIGHT", -44, -28)
+    b:SetWidth(164); b:SetHeight(50)
+    b:SetPoint("TOPRIGHT", frame, "TOPRIGHT", -42, -28)
     b:SetBackdrop({
         bgFile = "Interface\\Buttons\\WHITE8X8",
         edgeFile = "Interface\\Tooltips\\UI-Tooltip-Border",
@@ -389,16 +394,13 @@ do
     CW.runText:SetPoint("TOPLEFT", b.iconFrame, "TOPRIGHT", 9, -2)
     CW.runText:SetPoint("RIGHT", b, "RIGHT", -10, 0)
     CW.runText:SetJustifyH("LEFT")
-    CW.runCount = b:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
-    CW.runCount:SetPoint("BOTTOMRIGHT", b, "BOTTOMRIGHT", -10, 10)
-    CW.runCount:SetJustifyH("RIGHT")
 
     -- One pip per life the run started with, the lost ones empty. Six is the
     -- most a run can have (five plus a bought extra life).
     CW.lifeIcons = {}
     for i = 1, 6 do
         local t = CW.MakePip(b, 14)
-        t:SetPoint("BOTTOMLEFT", b.iconFrame, "BOTTOMRIGHT", 8 + (i - 1) * 16, 1)
+        t:SetPoint("BOTTOMLEFT", b.iconFrame, "BOTTOMRIGHT", 8 + (i - 1) * 15, 1)
         CW.lifeIcons[i] = t
     end
 
@@ -500,7 +502,6 @@ function CW.UpdateLives()
     end
     local c = CW.challengesById and CW.challengesById[s.run]
     CW.runText:SetText("|cffff5544" .. (c and c.name or ("Challenge " .. s.run)) .. "|r")
-    CW.runCount:SetText((s.lives or 0) .. " of " .. s.livesMax)
     b.icon:SetTexture(c and (c.reward or 0) > 0 and SpellIcon(c.reward) or "Interface\\Icons\\INV_Misc_Bone_HumanSkull_01")
     local n = math.min(#icons, s.livesMax)
     for i = 1, #icons do
