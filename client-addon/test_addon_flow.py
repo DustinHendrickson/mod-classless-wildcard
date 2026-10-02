@@ -1454,6 +1454,14 @@ def test_challenge_runs(h):
     h.clear_sent()
     h.click(CW.rebirthBtn)
     h.check(runs["__shown"] is True and "CHL" in h.sent(), "the button opens the challenge screen and asks for the list")
+    # The confirm popups (StaticPopup) draw on DIALOG. A screen on DIALOG too
+    # covered its own popup; on the panel's HIGH, above the panel's frames,
+    # every popup draws over it and the panel does not.
+    panel = g.ClasslessWildcardFrame
+    for name, scr in (("challenge screen", runs), ("Rebirth picker", CW.rebirthFly)):
+        h.check(scr["__strata"] == "HIGH" and (scr["__level"] or 0) > (panel["__level"] or 0),
+                "the %s sits under the confirm popups and over the panel (strata %r, level %r)"
+                % (name, scr["__strata"], scr["__level"]))
     h.check(runs["start"]["__enabled"] is False, "nothing can start before the list has arrived")
 
     # The list lands: pipes between fields, one message per challenge, and
@@ -1477,7 +1485,24 @@ def test_challenge_runs(h):
               for i in range(1, 4) for k in range(1, 7)}
     layers |= {(str(CW.lifeIcons[k]["__layer"]), str(CW.lifeIcons[k]["gem"]["__layer"])) for k in range(1, 7)}
     h.check(layers == {("ARTWORK", "OVERLAY")},
-            "every gem draws on a layer above its socket, never the same one: %r" % layers)
+            "every full heart draws on a layer above its empty one, never the same one: %r" % layers)
+    texs = {(str(rows[1]["pips"][1]["__tex"][1]), str(rows[1]["pips"][1]["gem"]["__tex"][1])),
+            (str(CW.lifeIcons[1]["__tex"][1]), str(CW.lifeIcons[1]["gem"]["__tex"][1]))}
+    h.check(texs == {(r"Interface\AddOns\ClasslessWildcard\heart_empty",
+                      r"Interface\AddOns\ClasslessWildcard\heart_full")},
+            "every pip is the addon's own heart, empty under full: %r" % texs)
+    # and the art itself ships: 32 x 32, 32-bit with alpha, stored bottom-up
+    import struct as _st
+    art_ok = True
+    for _n in ("heart_full.tga", "heart_empty.tga"):
+        _path = os.path.join(os.path.dirname(ADDON), _n)
+        if not os.path.exists(_path):
+            art_ok = False
+            continue
+        _hdr = open(_path, "rb").read(18)
+        _f = _st.unpack("<BBBHHBHHHHBB", _hdr)
+        art_ok = art_ok and _f[2] == 2 and _f[8] == 32 and _f[9] == 32 and _f[10] == 32 and _f[11] == 0x08
+    h.check(art_ok, "both hearts ship in the addon folder as 32 x 32 TGAs with alpha")
     h.check(rows[3]["done"]["__shown"] is True and rows[2]["done"]["__shown"] is False,
             "a finished challenge is ticked, an unfinished one is not")
     h.check("1000" in str(rows[2]["gold"]["__text"]) and "UI-GoldIcon" in str(rows[2]["gold"]["__text"]),
@@ -1562,9 +1587,10 @@ def test_challenge_runs(h):
     h.recv("RD|2|3|You fall to level 2.")
     h.check(g.LAST_POPUP == "CW_RUN_DEATH" and "STATE" in h.sent(), "a death pops up and refreshes state")
     h.recv(run_state(1, 2, run=3, lives=2, lives_max=3))
-    h.check(CW.lifeIcons[3]["__alpha"] == 0.3 and CW.lifeIcons[3]["gem"]["__shown"] is False
-            and CW.lifeIcons[2]["__alpha"] == 1 and CW.lifeIcons[2]["gem"]["__shown"] is True,
-            "the lost life is an empty, dimmed socket; the others keep their gems")
+    h.check(CW.lifeIcons[3]["__shown"] is True and CW.lifeIcons[3]["gem"]["__shown"] is False
+            and CW.lifeIcons[3]["__alpha"] == 1
+            and CW.lifeIcons[2]["gem"]["__shown"] is True,
+            "the lost life is an empty heart, still plainly visible; the others stay full")
 
     # The end: shards paid, the rule lifts, the lives go.
     h.clear_sent()

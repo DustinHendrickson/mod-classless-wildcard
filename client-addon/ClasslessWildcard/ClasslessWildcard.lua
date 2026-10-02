@@ -309,35 +309,36 @@ CW.statusText = statusText   -- read by the flow test
 local subStatusText = frame:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
 subStatusText:SetPoint("TOP", 0, -56)
 
--- A life pip: the game's own combo-point socket with its red gem, which is
--- drawn for exactly this size and reads at a glance. The socket is the pip;
--- the gem is set into it while the life is still in hand. Used for the run's
+-- A life pip: a heart. The client ships no plain heart (every heart in its
+-- files is a whole spell or item icon with its own background, a little square
+-- at this size), so the addon draws its own: heart_full.tga and
+-- heart_empty.tga, painted by client-addon/gen_hearts.py. Used for the run's
 -- lives in the header, in the challenge list and on the challenge page, so
 -- lives look the same everywhere they appear.
 --
--- The socket and the gem sit on DIFFERENT draw layers, socket on ARTWORK and
--- gem on OVERLAY. They used to share OVERLAY with the gem one sub-level up,
--- and in game some pips drew their opaque socket over their own gem and came
--- out empty. Two layers is the order the client always keeps, and it is how
--- the combo-point bar (barsFrame) has always stacked the same two pieces.
+-- The empty heart is the pip and the full heart sits over it while the life is
+-- in hand. The two are on DIFFERENT draw layers, ARTWORK under OVERLAY: on one
+-- layer with a sub-level between them, the client drew some pips with the base
+-- over the top piece and they came out empty. Two layers is an order the
+-- client always keeps.
 function CW.MakePip(parent, size)
     local bg = parent:CreateTexture(nil, "ARTWORK")
     bg:SetWidth(size); bg:SetHeight(size)
-    bg:SetTexture("Interface\\ComboFrame\\ComboPoint")
-    bg:SetTexCoord(0, 0.375, 0, 0.75)          -- the 12x12 socket
+    bg:SetTexture("Interface\\AddOns\\ClasslessWildcard\\heart_empty")
     bg.gem = parent:CreateTexture(nil, "OVERLAY")
-    bg.gem:SetWidth(size * 0.55); bg.gem:SetHeight(size * 0.46)
+    bg.gem:SetWidth(size); bg.gem:SetHeight(size)
     bg.gem:SetPoint("CENTER", bg, "CENTER", 0, 0)
-    bg.gem:SetTexture("Interface\\ComboFrame\\ComboPoint")
-    bg.gem:SetTexCoord(0.375, 0.5625, 0.1875, 0.5)   -- the 6x5 gem
+    bg.gem:SetTexture("Interface\\AddOns\\ClasslessWildcard\\heart_full")
     bg:Hide(); bg.gem:Hide()
     return bg
 end
 
--- shown or not, and lit (a life in hand) or spent (an empty, dimmed socket)
+-- shown or not, and full (a life in hand) or empty (a life lost). The empty
+-- heart is drawn dark already, so it is not dimmed further: at 0.3 it all but
+-- vanished against the panel.
 function CW.SetPip(pip, shown, alive)
     if not shown then pip:Hide(); pip.gem:Hide() return end
-    pip:SetAlpha(alive and 1 or 0.3)
+    pip:SetAlpha(1)
     pip:Show()
     if alive then pip.gem:Show() else pip.gem:Hide() end
 end
@@ -886,6 +887,17 @@ end)
 rebirthBtn:SetScript("OnLeave", function() GameTooltip:Hide() end)
 CW.rebirthBtn = rebirthBtn
 
+-- The Rebirth picker and the challenge screen are full screens over the panel
+-- that open confirm popups of their own. Blizzard's StaticPopups draw on the
+-- DIALOG strata, and so did these: on a tie the screen won and covered its own
+-- popup, buttons and all. So they sit on the panel's strata, HIGH, which every
+-- popup draws over, and are lifted well clear of the panel's own frames every
+-- time they open, since a click can raise the toplevel panel's level.
+function CW.OverPanel(screen)
+    screen:SetFrameStrata("HIGH")
+    screen:SetFrameLevel(frame:GetFrameLevel() + 40)
+end
+
 -- Rebirth picker ------------------------------------------------------------
 -- Which abilities come along, and which path the new life starts on. Rows
 -- are the owned abilities a Rebirth may carry: what was picked or rolled,
@@ -901,7 +913,7 @@ do
     local fly = CreateFrame("Frame", "ClasslessWildcardRebirth", frame)
     fly:SetWidth(460); fly:SetHeight(470)
     fly:SetPoint("CENTER", frame, "CENTER", 0, 0)
-    fly:SetFrameStrata("DIALOG")
+    CW.OverPanel(fly)   -- under the confirm popups, over the panel
     fly:SetBackdrop({
         bgFile = "Interface\\Buttons\\WHITE8X8",
         edgeFile = "Interface\\Tooltips\\UI-Tooltip-Border",
@@ -1075,6 +1087,7 @@ do
     end
 
     function CW.OpenRebirth()
+        CW.OverPanel(fly)
         fly.picked = {}
         fly.page = 0
         if CW.runFly then CW.runFly:Hide() end
@@ -1156,7 +1169,7 @@ do
     fly:SetPoint("TOPLEFT", frame, "TOPLEFT", 20, -70)
     fly:SetPoint("BOTTOMRIGHT", frame, "BOTTOMRIGHT", -20, 56)
     fly:SetWidth(910); fly:SetHeight(474)
-    fly:SetFrameStrata("DIALOG")
+    CW.OverPanel(fly)   -- under the confirm popups, over the panel
     fly:SetBackdrop({
         bgFile = "Interface\\Buttons\\WHITE8X8",
         edgeFile = "Interface\\Tooltips\\UI-Tooltip-Border",
@@ -1648,6 +1661,7 @@ do
     end
 
     function CW.OpenRuns()
+        CW.OverPanel(fly)
         if CW.rebirthFly then CW.rebirthFly:Hide() end
         if CW.archFly then CW.archFly:Hide() end
         if CW.helpFly then CW.helpFly:Hide() end
@@ -2234,7 +2248,7 @@ local function BuildHelpText()
 "",
 "|cffff4444==  CHALLENGE RUNS  --  one rule, counted lives  ==|r",
 "A run is a life under one rule on either path. Start one from the Rebirth button at the cap (it is a Rebirth, heirlooms and all) or as a fresh Hero up to level " .. (CW.state.deadline or 5) .. ". Pick a challenge, read its rule, go.",
-"   |cffffd100Lives|r -- the red gems in the top-right of this panel, one per life. A death costs one; battlegrounds, arenas and duels are free. Rules that make the world deadlier give five, rules that change how you fight give three, and |cffffd100Hardcore|r gives one because the rule is death itself.",
+"   |cffffd100Lives|r -- the hearts in the top-right of this panel, one per life, emptied as you lose them. A death costs one; battlegrounds, arenas and duels are free. Rules that make the world deadlier give five, rules that change how you fight give three, and |cffffd100Hardcore|r gives one because the rule is death itself.",
 "   |cffffd100Running out|r ends the run: the rule lifts and you keep everything. |cffffd100Reaching 80|r with a life in hand finishes it, and pays the challenge's gold, its title, and on some runs an ability no roll or shop can give, kept as an heirloom. Finish with no life lost for |cffffd100the Unbroken|r.",
 "   |cffffd100Shards|r -- every run pays them when it ends, finished or not: one per level reached, two per level past 60, a third more for a run with no life lost. They buy one |cffffd100extra life|r for your next run, on the challenge page.",
 "",
