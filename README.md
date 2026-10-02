@@ -204,60 +204,9 @@ projected as you spend. Reallocating is free.</em>
   Reborn", "the Many-Lived", "the Eternal"), and a glow on the panel's crest. The
   price climbs with the rank, since quests come back with their one-time rewards. The picker
   lives on the panel's Rebirth button; the NPC only offers the path change.
-- **Challenge runs.** A life under one rule, with lives, on either path. A run starts from the
-  Rebirth picker at the cap (it is a Rebirth onto the path you pick, heirlooms and all) or on a
-  fresh Hero under the mode deadline, on the path already chosen. The path itself plays exactly
-  as it does off a run: Wildcard rolls and rerolls, Classless buys with essence. A death costs a
-  life, except in battlegrounds, arenas and duels. Running out of lives ends the run: the rule
-  lifts, the character keeps everything, and the run pays **shards**, one per level reached and
-  two past 60, a third more for a run with no life lost. Reaching the cap with a life in hand
-  pays the challenge's gold and its own title ("the Nemesis", "Bane of Giants", "the
-  Legionbreaker", "the Hunted", "the Swift", "the Unshattered", "the Scarred", "the
-  Bloodthirsty", "the Berserker", "the Ironclad", "the Big Game Hunter", "the Deathless"), plus
-  "the Unbroken" for a run with no life lost. The titles are the module's own: `TITLES` in the generator writes them to
-  `chartitles_dbc` for the server and the client patch appends them to CharTitles.dbc, on bits
-  143 and up, past everything the stock table ships.
-  Shards buy an extra life for the next run on the challenge page. Twelve challenges, each one
-  rule that changes the fight, with lives set by how often the rule itself kills: *Nemesis* (5,
-  whatever kills you gains five levels and grows, kill it for the XP back), *Elite World* (5,
-  triple health and double damage on everything), *Legion* (4, every enemy you engage calls
-  two more of its kind), *Pursued* (3, a hunter two levels above you every ten minutes until one of
-  you dies), *Hourglass* (3, a level every
-  30 minutes played or lose a life, 20 below level 20 and 45 past 60), *Glass* (3, half health,
-  a third more damage), *Spiteful* (3, enemies reflect a fifth of your damage), *Bloodpact* (3,
-  healing halved, every hit heals you for 15% of its damage), *Berserker* (3, double damage and
-  no slows below 35% health, 30% less above 75%), *Ironman* (3, white gear only), *Big Game
-  Hunter* (3, normal enemies give no XP, elites and bosses full, quests double) and *Hardcore*
-  (1, a death ends the run). The list is code (`ClasslessMgr.cpp`, `CHALLENGES`), including the
-  titles and the 30-shard price of a life. Every challenge also pays a **reward ability** that
-  exists nowhere else and plays like the rule it was earned under, granted as an heirloom so it
-  survives every Rebirth after:
-  - *Mark of the Nemesis* (Nemesis): a marked enemy takes 15% more damage from you; if it dies
-    marked you regain 20% health and mana and the mark leaps to the nearest enemy.
-  - *Giantsbane* (Elite World): a strike that deals 1% more for every 1% of maximum health the
-    target has over you, up to double.
-  - *One Against Many* (Legion): 5% more damage and 5% less taken per enemy within 10 yards, up
-    to five.
-  - *Turnabout* (Pursued): the next enemy to hit you is answered; you appear behind it and stun
-    it, and hit it 50% harder while it is stunned.
-  - *Rewind* (Hourglass): after six seconds, or when cancelled, you return to where you stood
-    with the health and power you had.
-  - *Shatterpoint* (Glass): spend 30% of current health for a frost shard that adds three times
-    the health spent and shatters into nearby enemies for half.
-  - *Spite Mirror* (Spiteful): a third of all damage taken is sent back as Shadow damage.
-  - *Sanguine Pact* (Bloodpact): hits heal you for 30% of their damage, and overhealing becomes
-    a shield of up to 20% of maximum health.
-  - *Brink* (Berserker): eight seconds in which no blow kills you, with 2% more damage per 1% of
-    health missing.
-  - *Ironbound* (Ironman): armour equal to half your maximum health, and immunity to stuns.
-  - *Trophy Hunt* (Big Game Hunter): mark an elite, rare or boss; if it dies marked you take a
-    trophy, 5% more damage and healing for five minutes, stacking three times.
-  - *Last Breath* (Hardcore): passive; once every five minutes a killing blow leaves you at 1
-    health, and for six seconds every hit you land heals you for its full damage.
-
-  They are forged lines flagged `reward` in the generator, loaded like any other so the run can
-  hand them over and never rolled, bought or browsed. Each is scripted in
-  `src/ClasslessForgedScripts.cpp` (the challenge-run rewards section).
+- **Challenge runs.** A life under one rule with counted lives, on either path. Finishing at
+  the level cap pays gold, a title and an ability found nowhere else. See
+  [Challenge runs](#challenge-runs).
 - **Archetypes.** Thirteen build templates a Classless Hero can follow from 1 to 80. Six mix
   two classes (*Blade Dancer*, *Battle Mage*, *Ranger of the Light*, *Shadow Mender*, *Stealthy
   Healer*, *Storm Warrior*) and seven are built around one element's variant strikes and the
@@ -736,6 +685,79 @@ released so you always get something you can cast. Cooldowns are per character a
 logging out.
 
 ---
+
+## Challenge runs
+
+A challenge run is a life lived under one rule, with a fixed number of lives, on either path.
+The path plays exactly as it does off a run: Wildcard rolls and rerolls, Classless buys with
+essence. Only the rule and the lives are added.
+
+**Starting a run.** At the level cap, from the Rebirth picker: the run is a Rebirth onto the path
+you pick, with your heirlooms. Or on a fresh Hero up to the mode deadline, on the path already
+chosen.
+
+**Lives.** A death costs one. Deaths in battlegrounds, arenas and duels cost nothing. Run out and
+the run ends: the rule lifts and the character keeps everything. Each challenge's lives follow how
+often its rule kills: five where the world is turned up, three where the fight changes shape, and
+one only for Hardcore, where the rule is death itself.
+
+**Finishing.** Reach the level cap with a life in hand. A finished run pays the challenge's gold,
+its title and its reward ability, once per challenge.
+
+| Challenge | Lives | Rule | Gold | Title | Reward ability |
+|---|---|---|---|---|---|
+| Nemesis | 5 | Whatever kills you gains five levels, becomes elite and grows. Kill it to take the levels back as XP. | 500 | the Nemesis | Mark of the Nemesis |
+| Elite World | 5 | Every enemy has triple health and double damage. | 750 | Bane of Giants | Giantsbane |
+| Legion | 4 | Every enemy you engage calls two more of its kind. | 650 | the Legionbreaker | One Against Many |
+| Pursued | 3 | A hunter two levels above you arrives every ten minutes and tracks you until one of you dies. | 600 | the Hunted | Turnabout |
+| Hourglass | 3 | Gain each level in time or lose a life: 20 minutes below level 20, 30 up to level 60, 45 after. | 500 | the Swift | Rewind |
+| Glass | 3 | Half health, a third more damage. | 400 | the Unshattered | Shatterpoint |
+| Spiteful | 3 | Enemies reflect a fifth of your damage back at you. | 450 | the Scarred | Spite Mirror |
+| Bloodpact | 3 | Healing is halved, and every hit heals you for 15% of its damage. | 450 | the Bloodthirsty | Sanguine Pact |
+| Berserker | 3 | Double damage and no slows below 35% health, 30% less damage above 75%. | 450 | the Berserker | Brink |
+| Ironman | 3 | White gear only. | 500 | the Ironclad | Ironbound |
+| Big Game Hunter | 3 | Normal enemies give no XP. Elites and bosses give full XP, quests give double. | 400 | the Big Game Hunter | Trophy Hunt |
+| Hardcore | 1 | A death ends the run. | 1000 | the Deathless | Last Breath |
+
+**On every run.**
+
+- **Flawless.** Finishing without losing a life also earns the title "the Unbroken" and a third
+  more shards.
+- **Shards.** Paid whenever a run ends, finished or not: one per level reached, two per level past
+  60. Thirty shards buy one extra life for your next run, on the challenge page.
+
+### Reward abilities
+
+Each reward plays like the rule it was earned under, and none can be rolled, bought or browsed. It
+is granted as an heirloom: usable from level 1, carried through every Rebirth, never rerolled.
+
+| Ability | Earned from | What it does |
+|---|---|---|
+| Mark of the Nemesis | Nemesis | A marked enemy takes 15% more damage from you. If it dies marked, you regain 20% of your health and mana and the mark leaps to the nearest enemy. |
+| Giantsbane | Elite World | A 120% weapon strike, plus 1% for every 1% of maximum health the target has over you, up to double. |
+| One Against Many | Legion | For 10 seconds, 5% more damage and 5% less damage taken for every enemy within 10 yards, up to five. |
+| Turnabout | Pursued | For 8 seconds, the next enemy to hit you is answered: you appear behind it and stun it for 4 seconds, and hit it 50% harder while it is stunned. |
+| Rewind | Hourglass | After 6 seconds, or when you cancel it, you return to where you stood with the health, mana, rage and energy you had. |
+| Shatterpoint | Glass | Spends 30% of your current health. The ice shard adds three times the health spent and shatters into every enemy within 8 yards for half. |
+| Spite Mirror | Spiteful | For 6 seconds, a third of all damage you take is sent back to whoever dealt it as Shadow damage. |
+| Sanguine Pact | Bloodpact | For 10 seconds, hits heal you for 30% of their damage. Healing past full becomes a shield of up to 20% of your maximum health. |
+| Brink | Berserker | For 8 seconds no blow can kill you, and you deal 2% more damage for every 1% of health you are missing, up to double. |
+| Ironbound | Ironman | For 10 seconds, armor equal to half your maximum health, and immunity to stuns. |
+| Trophy Hunt | Big Game Hunter | Marks an elite, rare or boss enemy. If it dies marked you take a trophy: 5% more damage and healing for 5 minutes, stacking three times. |
+| Last Breath | Hardcore | Passive. Once every 5 minutes a killing blow leaves you at 1 health instead, and for 6 seconds every hit you land heals you for its full damage. |
+
+### Where it lives
+
+- **The challenges** are code: `CHALLENGES` in `src/ClasslessMgr.cpp`, with each one's lives,
+  gold, title and reward, and the 30-shard price of a life. The rules themselves are in
+  `src/ClasslessChallenges.cpp`.
+- **The reward abilities** are forged lines flagged `reward` in
+  `data/sql/generators/gen_forged_spells.py`: loaded like any other so a run can hand them over,
+  and kept out of the roll pool, the essence shop and the browser. Their scripts are in the
+  challenge-run rewards section of `src/ClasslessForgedScripts.cpp`.
+- **The titles** are the module's own: `TITLES` in the generator writes them to
+  `chartitles_dbc` for the server, and the client patch appends them to CharTitles.dbc on bits
+  143 and up, past everything the stock table ships.
 
 ## The Hero line
 
