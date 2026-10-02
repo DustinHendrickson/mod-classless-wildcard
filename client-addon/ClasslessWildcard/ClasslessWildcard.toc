@@ -1,7 +1,7 @@
 ## Interface: 30300
-## Title: ClasslessWildcard
-## Notes: Character Advancement panel for the mod-classless-wildcard server. /cw to open.
-## Author: mod-classless-wildcard
+## Title: Hero Advancement
+## Notes: Abilities, talents, stats, Rebirth and challenge runs for your Hero. /cw to open.
+## Author: Dustin Hendrickson
 ## Version: 1.0
 ## SavedVariables: ClasslessWildcardDB
 ## SavedVariablesPerCharacter: ClasslessWildcardCharDB

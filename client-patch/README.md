@@ -177,7 +177,7 @@ Install to this client? [Y/n] y
   Hero class icon      emblem on the Hero cell, other class icons kept
   -> Data/enUS/patch-enUS-Z.MPQ  (DBCs here outrank the client's own locale patches)
   Wow.exe          patched 6 site(s) to accept custom interface files
-  addon            12 files -> Interface/AddOns/ClasslessWildcard
+  addon            16 files -> Interface/AddOns/ClasslessWildcard
   cache            cleared (the client rebuilds it on next login)
 
 Done. Start the game and every class will read Hero.
@@ -195,9 +195,8 @@ python3 install.py --uninstall "C:\Games\World of Warcraft"
 
 Windows users can run `install.bat --uninstall` instead.
 
-This removes the patch archives, removes the addon, clears the cache, and, if an
-older version had patched `Wow.exe`, restores it from the backup. Your client is
-back to stock.
+This removes the patch archives, removes the addon, clears the cache, and restores
+`Wow.exe` from its backup. Your client is back to stock.
 
 ---
 
@@ -213,6 +212,8 @@ The full Hero client installs by default. These turn pieces off.
 | `--name Champion`     | Call the class something other than `Hero`                            |
 | `--no-creation-text`  | Skip the Hero text + armored outfit (and the `Wow.exe` patch they need) |
 | `--no-hero-icon`      | Keep the stock class icon instead of the Hero emblem                  |
+| `--no-forged`         | Leave out the Hero line's spells and the Hero spellbook tab           |
+| `--no-elemental`      | Leave out the elemental variants' spell rows and icons                |
 | `--no-exe`            | Install the text but not the `Wow.exe` patch (only for clients that already accept custom UI) |
 | `--no-addon`          | Do not install the addon                                              |
 | `--locale enUS`       | Patch one locale only, on a multi-language client                     |
@@ -234,12 +235,12 @@ Give it the folder that directly contains `Wow.exe` and `Data`, not a parent
 folder and not the `Data` folder itself.
 
 **"Your login interface files are corrupt" at the login screen.**
-The `Wow.exe` patch that `--creation-text` applies did not take. Most often that is because
+The `Wow.exe` patch did not take. Most often that is because
 the game was open when you ran the installer, so the exe could not be written (the
 output would have said *"close the game and re-run"*). Close World of Warcraft
-completely and run `--creation-text` again. If it still happens after a clean patch,
-your client is one the known patch does not fit. Run `--uninstall`; the Hero name and
-single-class list work without it.
+completely and run the installer again. If it still happens after a clean patch,
+your client is one the known patch does not fit. Reinstall with `--no-creation-text`;
+the Hero name and single-class list work without it.
 
 **Permission denied writing Wow.exe.**
 Close the game. On Windows, run the command prompt as Administrator if your WoW
@@ -248,11 +249,11 @@ folder lives under `C:\Program Files`.
 **Classes still show their old names**, or an item shows a question mark, or a
 bow says "Out of range".
 Delete the `Cache` folder in your WoW directory and start the game again -- see
-[Close the game first, and let the cache go](#close-the-game-first-and-let-the-cache-go).
+[About that cache](#about-that-cache).
 The installer does this for you, but a client left running can write it back.
 
 **Class icons show as a green box.**
-That means a `--hero-icon` install wrote a texture the client could not read.
+That means the Hero emblem was written in a texture format the client could not read.
 Current versions match the client's own texture format, so update and re-run; if
 it persists, reinstall with `--no-hero-icon` to keep the stock icon; everything else
 is unaffected.
@@ -271,11 +272,10 @@ files out of **your own client**, edits them on your machine, and writes the res
 into a new patch archive next to the originals. Your original files are never
 modified. Patch archives sit on top of them, and deleting them reverts everything.
 
-`Wow.exe` is **never** modified by a default install, only new patch archives (which
-sit on top of your originals) and the addon folder are written, so nothing you already
-had is changed and deleting them reverts everything. The optional `--creation-text`
-adds the rewritten `GlueStrings.lua` and applies the "allow custom interface" patch to
-`Wow.exe` so the client accepts it; the exe is backed up to `Wow.exe.classless-bak`
+Besides the new patch archives (which sit on top of your originals) and the addon
+folder, the one file the installer changes is `Wow.exe`. The creation-screen text
+ships as a rewritten `GlueStrings.lua`, and the "allow custom interface" patch to
+`Wow.exe` lets the client accept it (`--no-creation-text` skips both); the exe is backed up to `Wow.exe.classless-bak`
 first and `--uninstall` restores it. The patch only ever writes when its exact byte
 sites are found in your exe, so a client it does not fit is left untouched rather than
 corrupted.

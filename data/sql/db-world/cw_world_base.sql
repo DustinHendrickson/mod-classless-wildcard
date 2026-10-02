@@ -27,10 +27,9 @@ CREATE TABLE IF NOT EXISTS `cw_talent_override` (
 -- the cooldown the game puts on it, the talent row that teaches it, and the
 -- level it is learned at as a floor only. See README, "Ability rarity".
 --
--- Nothing is overridden by default. The DELETE below clears the six sample rows
--- that earlier versions of this file inserted, so a realm that installed one of
--- those gets the heuristic value instead. It matches on the exact values those
--- rows carried, so a rarity set deliberately is never touched.
+-- Nothing is overridden by default. The DELETE below removes six sample rows
+-- that older installs carry, matched on their exact values, so a rarity set
+-- deliberately is never touched.
 DELETE FROM `cw_ability_override` WHERE (`first_spell`, `rarity`, `cost`, `weight`, `enabled`) IN
     ((53, 3, 0, 0, 1), (5185, 1, 0, 0, 1), (133, 0, 0, 0, 1),
      (686, 0, 0, 0, 1), (17, 1, 0, 0, 1), (100, 0, 0, 0, 1));
@@ -50,11 +49,9 @@ INSERT IGNORE INTO `cw_ability_override` (`first_spell`, `rarity`, `cost`, `weig
 (1002, 255, 0, 0, 0);    -- Eyes of the Beast: comes with Tame Beast
 
 -- ---------------------------------------------------------------------------
--- Cleanup: an early version of this module auto-applied playercreateinfo_item
--- rows (tagged 'cw kit: ...') that duplicated the starter kit at character
--- creation -- piles of throwing axes, a second Hearthstone (STORAGE err 17 in
--- the log), and so on. The starter kit is granted by C++ now; remove any of
--- those rows still sitting in the database.
+-- Cleanup: removes playercreateinfo_item rows tagged 'cw kit: ...' that older
+-- installs carry. They duplicate the starter kit, which the module grants
+-- itself, and give a second Hearthstone (STORAGE err 17 in the log).
 -- ---------------------------------------------------------------------------
 
 DELETE FROM `playercreateinfo_item` WHERE `Note` LIKE 'cw kit:%';
@@ -70,10 +67,10 @@ INSERT INTO `item_template`
    `BagFamily`, `description`, `VerifiedBuild`)
 VALUES
 (990101, 15, 0, 'Reroll Scroll', 1103, 3, 1, 5000, 0, 0, -1, -1, 1, 1, 0, 20,
- 0, 'A stored Wildcard reroll, good for an ability OR a talent. Spent automatically when you reroll something you were dealt and have no free rerolls left. You earn rerolls just by leveling -- keep a few of these for a run of bad luck.', 12340);
+ 0, 'A stored Wildcard reroll for an ability or a talent. Used automatically when you reroll with no reroll charges left.', 12340);
 
--- 990102 was a second, talent-only scroll. One scroll now covers both, so the
--- old item is removed (it is also deleted by the range above).
+-- 990102 is removed: one scroll covers abilities and talents (the DELETE
+-- above lists both entries).
 
 -- ---------------------------------------------------------------------------
 -- Hero Advancement NPC (gossip + vendor)
@@ -84,15 +81,13 @@ INSERT INTO `creature_template`
   (`entry`, `name`, `subname`, `minlevel`, `maxlevel`, `faction`, `npcflag`, `unit_class`,
    `unit_flags`, `type`, `type_flags`, `RegenHealth`, `flags_extra`, `ScriptName`, `VerifiedBuild`)
 VALUES
-(990100, 'Hero Advancement', 'Classless & Wildcard', 80, 80, 35, 129, 1, 2, 7, 0, 1, 2, 'npc_hero_advancement', 12340);
+(990100, 'Hero Advancement', 'Hero Trainer', 80, 80, 35, 129, 1, 2, 7, 0, 1, 2, 'npc_hero_advancement', 12340);
 
--- The NPC's own list is the supplies counter. Everything else it sells lives on
--- separate vendor lists that cw_world_vendor_lists.sql builds and the gossip
--- menu opens -- one packet cannot carry the whole catalogue. Scoped delete, so
--- this does not disturb rows that file owns.
+-- Reroll Scrolls are sold through the NPC's gossip at the level-scaled price,
+-- not from a vendor list. The gear lives on separate vendor lists that
+-- cw_world_vendor_lists.sql builds. Scoped delete, so this does not disturb
+-- rows that file owns.
 DELETE FROM `npc_vendor` WHERE `entry` = 990100 AND `item` IN (990101, 990102);
-INSERT INTO `npc_vendor` (`entry`, `slot`, `item`, `maxcount`, `incrtime`, `ExtendedCost`, `VerifiedBuild`) VALUES
-(990100, 0, 990101, 0, 0, 0, 12340);
 
 -- ---------------------------------------------------------------------------
 -- Model + spawns (schema-adaptive)

@@ -1,4 +1,4 @@
-﻿-- mod-classless-wildcard: classless item pack II
+-- mod-classless-wildcard: classless item pack II
 --
 -- A second wave of build-enabling gear, additive to cw_items_pack.sql (which
 -- owns 990201-990212 and is left untouched). This pack fills the slots the
@@ -33,7 +33,7 @@ VALUES
  'For the ones who stab and then heal the wound.', 12340, 0),
 (990282, 4, 0, 'Band of the Blurred Line', 9840, 3, 1, 15877, 3175, 11, -1, -1, 40, 35, 1,
  4, 10, 45, 18, 0, 0, 0, 0, 0, 0, 0, 2, 0, 0, 0,
- 'Strength and spellpower, welded into one ring.', 12340, 0),
+ 'Strength and spell power, welded into one ring.', 12340, 0),
 (990283, 4, 0, 'Loop of Contradiction', 43706, 3, 1, 15877, 3175, 11, -1, -1, 40, 35, 1,
  3, 10, 5, 14, 7, 8, 0, 0, 0, 0, 0, 2, 0, 0, 0,
  'Agility and intellect have no quarrel here.', 12340, 0),
@@ -62,7 +62,7 @@ VALUES
  'A polearm that reaches further than its blade.', 12340, 0),
 (990289, 2, 15, 'Kingslayer''s Letter Opener', 6460, 3, 1, 44527, 8905, 13, -1, -1, 40, 35, 1,
  4, 14, 7, 8, 32, 10, 34, 64, 0, 1700, 0, 2, 75, 1, 3,
- 'A dagger with a claymore''s attitude.', 12340, 0),
+ 'Small enough to hide, heavy enough to matter.', 12340, 0),
 (990290, 2, 4, 'Hammer of Quiet Malice', 57332, 3, 1, 44527, 8905, 13, -1, -1, 40, 35, 1,
  3, 16, 7, 8, 0, 0, 44, 83, 0, 2400, 0, 2, 90, 1, 3,
  'A mace balanced for someone light on their feet.', 12340, 0),
@@ -75,7 +75,7 @@ VALUES
 -- stackable 1: thrown weapons do not deplete on 3.3.5a, so one is all you need
 (990293, 2, 16, 'Enchanted Bola', 40411, 3, 1, 44527, 8905, 25, -1, -1, 40, 35, 1,
  5, 10, 45, 14, 0, 0, 52, 92, 0, 2200, 0, 0, 0, 1, 0,
- 'Thrown, then detonated. The second part is the clever bit.', 12340, 100),
+ 'Thrown, then the runes go off. The second part is the clever bit.', 12340, 100),
 
 -- ---------------------------------------------------------------------------
 -- Armor -- the remaining "wrong armor class" slots
@@ -83,7 +83,7 @@ VALUES
 (990294, 4, 4, 'Legplates of the Windwalker', 26651, 3, 1, 24841, 4968, 7, -1, -1, 40, 35, 1,
  3, 20, 7, 14, 0, 0, 0, 0, 0, 0, 456, 2, 115, 6, 0,
  'Plate legs light enough to sprint in. Allegedly.', 12340, 0),
-(990295, 4, 1, 'Sabatons of the Silk Road', 17138, 3, 1, 14976, 2995, 8, -1, -1, 40, 35, 1,
+(990295, 4, 1, 'Silkstep Treads', 17138, 3, 1, 14976, 2995, 8, -1, -1, 40, 35, 1,
  4, 14, 7, 10, 0, 0, 0, 0, 0, 0, 116, 2, 65, 7, 0,
  'Cloth boots with a soldier''s tread.', 12340, 0);
 

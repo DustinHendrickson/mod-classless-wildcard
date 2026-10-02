@@ -10,8 +10,7 @@
 -- The column is `quest_template_addon`.`AllowableClasses`, NOT
 -- `quest_template`: quest_template has no such column in AzerothCore, and the
 -- core reads the requirement in Quest::LoadQuestTemplateAddon (it lands in
--- Quest::RequiredClasses, which Player::SatisfyQuestClass checks). An earlier
--- version of this script updated quest_template and failed outright.
+-- Quest::RequiredClasses, which Player::SatisfyQuestClass checks).
 --
 -- Ability rewards are still governed by the module: it reverts any class-library
 -- spell learned outside its own system (ClasslessWildcard.BlockOutsideSpellSources,

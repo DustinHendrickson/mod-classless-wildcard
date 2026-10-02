@@ -208,7 +208,7 @@ function hooksecurefunc(a, b, c)
 end
 SOUNDS = {}
 function PlaySound(name) table.insert(SOUNDS, name) end
-function StaticPopup_Show(which) LAST_POPUP = which end
+function StaticPopup_Show(which, a1) LAST_POPUP = which; LAST_POPUP_ARG = a1; LAST_POPUP_FRAME = {}; return LAST_POPUP_FRAME end
 function GetItemInfo() return nil end
 function GetItemCount() return 0 end
 function GetComboPoints() return 0 end
@@ -471,6 +471,9 @@ def test_archetypes(h):
 
     h.clear_sent()
     h.click(rows[1].apply)
+    h.check(g.LAST_POPUP == "CW_CLASSLESS_ARCHETYPE" and h.sent() == [],
+            "Follow asks first and sends nothing yet: %r %r" % (g.LAST_POPUP, h.sent()))
+    g.StaticPopupDialogs["CW_CLASSLESS_ARCHETYPE"]["OnAccept"](g.LAST_POPUP_FRAME)
     h.check("ARCHAPPLY 1" in h.sent(), "Follow sends ARCHAPPLY with the archetype id")
     h.check(fly["__shown"] is False, "flyout closes after Apply")
     h.check(str(CW.tab) == "HERO", "panel switches to the Hero tab to show the purchase")
@@ -500,6 +503,7 @@ def test_archetypes(h):
     h.check(fly["__h"] == 54 + 440 + 10, "flyout sized to the capped list (%s)" % fly["__h"])
     h.clear_sent()
     h.click(rows[13].apply)
+    g.StaticPopupDialogs["CW_CLASSLESS_ARCHETYPE"]["OnAccept"](g.LAST_POPUP_FRAME)
     h.check("ARCHAPPLY 13" in h.sent(), "a row past the old six still applies its own id")
     h.click(btn)
 
@@ -1400,6 +1404,15 @@ def test_rebirth(h):
     popups["CW_CLASSLESS_PATH"]["OnAlt"]()
     h.check("PATH 1" in h.sent(), "the path change sends PATH, not REBIRTH: %r" % h.sent())
 
+    # A Classless Hero is offered only the Wildcard: Classless over is the free respec.
+    h.recv(rebirth_state(0, 20, 0, 0, 100, 1))
+    h.clear_sent()
+    h.click(CW.rebirthBtn)
+    h.check(g.LAST_POPUP == "CW_CLASSLESS_PATH_WILDCARD",
+            "a Classless Hero is asked only about the Wildcard: %r" % g.LAST_POPUP)
+    popups["CW_CLASSLESS_PATH_WILDCARD"]["OnAccept"]()
+    h.check(h.sent() == ["PATH 1"], "and accepting sends PATH 1: %r" % h.sent())
+
     # At the cap with two Rebirths behind them: the rank shows, the crest
     # glows, and the button opens the picker.
     h.recv(rebirth_state(1, 80, 2, 1, 300, 3))
@@ -1724,6 +1737,13 @@ def test_challenge_runs(h):
     h.clear_sent()
     h.recv("RE|0|17|19|0|Hardcore")
     h.check(g.LAST_POPUP == "CW_RUN_END" and "STATE" in h.sent() and "OWN" in h.sent(), "the end pops up and refreshes everything")
+    # A repeat finish pays no gold, and the popup does not claim "0 gold".
+    h.recv("RE|1|80|1|0|Glass")
+    h.check("gold" not in str(g.LAST_POPUP_ARG) and "1 shard." in str(g.LAST_POPUP_ARG),
+            "a finish without gold says 1 shard and no gold: %r" % str(g.LAST_POPUP_ARG))
+    h.recv("RE|1|80|107|400|Glass")
+    h.check("107 shards and 400 gold." in str(g.LAST_POPUP_ARG),
+            "a first finish names its gold: %r" % str(g.LAST_POPUP_ARG))
     h.recv(run_state(1, 17, shards=19))
     h.check(CW.runBadge["__shown"] is False and not CW.lifeIcons[1]["__shown"], "no run, no badge, no lives shown")
 
@@ -2486,7 +2506,80 @@ def test_stats(h):
     h.check(str(CW.statsBtn["__text"]) == "Stats (0)",
             "spent out, it says so rather than going quiet (%s)" % CW.statsBtn["__text"])
 
+    # a realm with stat allocation off shows no Stats button at all
+    h.recv("ST|162|3|1|40|30|50|20|19|0|1|1|1|0.5|2|1|0|0|0|0|0")
+    h.check(CW.statsBtn["__shown"] is False and CW.statFly["__shown"] is False,
+            "Stats.Enable = 0 hides the button and the panel")
+    h.recv("ST|162|3|1|40|30|50|20|19|1|1|1|1|0.5|2|1|0|0|0|0|0")
+    h.check(CW.statsBtn["__shown"] is True, "and turning it back on brings the button back")
+
     CW.statFly["__shown"] = False
+
+
+def test_confirms(h):
+    """Destructive buttons ask first; an unchosen Hero can choose from the panel."""
+    print("--- confirms: Respec, extra life, and choosing a path from the panel")
+    CW, g = h.CW, h.g
+    popups = g.StaticPopupDialogs
+    h.recv(state(0, level=20))
+    respec = None
+    for f in list(g.FRAMES.values()):
+        if str(f["__text"]) == "Respec":
+            respec = f
+    h.check(respec is not None and respec["__shown"] is not False, "Respec shows on the Classless path")
+    h.clear_sent()
+    h.click(respec)
+    h.check(g.LAST_POPUP == "CW_CLASSLESS_RESPEC" and h.sent() == [], "Respec asks before it sends anything")
+    popups["CW_CLASSLESS_RESPEC"]["OnAccept"]()
+    h.check(h.sent() == ["RESPEC"], "and accepting sends RESPEC: %r" % h.sent())
+    h.recv(state(1, level=20))
+    h.check(respec["__shown"] is False, "Respec is hidden on the Wildcard path")
+
+    # unchosen: the bottom-right button chooses, and the sub-line says what happens otherwise
+    h.recv(state(255, level=2))
+    h.check(str(CW.rebirthBtn["__text"]) == "Choose path" and CW.rebirthBtn["__shown"] is True,
+            "an unchosen Hero gets a Choose path button")
+    h.click(CW.rebirthBtn)
+    h.check(g.ClasslessWildcardWizard["__shown"] is True, "which opens the path choice")
+    g.ClasslessWildcardWizard["__shown"] = False
+    h.check(str(CW.rules.defaultMode) == "0", "default path read from CFG")
+
+    # /cwbars show and hide speak up
+    h.rt.execute("PRINTED = {}; local old = DEFAULT_CHAT_FRAME.AddMessage; "
+                 "DEFAULT_CHAT_FRAME.AddMessage = function(self, m) table.insert(PRINTED, m) end")
+    g.SlashCmdList["CLASSLESSWILDCARDBARS"]("hide")
+    g.SlashCmdList["CLASSLESSWILDCARDBARS"]("show")
+    printed = " ".join(str(v) for v in g.PRINTED.values())
+    h.check("Resource bars hidden." in printed and "Resource bars shown." in printed,
+            "/cwbars hide and show say what they did: %r" % printed)
+
+
+def test_help_text(h):
+    """The Help guide quotes the realm's own numbers and keeps the house style."""
+    print("--- help: the guide follows the realm's config")
+    CW = h.CW
+    text = lambda: str(CW.helpText["__text"])
+    h.check(" -- " not in text() and "class to pick" not in text() and "chassis" not in text() and "server" not in text().lower(),
+            "no dashes, no class talk, no mention of the server")
+    # CFG: cost, flat, dk, forged, then the rules the guide quotes
+    h.recv("CFG|2|0|1|1|5|3|2|12|1|2|3|4|6|9|3|12|4|15|5|30|100|20|150|60|400|4|20|70")
+    h.recv(state(1, level=20, free_reroll=12))
+    CW.RefreshHelpText()
+    t = text()
+    h.check("You start with |cff00ff005 AE|r and earn |cff00ff00+2 AE every level from 3|r" in t,
+            "essence pacing comes from CFG")
+    h.check("59 by level 70" in t, "Talent Essence by the cap is worked out from the realm's numbers")
+    h.check("costs 2 TE, so a 5-rank talent costs 10 TE" in t, "talent price per rank from CFG")
+    h.check("|cffffffff2|r / |cff1eff003|r / |cff0070dd4|r / |cffa335ee6|r / |cffff80009|r AE" in t,
+            "ability prices from CFG, common in white")
+    h.check("free below level 12" in t and "every level grants 4 reroll charges" in t,
+            "free-reroll level from S, charges per level from CFG")
+    h.check("next 29 rolls, about 29 levels" in t, "reroll cooldown from CFG: %s" % ("next 29 rolls" in t))
+    h.check("+150% kill XP|r for the first, +60% more for each after, up to +400%" in t, "Rebirth XP from CFG")
+    h.check("At level 70 the |cffffd100Rebirth|r button" in t, "the level cap from CFG")
+    # put the shipped defaults back for anything after this
+    h.recv("CFG|1|0|1|1|3|4|1|10|1|1|2|3|5|8|4|10|3|10|10|25|100|25|100|50|300|3|15|80")
+    h.recv(state(1, level=20))
 
 
 def test_spellbook(h):
@@ -2909,6 +3002,8 @@ def main():
     test_default_scope(h)
     test_paperdoll(h)
     test_stats(h)
+    test_confirms(h)
+    test_help_text(h)
     test_spellbook(h)
     test_talent_unlearn(h)
     test_tree_header(h)

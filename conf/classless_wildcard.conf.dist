@@ -80,21 +80,19 @@ ClasslessWildcard.ExemptAccountPrefixes = "rndbot"
 # 2  Chassis
 ########################################################################
 #
-#    Every Hero runs on ONE class, whatever was picked at creation. That is
-#    what makes this classless rather than "classless with a class
-#    underneath": the core's per-class math differs between classes (base
+#    Every Hero runs on ONE class, the chassis. That is what makes this
+#    classless rather than "classless with a class underneath": the core's per-class math differs between classes (base
 #    stats, base health and mana, which stat feeds attack power, the crit and
 #    dodge conversion ratios), so while characters keep different classes the
 #    class quietly becomes a build decision again.
 #
-#    With one chassis that math is identical for everyone by construction. The
-#    class chosen at creation is then nothing but the model and the name, and
-#    the name reads "Hero" once the client patch is installed.
+#    With one chassis that math is identical for everyone by construction,
+#    and the client patch shows the class as "Hero".
 #
 #    The chassis is Paladin and neither it nor the conversion is a setting.
-#    It has to be a class with a real mana pool -- a Hero casts whatever it
-#    learns and a great many of those spells cost mana or a percentage of base
-#    mana -- and Paladin is the one the module is built around: real base mana,
+#    It has to be a class with a real mana pool, because a Hero casts whatever
+#    it learns and a great many of those spells cost mana or a percentage of
+#    base mana. Paladin is the one the module is built around: real base mana,
 #    spirit regeneration, plate base armour, and no forms, stances or runes to
 #    suppress. Rage and energy are layered on top by section 10, so a Hero
 #    still pays rage for Bloodthirst and energy for Sinister Strike. Changing
@@ -128,9 +126,8 @@ ClasslessWildcard.ExemptAccountPrefixes = "rndbot"
 #        draws six pips coloured by rune type and dimmed while recharging,
 #        plus a runic power bar. They appear only once the server sends runes.
 #
-#        Still experimental: rune costs and regeneration are the core's, but no
-#        Hero has the Death Knight talents and passives those abilities were
-#        balanced around.
+#        Rune costs and regeneration are the core's, but no Hero has the Death
+#        Knight talents and passives those abilities were balanced around.
 #
 #        Turning this OFF once Heroes own Death Knight abilities leaves those
 #        abilities in place and they cost nothing to cast, because the rune
@@ -220,9 +217,10 @@ ClasslessWildcard.Rarity.LevelFloors = "25,50"
 #
 #    Every physical strike in the pool also exists as Fiery, Frozen, Earthen,
 #    Venomous, Arcane, Shadow and Holy versions. Each deals its damage as that
-#    element, keeps a little less of the weapon damage, adds an elemental hit
-#    that scales with spell power, and where a slot allows carries one rider
-#    the element is known for. They roll and are bought like any ability.
+#    element, keeps a little less of the weapon damage, and adds the element's
+#    own effect: a burn, a poison or an extra hit that scale with spell power,
+#    a movement slow, an attack-speed slow, a healing cut, or lifesteal. They
+#    roll and are bought like any ability.
 #
 #    The rows live in `cw_ability_variants` and `spell_dbc` and are generated,
 #    not hand-written: data/sql/generators/gen_elemental_variants.py takes the
@@ -375,9 +373,8 @@ ClasslessWildcard.Classless.RefundOnUnlearn = 1
 #      excludes very little. Treat these as early-game controls. Set
 #      SynergyBaseChance to 0 to turn synergy rolls off.
 #
-#      SynergyBanRolls is a separate mechanic despite the shared prefix, and
-#      the name is misleading: it is a REROLL COOLDOWN, nothing to do with
-#      moderation. A rerolled entry is held out of that character's pool for a
+#      SynergyBanRolls is a REROLL COOLDOWN, separate from synergy rolls. A
+#      rerolled entry is held out of that character's pool for a
 #      while so the reroll cannot hand straight back what was just rerolled. It
 #      applies whether or not the reroll cost anything, is per character, is
 #      stored in `cw_char_bans`, and survives logout.
@@ -452,7 +449,7 @@ ClasslessWildcard.Wildcard.RarityWeights = "100,85,65,45,25"
 #        How likely a talent roll is to land on each rank, rank 1 first.
 #        Separate from RarityWeights: rarity decides which talent turns up,
 #        rank decides how many ranks one roll hands over. The default makes
-#        rank 5 roughly a twentieth as likely as rank 1.
+#        rank 5 a tenth as likely as rank 1.
 #        Default: "100,75,50,25,10"
 ClasslessWildcard.Wildcard.TalentRankWeights = "100,75,50,25,10"
 
@@ -847,9 +844,9 @@ ClasslessWildcard.WorldDrops.HeirloomChance = 2.0
 #        Classless path, one more heirloom next time, and a title per rank.
 #        The character wakes at their race's starting area.
 #
-#        CHANGE PATH is the cheaper thing Rebirth used to be: wipe the build
-#        at the current level and start the other path from there. A Wildcard
-#        change replays the roll schedule for the character's level.
+#        CHANGE PATH wipes the build at the current level and starts a path
+#        from there, for CostGold. A change to the Wildcard replays the roll
+#        schedule for the character's level.
 #        Default: 1
 ClasslessWildcard.Rebirth.Enable = 1
 
@@ -864,7 +861,7 @@ ClasslessWildcard.Rebirth.CostGold = 100
 #    ClasslessWildcard.Rebirth.KillXpPctFirst
 #    ClasslessWildcard.Rebirth.KillXpPctPerRank
 #    ClasslessWildcard.Rebirth.KillXpPctMax
-#        Extra kill and dungeon XP, in percent: the first Rebirth gives
+#        Extra kill XP, in percent: the first Rebirth gives
 #        KillXpPctFirst, every Rebirth after it adds KillXpPctPerRank, capped
 #        at KillXpPctMax. Kills are where a reborn Hero levels, since the
 #        quests they forgot are the ones they already did once.
@@ -893,7 +890,7 @@ ClasslessWildcard.Rebirth.StatPctMax = 15
 #    ClasslessWildcard.Rebirth.LegacyTalentEssence
 #        Essence a reborn Hero on the Classless path starts the new life with,
 #        per rank, on top of the normal starting amount. The Wildcard path
-#        rolls its starting hand instead and gets no essence, as ever.
+#        rolls its starting hand instead and gets no essence.
 #        Default: 3, 2
 ClasslessWildcard.Rebirth.LegacyAbilityEssence = 3
 ClasslessWildcard.Rebirth.LegacyTalentEssence = 2

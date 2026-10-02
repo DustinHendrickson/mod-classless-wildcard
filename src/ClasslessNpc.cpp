@@ -13,7 +13,7 @@
  * General Public License for more details.
  *
  * "Hero Advancement" NPC — the gossip stand-in for Ascension's
- * Character Advancement Panel.
+ * Hero Advancement panel.
  */
 
 #include "Chat.h"
@@ -70,6 +70,10 @@ namespace
         BASE_TALENT_DEEPEN    = 1000000000 // + talentId (reroll, one scroll spent on its rank)
     };
 
+    // The Hero line's page in the class browser: one past Druid, and the bit
+    // the Hero talent tab carries in its ClassMask.
+    constexpr uint8 HERO_PAGE = 12;
+
     char const* ClassNameById(uint8 classId)
     {
         switch (classId)
@@ -84,7 +88,27 @@ namespace
             case CLASS_MAGE:    return "Mage";
             case CLASS_WARLOCK: return "Warlock";
             case CLASS_DRUID:   return "Druid";
+            case HERO_PAGE:     return "Hero";
             default:            return "Unknown";
+        }
+    }
+
+    // TalentTab.dbc carries the tree names, but the core does not load them.
+    char const* TreeName(uint32 tabId)
+    {
+        switch (tabId)
+        {
+            case 41:  return "Fire";          case 61:  return "Frost";         case 81:  return "Arcane";
+            case 161: return "Arms";          case 163: return "Protection";    case 164: return "Fury";
+            case 181: return "Combat";        case 182: return "Assassination"; case 183: return "Subtlety";
+            case 201: return "Discipline";    case 202: return "Holy";          case 203: return "Shadow";
+            case 261: return "Elemental";     case 262: return "Restoration";   case 263: return "Enhancement";
+            case 281: return "Feral Combat";  case 282: return "Restoration";   case 283: return "Balance";
+            case 301: return "Destruction";   case 302: return "Affliction";    case 303: return "Demonology";
+            case 361: return "Beast Mastery"; case 362: return "Survival";      case 363: return "Marksmanship";
+            case 381: return "Retribution";   case 382: return "Holy";          case 383: return "Protection";
+            case 398: return "Blood";         case 399: return "Frost";         case 400: return "Unholy";
+            default:  return nullptr;
         }
     }
 
@@ -104,8 +128,12 @@ namespace
 
         if (st.mode == Mode::Unchosen)
         {
-            AddGossipItemFor(player, GOSSIP_ICON_TRAINER, "|cff00ccffChoose the Classless path|r (pick every ability yourself)", GOSSIP_SENDER_MAIN, ACT_MODE_CLASSLESS);
-            AddGossipItemFor(player, GOSSIP_ICON_BATTLE, "|cffff8800Choose the Wildcard path|r (random abilities, reroll what you dislike)", GOSSIP_SENDER_MAIN, ACT_MODE_WILDCARD);
+            AddGossipItemFor(player, GOSSIP_ICON_TRAINER, "|cff00ccffChoose the Classless path|r (pick every ability yourself)",
+                GOSSIP_SENDER_MAIN, ACT_MODE_CLASSLESS,
+                "Walk the Classless path? Once chosen, you can only switch with Change path, which costs gold.", 0, false);
+            AddGossipItemFor(player, GOSSIP_ICON_BATTLE, "|cffff8800Choose the Wildcard path|r (random abilities, reroll what you dislike)",
+                GOSSIP_SENDER_MAIN, ACT_MODE_WILDCARD,
+                "Walk the Wildcard path? Once chosen, you can only switch with Change path, which costs gold.", 0, false);
         }
         else if (st.mode == Mode::Classless)
         {
@@ -131,7 +159,9 @@ namespace
         // classless gear packs and the heirlooms as well as the Reroll Scrolls,
         // and a Classless Hero could not reach any of it before.
         if (st.mode != Mode::Unchosen)
-            AddGossipItemFor(player, GOSSIP_ICON_VENDOR, "Browse the Hero's wares (gear, heirlooms, Reroll Scrolls)...",
+            AddGossipItemFor(player, GOSSIP_ICON_VENDOR, st.mode == Mode::Wildcard
+                                 ? "Browse the Hero's wares (gear, heirlooms, Reroll Scrolls)..."
+                                 : "Browse the Hero's wares (gear and heirlooms)...",
                              GOSSIP_SENDER_MAIN, ACT_VENDOR);
 
         if (st.mode != Mode::Unchosen && cfg.rebirthEnable)
@@ -193,8 +223,24 @@ namespace
                     VENDOR_CATEGORIES[c].name, VENDOR_CATEGORIES[c].blurb, CategoryTotal(c)),
                 GOSSIP_SENDER_MAIN, BASE_VENDOR_CATEGORY + c);
 
-        AddGossipItemFor(player, GOSSIP_ICON_MONEY_BAG, "Supplies  |cff888888Reroll Scrolls|r",
-                         GOSSIP_SENDER_MAIN, ACT_VENDOR_SUPPLIES);
+        // Reroll Scrolls sell here at the same level-scaled price as the
+        // panel's Buy Scroll button, through the same purchase.
+        CharState const& st = sClasslessMgr->GetState(player);
+        Config const& cfg = sClasslessMgr->cfg;
+        if (st.mode == Mode::Wildcard && cfg.wcScrollBuyEnable && player->GetLevel() >= cfg.wcFreeRerollLevel)
+        {
+            uint32 const cost = sClasslessMgr->ScrollBuyCost(player->GetLevel());
+            std::string price;
+            if (cost / GOLD)
+                price += Acore::StringFormat("{}g", cost / GOLD);
+            if ((cost % GOLD) / SILVER)
+                price += Acore::StringFormat("{}{}s", price.empty() ? "" : " ", (cost % GOLD) / SILVER);
+            if (price.empty())
+                price = Acore::StringFormat("{}c", cost);
+            AddGossipItemFor(player, GOSSIP_ICON_MONEY_BAG,
+                Acore::StringFormat("Buy a Reroll Scroll  |cffffd100{}|r", price),
+                GOSSIP_SENDER_MAIN, ACT_VENDOR_SUPPLIES);
+        }
         AddGossipItemFor(player, GOSSIP_ICON_TALK, "<- Back", GOSSIP_SENDER_MAIN, ACT_MAIN);
         SendGossipMenuFor(player, DEFAULT_GOSSIP_MESSAGE, creature->GetGUID());
     }
@@ -251,21 +297,67 @@ namespace
             AddGossipItemFor(player, GOSSIP_ICON_TRAINER, ClassNameById(classId), GOSSIP_SENDER_MAIN,
                 BASE_CLASS_PAGE + uint32(classId) * 100000);
         }
+        if (sClasslessMgr->cfg.forgedEnable)
+            AddGossipItemFor(player, GOSSIP_ICON_TRAINER, ClassNameById(HERO_PAGE), GOSSIP_SENDER_MAIN,
+                BASE_CLASS_PAGE + uint32(HERO_PAGE) * 100000);
         AddGossipItemFor(player, GOSSIP_ICON_TALK, "<- Back", GOSSIP_SENDER_MAIN, ACT_MAIN);
         SendGossipMenuFor(player, DEFAULT_GOSSIP_MESSAGE, creature->GetGUID());
+    }
+
+    // A page past the end (the last item on it was just bought or dropped)
+    // falls back to the last page there is.
+    uint32 ClampPage(uint32 page, size_t count)
+    {
+        uint32 const pages = count ? uint32((count + PAGE_SIZE - 1) / PAGE_SIZE) : 1;
+        return std::min(page, pages - 1);
+    }
+
+    std::vector<AbilityEntry const*> ClassAbilityList(Player* player, uint8 classId)
+    {
+        CharState& st = sClasslessMgr->GetState(player);
+        uint32 classMask = 1u << (classId - 1);
+        // Hero-line abilities carry every class bit; they list on their own
+        // Hero page rather than under every class.
+        bool const heroPage = classId == HERO_PAGE;
+        std::vector<AbilityEntry const*> list;
+        for (auto const& [firstSpell, e] : sClasslessMgr->Abilities())
+            if (e.enabled && (heroPage ? e.forged : (!e.forged && (e.classMask & classMask)))
+                && !st.abilities.count(firstSpell)
+                && (!e.variant || sClasslessMgr->cfg.elementalShowInBrowser))
+                list.push_back(&e);
+        return list;
+    }
+
+    // The class page an ability is browsed under: the Hero page, or its
+    // first class.
+    uint8 BrowseClassOf(AbilityEntry const& e)
+    {
+        if (e.forged)
+            return HERO_PAGE;
+        for (uint8 c = 1; c <= 11; ++c)
+            if (e.classMask & (1u << (c - 1)))
+                return c;
+        return CLASS_WARRIOR;
+    }
+
+    std::vector<TalentPoolEntry const*> TalentTabList(uint32 tabId)
+    {
+        std::vector<TalentPoolEntry const*> list;
+        for (auto const& [talentId, t] : sClasslessMgr->Talents())
+            if (t.enabled && t.tabId == tabId)
+                list.push_back(&t);
+        std::sort(list.begin(), list.end(), [](auto a, auto b)
+        {
+            return a->row != b->row ? a->row < b->row : a->col < b->col;
+        });
+        return list;
     }
 
     void ShowClassAbilities(Player* player, Creature* creature, uint8 classId, uint32 page)
     {
         ClearGossipMenuFor(player);
-        CharState& st = sClasslessMgr->GetState(player);
-        uint32 classMask = 1u << (classId - 1);
-
-        std::vector<AbilityEntry const*> list;
-        for (auto const& [firstSpell, e] : sClasslessMgr->Abilities())
-            if (e.enabled && (e.classMask & classMask) && !st.abilities.count(firstSpell)
-                && (!e.variant || sClasslessMgr->cfg.elementalShowInBrowser))
-                list.push_back(&e);
+        std::vector<AbilityEntry const*> list = ClassAbilityList(player, classId);
+        page = ClampPage(page, list.size());
 
         uint32 start = page * PAGE_SIZE;
         for (uint32 i = start; i < list.size() && i < start + PAGE_SIZE; ++i)
@@ -303,11 +395,14 @@ namespace
 
         for (auto const& [tabId, info] : tabs)
         {
-            uint8 classId = 1;
+            uint8 classId = HERO_PAGE;
             for (uint8 c = 1; c <= 11; ++c)
                 if (info.first & (1u << (c - 1))) { classId = c; break; }
+            char const* tree = TreeName(tabId);
             AddGossipItemFor(player, GOSSIP_ICON_TRAINER,
-                Acore::StringFormat("{} tree #{}", ClassNameById(classId), tabId),
+                classId == HERO_PAGE ? std::string("Hero")
+                    : tree ? Acore::StringFormat("{}: {}", ClassNameById(classId), tree)
+                           : Acore::StringFormat("{} talents", ClassNameById(classId)),
                 GOSSIP_SENDER_MAIN, BASE_TALENT_TAB + tabId * 1000);
         }
         AddGossipItemFor(player, GOSSIP_ICON_TALK, "<- Back", GOSSIP_SENDER_MAIN, ACT_MAIN);
@@ -318,15 +413,10 @@ namespace
     {
         ClearGossipMenuFor(player);
         CharState& st = sClasslessMgr->GetState(player);
+        Config const& cfg = sClasslessMgr->cfg;
 
-        std::vector<TalentPoolEntry const*> list;
-        for (auto const& [talentId, t] : sClasslessMgr->Talents())
-            if (t.enabled && t.tabId == tabId)
-                list.push_back(&t);
-        std::sort(list.begin(), list.end(), [](auto a, auto b)
-        {
-            return a->row != b->row ? a->row < b->row : a->col < b->col;
-        });
+        std::vector<TalentPoolEntry const*> list = TalentTabList(tabId);
+        page = ClampPage(page, list.size());
 
         uint32 start = page * PAGE_SIZE;
         for (uint32 i = start; i < list.size() && i < start + PAGE_SIZE; ++i)
@@ -335,9 +425,20 @@ namespace
             uint8 owned = 0;
             if (auto itr = st.talents.find(t->talentId); itr != st.talents.end())
                 owned = itr->second;
+            uint32 const unlock = 10 + t->row * 5;
+            bool const tooHigh = cfg.respectLevelReqs && unlock > player->GetLevel();
+            std::string price;
+            if (owned >= t->maxRank)
+                price = "|cff888888maxed|r";
+            else
+            {
+                uint32 const cost = (cfg.talentFlatCost && owned > 0) ? 0 : cfg.talentCostPerRank;
+                price = cost ? Acore::StringFormat("[{} TE]", cost) : std::string("[free]");
+            }
             AddGossipItemFor(player, GOSSIP_ICON_TRAINER,
-                Acore::StringFormat("{}{}|r  [{}/{}] row {}  [{} TE]", RarityColor(t->rarity),
-                    SpellNameOf(t->rankSpells[0]), owned, t->maxRank, t->row + 1, sClasslessMgr->cfg.talentCostPerRank),
+                Acore::StringFormat("{}{}|r  [{}/{}]  {}  {}Tier {}, Lv {}|r", RarityColor(t->rarity),
+                    SpellNameOf(t->rankSpells[0]), owned, t->maxRank, price,
+                    tooHigh ? "|cffff4444" : "|cff888888", t->row + 1, unlock),
                 GOSSIP_SENDER_MAIN, BASE_LEARN_TALENT + t->talentId);
         }
 
@@ -359,6 +460,7 @@ namespace
         for (auto const& [firstSpell, o] : st.abilities)
             owned.push_back(firstSpell);
         std::sort(owned.begin(), owned.end());
+        page = ClampPage(page, owned.size());
 
         uint32 start = page * PAGE_SIZE;
         for (uint32 i = start; i < owned.size() && i < start + PAGE_SIZE; ++i)
@@ -374,12 +476,14 @@ namespace
             // there is no essence to refund, and they cannot be rerolled or
             // locked on their own. Listed so the build is complete, with no
             // action attached and a note saying where they came from.
-            if (o.source == GrantSource::Companion || o.source == GrantSource::Talent)
+            if (o.source == GrantSource::Companion || o.source == GrantSource::Talent
+                || o.source == GrantSource::Heirloom)
             {
                 AddGossipItemFor(player, GOSSIP_ICON_CHAT,
                     Acore::StringFormat("{}  |cff888888({})|r", label,
                         o.source == GrantSource::Companion ? "came free with another ability"
-                                                           : "came with a talent"),
+                        : o.source == GrantSource::Talent  ? "came with a talent"
+                                                           : "heirloom, kept through Rebirth"),
                     GOSSIP_SENDER_MAIN, BASE_MY_ABILITIES_PG + page);
                 continue;
             }
@@ -388,7 +492,8 @@ namespace
             {
                 AddGossipItemFor(player, GOSSIP_ICON_BATTLE, Acore::StringFormat("Reroll: {}", label),
                     GOSSIP_SENDER_MAIN, BASE_ABILITY_ACTION + firstSpell,
-                    "Reroll this ability? (Consumes a Reroll Scroll from level 10.)", 0, false);
+                    Acore::StringFormat("Reroll this ability? Free below level {}. After that it uses a reroll charge, "
+                        "or a Reroll Scroll when you have no charges left.", sClasslessMgr->cfg.wcFreeRerollLevel), 0, false);
                 // A padlock is only worth offering while the starting hand's
                 // reroll-everything pass can still take the card.
                 if (locked || player->GetLevel() < sClasslessMgr->cfg.wcFreeRerollLevel)
@@ -416,6 +521,7 @@ namespace
 
         std::vector<std::pair<uint32, uint8>> owned(st.talents.begin(), st.talents.end());
         std::sort(owned.begin(), owned.end());
+        page = ClampPage(page, owned.size());
 
         uint32 start = page * PAGE_SIZE;
         for (uint32 i = start; i < owned.size() && i < start + PAGE_SIZE; ++i)
@@ -427,7 +533,9 @@ namespace
             AddGossipItemFor(player, GOSSIP_ICON_BATTLE,
                 Acore::StringFormat("Reroll: {}{}|r [{}/{}]", RarityColor(t->rarity), SpellNameOf(t->rankSpells[0]), rank, t->maxRank),
                 GOSSIP_SENDER_MAIN, BASE_REROLL_TALENT + talentId,
-                "Reroll this talent? It is replaced by one new random talent. (Consumes a Scroll from level 10.)", 0, false);
+                Acore::StringFormat("Reroll this talent? It is replaced by one new random talent. Free below level {}. "
+                    "After that it uses a reroll charge, or a Reroll Scroll when you have no charges left.",
+                    sClasslessMgr->cfg.wcFreeRerollLevel), 0, false);
 
             // and the same reroll with a scroll staked on keeping it instead
             if (uint32 const per = sClasslessMgr->cfg.wcTalentUpgradePerScroll;
@@ -465,28 +573,54 @@ public:
         return true;
     }
 
+    // Where an owned ability or talent sits in the "My ..." lists, which are
+    // sorted by id, so an action can return to the page it was taken from.
+    static uint32 OwnedAbilityPage(Player* player, uint32 firstSpell)
+    {
+        CharState& st = sClasslessMgr->GetState(player);
+        uint32 before = 0;
+        for (auto const& [id, o] : st.abilities)
+            if (id < firstSpell)
+                ++before;
+        return before / PAGE_SIZE;
+    }
+
+    static uint32 OwnedTalentPage(Player* player, uint32 talentId)
+    {
+        CharState& st = sClasslessMgr->GetState(player);
+        uint32 before = 0;
+        for (auto const& [id, rank] : st.talents)
+            if (id < talentId)
+                ++before;
+        return before / PAGE_SIZE;
+    }
+
     bool OnGossipSelect(Player* player, Creature* creature, uint32 /*sender*/, uint32 action) override
     {
         std::string err;
 
         if (action >= BASE_TALENT_DEEPEN)
         {
+            uint32 const page = OwnedTalentPage(player, action - BASE_TALENT_DEEPEN);
             if (!sClasslessMgr->Reroll(player, true, action - BASE_TALENT_DEEPEN, &err, 1) && !err.empty())
                 ChatHandler(player->GetSession()).SendSysMessage(err);
-            ShowMyTalents(player, creature, 0);
+            ShowMyTalents(player, creature, page);
         }
         else if (action >= BASE_MY_TALENTS_PG)
             ShowMyTalents(player, creature, action - BASE_MY_TALENTS_PG);
         else if (action >= BASE_REROLL_TALENT)
         {
+            uint32 const page = OwnedTalentPage(player, action - BASE_REROLL_TALENT);
             if (!sClasslessMgr->Reroll(player, true, action - BASE_REROLL_TALENT, &err) && !err.empty())
                 ChatHandler(player->GetSession()).SendSysMessage(err);
-            ShowMyTalents(player, creature, 0);
+            ShowMyTalents(player, creature, page);
         }
         else if (action >= BASE_LOCK_ABILITY)
         {
-            sClasslessMgr->ToggleLock(player, action - BASE_LOCK_ABILITY, &err);
-            ShowMyAbilities(player, creature, 0);
+            // 4.7: a refused padlock says why
+            if (!sClasslessMgr->ToggleLock(player, action - BASE_LOCK_ABILITY, &err) && !err.empty())
+                ChatHandler(player->GetSession()).SendSysMessage(err);
+            ShowMyAbilities(player, creature, OwnedAbilityPage(player, action - BASE_LOCK_ABILITY));
         }
         else if (action >= BASE_MY_ABILITIES_PG)
             ShowMyAbilities(player, creature, action - BASE_MY_ABILITIES_PG);
@@ -496,7 +630,11 @@ public:
                 ChatHandler(player->GetSession()).SendSysMessage(err);
             // stay on the same tab
             if (TalentPoolEntry const* t = sClasslessMgr->GetTalent(action - BASE_LEARN_TALENT))
-                ShowTalentTab(player, creature, t->tabId, 0);
+            {
+                std::vector<TalentPoolEntry const*> list = TalentTabList(t->tabId);
+                uint32 const index = uint32(std::find(list.begin(), list.end(), t) - list.begin());
+                ShowTalentTab(player, creature, t->tabId, index / PAGE_SIZE);
+            }
             else
                 ShowTalentTabs(player, creature);
         }
@@ -508,6 +646,7 @@ public:
         else if (action >= BASE_ABILITY_ACTION)
         {
             uint32 firstSpell = action - BASE_ABILITY_ACTION;
+            uint32 const page = OwnedAbilityPage(player, firstSpell);
             if (sClasslessMgr->GetState(player).mode == Mode::Wildcard)
             {
                 if (!sClasslessMgr->Reroll(player, false, firstSpell, &err) && !err.empty())
@@ -515,13 +654,26 @@ public:
             }
             else if (!sClasslessMgr->UnlearnAbility(player, firstSpell, &err) && !err.empty())
                 ChatHandler(player->GetSession()).SendSysMessage(err);
-            ShowMyAbilities(player, creature, 0);
+            ShowMyAbilities(player, creature, page);
         }
         else if (action >= BASE_LEARN_ABILITY)
         {
-            if (!sClasslessMgr->BuyAbility(player, action - BASE_LEARN_ABILITY, &err) && !err.empty())
+            uint32 const firstSpell = action - BASE_LEARN_ABILITY;
+            AbilityEntry const* e = sClasslessMgr->GetAbility(firstSpell);
+            // back to the class page it was bought from, at the same place
+            uint8 classId = e ? BrowseClassOf(*e) : 0;
+            uint32 page = 0;
+            if (e)
+            {
+                std::vector<AbilityEntry const*> list = ClassAbilityList(player, classId);
+                page = uint32(std::find(list.begin(), list.end(), e) - list.begin()) / PAGE_SIZE;
+            }
+            if (!sClasslessMgr->BuyAbility(player, firstSpell, &err) && !err.empty())
                 ChatHandler(player->GetSession()).SendSysMessage(err);
-            ShowMain(player, creature);
+            if (e)
+                ShowClassAbilities(player, creature, classId, page);
+            else
+                ShowMain(player, creature);
         }
         else if (action >= BASE_CLASS_PAGE)
         {
@@ -581,23 +733,32 @@ public:
                 ShowArchetypes(player, creature);
                 break;
             case ACT_REBIRTH:
+            {
                 ClearGossipMenuFor(player);
-                AddGossipItemFor(player, GOSSIP_ICON_TRAINER,
-                    "|cffff4444Confirm|r: the Classless path from here (every ability and talent is wiped)",
-                    GOSSIP_SENDER_MAIN, ACT_REBIRTH_CLASSLESS);
+                uint32 const cost = sClasslessMgr->cfg.rebirthCostGold * GOLD;
+                // Classless to Classless is the free respec, not a paid change.
+                if (sClasslessMgr->GetState(player).mode != Mode::Classless)
+                    AddGossipItemFor(player, GOSSIP_ICON_TRAINER,
+                        "Change to the Classless path from here",
+                        GOSSIP_SENDER_MAIN, ACT_REBIRTH_CLASSLESS,
+                        "Change to the Classless path? Every ability and talent is wiped, and you keep your level, quests and gear.",
+                        cost, false);
                 AddGossipItemFor(player, GOSSIP_ICON_BATTLE,
-                    "|cffff4444Confirm|r: the Wildcard path from here (everything is wiped and rerolled)",
-                    GOSSIP_SENDER_MAIN, ACT_REBIRTH_WILDCARD);
-                // Rebirth proper -- the new life at level 1 -- picks heirlooms,
-                // and a gossip menu has no way to pick from a build. The panel
-                // does it, so the menu says where to go rather than offering a
-                // Rebirth with nothing carried through.
-                AddGossipItemFor(player, GOSSIP_ICON_CHAT,
-                    "Rebirth into a new life at level 1 is done from the Character Advancement panel (/cw), at the level cap.",
-                    GOSSIP_SENDER_MAIN, ACT_REBIRTH);
+                    sClasslessMgr->GetState(player).mode == Mode::Wildcard
+                        ? "Take a new Wildcard deal from here" : "Change to the Wildcard path from here",
+                    GOSSIP_SENDER_MAIN, ACT_REBIRTH_WILDCARD,
+                    "Every ability and talent is wiped and dealt again by the Wildcard. You keep your level, quests and gear.",
+                    cost, false);
+                // Rebirth proper picks heirlooms, which a gossip menu cannot
+                // do, so at the cap the menu says where to go.
+                if (sClasslessMgr->RebirthEligible(player))
+                    AddGossipItemFor(player, GOSSIP_ICON_CHAT,
+                        "Rebirth into a new life at level 1 is done from the Hero Advancement panel (/cw).",
+                        GOSSIP_SENDER_MAIN, ACT_REBIRTH);
                 AddGossipItemFor(player, GOSSIP_ICON_TALK, "<- Back", GOSSIP_SENDER_MAIN, ACT_MAIN);
                 SendGossipMenuFor(player, DEFAULT_GOSSIP_MESSAGE, creature->GetGUID());
                 break;
+            }
             case ACT_REBIRTH_CLASSLESS:
             case ACT_REBIRTH_WILDCARD:
                 if (!sClasslessMgr->SwitchPath(player, action == ACT_REBIRTH_CLASSLESS ? Mode::Classless : Mode::Wildcard, &err) && !err.empty())
@@ -608,9 +769,9 @@ public:
                 ShowVendorMenu(player, creature);
                 break;
             case ACT_VENDOR_SUPPLIES:
-                // vendor entry 0 means the creature's own list, which holds the
-                // Reroll Scrolls -- so right-clicking the NPC still works too
-                OpenVendorList(player, creature, VENDOR_LIST_SUPPLIES);
+                if (!sClasslessMgr->BuyScroll(player, &err) && !err.empty())
+                    ChatHandler(player->GetSession()).SendSysMessage(err);
+                ShowVendorMenu(player, creature);
                 break;
             case ACT_MAIN:
             default:

@@ -76,7 +76,7 @@ public:
     {
         if (!sClasslessMgr->cfg.enabled)
         {
-            handler->SendSysMessage("The classless system is disabled on this realm.");
+            handler->SendSysMessage("Hero Advancement is disabled on this realm.");
             return false;
         }
         return true;
@@ -89,7 +89,7 @@ public:
         Player* player = handler->GetSession()->GetPlayer();
         CharState& st = sClasslessMgr->GetState(player);
 
-        handler->PSendSysMessage("Mode: {}", st.mode == Mode::Wildcard ? "Wildcard" :
+        handler->PSendSysMessage("Path: {}", st.mode == Mode::Wildcard ? "Wildcard" :
             (st.mode == Mode::Classless ? "Classless" : "not chosen yet"));
         handler->PSendSysMessage("Abilities: {} | Talents: {}", st.abilities.size(), st.talents.size());
         if (st.mode == Mode::Classless)
@@ -108,9 +108,9 @@ public:
         }
         if (st.mode == Mode::Wildcard)
         {
-            handler->PSendSysMessage("Rerolls: {} (you earn one with every roll the Wildcard deals; spend on either)",
-                st.rerolls);
-            handler->PSendSysMessage("Reroll pity: {} (synergy chance {}%)", st.pity,
+            handler->PSendSysMessage("Reroll charges: {} (you earn {} every level from level {}; each rerolls an ability or a talent)",
+                st.rerolls, sClasslessMgr->cfg.wcRerollsPerLevel, sClasslessMgr->cfg.wcRollStartLevel);
+            handler->PSendSysMessage("Synergy chance: {}% (rises each time you reroll)",
                 std::min<uint32>(sClasslessMgr->cfg.wcSynergyBaseChance + st.pity * sClasslessMgr->cfg.wcSynergyIncrement, 100));
             if (st.bans.empty())
                 handler->PSendSysMessage("On reroll cooldown: none");
@@ -118,13 +118,14 @@ public:
             {
                 // Show the shortest remaining wait, so the number means
                 // something: cooldowns run in ROLLS, and on the shipped cadence
-                // a Hero earns about 1.5 of those per level.
+                // a Hero gets one roll per level.
                 int32 soonest = st.bans.front().rollsLeft;
                 for (auto const& ban : st.bans)
                     soonest = std::min(soonest, ban.rollsLeft);
+                uint32 const wait = uint32(std::max<int32>(0, soonest));
                 handler->PSendSysMessage(
-                    "On reroll cooldown: {} (things you rerolled; the next one returns in {} rolls)",
-                    uint32(st.bans.size()), uint32(std::max<int32>(0, soonest)));
+                    "On reroll cooldown: {} (things you rerolled; the next one returns in {} roll{})",
+                    uint32(st.bans.size()), wait, wait == 1 ? "" : "s");
             }
         }
         return true;
@@ -274,7 +275,7 @@ public:
                 following == id ? " |cff00ff00following|r" : "");
         }
         if (sClasslessMgr->Archetypes().empty())
-            handler->SendSysMessage("No archetypes are configured on this realm.");
+            handler->SendSysMessage("No archetypes are available.");
         else
             handler->SendSysMessage("Follow one with: .classless archetype <id>   Stop with: .classless archetype 0");
         return true;
@@ -301,7 +302,40 @@ public:
         return true;
     }
 
-    // ".classless rebirth classless|wildcard [heirloom ability id ...]":
+    // The ability ids in a command's tail, and whether it ends in "confirm".
+    // Rebirth, a run at the cap and a path change wipe the build, so the
+    // command describes what will happen until it is repeated with confirm.
+    static std::vector<uint32> ParseIdsAndConfirm(Tail args, bool& confirmed)
+    {
+        std::vector<uint32> ids;
+        confirmed = false;
+        for (std::string_view token : Acore::Tokenize(args, ' ', false))
+        {
+            if (token == "confirm")
+                confirmed = true;
+            else if (Optional<uint32> id = Acore::StringTo<uint32>(token))
+                ids.push_back(*id);
+        }
+        return ids;
+    }
+
+    static std::string IdList(std::vector<uint32> const& ids)
+    {
+        std::string out;
+        for (uint32 id : ids)
+            out += Acore::StringFormat(" {}", id);
+        return out;
+    }
+
+    static void DescribeRebirth(ChatHandler* handler, Player* player, std::string const& command)
+    {
+        handler->PSendSysMessage("This sends you back to level 1 for {} gold. Your build and quest log are wiped and your worn "
+            "gear goes into your bags; gold, bank, reputation, riding, flight paths and the heirlooms you list stay.",
+            sClasslessMgr->RebirthCost(sClasslessMgr->GetState(player)));
+        handler->PSendSysMessage("Type {} confirm to go ahead.", command);
+    }
+
+    // ".classless rebirth classless|wildcard [heirloom ability id ...] [confirm]":
     // New Game Plus, at the level cap. The ids are owned ability lines
     // carried through; the panel is the friendlier way to choose them.
     static bool HandleRebirth(ChatHandler* handler, std::string modeArg, Tail heirloomArgs)
@@ -312,15 +346,19 @@ public:
         Mode target;
         if (!ParsePath(modeArg, target))
         {
-            handler->SendSysMessage("Usage: .classless rebirth classless | wildcard [heirloom spell id ...] "
+            handler->SendSysMessage("Usage: .classless rebirth classless | wildcard [heirloom ability ID ...] confirm "
                                     "(level cap only: back to level 1 with a permanent Rebirth rank)");
             return true;
         }
-        std::vector<uint32> heirlooms;
-        for (std::string_view token : Acore::Tokenize(heirloomArgs, ' ', false))
-            if (Optional<uint32> id = Acore::StringTo<uint32>(token))
-                heirlooms.push_back(*id);
-        if (!sClasslessMgr->Rebirth(handler->GetSession()->GetPlayer(), target, heirlooms, &err) && !err.empty())
+        bool confirmed;
+        std::vector<uint32> heirlooms = ParseIdsAndConfirm(heirloomArgs, confirmed);
+        Player* player = handler->GetSession()->GetPlayer();
+        if (!confirmed && sClasslessMgr->RebirthEligible(player))
+        {
+            DescribeRebirth(handler, player, ".classless rebirth " + modeArg + IdList(heirlooms));
+            return true;
+        }
+        if (!sClasslessMgr->Rebirth(player, target, heirlooms, &err) && !err.empty())
             handler->SendSysMessage(err);
         return true;
     }
@@ -332,7 +370,7 @@ public:
             return true;
         Player* player = handler->GetSession()->GetPlayer();
         CharState& st = sClasslessMgr->GetState(player);
-        handler->SendSysMessage("Challenge runs (.classless run <id> [heirloom spell id ...]):");
+        handler->SendSysMessage("Challenge runs (.classless run <id> classless | wildcard [heirloom ability ID ...]):");
         for (Challenge const& ch : ClasslessMgr::Challenges())
         {
             auto best = st.runBest.find(ch.id);
@@ -344,14 +382,16 @@ public:
         }
         if (st.run)
             if (Challenge const* ch = ClasslessMgr::GetChallenge(st.run))
-                handler->SendSysMessage(Acore::StringFormat("Live: |cffff4444{}|r, {} of {} lives. Shards: {}.",
-                    ch->name, uint32(st.lives), uint32(st.livesMax), st.shards));
+                handler->SendSysMessage(Acore::StringFormat("Current run: |cffffd100{}|r, {} of {} {} left.",
+                    ch->name, uint32(st.lives), uint32(st.livesMax), st.livesMax == 1 ? "life" : "lives"));
+        handler->SendSysMessage(Acore::StringFormat("Shards: {}.", st.shards));
         return true;
     }
 
-    // ".classless run <id> classless|wildcard [heirloom spell id ...]": start a
-    // challenge run. The path is the one a Rebirth at the cap lands on; a
-    // fresh Hero runs on the path they already chose whatever is typed.
+    // ".classless run <id> classless|wildcard [heirloom ability id ...] [confirm]":
+    // start a challenge run. The path is the one a Rebirth at the cap lands on;
+    // a fresh Hero runs on the path they already chose whatever is typed. At
+    // the cap the run is a Rebirth, so it asks for confirm the same way.
     static bool HandleRun(ChatHandler* handler, uint32 challengeId, std::string modeArg, Tail heirloomArgs)
     {
         if (!CheckEnabled(handler))
@@ -360,22 +400,26 @@ public:
         Mode target;
         if (!ParsePath(modeArg, target))
         {
-            handler->SendSysMessage("Usage: .classless run <id> classless | wildcard [heirloom spell id ...] "
-                                    "(.classless challenges lists the ids)");
+            handler->SendSysMessage("Usage: .classless run <id> classless | wildcard [heirloom ability ID ...] "
+                                    "(.classless challenges lists the IDs)");
             return true;
         }
-        std::vector<uint32> heirlooms;
-        for (std::string_view token : Acore::Tokenize(heirloomArgs, ' ', false))
-            if (Optional<uint32> id = Acore::StringTo<uint32>(token))
-                heirlooms.push_back(*id);
-        if (!sClasslessMgr->StartRun(handler->GetSession()->GetPlayer(), uint8(challengeId), target, heirlooms, &err) && !err.empty())
+        bool confirmed;
+        std::vector<uint32> heirlooms = ParseIdsAndConfirm(heirloomArgs, confirmed);
+        Player* player = handler->GetSession()->GetPlayer();
+        if (!confirmed && sClasslessMgr->RebirthEligible(player))
+        {
+            DescribeRebirth(handler, player, Acore::StringFormat(".classless run {} {}{}", challengeId, modeArg, IdList(heirlooms)));
+            return true;
+        }
+        if (!sClasslessMgr->StartRun(player, uint8(challengeId), target, heirlooms, &err) && !err.empty())
             handler->SendSysMessage(err);
         return true;
     }
 
-    // ".classless path classless|wildcard": the cheaper path change at the
-    // current level, which is what "rebirth" used to mean.
-    static bool HandlePath(ChatHandler* handler, std::string modeArg)
+    // ".classless path classless|wildcard [confirm]": the path change at the
+    // current level. Without confirm it says what it costs and does nothing.
+    static bool HandlePath(ChatHandler* handler, std::string modeArg, Tail rest)
     {
         if (!CheckEnabled(handler))
             return true;
@@ -383,7 +427,17 @@ public:
         Mode target;
         if (!ParsePath(modeArg, target))
         {
-            handler->SendSysMessage("Usage: .classless path classless | wildcard (wipes the build at this level, costs gold)");
+            handler->SendSysMessage("Usage: .classless path classless | wildcard confirm (wipes the build at this level, costs gold)");
+            return true;
+        }
+        bool confirmed;
+        ParseIdsAndConfirm(rest, confirmed);
+        if (!confirmed)
+        {
+            handler->PSendSysMessage("Changing path wipes every ability and talent and starts the {} path at your current "
+                "level, for {} gold. Your level, quests and gear stay.",
+                target == Mode::Classless ? "Classless" : "Wildcard", sClasslessMgr->cfg.rebirthCostGold);
+            handler->PSendSysMessage("Type .classless path {} confirm to go ahead.", modeArg);
             return true;
         }
         if (!sClasslessMgr->SwitchPath(handler->GetSession()->GetPlayer(), target, &err) && !err.empty())

@@ -715,14 +715,13 @@ def skill_line_categories(data: bytes) -> dict:
 def single_class_combos(data: bytes, shell_class: int):
     """Rebuild CharBaseInfo.dbc so every race offers exactly one class.
 
-    The class list is COSMETIC on a classless realm: the server converts every
-    new character to its configured chassis regardless of what the client
-    sends, so offering ten renamed-to-Hero buttons would be ten copies of the
-    same non-choice. One row per playable race, all pointing at one shell
-    class, keeps every race creatable and removes the question.
+    The class list is COSMETIC on a classless realm: every Hero runs on the
+    same chassis, so offering ten renamed-to-Hero buttons would be ten copies
+    of the same non-choice. One row per playable race, all pointing at one
+    shell class, keeps every race creatable and removes the question.
 
-    The shell has nothing to do with the server's chassis. The installer uses
-    Warrior because vanilla already allows it for 9 of 10 races.
+    The shell IS the chassis (Paladin, install.py SHELL_CLASS): a Hero is
+    created as one directly, with no conversion on the server.
 
     Returns (new_dbc_bytes, race_count).
     """

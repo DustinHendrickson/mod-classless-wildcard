@@ -34,7 +34,7 @@ namespace ClasslessWildcard
         { "Weapons", "every blade, bow, staff and wand" },
         { "Armor", "chest, legs, shoulders, cloaks and shields" },
         { "Jewelry & off-hand", "necks, rings, trinkets and held items" },
-        { "Heirlooms", "bought once, they scale with you to 80" },
+        { "Heirloom gear", "bought once, it scales with you to 80" },
     };
 
     constexpr VendorList VENDOR_LISTS[] =
@@ -54,7 +54,7 @@ namespace ClasslessWildcard
         { 990132, 2, "Levels 41-60", 8, false },
         { 990133, 2, "Levels 61-80", 8, false },
         { 990134, 2, "All levels", 42, true },
-        { 990144, 3, "Heirlooms", 23, true },
+        { 990144, 3, "Heirloom gear", 23, true },
     };
 
     // The supplies counter is the creature's own list, which

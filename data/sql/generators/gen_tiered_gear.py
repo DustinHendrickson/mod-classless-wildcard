@@ -41,7 +41,7 @@ HIT, HASTE = 31, 36
 BANDS = [1, 10, 20, 30, 40, 50, 60, 70, 80]
 TIER_NAME = {1: "Apprentice's", 10: "Journeyman's", 20: "Adept's",
              30: "Veteran's", 40: "Champion's", 50: "Master's",
-             60: "Grand Master's", 70: "Heroic", 80: "Ascendant"}
+             60: "Grand Master's", 70: "Exemplar's", 80: "Ascendant"}
 
 # armor per level for a chest piece, by armour class; other slots scale down
 # item_template.class / subclass, for the RangedModRange rule below
@@ -93,7 +93,7 @@ TEMPLATES = [
       speed=2400, mat=1, sheath=3, desc="A mace balanced for someone light on their feet."),
     T("sword_int", "Spellbinder Blade", 2, 7, 13, "sword1h",
       [(INT, 1.0), (SP, 1.5), (STA, 0.5)], kind="weapon", price="weapon1h",
-      speed=2400, mat=1, sheath=3, desc="A sword that carries spellpower instead of muscle."),
+      speed=2400, mat=1, sheath=3, desc="A sword that carries spell power instead of muscle."),
     T("fist_sp", "Sparkfist Talon", 2, 13, 13, "fist",
       [(SP, 1.6), (INT, 0.7), (STA, 0.5)], kind="weapon", price="weapon1h",
       speed=2500, mat=1, sheath=3, desc="For those who cast with their knuckles."),
@@ -104,13 +104,13 @@ TEMPLATES = [
     # ---- armour: the wrong armour class for the stats it carries ----
     T("plate_chest_sp", "Runeplate Vestment", 4, 4, 5, "plate_chest",
       [(SP, 1.6), (INT, 0.9), (STA, 0.8)], kind="armor", price="big_armor",
-      armor_class="plate", slot=1.0, mat=6, desc="Full plate that channels spellpower."),
+      armor_class="plate", slot=1.0, mat=6, desc="Full plate that channels spell power."),
     T("mail_chest_str", "Bulwark Chainmail", 4, 3, 5, "mail_chest",
       [(STR, 1.1), (STA, 0.9)], kind="armor", price="big_armor",
       armor_class="mail", slot=1.0, mat=5, desc="Mail cut for raw strength."),
     T("leather_chest_int", "Zealot Hide Jerkin", 4, 2, 5, "leather_chest",
       [(INT, 1.0), (SP, 1.4), (STA, 0.7)], kind="armor", price="big_armor",
-      armor_class="leather", slot=1.0, mat=8, desc="Spellpower leather, mobility without the silk."),
+      armor_class="leather", slot=1.0, mat=8, desc="Spell power leather, mobility without the silk."),
     T("cloth_robe_ap", "Ironweave Battlerobe", 4, 1, 20, "cloth_robe",
       [(AGI, 1.0), (AP, 2.0), (STA, 0.8)], kind="armor", price="big_armor",
       armor_class="cloth", slot=1.0, mat=7, desc="A robe carrying attack power. Nobody else would dare."),
@@ -119,7 +119,7 @@ TEMPLATES = [
       armor_class="plate", slot=0.9, mat=6, desc="Plate legs light enough to sprint in. Allegedly."),
     T("mail_legs_sp", "Chainweave Leggings", 4, 3, 7, "mail_legs",
       [(SP, 1.4), (SPI, 0.7), (STA, 0.7)], kind="armor", price="big_armor",
-      armor_class="mail", slot=0.9, mat=5, desc="Mail that favours spirit over brawn."),
+      armor_class="mail", slot=0.9, mat=5, desc="Mail that favors spirit over brawn."),
     T("cloak_str", "Warcloak of the Untethered", 4, 1, 16, "cloak",
       [(STR, 0.9), (STA, 0.5)], kind="armor", price="small_armor",
       armor_class="cloth", slot=0.35, mat=7, desc="A cloak for the ones who close the distance."),
@@ -133,7 +133,7 @@ TEMPLATES = [
       desc="Strength and intellect on one chain."),
     T("ring_hybrid", "Loop of Contradiction", 4, 0, 11, "ring",
       [(AGI, 0.7), (SP, 1.1), (STA, 0.4)], kind="jewel", price="jewel",
-      desc="Agility and spellpower have no quarrel here."),
+      desc="Agility and spell power have no quarrel here."),
     T("trinket_sp", "Focus of the Untethered", 4, 0, 12, "trinket",
       [(SP, 1.5), (STA, 0.5)], kind="jewel", price="jewel",
       desc="A focus that hums with borrowed power."),
@@ -245,16 +245,15 @@ L.append(textwrap.dedent("""\
     -- Do not hand-edit: regenerate with data/sql/generators/gen_tiered_gear.py.
     --
     -- The same "stat combination the class system would never allow" idea as the
-    -- other packs, but spread across nine level bands from 1 to 80, so a Hero has
-    -- something to buy the whole way up instead of only at level 35.
+    -- other packs, spread across nine level bands from 1 to 80, so a Hero has
+    -- something to buy the whole way up.
     --
     -- Prices come from the medians of real 3.3.5 items (see analyze_prices.py):
     -- a few silver at band 1, over a hundred gold at 80.
     --
-    -- Two entry blocks. %d..%d is the original catalogue; %d.. adds the
-    -- accuracy and speed the first block had nowhere at all -- hit rating and
-    -- haste rating, on four slots the first block never used. They are kept
-    -- apart so wave one's entry ids never move.
+    -- Two entry blocks. %d..%d is the main catalogue; %d.. adds hit rating
+    -- and haste rating on head, hands, waist and feet. They are kept apart so
+    -- the first block's entry ids never move.
     --
     -- This file only defines the items. Which of them the Hero Advancement NPC
     -- puts on which shelf is cw_world_vendor_lists.sql's job.

@@ -1,9 +1,9 @@
-﻿-- mod-classless-wildcard: classless item pack
+-- mod-classless-wildcard: classless item pack
 -- Ascension-style items that only make sense in a classless world: intellect
--- guns, strength throwing weapons, mail tanking and caster gear, spellpower
+-- guns, strength throwing weapons, mail tanking and caster gear, spell power
 -- fist weapons. Pure server-side data (client reads them from the item query
--- cache; existing display ids are reused) â€” no client patch needed.
--- Sold by the Hero Advancement NPC alongside the Reroll Scrolls.
+-- cache; existing display ids are reused), so no client patch is needed.
+-- Sold by the Hero Advancement NPC.
 
 DELETE FROM `item_template` WHERE `entry` BETWEEN 990201 AND 990212;
 INSERT INTO `item_template`
@@ -38,12 +38,12 @@ VALUES
 (990207, 4, 4, 'Runeplate Gauntlets of the Battle Mage', 27358, 3, 1, 14976, 2995, 10, -1, -1, 40, 35, 1,
  5, 14, 45, 18, 7, 8, 0, 0, 0, 0, 326, 2, 45, 6, 0,
  'Gauntlets that do not muffle spellcraft.', 12340, 0),
--- spellpower fist weapon (melee caster)
+-- spell power fist weapon (melee caster)
 (990208, 2, 13, 'Sparkfist Talon', 23271, 3, 1, 44527, 8905, 13, -1, -1, 40, 35, 1,
  5, 10, 45, 20, 7, 6, 38, 71, 0, 2000, 0, 2, 75, 1, 3,
  'For those who cast with their knuckles.', 12340, 0),
 -- leather healer with strength (paladin-rogue hybrids)
-(990209, 4, 2, 'Zealot''s Hide Jerkin', 30819, 3, 1, 24841, 4968, 5, -1, -1, 40, 35, 1,
+(990209, 4, 2, 'Bloodfervor Hide Jerkin', 30819, 3, 1, 24841, 4968, 5, -1, -1, 40, 35, 1,
  4, 16, 6, 14, 7, 10, 0, 0, 0, 0, 204, 2, 100, 8, 0,
  'Supple leather for holy warriors who strike from the shadows.', 12340, 0),
 -- agility two-hand sword (hunter-warrior hybrids)
@@ -55,7 +55,7 @@ VALUES
  5, 12, 6, 12, 7, 8, 0, 0, 0, 0, 2121, 2, 100, 1, 0,
  'A shield that hums with restorative energy.', 12340, 0),
 -- cloth "tank" chest (sta/armor-heavy robe)
-(990212, 4, 1, 'Ironweave Battlerobe of the Hero', 34799, 3, 1, 24841, 4968, 20, -1, -1, 40, 35, 1,
+(990212, 4, 1, 'Bastion Battlerobe of the Hero', 34799, 3, 1, 24841, 4968, 20, -1, -1, 40, 35, 1,
  7, 28, 5, 10, 4, 8, 0, 0, 0, 0, 197, 2, 100, 7, 0,
  'Woven for casters who insist on being hit.', 12340, 0);
 

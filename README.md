@@ -15,19 +15,9 @@
 **Every character can learn every spell and every talent from every class.** Buy them with
 Essence, or let the server roll for you in Wildcard mode.
 
-It installs into `modules/` on an AzerothCore master build and needs a recompile, its own SQL and
-a client patch every player runs. See [Requirements](#requirements) and [Install](#installation).
-
-**Players must close World of Warcraft before running the client patcher.** It deletes their
-client cache for them and verifies it is gone, but a running game holds those files open and
-nothing is deleted. A stale cache is what makes a new item draw a question mark or a ranged
-weapon say "Out of range".
-
-[What it is](#what-it-is) · [Features](#features) · [Install](#installation) · [Playerbots](#playerbots) · [Commands](#commands) · [Configuration](#configuration) · [Wildcard rolls](#how-wildcard-rolls-work) · [Hero line](#the-hero-line) · [Elemental variants](#elemental-variants) · [Uninstall](#uninstall)
+[Overview](#overview) · [Features](#features) · [Wildcard rolls](#wildcard-rolls) · [Challenge runs](#challenge-runs) · [Hero line](#the-hero-line) · [Elemental variants](#elemental-variants) · [Commands](#commands) · [Install](#installation) · [Configuration](#configuration) · [Uninstall](#uninstall)
 
 <br>
-
-### Support
 
 I build these as free, open source AzerothCore modules, and they stay free. If this one is
 useful to you, you can support the work:
@@ -39,106 +29,33 @@ useful to you, you can support the work:
 ---
 
 > [!CAUTION]
-> **This is a total server overhaul, and it is experimental.**
+> **A total server overhaul, and experimental.** It replaces the class system and rebuilds
+> progression, resources, stats, gear and quest access around it. Build a realm around it; do
+> not add it to one you care about.
 >
-> It replaces the class system outright and rebuilds progression, resources, stats, gear and
-> quest access around it. Plan a realm around it; do not add it to an existing one you care about.
->
-> The [client patch](#client-every-player) is **required**. Every player must run it, or the
-> game is broken for them.
->
-> Installing changes character data and writes to core tables. It is [reversible](#uninstall),
-> but back up your world and characters databases first.
+> - **Every player must run the [client patch](#client-every-player).** Without it the game is broken for them.
+> - **Back up your world and characters databases** before the first start. Install is [reversible](#uninstall).
+> - **Close World of Warcraft before running the client patcher**, or it cannot clear the client cache.
 
 ---
 
-> [!IMPORTANT]
-> **What it runs on, and what it changes.**
->
-> **A stock 3.3.5a client, patched by this module.** There is no custom client build, no
-> launcher and no third-party patch to find. The installer in [`client-patch`](client-patch/)
-> adds `Data/patch-Z.MPQ` and `Data/<locale>/patch-<locale>-Z.MPQ`, patches `Wow.exe` to accept
-> custom interface files, and installs the ClasslessWildcard addon. The client's own archives are
-> never edited, the edits ride in those two new ones, the executable is backed up before it is
-> patched, and `--uninstall` returns the client to stock. Client and server must be installed
-> from the same version of the module: the patch carries spell data the server loads too, and a
-> mismatch shows wrong tooltips or fails casts.
->
-> **Server SQL, and not only in this module's own tables.** The DB updater applies it on startup.
-> It writes to `item_template`, `quest_template_addon`, `playercreateinfo`,
-> `playercreateinfo_action`, `creature_template` and `npc_vendor`, and to the DBC override tables
-> `spell_dbc`, `spell_ranks`, `talent_dbc`, `talenttab_dbc`, `skillline_dbc`,
-> `skilllineability_dbc` and `skillraceclassinfo_dbc`. Original values are copied into backup
-> tables first and the [uninstall](#uninstall) scripts put them back, but take your own backup of
-> the world and characters databases before the first start.
->
-> **Heroes out-scale classes, and some builds badly.** Every character can hold abilities and
-> talents no single class could: a warrior's damage with a druid's heal over time and a paladin's
-> immunity, cooldowns that were balanced against each other in separate kits, and the Hero line
-> and elemental variants on top. Most builds land somewhere above a well-played class; a few
-> specific combinations land a long way above, and the deck can hand one to a player who was not
-> looking for it. Levelling content and five-mans are the first things to feel easy.
->
-> This module deliberately does not touch encounter tuning, because how hard a realm should be
-> is yours to decide. If the default game feels too easy, turn the creatures up in
-> `worldserver.conf` rather than nerfing builds:
->
-> ```
-> Rate.Creature.Normal.HP                = 1.5
-> Rate.Creature.Normal.Damage            = 1.3
-> Rate.Creature.Normal.SpellDamage       = 1.3
-> Rate.Creature.Elite.Elite.HP           = 1.5
-> Rate.Creature.Elite.Elite.Damage       = 1.3
-> Rate.Creature.Elite.Elite.SpellDamage  = 1.3
-> ```
->
-> The same three rates exist for `RARE`, `RAREELITE` and `WORLDBOSS`. Those numbers are a
-> starting point, not a recommendation: raise them a little, play a few levels, and raise them
-> again. Health alone makes fights longer without making them dangerous, so move damage with it.
+## Overview
 
-> **No UI addon is guaranteed to work.** Every character is a single shared class that reads as
-> Hero, one spellbook holds spells from all ten classes across extra tabs, the talent trees are
-> served by this module rather than the client's own, and the resource bars show mana, rage and
-> energy on a character the client thinks has one of them. An addon that keys off class, the
-> spellbook, the talent frames, the paper doll or the power type can misread all of it, and some
-> will throw Lua errors. The bundled ClasslessWildcard addon is the supported interface. Others
-> may work, may look wrong, or may break, and none of them is tested here.
+There are no classes. Character creation offers a race and nothing else, and every character is
+a **Hero**. Race keeps its racial traits. Every ability and talent is earned in game and can come
+from any class.
 
----
+There are two paths, chosen per character (or forced realm-wide by config):
 
-## What it is
+|                    | **Classless** (free pick)                                    | **Wildcard** (rolled)                                    |
+| ------------------ | ------------------------------------------------------------ | -------------------------------------------------------- |
+| How you gain power | Spend Ability Essence (AE) and Talent Essence (TE)           | The server rolls abilities and talents for you           |
+| Level 1            | 3 AE to spend                                                | 4 random abilities                                       |
+| Levelling          | +1 AE per level from 4, +1 TE per level from 10              | One roll per level from 10, alternating ability / talent |
+| Cost               | Abilities 1 / 2 / 3 / 5 / 8 AE by rarity, talents 1 TE a rank | Free, weighted by rarity                                 |
+| Changing your mind | Unlearn for a refund, or `.classless respec` for free        | Rerolls, Reroll Scrolls, ability locks                   |
 
-`mod-classless-wildcard` removes the class system from WotLK 3.3.5a. Every character is a
-**Hero**. Character creation offers a race and nothing else. Behind the scenes every Hero runs on
-one shared base class that grants no abilities and locks nothing away, so race is the only choice
-that carries anything, and it keeps its racial traits. Every ability and every talent is earned in
-game and can come from any class.
-
-There are two ways to earn them:
-
-- **Classless.** Buy exactly the abilities and talents you want with Essence, priced by rarity.
-- **Wildcard.** The Season 9/10 ruleset from Project Ascension. The server rolls abilities and
-  talents on a fixed schedule. Players steer the result with rerolls, ability locks and bad-luck
-  protection.
-
-|                       | **Classless** (free pick)                                            | **Wildcard** (rolled)                                             |
-| --------------------- | -------------------------------------------------------------------- | ----------------------------------------------------------------- |
-| How you gain power    | Spend Ability Essence (AE) and Talent Essence (TE)                   | The server rolls abilities and talents for you                    |
-| Starting kit          | 3 AE to spend as you like                                            | 4 random abilities at level 1                                     |
-| Progression           | +1 AE per level from 4, +1 TE per level from 10                      | One roll per level from level 10, alternating ability and talent  |
-| Cost model            | Abilities cost 1 / 2 / 3 / 5 / 8 AE by rarity, talents 1 TE per rank | Free but weighted. Legendary is rarest, and talent rank is rarity |
-| Control over outcomes | Total. Unlearning refunds, and a respec drops the lot at once, free   | Rerolls, ability locks, synergy rolls, reroll cooldowns           |
-| Changing your mind    | `.classless respec`                                                  | `.wildcard reroll`, Reroll Scrolls, Rebirth                       |
-
-Both paths share the same resources, stats, proficiencies, NPC and addon. Players choose a path
-per character, or the realm forces one through config. **Change path** switches paths later for
-gold, and **Rebirth** at the level cap starts a new life at level 1 with a permanent rank that
-stacks.
-
-The stock client still renders the class system it was built for, so the **client patch is
-required**. It renames every class to Hero, removes the class picker, restores the ranged slot,
-and installs the addon that players use to buy abilities and see rolls. See
-[Client (every player)](#client-every-player).
+Both paths share the same resources, stats, gear, NPC and addon.
 
 ---
 
@@ -148,29 +65,27 @@ and installs the addon that players use to buy abilities and see rolls. See
 
 <img src="docs/hero_creation.webp" alt="The WotLK character creation screen with no class list: the race panel on the left, and a Hero panel on the right listing what a Hero can do" width="96%">
 
-<em><b>Character creation.</b> There is no class list. Pick a race, and the panel on the right<br>
-tells you what every character gets: all armour and weapons, every resource, and any spell in the game.</em>
+<em><b>Character creation.</b> Pick a race. Every character gets all armour and weapons,<br>
+every resource, and any spell in the game.</em>
 
 <br><br>
 
-<img src="docs/advancement_panel.webp" alt="The Character Advancement panel: an ability browser, talent trees for every class, and the current build side by side" width="92%">
+<img src="docs/advancement_panel.webp" alt="The Hero Advancement panel: an ability browser, talent trees for every class, and the current build side by side" width="92%">
 
-<em>The <b>Character Advancement</b> panel. Browse every class's abilities and talent trees,<br>
+<em>The <b>Hero Advancement</b> panel. Browse every class's abilities and talent trees,<br>
 with your build on the right. Lock or reroll anything you own from the same window.</em>
 
 <br><br>
 
 <img src="docs/wildcard_roll.webp" alt="A Wildcard roll revealing Fireball: the die with the ability's icon in its window, the spell's cost, range, cast time and description below it, and Keep and Reroll buttons" width="42%">
 
-<em>A <b>Wildcard</b> roll. The die lands on a new ability and shows its rarity,<br>
-with everything its tooltip would say. Keep it, or spend a reroll.</em>
+<em>A <b>Wildcard</b> roll. Keep it, or spend a reroll.</em>
 
 <br><br>
 
 <img src="docs/stat_allocation.webp" alt="The primary stat panel with a row per stat showing the character's total and what it grants, and a tooltip breaking Spirit down further" width="72%">
 
-<em><b>Primary stats.</b> Every row carries your total and what that total is worth,<br>
-projected as you spend. Reallocating is free.</em>
+<em><b>Primary stats.</b> Spend points freely and reallocate for free.</em>
 
 </div>
 
@@ -178,639 +93,255 @@ projected as you spend. Reallocating is free.</em>
 
 ## Features
 
-### Building a Hero
+### Progression
 
-- **Classless free pick.** Rarity-priced abilities, and talents from every tree bought a rank at
-  a time with prerequisites enforced and each tier opening at its level (no points-in-tree
-  total: a Hero draws from every tree at once). Unlearning an ability or a talent refunds its
-  essence, a respec drops everything at once for free, and owned spell lines rank up as you
-  level.
-- **Wildcard rolls.** Free rerolls below level 10, rarity-weighted rolls, ability locking, and
-  synergy rolls that favour classes you already own. A talent roll also rolls its rank, and rank
-  is rarity: rank 1 is common, rank 5 is legendary, and landing on rank 5 hands you the full
-  talent for free. See [How Wildcard rolls work](#how-wildcard-rolls-work).
-- **Rerolls.** Every level from 10 grants 3 reroll charges, spent on abilities and talents alike.
-  Anything you own can be rerolled later from **My Build**. Reroll Scrolls top the pool up, sold
-  by the NPC and the addon at a price that scales with level.
-- **Change path.** A full reset that switches paths at the current level, available after the
-  mode lock and gated by config. A Wildcard change replays the whole roll schedule.
-- **Rebirth.** New Game Plus, at the level cap only. The Hero starts over at level 1: the build
-  is wiped except the **heirloom** abilities they choose to carry (usable from level 1), the
-  quest log is forgotten so every zone is new again, worn gear goes into the bags, and gold,
-  bags, bank, reputation, riding and flight paths stay. Each Rebirth raises a permanent rank
-  that stacks: +100% kill and dungeon XP for the first and +50% for every one after (capped at
-  +300%), +3% to every stat per rank (capped at +15%), legacy essence on the Classless path,
-  one more heirloom next time, a title per rank ("the Reborn", "the Twice Reborn", "the Thrice
-  Reborn", "the Many-Lived", "the Eternal"), and a glow on the panel's crest. The
-  price climbs with the rank, since quests come back with their one-time rewards. The picker
-  lives on the panel's Rebirth button; the NPC only offers the path change.
-- **Challenge runs.** A life under one rule with counted lives, on either path. Finishing at
-  the level cap pays gold, a title and an ability found nowhere else. See
-  [Challenge runs](#challenge-runs).
-- **Archetypes.** Thirteen build templates a Classless Hero can follow from 1 to 80. Six mix
-  two classes (*Blade Dancer*, *Battle Mage*, *Ranger of the Light*, *Shadow Mender*, *Stealthy
-  Healer*, *Storm Warrior*) and seven are built around one element's variant strikes and the
-  talent tree that feeds it (*Hellfire Knight*, *Rime Reaver*, *Stoneguard*, *Venomstalker*,
-  *Nightclaw*, *Dawnward*, *Spellblade*). Following one replaces the current build and then buys
-  each ability and talent rank with the Hero's own essence as it unlocks. Stop at any time and
-  keep what was bought.
-- **The Hero line.** Thirty-three abilities that belong to no class, in a Hero spellbook tab of
-  their own, plus a 23-talent Hero tree that rewards drawing on several classes at once. See
-  [The Hero line](#the-hero-line).
-- **Elemental variants.** Twenty-seven weapon attacks each come in Fiery, Frozen, Earthen,
-  Venomous, Arcane, Shadow and Holy forms: the same swing, cost and cooldown, dealt as the element,
-  and each element does something of its own on hit -- a burn, a snare, an attack-speed cut, a
-  healing cut, a bigger hit, lifesteal. See [Elemental variants](#elemental-variants).
-- **Talents are talents, and spells.** A talent you buy is recorded as a real talent, so the
-  stock talent frame shows it at the rank you own, and granted as its underlying spell, so it is
-  in your spellbook too. You spend Talent Essence rather than talent points: the native point
-  total stays at zero, whatever your level.
-- **A spell you can only reach through a talent is gated at that talent's tier**, not at the
-  level its own rank claims.
-- **Ability talents are abilities.** A talent that teaches a spell, such as Pyroblast, Mortal
-  Strike or Mangle, is not on the Talents list. The spell is in the Abilities list instead, at
-  the level its talent tier would open, with every rank. Owning it meets any prerequisite on
-  the old talent and counts as a point in that tree.
+- **Classless.** Buy abilities by rarity and talents a rank at a time. Prerequisites apply and
+  each talent tier opens at its level, with no points-in-tree requirement. Unlearning refunds the
+  essence. Owned spells rank up as you level.
+- **Wildcard.** Rarity-weighted rolls, ability locks, and synergy rolls that favour classes you
+  already own. See [Wildcard rolls](#wildcard-rolls).
+- **Rerolls.** Free below level 10. From level 10, each level grants 3 reroll charges for
+  abilities and talents. Anything you own can be rerolled from **My Build**. Reroll Scrolls add
+  more. The NPC and the panel's Buy Scroll button sell them from level 10, at a price that rises
+  with level.
+- **Archetypes.** Thirteen Classless build templates from 1 to 80. Following one replaces your
+  build, then buys each ability and talent rank with your essence as it unlocks. Stop any time
+  and keep what was bought.
+  - Two-class: *Blade Dancer*, *Battle Mage*, *Ranger of the Light*, *Shadow Mender*, *Thornshade*, *Storm Warrior*
+  - Elemental: *Hellfire Knight*, *Rime Reaver*, *Stoneguard*, *Venomstalker*, *Nightclaw*, *Dawnward*, *Spellblade*
+- **Change path.** A full reset at your current level, for gold. Classless Heroes move to the
+  Wildcard; Wildcard Heroes move to Classless or take a fresh deal. A Wildcard deal replays the
+  whole roll schedule.
+- **Rebirth.** At the level cap, start over at level 1 with a permanent rank that stacks.
+  - **Kept:** gold, bags, bank, reputation, riding, flight paths, and the **heirloom** abilities
+    you choose to carry (usable from level 1, one more per rank).
+  - **Reset:** your build and your quest log. Worn gear goes into your bags.
+  - **Per rank:** +100% kill XP for the first, +50% per rank after (max +300%); +3%
+    to every primary stat (max +15%); starting essence on the Classless path; a title (*the
+    Reborn*, *the Twice Reborn*, *the Thrice Reborn*, *the Many-Lived*, *the Eternal*).
+  - The gold price rises with rank. Start one from the panel's Rebirth button.
+- **Challenge runs.** A life under one rule with limited lives. See [Challenge runs](#challenge-runs).
 
-### Everything works on one character
+### Abilities and talents
 
-- **No class to pick.** Character creation shows races only. Every Hero runs on the same
-  Paladin chassis, which grants no class abilities and locks nothing away.
-- **Tooltips count your talents.** Cost, cooldown, cast time, range, duration and the values in
-  the description all read what your build actually gives. Nothing is appended and nothing is
-  reworded: each number is corrected in the line the client itself wrote, in its own wording and
-  locale. Where a sentence is ambiguous -- the same number twice, a range, a per-combo-point
-  list -- it is left exactly as the client wrote it rather than guessed at.
-
-  The client cannot do this itself for a talent from another class. Its modifier packet carries
-  a class-mask bit and no spell family, so it matches those bits only against the chassis's own
-  family: 10% of what a Hero's talents send. The server has the family and does the arithmetic.
-
-- **A talent-reduced cost can actually be paid.** The client refuses to send a cast it thinks you
-  cannot afford, and it counts a cross-class talent no better there than in a tooltip, so
-  Improved Thunder Clap left the server wanting 16 rage while the client still said "Not enough
-  rage" at 16. The client patch lowers its copy of each cost to the least any build could pay and
-  leaves the decision to the server, which is the only side that knows the real number.
-- **Universal resources.** Every Hero has mana, rage and energy at once. One shows on the main
-  bar and the addon draws mini-bars for the rest. Each spell draws from its own resource, so the
-  same Hero casts Fireball on mana and Bloodthirst on rage.
-- **Death Knight abilities** are in the pool by default. Every Hero gets runes and runic power,
-  and the addon draws the rune bar. Set `IncludeDeathKnight` to `0` to leave them out.
-- **Primary stat allocation.** A point budget spent freely across STR, AGI, STA, INT and SPI,
-  reallocated at any time for free. Because a build can point in any direction, the module also
-  adds melee attack power per Agility, extra ranged attack power per Agility and spell power per
-  Intellect. Hovering a stat in the addon shows what a point is worth at your level.
-- **All proficiencies at level 1.** Armor, weapons, dual wield and Parry, handed over at character
-  creation, with the abilities that make them usable: Shoot and Auto Shot with bows, guns and
-  crossbows, Throw with thrown weapons. The skills themselves are not touched after that -- each
-  arrives at the rank a trainer leaves it at and rises by use, the same as for anyone else on the
-  realm.
-- **The base class never restricts a build.** Any relic equips, shields work, and Overpower,
-  Revenge, Riposte and Counterattack fire regardless of base class. A weapon's feral attack power
-  counts in Cat and Bear form, and a pet inherits its owner's hit and expertise. The class
-  passives an ability relies on come with it: Death Knight spells crit for double, Deep Freeze
+- **Talents show in the talent frame** at the rank you own and are in your spellbook. They are
+  paid for with Talent Essence, not talent points.
+- **Talents that teach a spell** (Pyroblast, Mortal Strike, Mangle and so on) are in the
+  Abilities list instead, with every rank, at the level their tier opens. Owning one counts for
+  that talent's prerequisites.
+- **Prerequisites come with the ability.** Cat Form brings Claw and Prowl, Charge brings Battle
+  Stance, Kill Command brings a pet, Soul Shard spells bring Drain Soul. These are free, do not
+  use a roll, and leave when nothing you own needs them.
+- **No class tools.** Totem spells need no totem. Reagents are still needed. Runeforging still
+  needs a runeforge.
+- **Class passives come with their abilities.** Death Knight spells crit for double, Deep Freeze
   damages stun-immune targets, Flame Shock and Immolate can crit over time, and Chaos Bolt goes
   through absorbs.
-- **Every item is open to every Hero.** Class armour sets, all 353 glyphs, rogue poisons, soul
-  bags, quivers and class-locked relics. Done in the world database, and reversible with
-  `data/sql/manual/cw_item_classes_revert.sql`.
-- **Anything with a prerequisite carries it.** Cat Form brings Claw and Prowl, Charge brings
-  Battle Stance, Kill Command brings a pet, every spell that spends a Soul Shard brings Drain
-  Soul. Talents do the same: Bestial Wrath brings the pet it commands, Summon Felguard brings
-  Drain Soul, Sweeping Strikes brings a warrior stance. Where the form comes from a talent and
-  cannot be given, the ability says so. Anything handed over this way is free, is not one of your
-  rolls, and leaves when nothing you own still needs it. The pairs are rows in `cw_form_kits`.
-- **No spell asks for a class tool.** Stoneskin Totem needs no Earth Totem. Reagents are
-  unchanged and are bought or farmed as normal. A runeforge is a place, not a tool, and still
-  has to be visited.
-- **The Venom Beetle is a real pet.** It has a pet bar, a Pet tab in the spellbook, it keeps the
-  auras your talents give a pet, and it survives logging out. A tamed beast gets all of that for
-  being tamed; a SUMMONED pet only gets it when the core reads its creature type as demon or
-  undead, so the beetle is filed as a demon. The addon puts the spellbook tab back to Pet.
-- **A summon leaves with its spell.** Reroll Summon Imp away and the imp is dismissed instead of
-  standing there permanently. Rerolling Tame Beast away puts the tamed beast away too. The beast
-  is kept, not destroyed, so rolling Tame Beast again calls the same one back.
-- **Class quests are open to everyone.** Every chain is reachable by every Hero. A reward that
-  would teach a class ability gives nothing for that part; items, XP, gold and reputation are
-  unchanged. Reversible with `data/sql/manual/cw_class_quests_revert.sql`.
-- **One known limit.** A wand fires as Physical rather than the wand's own damage school. It
-  affects resistance only.
+- **Everything works together.** Any relic equips, shields work, Overpower, Revenge, Riposte and
+  Counterattack all fire, feral attack power works in Cat and Bear form, and pets inherit your
+  hit and expertise.
+- **Tooltips count your talents.** Cost, cooldown, cast time, range, duration and values show what
+  your build gives, including talents from other classes, and talent-reduced costs can be paid.
+- **Summons leave with their spell.** Reroll Summon Imp away and the imp is dismissed. Reroll Tame
+  Beast away and the beast is stabled; roll it again and the same beast returns.
+- **The Hero line.** 33 abilities that belong to no class, and a 23-talent Hero tree. See
+  [The Hero line](#the-hero-line).
+- **Elemental variants.** 27 weapon attacks in seven elements. See
+  [Elemental variants](#elemental-variants).
 
-### Gear
+### Resources and stats
 
-- **A starter kit that fits any build.** A neutral outfit, a bag, one of every basic weapon
-  type with ammunition, and food and water. Whatever a Hero learns or rolls first, they have
-  something to use it with. Configurable under `StarterKit`.
-- **A classless item catalogue.** 262 items with stat combinations the class system never
-  allowed: intellect guns, strength staves, plate caster sets, spellpower shields, hybrid rings
-  and more, tiered across level 1 to 80. The NPC sells them in level brackets and any mob can drop
-  one banded to its level. Everything is server-side; players need no custom files.
-- **Hero heirlooms.** 23 items that scale from level 1 to 80, including armor the original
-  classes could never wear. Cheap to buy early, and rares and world bosses can drop one.
+- **Mana, rage and energy on every Hero.** Each spell uses its own resource. One shows on the main
+  bar; the addon draws mini-bars for the rest.
+- **Runes and runic power** for every Hero while Death Knight abilities are enabled (the default).
+- **Primary stat allocation.** Points to spend across STR, AGI, STA, INT and SPI, reallocated
+  free at any time.
+- **Stats work for any build.** Agility gives melee and ranged attack power, and Intellect gives
+  spell power.
 
-### In the world
+### Gear and items
 
-- **Hero Advancement NPC** (entry `990100`). One in each capital city, Dalaran and Shattrath,
-  beside the guild master. It carries the full advancement menu and the vendor. `.npc add 990100`
-  places more.
-- **Addon.** The Character Advancement panel, the Wildcard roll UI, resource bars, a first-login
-  wizard and a Help guide. Everything it does is also a chat command.
+- **Every proficiency at level 1.** All armour, all weapons, dual wield and Parry, with Shoot,
+  Auto Shot and Throw. Weapon skills level by use.
+- **Every item for every Hero.** Class armour sets, all 353 glyphs, rogue poisons, soul bags,
+  quivers and relics. Sons of Hodir satchels give a random armour type.
+- **Starter kit.** A neutral outfit, a bag, one of every basic weapon type with ammunition, and
+  food and water.
+- **Classless item catalogue.** 262 items with stat mixes no class had: intellect guns, strength
+  staves, plate caster sets, spellpower shields, hybrid rings and more, levels 1 to 80. Sold by
+  the NPC in level brackets and dropped by any mob near its level.
+- **Hero heirlooms.** 23 items that scale from 1 to 80. Sold cheaply, and dropped by rares and
+  world bosses.
 
----
+### Granted for free
 
-## Requirements
+These are never rolled or bought. Every Hero receives them at these levels:
 
-- An AzerothCore **master** build you can recompile. The module adds C++ sources.
-- A **3.3.5a** client for every player, with the client patch applied.
-- **Python 3.7 or newer** on each player's machine, for the client installer.
-- No core edits and no other module. `mod-playerbots` is supported, see [Playerbots](#playerbots).
+| Level | Riding                | Runeforging                                                   |
+| ----- | --------------------- | ------------------------------------------------------------- |
+| 20    | Apprentice Riding     |                                                               |
+| 40    | Journeyman Riding     |                                                               |
+| 55    |                       | Runeforging, Rune of Razorice, Rune of Cinderglacier          |
+| 57    |                       | Rune of Spellshattering, Rune of Spellbreaking                |
+| 60    | Expert Riding         | Rune of Lichbane                                              |
+| 63    |                       | Rune of Swordshattering, Rune of Swordbreaking                |
+| 68    | Cold Weather Flying   |                                                               |
+| 70    | Artisan Riding        | Rune of the Fallen Crusader                                   |
+| 72    |                       | Rune of the Stoneskin Gargoyle, Rune of the Nerubian Carapace |
 
----
+Vendor, drop, reputation and quest mounts and companion pets work as normal. The five class mounts
+(**Warhorse**, **Charger**, **Felsteed**, **Dreadsteed**, **Acherus Deathcharger**) are abilities,
+rolled or bought at levels 20, 40 and 55.
 
-## Installation
+### Quests
 
-### Server
+Every class quest chain is open to every Hero. A reward that would teach a class ability gives
+nothing for that part; items, XP, gold and reputation are paid as normal.
 
-**1. Clone into your modules directory**
+### NPC and addon
 
-```bash
-git clone https://github.com/DustinHendrickson/mod-classless-wildcard.git azerothcore-wotlk/modules/mod-classless-wildcard
-```
+- **Hero Advancement NPC.** In every capital, Dalaran and Shattrath. Advancement menu, gear
+  vendor and Reroll Scrolls.
+- **ClasslessWildcard addon.** The Hero Advancement panel (`N` by default), Wildcard roll UI,
+  resource mini-bars, a first-login wizard and a Help guide. Everything it does is also a chat
+  command.
 
-**2. Re-run CMake and rebuild the worldserver**
+### Known limits
 
-```bash
-cmake .. && make -j$(nproc)
-```
-
-**3. Start the worldserver.** The DB updater applies the SQL under `data/sql/db-world` and
-`data/sql/db-characters` on startup. It creates the module's tables, the NPC, the item catalogue
-and the vendor lists. Check the startup log to confirm the files applied.
-
-Two red lines in that log are expected once the SQL has applied, and mean it worked:
-
-```
-Script named 'spell_dru_frenzied_regeneration' is not assigned in the database.
-Script named 'spell_pal_judgement_of_wisdom_mana' is not assigned in the database.
-```
-
-Frenzied Regeneration and Judgement of Wisdom both ask which power bar you are *showing*, and a
-Hero shows one of three at a time, so the module replaces those two scripts with versions that
-ask the pool instead. The core's originals are still compiled in but no longer bound to a spell,
-and AzerothCore says so about any script it cannot bind. Nothing is broken; `data/sql/uninstall`
-puts the original rows back.
-
-**4. Configure.** Copy `conf/classless_wildcard.conf.dist` next to `worldserver.conf` as
-`classless_wildcard.conf` and edit it. See [Configuration](#configuration).
-
-### Client (every player)
-
-Give players the `client-patch` and `client-addon` folders and point them at
-[`client-patch/README.md`](client-patch/README.md). With WoW closed, they double-click
-`install.bat` on Windows or run `./install.sh "/path/to/WoW"` on Linux and macOS. It needs
-Python 3.7 or newer and installs the Pillow imaging library itself if it is missing. Running it
-with `--uninstall` returns the client to stock.
-
-It installs:
-
-- the **ClasslessWildcard addon**
-- every class shown as **Hero** on the creation screen, character sheet, `/who` and tooltips
-- a single Hero entry per race on the creation screen, with the Hero outfit and emblem
-- names, tooltips and icons for the elemental variants
-- the classless items registered with the client, so their icons draw in any bag
-
-The creation-screen text lives in a signed game file, so the installer also applies the standard
-"allow custom interface" patch to `Wow.exe`. It backs the file up first.
-
-**Close the game before installing.** The client keeps its own copy of every item and spell the
-server has told it about, in `<WoW folder>\Cache\WDB\<locale>\` (for example
-`C:\Games\World of Warcraft\Cache\WDB\enUS\`). A stale entry there does not fix itself: an
-item cached before its stats existed keeps drawing a question mark and refuses to equip, and a
-ranged weapon cached without its range keeps saying "Out of range". The installer deletes that
-folder and checks afterwards that it is gone, reporting in capitals if it is not, which happens
-when the game is open and holding the files. The other case it cannot cover is a realm applying
-SQL without players re-running the installer: nothing clears their cache, so tell them to delete
-`Cache` and log back in. Deleting it is always safe.
-
-### Every item is unlocked for every class
-
-`data/sql/db-world/cw_world_item_classes.sql` clears `item_template`.`AllowableClass` on the
-6,509 items that carry a class restriction, and is applied by the updater like the rest of the
-module SQL. Without it a Hero can only use the base class's items: no class armour set, no glyph
-but the base class's, no rogue poison, no soul bag, and no relic outside its own class.
-
-The original masks are copied into `cw_item_class_backup` first, so
-`data/sql/manual/cw_item_classes_revert.sql` and the world uninstall script both put them back.
-Players should delete their client `Cache` folder after the first apply (see
-[Client (every player)](#client-every-player) for where it is and why).
-
-`data/sql/db-world/cw_world_class_loot.sql` does the same on the loot side. The seven Sons of
-Hodir satchels pay out one set of gear chosen by armour class; a Hero gets one of the sets at
-random instead of the chassis's. Reversible with `data/sql/manual/cw_class_loot_revert.sql`.
-
-> If you installed this module before September 2026, an earlier version shipped this as an
-> opt-in script that kept no backup. Check with
-> `SELECT * FROM acore_world.updates WHERE name = 'cw_classless_items.sql';`. If a row comes
-> back, your `item_template` was already overwritten and only a backup will restore it.
+- A wand fires as Physical rather than its own school. This only affects resistance.
+- Other UI addons are not supported. Anything that reads class, spellbook, talent frames or power
+  type may display wrongly or throw errors.
 
 ---
 
-## Playerbots
+## Wildcard rolls
 
-`mod-playerbots` works alongside this module. Bots are exempt from the classless system and play
-by vanilla class rules, because playerbots initialises a bot's spells and talents from its class.
+From level 10 you get one roll a level: an ability on even levels, a talent on odd ones.
+`.wildcard status` shows your pity, synergy chance and cooldowns.
 
-Exemption is by account name prefix, set with `ExemptAccountPrefixes` (default `rndbot`, which is
-what playerbots uses). A character on a matching account keeps its real class, abilities, talent
-points, trainers, stats and gear rules, and gets no essence, rolls or stat allocation. Only the
-displayed class name changes: the client patch renames every class to Hero, so bots show as Hero
-in the target frame, `/who` and inspect, exactly like players.
+- **Rolls only add.** Each roll grants one thing you do not already own. Nothing is ever replaced.
+- **What can roll.** Any ability you do not own whose learn level you have reached, weighted by
+  rarity. If nothing is available at your level, the lowest-level remaining entries are used.
+- **Synergy.** A synergy roll only offers entries sharing a class with something you own. The
+  chance is 10%, plus 10 points per pity. Pity rises with each reroll and resets on a synergy roll
+  or Rebirth.
+- **Reroll cooldowns.** A rerolled pick cannot come back for the next 24 rolls. If everything is
+  owned or on cooldown, the cooldowns are released.
+- **Locks.** A padlocked ability is skipped by the starting hand's "Roll Abilities" button, which
+  is available below level 10. Set padlocks from the starting hand, My Build, the NPC or
+  `.wildcard lock`.
+- **Talent ranks.** A talent roll also rolls its rank, and a fresh talent can land at any rank up
+  to its top one. Higher ranks are rarer, weighted 100 / 75 / 50 / 25 / 10 for ranks 1 to 5.
+- **Deepening a talent.** When rerolling a talent you can stake Reroll Scrolls to keep it and raise
+  its rank instead. Each scroll adds 20% (five is certain). On a win the new rank can jump more
+  than one; on a loss the scrolls are spent and the talent is rerolled as normal.
 
-If your bots use accounts that do not start with `rndbot`, add your prefix to
-`ExemptAccountPrefixes` or they will be converted to Heroes and lose their abilities.
+### Rarity
 
----
+Rarity sets roll odds, Classless price and colour. It comes from the strongest of:
 
-## Commands
+| Signal      | Uncommon | Rare  | Epic   | Legendary |
+| ----------- | -------- | ----- | ------ | --------- |
+| Cooldown    | 30 s     | 60 s  | 3 min  | 10 min    |
+| Talent row  | 2        | 4     | 6      | 8         |
+| Learn level | 25       | 50    |        |           |
 
-Everything the NPC and the addon do is also available as a chat command.
-
-### `.classless`
-
-| Command                                           | What it does                                      |
-| ------------------------------------------------- | ------------------------------------------------- |
-| `.classless status`                               | Mode, essence balances, spent totals              |
-| `.classless mode classless\|wildcard`              | Choose your path, before the deadline level       |
-| `.classless learn <spellId>`                      | Buy an ability with Ability Essence               |
-| `.classless unlearn <spellId>`                    | Drop an ability. Refunds per config               |
-| `.classless talent <talentId>`                    | Buy the next rank of a talent with Talent Essence |
-| `.classless respec`                               | Unlearn everything at once. Free, and refunds all of it |
-| `.classless stats`                                | Show stat allocation and remaining points         |
-| `.classless stat str\|agi\|sta\|int\|spi <points>` | Allocate points. Reallocation is free             |
-| `.classless bar mana\|rage\|energy\|default`       | Pick which resource the main power bar displays   |
-| `.classless archetypes`                           | List the archetypes and their IDs                 |
-| `.classless archetype <id>`                       | Follow an archetype. `0` stops following          |
-| `.classless rebirth classless\|wildcard`           | Full reset and path switch. Costs gold            |
-
-### `.wildcard`
-
-| Command                             | What it does                                      |
-| ----------------------------------- | ------------------------------------------------- |
-| `.wildcard status`                  | Pending rolls, reroll charges, pity counter       |
-| `.wildcard reroll <spellId>`        | Reroll a rolled ability                           |
-| `.wildcard rerolltalent <talentId>` | Reroll a rolled talent                            |
-| `.wildcard lock <spellId>`          | Lock an ability so future rolls cannot replace it |
-
-### Addon
-
-| Command                 | What it does                                       |
-| ----------------------- | -------------------------------------------------- |
-| `/cw` or `/classless`   | Open the Character Advancement panel               |
-| `/cw help`              | Open the built-in guide to both systems            |
-| `/cwbars`               | Toggle the universal resource mini-bars            |
-| `/cwbars show \| hide`  | Set the mini-bars instead of toggling them         |
-| `/cwbars lock \| unlock` | Pin the mini-bars in place, or let them be dragged |
-| `/cwbars reset`         | Put the mini-bars back under the player frame      |
-
-**Browsing.** Each pane's header carries its own controls. On the left is the sort order: by
-level or tier, by name, or grouped by type. On the right is the level filter, **My level** or
-**Any level**: My level lists only what the character can take at the level they are, Any level
-lists the whole library. Abilities have a type filter between the two as well, for melee, ranged,
-spells, heals, utility or passive. Both panes open on My level, and each remembers its own
-choices per account.
-
-**Padlocks.** A padlock holds an ability back from the starting hand's "Roll Abilities" pass,
-which rerolls everything unlocked at once. That pass only exists below `FreeRerollBelowLevel`,
-so at that level every remaining padlock is dropped, the button stops being offered, and rerolls
-are one ability at a time and always the one you picked. A padlock can be set from the starting
-hand, from **My Build**, from the Hero Advancement NPC or with `.wildcard lock`, and all four show
-the same state.
-
-The addon binds the advancement panel to **`N`**, the stock Talents key, unless the player has
-already rebound it, in which case it uses the first free key among `J`, `Y`, `G` and `K`. The
-panel, the Help guide and the resource bars can all be rebound under
-**Key Bindings > ClasslessWildcard**.
-
-The mini-bars remember where they were dragged to, per account. They show mana, rage and energy
-always, and add a rune row, a runic power bar and a combo point row only while the character
-actually has those, so nothing empty is left on screen.
-
-The **Settings** button on the advancement panel has a checkbox per row -- mana, rage, energy,
-runes, runic power, combo points -- plus the frame's own show and lock switches and a position
-reset. Every row is on by default. Switching all of them off puts the frame away entirely.
-
----
-
-## Configuration
-
-All settings live in [`conf/classless_wildcard.conf.dist`](conf/classless_wildcard.conf.dist)
-and are documented inline. Every name below is prefixed `ClasslessWildcard.` in the file. These
-are the ones a realm usually touches; anything not listed is a detail.
-
-| Setting | Default | Meaning |
-| --- | --- | --- |
-| **the path a character takes** | | |
-| `Enable` | `1` | Master switch |
-| `DefaultMode` | `0` | `0` classless, `1` wildcard |
-| `AllowModeChoice` | `1` | Let players pick. `0` forces `DefaultMode` realm-wide |
-| `ModeChoiceDeadline` | `5` | Level after which the path locks |
-| `Rebirth.Enable` / `Rebirth.CostGold` | `1` / `100` | Path change and Rebirth; the gold price of a change, and the base price of a Rebirth (times rank + 1) |
-| `Rebirth.KillXpPctFirst` / `PerRank` / `Max` | `100` / `50` / `300` | Extra kill and dungeon XP per Rebirth rank, in percent |
-| `Rebirth.OtherXpPctPerRank` / `Max` | `25` / `100` | Extra quest, exploration and battleground XP per rank |
-| `Rebirth.StatPctPerRank` / `Max` | `3` / `15` | Percent on every primary stat per rank |
-| `Rebirth.LegacyAbilityEssence` / `LegacyTalentEssence` | `3` / `2` | Essence a reborn Classless Hero starts with, per rank |
-| **what is in the pool** | | |
-| `IncludeDeathKnight` | `1` | Death Knight abilities and talents, and runes for every Hero |
-| `Forged.Enable` | `1` | The Hero line: 33 abilities and a talent tree of their own |
-| `Elemental.Enable` | `1` | Elemental variants of physical strikes |
-| `Elemental.RarityBump` | `1` | Rarity tiers a variant sits above its base attack |
-| `Elemental.RollWeightPct` | `8` | How often a variant rolls, as a percent of its base's weight |
-| `Elemental.InPool` | `1` | Variants can be rolled and bought. `0` stops new ones only |
-| `Elemental.ShowInBrowser` | `1` | Variants appear in the addon's class menus and the NPC |
-| **classless: what things cost** | | |
-| `Classless.StartingAbilityEssence` | `3` | AE granted at character creation |
-| `Classless.EssenceStartLevel` | `4` | First level that grants AE |
-| `Classless.AbilityEssencePerLevel` | `1` | AE per level after it |
-| `Classless.TalentEssenceStartLevel` | `10` | First level that grants TE |
-| `Classless.TalentEssencePerLevel` | `1` | TE per level |
-| `Classless.AbilityCostByRarity` | `1,2,3,5,8` | AE cost per rarity tier |
-| `Classless.TalentFlatCost` | `0` | Charge rank 1 only, so a whole talent costs 1 TE |
-| **wildcard: how rolls fall** | | |
-| `Wildcard.StartingAbilities` | `4` | Abilities rolled at level 1. Four is the cap |
-| `Wildcard.RollStartLevel` | `10` | Level the roll schedule begins |
-| `Wildcard.AbilityEveryLevels` / `Wildcard.TalentEveryLevels` | `2` / `2` | Roll cadence. With `TalentRollOffset` 1 that is one roll a level, alternating |
-| `Wildcard.RarityWeights` | `100,85,65,45,25` | Roll weight per rarity tier |
-| `Wildcard.FreeRerollBelowLevel` | `10` | Rerolls are free under this level |
-| `Wildcard.TalentUpgradePerScroll` | `20` | Percent per scroll staked on keeping a rerolled talent |
-| `Wildcard.ScrollBuyEnable` | `1` | Buy Scroll button on the addon panel |
-| `Wildcard.ScrollBuyBaseCopper` / `Wildcard.ScrollBuyPerLevelCopper` | `500` / `500` | Scroll price in copper: base plus per-level times level |
-| **resources, stats and gear** | | |
-| `UniversalResources.MaxRage` / `UniversalResources.MaxEnergy` | `1000` / `100` | Off-chassis pool sizes. The pools themselves are not optional |
-| `UniversalStats.SpellPowerPerIntellect` | `0.5` | 1 INT is worth about 1 STR |
-| `UniversalStats.MeleeAPPerAgility` | `1` | Melee attack power per Agility |
-| `UniversalStats.RangedAPPerAgility` | `1` | Ranged AP per Agility, on top of the chassis's own |
-| `Stats.Enable` / `Stats.PointsPerLevel` | `1` / `2` | Primary stat allocation |
-| `FormStarterKits` | `1` | Forms and stances hand over their basic spells free |
-| `WorldDrops.Enable` | `1` | Mobs can drop the classless gear |
-| `WorldDrops.Chance` | `1.0` | Percent per kill, banded to the mob's level |
-| `WorldDrops.RareMultiplier` | `5.0` | Chance multiplier for rares, rare elites and bosses |
-| `WorldDrops.HeirloomChance` | `2.0` | Percent for a heirloom. Rares and bosses only |
-| `NpcEntry` | `990100` | Hero Advancement NPC entry |
-
-### Per-spell and per-talent tuning
-
-Rarity, cost, roll weight and an enable flag can be overridden for any spell or talent through
-the `cw_ability_override` and `cw_talent_override` world tables. Use them to ban a problem
-ability or make one legendary without rebuilding the module. The abilities a form hands over are
-rows in `cw_form_kits`. Restart the worldserver after editing any of them.
-
----
-
-## How Wildcard rolls work
-
-From level 10 you get one roll a level, alternating: an ability on even levels, a talent on odd
-ones. `.wildcard status` reports your live pity count, synergy chance and cooldowns.
-
-**The roll.** Candidates are every ability you do not own whose learn level you have reached,
-minus anything on a reroll cooldown, picked at random and weighted by `RarityWeights`. If nothing
-is legal at your level, the roll drops to the lowest-level entries still available rather than
-the whole library.
-
-**Synergy and pity.** Every ability and talent carries the class mask it came from, and your
-Hero's mask is the union of everything you own. A synergy roll narrows the pool to entries that
-share a class with that mask. The chance is `SynergyBaseChance + (pity x SynergyIncrement)`,
-capped at 100, which on the defaults is 10% rising 10 points per pity point. Pity counts rerolls
-only, never scheduled rolls, and a synergy roll or Rebirth resets it.
-
-**Riding.** Riding is not in the classless library. It never rolls, it cannot be bought with
-essence, and the module neither strips it nor reverts it if a Hero trains it at a trainer. Every
-Hero is given it free as they reach the level for it:
-
-| level | granted |
-| --- | --- |
-| 20 | Apprentice Riding |
-| 40 | Journeyman Riding |
-| 60 | Expert Riding |
-| 68 | Cold Weather Flying |
-| 70 | Artisan Riding |
-
-The schedule is `Riding.Grants`, a list of `spell:level` pairs; set every level to 1 to grant them
-all at character creation. `Riding.Enable = 0` turns the grant off and leaves riding to the
-trainers. Cold Weather Flying is the permission to fly in Northrend rather than a skill rank.
-
-**Runeforging.** The runes are weapon enchants, not class power, so they are not in the library
-and never roll. Every Hero is given Runeforging and the recipes free, on the schedule the Death
-Knight trainer uses:
-
-| level | granted |
-| --- | --- |
-| 55 | Runeforging, Rune of Razorice, Rune of Cinderglacier |
-| 57 | Rune of Spellshattering, Rune of Spellbreaking |
-| 60 | Rune of Lichbane |
-| 63 | Rune of Swordshattering, Rune of Swordbreaking |
-| 70 | Rune of the Fallen Crusader |
-| 72 | Rune of the Stoneskin Gargoyle, Rune of the Nerubian Carapace |
-
-The schedule is `Runeforging.Grants`, in the same `spell:level` form. `Runeforging.Enable = 0`
-leaves runeforging to Death Knights. A Hero forges at any runeforge, on any weapon the rune
-allows.
-
-**Mounts.** Vendor mounts, drops, reputation mounts and quest mounts carry no class mask, are not
-in the library, and behave as they do on any realm.
-
-The five class mounts are library abilities: **Warhorse**, **Charger**, **Felsteed**,
-**Dreadsteed** and the **Acherus Deathcharger** sit on class skill lines with a class mask. They
-are rolled or bought with Ability Essence like any other ability, gated at their learn level (20
-for the basic pair, 40 for the epic pair, 55 for the Deathcharger), and cannot be learned from a
-class trainer, which takes the spell back and refunds the gold.
-
-Companion and vanity pets carry no class mask either, and are untouched.
-
-**Ability rarity.** Rarity sets how often an ability rolls, what a Classless Hero pays for it and
-what colour it is shown in. With no row in `cw_ability_override` it is taken from the strongest of
-three signals:
-
-| signal | measured from | default thresholds |
-| --- | --- | --- |
-| cooldown | the longest wait on any rank of the line, spell or category cooldown | `Rarity.CooldownSeconds` = 30 / 60 / 180 / 600 |
-| talent row | the deepest talent row that teaches the line, where row R costs 5R points | `Rarity.TalentRows` = 2 / 4 / 6 / 8 |
-| learn level | the level of the first rank, as a floor only and capped at rare | `Rarity.LevelFloors` = 25 / 50 |
-
-The pool comes out around 53% common, 14% uncommon, 16% rare, 10% epic and 7% legendary. Fireball,
-Backstab, Kick and Polymorph are common; Divine Shield, Ice Block, Mortal Strike and Bloodlust
-epic; Lay on Hands, Rebirth and the 41-point capstones legendary.
-
-A row in `cw_ability_override` replaces all of it (`rarity` 255 keeps the heuristic). Nothing is
-overridden by default.
-
-An elemental variant takes its base's rarity plus `Elemental.RarityBump` (1 by default), capped at
-legendary, and rolls at `Elemental.RollWeightPct` of that rarity's weight (8% by default,
-since each of the 27 bases gains seven copies). A variant follows its
-base's final rarity, including one set by an override, and a base switched off by an override
-takes its variants with it. A variant with its own row in `cw_ability_override` keeps exactly what
-that row says.
-
-**Talent rolls.** A talent roll picks a talent, then rolls the rank from every rank above the one
-you hold up to the maximum. It is not a step of one: a talent you hold at rank 2 can land on
-rank 5 directly, and a fresh talent can arrive at its top rank. The rank has its own weight
-ladder, `TalentRankWeights`, defaulting to `100,75,50,25,10`, which makes rank 5 roughly a
-twentieth as likely as rank 1. The rank sets the rarity shown, unless the talent's own rarity in
-`cw_talent_override` is higher.
-
-A roll only ever hands over a talent you do **not** already have, and an ability you already own
-is never rolled either. **One roll grants exactly one thing.** Nothing you own is ever replaced or
-taken by a roll: everything is additive.
-
-**Deepening a talent.** Since a roll never raises a rank, the way to deepen a talent is to reroll
-it and stake Reroll Scrolls on the outcome. A talent reroll costs its charge or scroll as usual
-and trades the talent away for a new random one. Each extra scroll staked adds
-`Wildcard.TalentUpgradePerScroll` percentage points (20 by default, on top of
-`TalentUpgradeBaseChance`) to the chance that the talent is **kept and its rank raised** instead.
-Five scrolls is a certainty on the defaults.
-
-If the stake lands, the new rank is drawn from every rank above the one you hold on
-`TalentRankWeights`, so it can jump more than one, and nothing is banned because nothing was given
-up. If it fails, the scrolls are spent and the talent is traded away as normal. A talent already
-at its maximum has no rank to win, so the stake is refused and the reroll goes straight out.
-
-That makes the same button the choice between widening a build and deepening it: reroll for
-something new, or pay to keep what you have and push it further. It is offered by the reroll die
-in **My Build**, by the Hero Advancement NPC, and by `.wildcard rerolltalent <talentId> [scrolls]`.
-
-**Reroll cooldowns.** Rerolling something puts it on a cooldown, counted in rolls, so the reroll
-cannot hand it straight back. The default `SynergyBanRolls` of 25 excludes a pick from the next
-24 rolls, which is 24 levels for a Hero who never rerolls. Set it to about 3 if you only want to
-stop an immediate repeat. If everything you could use is owned or on cooldown, the cooldowns are
-released so you always get something you can cast. Cooldowns are per character and survive
-logging out.
+Roughly 53% of abilities are common, 14% uncommon, 16% rare, 10% epic and 7% legendary. Fireball,
+Backstab, Kick and Polymorph are common; Divine Shield, Ice Block, Mortal Strike and Bloodlust are
+epic; Lay on Hands, Rebirth and the 41-point talents are legendary.
 
 ---
 
 ## Challenge runs
 
-A challenge run is a life lived under one rule, with a fixed number of lives, on either path.
-The path plays exactly as it does off a run: Wildcard rolls and rerolls, Classless buys with
-essence. Only the rule and the lives are added.
+A run is one life under one rule, on either path. Start one from the Rebirth picker at the level
+cap, or on a new Hero up to level 5.
 
-**Starting a run.** At the level cap, from the Rebirth picker: the run is a Rebirth onto the path
-you pick, with your heirlooms. Or on a fresh Hero up to the mode deadline, on the path already
-chosen.
+- **Lives.** Each death costs one. Battlegrounds, arenas and duels are free. At zero, the run ends
+  and you keep everything.
+- **Finish** by reaching the level cap with a life left. Each challenge pays its gold, title and
+  reward ability on the first finish. A repeat pays shards.
+- **Flawless.** Finish without losing a life for the title *the Unbroken* and a third more shards.
+- **Shards.** Paid when any run ends: one per level, two per level past 60. 30 shards buy an extra
+  life for your next run.
 
-**Lives.** A death costs one. Deaths in battlegrounds, arenas and duels cost nothing. Run out and
-the run ends: the rule lifts and the character keeps everything. Each challenge's lives follow how
-often its rule kills: five where the world is turned up, three where the fight changes shape, and
-one only for Hardcore, where the rule is death itself.
-
-**Finishing.** Reach the level cap with a life in hand. A finished run pays the challenge's gold,
-its title and its reward ability, once per challenge.
-
-| Challenge | Lives | Rule | Gold | Title | Reward ability |
-|---|---|---|---|---|---|
-| Nemesis | 5 | Whatever kills you gains five levels, becomes elite and grows. Kill it to take the levels back as XP. | 500 | the Nemesis | Mark of the Nemesis |
-| Elite World | 5 | Every enemy has triple health and double damage. | 750 | Bane of Giants | Giantsbane |
-| Legion | 4 | Every enemy you engage calls two more of its kind. | 650 | the Legionbreaker | One Against Many |
-| Pursued | 3 | A hunter two levels above you arrives every 15 to 30 minutes of played time, at random, and tracks you until one of you dies. | 600 | the Hunted | Turnabout |
-| Hourglass | 3 | Gain each level in time or lose a life: 20 minutes below level 20, 30 up to level 60, 45 after. | 500 | the Swift | Rewind |
-| Glass | 3 | Half health, a third more damage. | 400 | the Unshattered | Shatterpoint |
-| Spiteful | 3 | Enemies reflect a fifth of your damage back at you. | 450 | the Scarred | Spite Mirror |
-| Bloodpact | 3 | Healing is halved, and every hit heals you for 15% of its damage. | 450 | the Bloodthirsty | Sanguine Pact |
-| Berserker | 3 | Double damage and no slows below 35% health, 30% less damage above 75%. | 450 | the Berserker | Brink |
-| Ironman | 3 | White gear only. | 500 | the Ironclad | Ironbound |
-| Big Game Hunter | 3 | Normal enemies give no XP. Elites and bosses give full XP, quests give double. | 400 | the Big Game Hunter | Trophy Hunt |
-| Hardcore | 1 | A death ends the run. | 1000 | the Deathless | Last Breath |
-
-**On every run.**
-
-- **Flawless.** Finishing without losing a life also earns the title "the Unbroken" and a third
-  more shards.
-- **Shards.** Paid whenever a run ends, finished or not: one per level reached, two per level past
-  60. Thirty shards buy one extra life for your next run, on the challenge page.
+| Challenge       | Lives | Rule                                                                                       | Gold | Title              | Reward           |
+| --------------- | ----- | ------------------------------------------------------------------------------------------ | ---- | ------------------ | ---------------- |
+| Nemesis         | 5     | Your killer gains five levels, becomes elite and grows. Kill it for bonus XP.             | 500  | the Nemesis        | Mark of the Nemesis |
+| Elite World     | 5     | Enemies have triple health and double damage.                                              | 750  | Bane of Giants     | Giantsbane       |
+| Legion          | 4     | Each enemy you engage calls two more.                                                      | 650  | the Legionbreaker  | One Against Many |
+| Pursued         | 3     | Every 15 to 30 minutes, a hunter two levels above you tracks you until one of you dies.     | 600  | the Hunted         | Turnabout        |
+| Hourglass       | 3     | Level up in time or lose a life: 20 min below 20, 30 min to 60, 45 min after.              | 500  | the Swift          | Rewind           |
+| Glass           | 3     | Half health, a third more damage.                                                          | 400  | the Unshattered    | Shatterpoint     |
+| Spiteful        | 3     | Enemies reflect a fifth of your damage.                                                    | 450  | the Scarred        | Spite Mirror     |
+| Bloodpact       | 3     | Healing halved; every hit heals you for 15% of its damage.                                 | 450  | the Bloodthirsty   | Sanguine Pact    |
+| Berserker       | 3     | Below 35% health: double damage, and your hits clear slows. Above 75%: 30% less damage.     | 450  | the Berserker      | Brink            |
+| Ironman         | 3     | White and grey gear only.                                                                  | 500  | the Ironclad       | Ironbound        |
+| Big Game Hunter | 3     | Normal enemies give no XP. Elites and bosses give full XP, quests give double.             | 400  | the Big Game Hunter | Trophy Hunt     |
+| Hardcore        | 1     | One death ends the run.                                                                    | 1000 | the Deathless      | Last Breath      |
 
 ### Reward abilities
 
-Each reward plays like the rule it was earned under, and none can be rolled, bought or browsed. It
-is granted as an heirloom: usable from level 1, carried through every Rebirth, never rerolled.
+Granted as heirlooms: usable from level 1, kept through every Rebirth, never rerolled. They cannot
+be rolled or bought.
 
-| Ability | Earned from | What it does |
-|---|---|---|
-| Mark of the Nemesis | Nemesis | A marked enemy takes 15% more damage from you. If it dies marked, you regain 20% of your health and mana and the mark leaps to the nearest enemy. |
-| Giantsbane | Elite World | A 120% weapon strike, plus 1% for every 1% of maximum health the target has over you, up to double. |
-| One Against Many | Legion | For 10 seconds, 5% more damage and 5% less damage taken for every enemy within 10 yards, up to five. |
-| Turnabout | Pursued | For 8 seconds, the next enemy to hit you is answered: you appear behind it and stun it for 4 seconds, and hit it 50% harder while it is stunned. |
-| Rewind | Hourglass | After 6 seconds, or when you cancel it, you return to where you stood with the health, mana, rage and energy you had. |
-| Shatterpoint | Glass | Spends 30% of your current health. The ice shard adds three times the health spent and shatters into every enemy within 8 yards for half. |
-| Spite Mirror | Spiteful | For 6 seconds, a third of all damage you take is sent back to whoever dealt it as Shadow damage. |
-| Sanguine Pact | Bloodpact | For 10 seconds, hits heal you for 30% of their damage. Healing past full becomes a shield of up to 20% of your maximum health. |
-| Brink | Berserker | For 8 seconds no blow can kill you, and you deal 2% more damage for every 1% of health you are missing, up to double. |
-| Ironbound | Ironman | For 10 seconds, armor equal to half your maximum health, and immunity to stuns. |
-| Trophy Hunt | Big Game Hunter | Marks an elite, rare or boss enemy. If it dies marked you take a trophy: 5% more damage and healing for 5 minutes, stacking three times. |
-| Last Breath | Hardcore | Passive. Once every 5 minutes a killing blow leaves you at 1 health instead, and for 6 seconds every hit you land heals you for its full damage. |
+| Ability             | What it does |
+| ------------------- | ------------ |
+| Mark of the Nemesis | Marked enemy takes 15% more damage from you. If it dies marked, you regain 20% health and mana and the mark jumps to the nearest enemy. |
+| Giantsbane          | 120% weapon strike, +1% per 1% of max health the target has over you, up to double. |
+| One Against Many    | 10 sec: 5% more damage dealt and 5% less taken per enemy within 10 yards, up to five. |
+| Turnabout           | 8 sec: the next enemy to hit you is teleported behind, stunned for 4 sec, and takes 50% more damage from you while stunned. |
+| Rewind              | After 6 sec, or on cancel, return to where you stood with the health, mana, rage and energy you had. |
+| Shatterpoint        | Spend 30% of current health. The ice shard adds three times that, and shatters into enemies within 8 yards for half. |
+| Spite Mirror        | 6 sec: a third of damage taken is returned as Shadow damage. |
+| Sanguine Pact       | 10 sec: hits heal you for 30% of their damage. Overhealing becomes a shield up to 20% of max health. |
+| Brink               | 8 sec: you cannot die, and deal 2% more damage per 1% missing health, up to double. |
+| Ironbound           | 10 sec: armour equal to half your max health, and stun immunity. |
+| Trophy Hunt         | Mark an elite, rare or boss. If it dies marked: 5% more damage and healing for 5 min, stacks three times. |
+| Last Breath         | Passive. Once every 5 min a killing blow leaves you at 1 health, and for 6 sec your hits heal you for their full damage. |
 
-### Where it lives
-
-- **The challenges** are code: `CHALLENGES` in `src/ClasslessMgr.cpp`, with each one's lives,
-  gold, title and reward, and the 30-shard price of a life. The rules themselves are in
-  `src/ClasslessChallenges.cpp`.
-- **The reward abilities** are forged lines flagged `reward` in
-  `data/sql/generators/gen_forged_spells.py`: loaded like any other so a run can hand them over,
-  and kept out of the roll pool, the essence shop and the browser. Their scripts are in the
-  challenge-run rewards section of `src/ClasslessForgedScripts.cpp`.
-- **The titles** are the module's own: `TITLES` in the generator writes them to
-  `chartitles_dbc` for the server, and the client patch appends them to CharTitles.dbc on bits
-  143 and up, past everything the stock table ships.
+---
 
 ## The Hero line
 
-Thirty-three abilities that belong to no class, and a talent tree of their own. They are not
-reused Blizzard spells: they are built by this module, and they file under a **Hero** tab in the
-spellbook that no class has. A Classless Hero buys them with Ability Essence, Wildcard rolls
-them, they carry rarity like anything else, and their ranks arrive with level.
-
-Some of what is in there:
+Thirty-three abilities that belong to no class, in their own **Hero** spellbook tab. Bought,
+rolled and ranked like any other ability.
 
 | Ability | What it does |
 | ------- | ------------ |
-| **Makeshift Strike** | A weapon strike that gives back a little mana, rage and energy |
-| **Second Nature** | Restores a percentage of your mana, rage and energy at once |
-| **Reclaimed Sentry** | Deploys a salvaged turret that fires on what comes near and strips its armor |
-| **Venom Beetle** | A pet that learns a second and third poison as you level, and a healing one from a talent |
-| **Cairn**, **Waystone**, **Signal Fire**, **Rally Point** | Markers planted beside you that help allies and hinder enemies around them |
+| **Makeshift Strike** | Weapon strike that returns a little mana and rage |
+| **Second Nature** | Restores a percentage of your mana, rage and energy |
+| **Reclaimed Sentry** | A turret that fires on nearby enemies and strips armour |
+| **Venom Beetle** | A pet that learns more poisons as you level. It has a pet bar and stays through logout |
+| **Cairn**, **Waystone**, **Signal Fire**, **Rally Point** | Markers that help allies and hinder enemies near them |
 | **Quickening** | Spends all your rage and energy for attack and casting speed |
-| **Repertoire** | Pays you for using a different ability each time instead of the same one twice |
-| **Wildcard Surge** | Arcane damage that grows with how many Epic and Legendary abilities you know |
-| **Antipode Blast** | Fire and Frost in one cast, and the target keeps burning |
-| **Hurl**, **Wide Arc**, **Crossdraw**, **Ricochet Shot** | Throws, sweeps, a spell-then-strike combo, and a shot that bounces |
+| **Repertoire** | Rewards using a different ability each time |
+| **Wildcard Surge** | Arcane damage that grows with your Epic and Legendary abilities |
+| **Antipode Blast** | Fire and Frost in one cast, with a burn |
+| **Hurl**, **Wide Arc**, **Crossdraw**, **Ricochet Shot** | A throw, a sweep, a spell-then-strike combo, and a bouncing shot |
 
-### The Hero talent tree
+### Hero talent tree
 
-Twenty-three talents in four columns, bought and rolled exactly like a class tree. Half of them
-change what an ability does rather than what it adds up to:
+Twenty-three talents in four columns. Highlights:
 
-| Talent | What it changes |
-| ------ | --------------- |
-| **Improvised Arsenal** | Makeshift Strike cuts Hurl's cooldown, so the cheap swing pays for the expensive throw |
-| **Field Repairs** | Second Nature and Adrenaline also break snares and roots |
-| **Last Reserve** | Ward Off refunds its cooldown when the shield is absorbed to the last point |
-| **Opportunist** | Pocket Sand, Vertigo and Sinkhole pay energy for every enemy they catch |
-| **Weave** | Every few Hero abilities, one refunds its cost, as long as you keep casting them |
-| **Field Study** | Emberfeed refunds its cost against a target already bleeding from Bleed Over |
-| **Venom Handler** | When an enemy dies with your Venom Beetle's poison on it, the beetle plants it on enemies near the body |
-| **Medicinal Venom** | Your Venom Beetle learns Healing Spit and lands it on whoever in your party is hurt worst |
-| **Broad Strokes** | Overflow's spill reaches you too, however far away its target is |
-| **Overclocked** | Your Reclaimed Sentry fires twice as often |
+| Talent | Effect |
+| ------ | ------ |
+| **Two Schools** | More damage when you hit in a different school from your last hit |
+| **Jack of All Trades** | More damage and healing for every three classes you own an ability from |
+| **Improvised Arsenal** | Makeshift Strike lowers Hurl's cooldown |
+| **Field Repairs** | Second Nature and Adrenaline break snares and roots |
+| **Last Reserve** | Ward Off refunds part of its cooldown when its shield is fully absorbed |
+| **Opportunist** | Fistful of Grit, Vertigo and Sinkhole give energy per enemy caught |
+| **Weave** | Every few Hero abilities, one is free while you keep casting them |
+| **Field Study** | Emberfeed refunds part of its cost against a target bleeding from Bleed Over |
+| **Venom Handler** | Your beetle's poison spreads from enemies that die with it |
+| **Medicinal Venom** | Your beetle heals the most hurt party member |
+| **Broad Strokes** | Overflow's spill always reaches you |
+| **Overclocked** | Reclaimed Sentry fires twice as often |
 | **Ricochet Chamber** | Ricochet Shot bounces again |
-| **Two Schools** | Damage in a different school from your last hit is increased |
-| **Jack of All Trades** | Damage and healing rise for every three classes you own an ability from |
 
-The last two are the reason the tree exists: neither is worth a point to a build that stays in
-one class. The rest of the tree is ordinary and useful, sharpening what you place (*Scavenger's
-Eye*, *Wider Net*, *Quick Deploy*), what you throw (*Sharpened*, *Long Reach*) and what your
-reserves cost (*Thrift*, *Overdraw*).
-
-The Hero abilities and the tree both need the client patch for their names, tooltips and icons.
-The startup log prints the generation id the server loaded and the client installer prints the id
-it applied; if the two disagree, reinstall the patch. `Forged.Enable` turns the whole line off,
-which is only safe before anyone has been given one.
+The rest improve placed markers (*Scavenger's Eye*, *Wider Net*, *Quick Deploy*), throws
+(*Sharpened*, *Long Reach*) and resource costs (*Thrift*, *Overdraw*).
 
 ---
 
@@ -820,109 +351,250 @@ which is only safe before anyone has been given one.
 
 <img src="docs/elemental_variants.webp" alt="Backstab's icon followed by its seven elemental variants, each badged along the bottom edge for Fire, Frost, Earth, Poison, Arcane, Shadow and Holy" width="72%">
 
-<em>A variant keeps its base attack's icon and adds a badge for the element.<br>
-Left to right: the base attack, then Fire, Frost, Earth, Poison, Arcane, Shadow, Holy.</em>
+<em>Left to right: the base attack, then Fire, Frost, Earth, Poison, Arcane, Shadow, Holy.</em>
 
 </div>
 
-Twenty-seven physical weapon attacks exist in seven elemental forms each, every rank included:
-**Fiery**, **Frozen**, **Earthen**, **Venomous**, **Arcane**, **Shadow** and **Holy**. A Fiery
-Sinister Strike has the same energy cost, swing, combo point and rank chain as Sinister Strike.
+Twenty-seven weapon attacks come in seven elemental forms each. A variant keeps its base's cost,
+cooldown, combo points and ranks, and deals its damage as the element: armour does not reduce it,
+resistance does, and bonuses to that school apply. It keeps 85% of the weapon damage (75% for
+Holy) and adds an effect:
 
-What changes is the damage, and what the strike does on top of it. The damage is dealt as the
-element instead of Physical, so armour does not reduce it and resistance does, and anything that
-increases your Fire damage increases a Fiery strike. The attack keeps 85% of its weapon
-multiplier (75% for Holy, which almost nothing resists), and the rest of its power goes into the
-element:
+| | Element | Effect |
+| :-: | ------- | ------ |
+| <img src="docs/badges/fire.png" alt="" width="20"> | Fire | Burns over 6 sec |
+| <img src="docs/badges/frost.png" alt="" width="20"> | Frost | 30% movement slow for 6 sec |
+| <img src="docs/badges/earth.png" alt="" width="20"> | Earth | 10% attack speed slow for 6 sec |
+| <img src="docs/badges/poison.png" alt="" width="20"> | Poison | Poisons over 12 sec |
+| <img src="docs/badges/arcane.png" alt="" width="20"> | Arcane | An extra hit |
+| <img src="docs/badges/shadow.png" alt="" width="20"> | Shadow | 20% healing reduction for 6 sec |
+| <img src="docs/badges/holy.png" alt="" width="20"> | Holy | Heals you for 25% of the damage dealt |
 
-| | Element | What the element does |
-| :-: | ------- | ------------------- |
-| <img src="docs/badges/fire.png" alt="" width="20"> | Fire | Burns the target over 6 seconds |
-| <img src="docs/badges/frost.png" alt="" width="20"> | Frost | Slows the target's movement by 30% for 6 seconds |
-| <img src="docs/badges/earth.png" alt="" width="20"> | Earth | Slows the target's attacks by 10% for 6 seconds |
-| <img src="docs/badges/poison.png" alt="" width="20"> | Poison | Poisons the target over 12 seconds |
-| <img src="docs/badges/arcane.png" alt="" width="20"> | Arcane | An extra hit, half again as large as any other element's |
-| <img src="docs/badges/shadow.png" alt="" width="20"> | Shadow | Reduces healing the target receives by 20% for 6 seconds |
-| <img src="docs/badges/holy.png" alt="" width="20"> | Holy | Heals you for 25% of the damage the strike deals |
+Fire, Poison, Arcane and Holy scale with spell power as well as attack power. Overpower, Maim and
+Mangle, plus Shadow Mortal Strike and Shadow Aimed Shot, get an extra hit of their element instead
+of its effect.
 
-Fire, Poison and Arcane are damage; Frost, Earth and Shadow trade that damage for control; Holy
-trades it for sustain. Fire and Poison deal half again what Arcane's hit does, spread over their
-ticks, and like Arcane they grow with your spell power, so those four reward Intellect as well as
-attack power.
-
-A handful of attacks cannot take their element's effect, because a spell carries one duration and
-theirs is already spoken for: Overpower's lasts a millisecond, Maim's is bought with combo points
-and Mangle's is a minute. Those get Arcane's extra hit instead, and so do Shadow's Mortal Strike
-and Aimed Shot, which already cut healing on their own. Seventy-five of the 1,085 variants fall
-back this way. Mocking Blow and Deadly Throw have no variants at all.
-
-The attacks with variants: Sinister Strike, Backstab, Ambush, Hemorrhage, Heroic Strike, Cleave,
+**Attacks with variants:** Sinister Strike, Backstab, Ambush, Hemorrhage, Heroic Strike, Cleave,
 Whirlwind, Overpower, Mortal Strike, Devastate, Raptor Strike, Multi-Shot, Aimed Shot, Kill Shot,
-Claw, Shred, Ravage, Maul, Maim, Swipe (Cat), Mangle (Cat), Mangle (Bear), Fan of Knives and,
-when Death Knight abilities are enabled, Blood Strike, Plague Strike, Obliterate and Death
-Strike.
+Claw, Shred, Ravage, Maul, Maim, Swipe (Cat), Mangle (Cat), Mangle (Bear), Fan of Knives, and with
+Death Knight abilities enabled, Blood Strike, Plague Strike, Obliterate and Death Strike.
 
-Variants are obtained like any other ability, one rarity tier above the attack they come from,
-and roll less often so they do not crowd the pool. They file under the base attack's spellbook
-tab, and owning a base attack and one of its variants together is allowed. The `Elemental`
-settings turn them off, keep them out of rolls and purchase, or hide them from the menus.
+Variants are one rarity above their base, roll less often, and file under the base attack's
+spellbook tab. You can own a base attack and its variants together.
 
-The client patch adds their names, tooltips and icons. The badged icons need Python's Pillow
-library, which the installer adds itself. Without it a variant shows its base attack's icon.
+---
+
+## Commands
+
+### `.classless`
+
+| Command | What it does |
+| ------- | ------------ |
+| `.classless status` | Path, owned abilities and talents, essence, reroll charges, cooldowns |
+| `.classless mode classless\|wildcard` | Choose your path, before level 5 |
+| `.classless learn <spellId>` | Buy an ability |
+| `.classless unlearn <spellId>` | Drop an ability for a refund |
+| `.classless talent <talentId>` | Buy the next rank of a talent |
+| `.classless respec` | Unlearn everything, free, full refund |
+| `.classless stats` | Show stat allocation and remaining points |
+| `.classless stat str\|agi\|sta\|int\|spi <points>` | Allocate stat points |
+| `.classless bar mana\|rage\|energy\|default` | Choose which resource the main bar shows |
+| `.classless archetypes` | List archetypes and their IDs |
+| `.classless archetype <id>` | Follow an archetype. `0` stops |
+| `.classless path classless\|wildcard confirm` | Change path, for gold. Without `confirm`, says what it will do |
+| `.classless rebirth classless\|wildcard [ability IDs] confirm` | Rebirth at the level cap, carrying the listed heirloom abilities |
+| `.classless challenges` | List challenge runs |
+| `.classless run <id> classless\|wildcard [ability IDs]` | Start a challenge run. At the level cap it is a Rebirth and needs `confirm` |
+
+### `.wildcard`
+
+| Command | What it does |
+| ------- | ------------ |
+| `.wildcard status` | Same as `.classless status` |
+| `.wildcard reroll <spellId>` | Reroll an ability |
+| `.wildcard rerolltalent <talentId> [scrolls]` | Reroll a talent, optionally staking scrolls to raise it instead |
+| `.wildcard lock <spellId>` | Toggle an ability's padlock |
+
+### Addon
+
+| Command | What it does |
+| ------- | ------------ |
+| `/cw` or `/classless` | Open the Hero Advancement panel |
+| `/cw help` | Open the guide |
+| `/cwbars` | Toggle the resource mini-bars |
+| `/cwbars show \| hide` | Show or hide the mini-bars |
+| `/cwbars lock \| unlock` | Pin or unpin the mini-bars |
+| `/cwbars reset` | Move the mini-bars back under the player frame |
+
+The panel opens with `N`, or the first free key of `J`, `Y`, `G`, `K` if `N` is taken. Rebind
+under **Key Bindings > ClasslessWildcard**. The panel's **Settings** button toggles each
+mini-bar row.
+
+---
+
+## Installation
+
+### Requirements
+
+- An AzerothCore **master** build you can recompile. No core edits needed.
+- A **3.3.5a** client for every player, with **Python 3.7+** for the installer.
+- Optional: `mod-playerbots`, see [Playerbots](#playerbots).
+
+### Server
+
+1. Clone into `modules/`:
+
+   ```bash
+   git clone https://github.com/DustinHendrickson/mod-classless-wildcard.git azerothcore-wotlk/modules/mod-classless-wildcard
+   ```
+
+2. Re-run CMake and rebuild the worldserver.
+3. Start the worldserver. The DB updater applies the module SQL. These two lines in the log are
+   expected and mean the module's replacement scripts are in place:
+
+   ```
+   Script named 'spell_dru_frenzied_regeneration' is not assigned in the database.
+   Script named 'spell_pal_judgement_of_wisdom_mana' is not assigned in the database.
+   ```
+
+4. Copy `conf/classless_wildcard.conf.dist` next to `worldserver.conf` as
+   `classless_wildcard.conf` and edit it.
+
+The SQL writes to core world tables (items, quests, creation info, creatures, vendors and the
+spell and talent DBC tables). Original values are backed up first and restored by
+[uninstall](#uninstall).
+
+> If you installed before September 2026, run
+> `SELECT * FROM acore_world.updates WHERE name = 'cw_classless_items.sql';`. If it returns a
+> row, your `item_template` class masks have no backup and only your own backup restores them.
+
+### Client (every player)
+
+Give players the `client-patch` and `client-addon` folders. With WoW **closed**, they run
+`install.bat` on Windows or `./install.sh "/path/to/WoW"` on Linux and macOS. See
+[`client-patch/README.md`](client-patch/README.md).
+
+It installs the addon, shows every class as **Hero**, replaces the class picker with one Hero
+entry per race, adds names, tooltips and icons for the new spells and items, clears the client
+cache, and patches `Wow.exe` to allow custom interface files (backed up first). Your original
+game archives are not edited. `--uninstall` returns the client to stock.
+
+Client and server must come from the same version of the module. After a server update, players
+re-run the installer. If an item shows a question mark or a ranged weapon says "Out of range",
+delete the `Cache` folder in the WoW directory and log back in.
+
+### Playerbots
+
+Bots keep their real class, abilities, talents and gear rules, and show as Hero. A bot is any
+character on an account starting with a prefix in `ExemptAccountPrefixes` (default `rndbot`). If
+your bot accounts use another prefix, add it, or the bots become Heroes and lose their abilities.
+
+### Difficulty
+
+Heroes are stronger than classes, and some combinations are much stronger. The module does not
+change creature tuning. To make the world harder, raise creature rates in `worldserver.conf`:
+
+```
+Rate.Creature.Normal.HP                = 1.5
+Rate.Creature.Normal.Damage            = 1.3
+Rate.Creature.Normal.SpellDamage       = 1.3
+Rate.Creature.Elite.Elite.HP           = 1.5
+Rate.Creature.Elite.Elite.Damage       = 1.3
+Rate.Creature.Elite.Elite.SpellDamage  = 1.3
+```
+
+The same rates exist for `RARE`, `RAREELITE` and `WORLDBOSS`. Raise damage along with health.
+
+---
+
+## Configuration
+
+All settings are in [`conf/classless_wildcard.conf.dist`](conf/classless_wildcard.conf.dist),
+documented inline and prefixed `ClasslessWildcard.`. The common ones:
+
+| Setting | Default | Meaning |
+| --- | --- | --- |
+| **Paths** | | |
+| `Enable` | `1` | Master switch |
+| `DefaultMode` | `0` | `0` Classless, `1` Wildcard |
+| `AllowModeChoice` | `1` | `0` forces `DefaultMode` for everyone |
+| `ModeChoiceDeadline` | `5` | Level the path locks at |
+| `Rebirth.Enable` / `Rebirth.CostGold` | `1` / `100` | Path change price; Rebirth costs this times (rank + 1) |
+| `Rebirth.KillXpPctFirst` / `PerRank` / `Max` | `100` / `50` / `300` | Kill XP bonus per Rebirth rank, % |
+| `Rebirth.OtherXpPctPerRank` / `Max` | `25` / `100` | Quest, exploration and battleground XP bonus per rank, % |
+| `Rebirth.StatPctPerRank` / `Max` | `3` / `15` | Primary stat bonus per rank, % |
+| `Rebirth.LegacyAbilityEssence` / `LegacyTalentEssence` | `3` / `2` | Starting essence per rank, Classless |
+| **Pool** | | |
+| `IncludeDeathKnight` | `1` | Death Knight abilities, talents and runes |
+| `Forged.Enable` | `1` | The Hero line. Only turn off before anyone has one |
+| `Elemental.Enable` | `1` | Elemental variants |
+| `Elemental.RarityBump` | `1` | Rarity tiers above the base attack |
+| `Elemental.RollWeightPct` | `8` | Roll weight, % of the base's |
+| `Elemental.InPool` | `1` | `0` stops new variants being rolled or bought |
+| `Elemental.ShowInBrowser` | `1` | Show variants in the addon and NPC |
+| **Classless** | | |
+| `Classless.StartingAbilityEssence` | `3` | AE at creation |
+| `Classless.EssenceStartLevel` / `AbilityEssencePerLevel` | `4` / `1` | AE per level, from this level |
+| `Classless.TalentEssenceStartLevel` / `TalentEssencePerLevel` | `10` / `1` | TE per level, from this level |
+| `Classless.AbilityCostByRarity` | `1,2,3,5,8` | AE cost per rarity |
+| `Classless.TalentFlatCost` | `0` | `1` charges rank 1 only |
+| **Wildcard** | | |
+| `Wildcard.StartingAbilities` | `4` | Abilities at level 1 (max 4) |
+| `Wildcard.RollStartLevel` | `10` | First roll level |
+| `Wildcard.AbilityEveryLevels` / `TalentEveryLevels` | `2` / `2` | Roll cadence |
+| `Wildcard.RarityWeights` | `100,85,65,45,25` | Roll weight per rarity |
+| `Wildcard.TalentRankWeights` | `100,75,50,25,10` | Roll weight per talent rank |
+| `Wildcard.FreeRerollBelowLevel` | `10` | Rerolls are free below this level |
+| `Wildcard.SynergyBanRolls` | `25` | Reroll cooldown, in rolls |
+| `Wildcard.TalentUpgradePerScroll` | `20` | % per staked scroll |
+| `Wildcard.ScrollBuyBaseCopper` / `ScrollBuyPerLevelCopper` | `500` / `500` | Scroll price: base + per level × level |
+| **Resources, stats, gear** | | |
+| `UniversalResources.MaxRage` / `MaxEnergy` | `1000` / `100` | Pool sizes |
+| `UniversalStats.SpellPowerPerIntellect` | `0.5` | Spell power per Intellect |
+| `UniversalStats.MeleeAPPerAgility` / `RangedAPPerAgility` | `1` / `1` | Attack power per Agility |
+| `Stats.Enable` / `Stats.PointsPerLevel` | `1` / `2` | Stat allocation |
+| `Riding.Enable` / `Riding.Grants` | `1` | Free riding, as `spell:level` pairs |
+| `Runeforging.Enable` / `Runeforging.Grants` | `1` | Free runeforging, as `spell:level` pairs |
+| `WorldDrops.Enable` / `Chance` | `1` / `1.0` | Classless gear drops, % per kill |
+| `WorldDrops.RareMultiplier` | `5.0` | Drop multiplier for rares and bosses |
+| `WorldDrops.HeirloomChance` | `2.0` | Heirloom %, rares and bosses only |
+| `NpcEntry` | `990100` | Hero Advancement NPC entry |
+
+Any spell or talent's rarity, cost, roll weight and availability can be overridden in the
+`cw_ability_override` and `cw_talent_override` world tables. Restart after editing.
 
 ---
 
 ## Uninstall
 
-Most of what the module does is additive: its own tables, items, NPC and runtime hooks. After the
-module's SQL is removed, the core's own login validation cleans up cross-class spells.
-
-The base class conversion is the exception. Characters keep the base class after uninstalling,
-because their original class was never stored. Restore a pre-install backup to get it back.
+Characters keep the Hero base class after uninstalling. Restore a pre-install backup to get their
+original classes back.
 
 <details>
-<summary><b>Step-by-step revert</b></summary>
+<summary><b>Steps</b></summary>
 
 <br>
 
-Do this with the worldserver stopped:
+With the worldserver stopped:
 
-1. **Back up** your world and characters databases.
-2. **Remove the code.** Delete `modules/mod-classless-wildcard`, re-run CMake, rebuild the
-   worldserver, and delete `classless_wildcard.conf`.
-3. **World database.** Run `data/sql/uninstall/cw_uninstall_world.sql` by hand. It drops the
-   module's world tables, the scrolls, the item catalogue, the NPC and the custom
-   `skillraceclassinfo_dbc` rows, restores quest class requirements, and clears the module's
-   DB-updater bookkeeping.
-4. **Characters database.** Run `data/sql/uninstall/cw_uninstall_characters.sql`. It drops the
-   `cw_char_*` tables and removes the taught proficiency spells.
-5. **Start the server.** The core's login validation (`ValidateSkillLearnedBySpells`, on by
-   default) deletes every spell and skill that is invalid for a character's real class the next
-   time they log in. Talent points return and the power bar reverts to the class default.
-6. **Client side.** Players run the installer with `--uninstall`, which removes the patch
-   archives and the addon, clears the cache, and restores `Wow.exe`.
+1. Back up the world and characters databases.
+2. Delete `modules/mod-classless-wildcard` and `classless_wildcard.conf`, re-run CMake and rebuild.
+3. Run `data/sql/uninstall/cw_uninstall_world.sql`.
+4. Run `data/sql/uninstall/cw_uninstall_characters.sql`.
+5. Start the server. On next login, each character loses spells and skills invalid for their
+   class, and talent points return.
+6. Players run the client installer with `--uninstall`.
 
-**What does not revert automatically:**
+**Left behind:**
 
-- **Item class masks cleared by the OLD opt-in `manual/cw_classless_items.sql`**, if you ran that
-  version. It kept no backup, so `cw_item_class_backup` has nothing to restore for those rows:
-  re-import `item_template` from the AzerothCore base SQL for your revision. Masks cleared by the
-  current `cw_world_item_classes.sql` are restored automatically.
-- **The generated spell rows.** The Hero line and the elemental variants stay behind in
-  `spell_dbc`, `spell_ranks`, `talent_dbc`, `talenttab_dbc`, `skillline_dbc` and
-  `spell_script_names`. Nothing grants them once the module is gone and the login validation
-  takes back any a character still holds, so they are inert. To clear them out anyway, delete
-  ids `950000`-`957167` and `960000`-`962047` from the spell tables, `9000`-`9022` from
-  `talent_dbc`, and `990` from `talenttab_dbc` and `skillline_dbc`.
-- **Same-class spells.** Abilities that are legal for the base class survive validation. They are
-  harmless, and a GM can `.unlearn` them.
-- **Characters created while the module was active** received the Hero starter kit instead of
-  class starter spells and gear. They relearn missing spells at a class trainer as normal.
-- **Every Hero is effectively respecced** when their granted abilities disappear. Tell your
-  players before you revert.
+- The Hero line and elemental variant rows in the spell tables. They are inert. To remove them,
+  delete ids `950000`-`957167` and `960000`-`962047` from the spell tables, `9000`-`9022` from
+  `talent_dbc`, `990` from `talenttab_dbc` and `skillline_dbc`, and `180`-`197` from
+  `chartitles_dbc`.
+- Spells legal for the base class. A GM can `.unlearn` them.
+- Characters created under the module have no class starter spells; class trainers teach them.
 
-To reinstall later, the uninstall scripts clear the DB-updater bookkeeping, so the module SQL
-applies again on the next startup.
+Uninstalling removes every Hero's build. Tell your players first.
 
 </details>
 
@@ -930,16 +602,15 @@ applies again on the next startup.
 
 ## Contributing
 
-Issues and pull requests are welcome. When reporting a bug, include your AzerothCore revision,
-the module commit, how your `classless_wildcard.conf` differs from the `.dist` file, and the
-worldserver log around the failure.
+Issues and pull requests are welcome. With a bug report, include your AzerothCore revision, the
+module commit, your `classless_wildcard.conf` changes, and the worldserver log around the failure.
 
 ## License
 
-GNU General Public License v2 or later, matching AzerothCore. Full text in [`LICENSE`](LICENSE).
+GNU General Public License v2 or later, matching AzerothCore. See [`LICENSE`](LICENSE).
 
 ## Credits
 
-Mechanics are modeled on the published Season 9/10 rules of
-[Project Ascension](https://ascension.gg/)'s classless and Wildcard realms. This project is
-unaffiliated with Project Ascension and with Blizzard Entertainment.
+Mechanics are modeled on the Season 9/10 rules of [Project Ascension](https://ascension.gg/)'s
+classless and Wildcard realms. This project is unaffiliated with Project Ascension and Blizzard
+Entertainment.

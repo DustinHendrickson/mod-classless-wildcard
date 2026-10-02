@@ -1,5 +1,5 @@
 -- mod-classless-wildcard: CHARACTERS DB uninstall.
--- NOT auto-applied — run by hand, with the worldserver STOPPED, only when
+-- NOT auto-applied. Run it by hand, with the worldserver STOPPED, only when
 -- removing the module. See "Uninstall / revert" in README.md.
 
 -- Remove proficiency spells the module taught (weapon/armor/dual wield/parry).

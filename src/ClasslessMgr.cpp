@@ -43,7 +43,7 @@ using namespace ClasslessWildcard;
 
 namespace
 {
-    constexpr char MSG_PREFIX[] = "|cff00ccff[Classless]|r ";
+    constexpr char MSG_PREFIX[] = "|cff00ccff[Hero]|r ";
 
     std::string SpellName(uint32 spellId)
     {
@@ -1944,8 +1944,10 @@ bool ClasslessMgr::ApplyArchetype(Player* player, uint32 archetypeId, std::strin
     else
     {
         std::vector<std::pair<uint32, GrantSource>> owned;
+        // Heirlooms stay, as they do through a respec.
         for (auto const& [firstSpell, o] : st.abilities)
-            owned.emplace_back(firstSpell, o.source);
+            if (o.source != GrantSource::Heirloom)
+                owned.emplace_back(firstSpell, o.source);
         for (auto const& [firstSpell, source] : owned)
             if (AbilityEntry const* e = GetAbility(firstSpell))
             {
@@ -2008,6 +2010,9 @@ ClasslessMgr::FollowResult ClasslessMgr::FollowArchetype(Player* player)
     if (itr == _archetypes.end())
         return out;
     Archetype const& arch = itr->second;
+
+    // Each purchase stays out of chat; the callers print one summary.
+    GrantGuard quiet(_revealSuppress);
 
     uint8 level = player->GetLevel();
     for (size_t i = ArchetypeCursor(st, arch); i < arch.abilities.size(); ++i)
@@ -2082,7 +2087,7 @@ bool ClasslessMgr::SwitchPath(Player* player, Mode target, std::string* err)
     CharState& st = GetState(player);
     if (!cfg.rebirthEnable)
     {
-        if (err) *err = "Rebirth is disabled on this realm.";
+        if (err) *err = "Changing path is disabled on this realm.";
         return false;
     }
     if (target != Mode::Classless && target != Mode::Wildcard)
@@ -2090,11 +2095,29 @@ bool ClasslessMgr::SwitchPath(Player* player, Mode target, std::string* err)
         if (err) *err = "Choose a valid path: classless or wildcard.";
         return false;
     }
+    if (st.exempt)
+    {
+        if (err) *err = "This character is not a Hero.";
+        return false;
+    }
+    if (st.mode == Mode::Unchosen)
+    {
+        if (err) *err = "Choose your path first.";
+        return false;
+    }
+    // Wildcard to Wildcard is a paid re-deal, the only way out of a rolled
+    // build. Classless to Classless is what the free respec already does.
+    if (st.mode == Mode::Classless && target == Mode::Classless)
+    {
+        if (err) *err = "You already walk the Classless path. Unlearn everything to start over for free.";
+        return false;
+    }
 
     int32 costCopper = int32(cfg.rebirthCostGold) * GOLD;
     if (!player->HasEnoughMoney(costCopper))
     {
-        if (err) *err = Acore::StringFormat("Changing path costs {} gold.", cfg.rebirthCostGold);
+        if (err) *err = Acore::StringFormat("Changing path costs {} gold. You have {}.",
+            cfg.rebirthCostGold, player->GetMoney() / GOLD);
         return false;
     }
     player->ModifyMoney(-costCopper);
@@ -2135,7 +2158,7 @@ bool ClasslessMgr::SwitchPath(Player* player, Mode target, std::string* err)
             + st.rebirths * cfg.rebirthLegacyTalentEssence;
         SaveState(player);
         Msg(player, Acore::StringFormat("|cffff8800Path changed.|r You walk the Classless path anew. "
-            "AE: |cff00ff00{}|r, TE: |cff00ff00{}|r.", st.abilityEssence, st.talentEssence));
+            "Ability Essence: |cff00ff00{}|r, Talent Essence: |cff00ff00{}|r.", st.abilityEssence, st.talentEssence));
     }
     else
     {
@@ -2161,6 +2184,9 @@ bool ClasslessMgr::SwitchPath(Player* player, Mode target, std::string* err)
             st.rerolls += cfg.wcRerollsPerLevel;
         }
         SaveState(player);
+        Msg(player, Acore::StringFormat("The Wildcard dealt you {} abilit{} and {} talent{}.",
+            uint32(st.abilities.size()), st.abilities.size() == 1 ? "y" : "ies",
+            uint32(st.talents.size()), st.talents.size() == 1 ? "" : "s"));
     }
 
     UpdateAbilityRanks(player);
@@ -2379,7 +2405,7 @@ bool ClasslessMgr::Rebirth(Player* player, Mode target, std::vector<uint32> cons
     int32 const costCopper = int32(costGold) * GOLD;
     if (!player->HasEnoughMoney(costCopper))
     {
-        if (err) *err = Acore::StringFormat("Rebirth costs {} gold.", costGold);
+        if (err) *err = Acore::StringFormat("Rebirth costs {} gold. You have {}.", costGold, player->GetMoney() / GOLD);
         return false;
     }
     player->ModifyMoney(-costCopper);
@@ -2507,7 +2533,7 @@ namespace
           "Pull one enemy at a time and rest between fights. Stuns, fears, slows and snares matter far more than usual. Anything that would be a fair fight on your own is now a group fight, so find others for it." },
         { 14, "legion",          "Legion",          4, "Every enemy you engage calls two more of its kind to its side. More to kill, more XP, more ways to die.", 650, 191, "one_against_many",
           "When an enemy engages you, two more of its kind appear beside it and join the fight. They give experience and loot like any other of their kind, and leave after five minutes if the fight never reaches them. Reinforcements never call reinforcements of their own. Bosses, critters and civilians never call at all.",
-          "Fight where you have room to back away, and open with abilities that hit several enemies at once. Pull from range so you see the reinforcements coming, and keep away from other groups, since every enemy that joins calls its own." },
+          "Fight where you have room to back away, and open with abilities that hit several enemies at once. Pull from range so you see the reinforcements coming, and keep away from other groups, since any of them that wanders in calls two more." },
         { 4,  "pursued",         "Pursued",         3, "Every 15 to 30 minutes of play a hunter two levels above you finds you and tracks you until one of you dies.", 600, 189, "turnabout",
           "Every 15 to 30 minutes of played time, at random, a Relentless Hunter appears near you, two levels above you, with elite health and damage. It follows you anywhere until one of you dies. Killing it gives its elite experience and starts the clock for the next one. If it kills you it leaves, and a new clock starts. The clock keeps its place when you log out, and a hunter on you when you log out is waiting when you log back in. Battlegrounds and arenas are safe from it.",
           "Keep a defensive ability and a healing option ready at all times, because the hunter can arrive in the middle of another fight. Finish fights quickly, and when the hunter comes, kill it before anything else joins in." },
@@ -2651,7 +2677,7 @@ bool ClasslessMgr::StartRun(Player* player, uint8 challengeId, Mode target,
     }
 
     SaveState(player);
-    Msg(player, Acore::StringFormat("|cffff4444{}|r begins. {} You have {} {}.",
+    Msg(player, Acore::StringFormat("|cffffd100{}|r begins. {} You have {} {}.",
         ch->name, ch->rule, uint32(st.lives), st.lives == 1 ? "life" : "lives"));
     return true;
 }
@@ -2695,8 +2721,9 @@ void ClasslessMgr::LoseLife(Player* player, Unit* killer)
 
     SaveState(player);
     PushAddon(player, Acore::StringFormat("RD|{}|{}|{}", uint32(st->lives), uint32(st->livesMax), what));
-    Msg(player, Acore::StringFormat("|cffff4444A life lost.|r {} {} of {} left.{}{}",
-        ch->name, uint32(st->lives), uint32(st->livesMax), what.empty() ? "" : " ", what));
+    Msg(player, Acore::StringFormat("|cffff4444A life lost.|r {}: {} of {} {} left.{}{}",
+        ch->name, uint32(st->lives), uint32(st->livesMax), st->livesMax == 1 ? "life" : "lives",
+        what.empty() ? "" : " ", what));
 
     if (!st->lives)
         EndRun(player, false);
@@ -2720,8 +2747,13 @@ void ClasslessMgr::EndRun(Player* player, bool finished)
     std::string rewardName;
     if (finished)
     {
-        gold = ch->rewardGold;
-        player->ModifyMoney(int32(gold) * GOLD);
+        // Gold for the first finish only; a repeat pays shards.
+        auto const prior = st.runBest.find(ch->id);
+        if (prior == st.runBest.end() || !prior->second.second)
+        {
+            gold = ch->rewardGold;
+            player->ModifyMoney(int32(gold) * GOLD);
+        }
         GrantTitle(player, ch->titleId);
         if (!used)
             GrantTitle(player, UNBROKEN_TITLE);
@@ -2766,8 +2798,9 @@ void ClasslessMgr::EndRun(Player* player, bool finished)
     SaveState(player);
     PushAddon(player, Acore::StringFormat("RE|{}|{}|{}|{}|{}", finished ? 1 : 0, uint32(level), shards, gold, ch->name));
     if (finished)
-        Msg(player, Acore::StringFormat("|cff00ff00{} complete.|r {} shard{} and {} gold{}. The rule lifts.",
-            ch->name, shards, shards == 1 ? "" : "s", gold,
+        Msg(player, Acore::StringFormat("|cff00ff00{} complete!|r You earn {} shard{}{}{}. The rule lifts.",
+            ch->name, shards, shards == 1 ? "" : "s",
+            gold ? Acore::StringFormat(" and {} gold", gold) : std::string(),
             rewardName.empty() ? "" : Acore::StringFormat(", and |cffa335ee{}|r is yours to keep", rewardName)));
     else
         Msg(player, Acore::StringFormat("|cffff4444{} is over.|r You reached level {} and earned {} shard{}. The rule lifts.",
@@ -2975,7 +3008,7 @@ bool ClasslessMgr::BuyScroll(Player* player, std::string* err)
     // there -- don't let players waste coin on them yet.
     if (player->GetLevel() < cfg.wcFreeRerollLevel)
     {
-        if (err) *err = Acore::StringFormat("Rerolls are free below level {} -- you don't need scrolls yet.", cfg.wcFreeRerollLevel);
+        if (err) *err = Acore::StringFormat("Rerolls are free below level {}, so you do not need scrolls yet.", cfg.wcFreeRerollLevel);
         return false;
     }
 
@@ -3319,7 +3352,10 @@ void ClasslessMgr::SaveNemeses(ObjectGuid guid, CharState const& st)
 bool ClasslessMgr::SetDisplayPower(Player* player, uint8 powerIdx, std::string* err)
 {
     if (IsExempt(player))
+    {
+        if (err) *err = "This character is not a Hero.";
         return false;
+    }
     if (powerIdx != POWER_MANA && powerIdx != POWER_RAGE && powerIdx != POWER_ENERGY && powerIdx != 255)
     {
         if (err) *err = "Pick mana, rage or energy.";
@@ -3717,15 +3753,28 @@ void ClasslessMgr::HandleFirstLogin(Player* player)
     {
         if (st.mode == Mode::Unchosen)
         {
-            Msg(player, "Welcome, Hero! You have no class, and there was none to pick. Every Hero shares the "
-                        "same |cffffff00chassis|r, and it grants nothing (your race keeps its own racial traits). You "
-                        "carry mana, rage and energy at once, every stat is worth having, and every spell, talent, "
-                        "weapon and armor type in the game is open to you.");
-            Msg(player, "Speak to the |cffffff00Hero Advancement|r NPC (or use |cffffff00.classless mode|r / the "
-                        "|cffffff00/cw|r addon) to choose your path: Classless free-pick or Wildcard random rolls.");
+            Msg(player, "Welcome, Hero! Your race keeps its racial traits. You carry mana, rage and energy at "
+                        "once, every stat is worth having, and every spell, talent, weapon and armor type in the "
+                        "game is open to you.");
+            Msg(player, "Choose your path in |cffffff00/cw|r or at the |cffffff00Hero Advancement|r NPC: Classless, "
+                        "where you buy every ability, or Wildcard, where the dice deal them.");
         }
         else
             AnnounceState(player);
+    }
+}
+
+// Essence for the levels a Hero gained before choosing the Classless path.
+// The level-up loop pays only a Classless Hero, so those levels went unpaid.
+static void PayMissedEssence(ClasslessWildcard::CharState& st, ClasslessWildcard::Config const& cfg, uint8 level)
+{
+    uint8 const upTo = std::min(level, st.lastProcessedLevel);
+    for (uint8 lvl = 2; lvl <= upTo; ++lvl)
+    {
+        if (lvl >= cfg.essenceStartLevel)
+            st.abilityEssence += cfg.abilityEssencePerLevel;
+        if (lvl >= cfg.talentEssenceStartLevel)
+            st.talentEssence += cfg.talentEssencePerLevel;
     }
 }
 
@@ -3741,6 +3790,8 @@ bool ClasslessMgr::ApplyDefaultMode(Player* player)
         return false;
 
     st.mode = Mode(cfg.defaultMode);
+    if (st.mode == Mode::Classless)
+        PayMissedEssence(st, cfg, player->GetLevel());
     if (st.mode == Mode::Wildcard)
     {
         GrantGuard noReveal(_revealSuppress); // the starting hand shows these
@@ -4009,7 +4060,7 @@ void ClasslessMgr::HandleLevelUp(Player* player, uint8 oldLevel)
             && lvl % cfg.wcFreeScrollEveryLevels == 0 && cfg.wcFreeScrollCount)
         {
             if (player->AddItem(cfg.wcScrollItemId, cfg.wcFreeScrollCount))
-                Msg(player, Acore::StringFormat("The Wildcard rewards your journey: |cff0070dd{} Scroll{} of Fortune|r!",
+                Msg(player, Acore::StringFormat("The Wildcard rewards your journey: {} |cff0070ddReroll Scroll{}|r.",
                     cfg.wcFreeScrollCount, cfg.wcFreeScrollCount > 1 ? "s" : ""));
         }
     }
@@ -4025,9 +4076,9 @@ void ClasslessMgr::HandleLevelUp(Player* player, uint8 oldLevel)
 
     if (uint32 freed = ClearStaleLocks(player))
         Msg(player, Acore::StringFormat(
-            "Your starting hand is over, so {} padlock{} come off. From here you reroll one "
+            "Your starting hand is over, so {} {} off. From here you reroll one "
             "ability at a time, and only the one you choose.",
-            freed, freed == 1 ? " comes" : "s"));
+            freed, freed == 1 ? "padlock comes" : "padlocks come"));
 
     if (st.mode == Mode::Classless && st.archetype)
     {
@@ -4062,19 +4113,21 @@ bool ClasslessMgr::SetMode(Player* player, Mode mode, std::string* err)
 
     if (st.exempt)
     {
-        if (err) *err = "This account is exempt from the classless system.";
+        if (err) *err = "This character is not a Hero.";
         return false;
     }
 
     if (st.mode == mode)
     {
-        if (err) *err = "That is already your mode.";
+        if (err) *err = "That is already your path.";
         return false;
     }
 
     if (st.mode != Mode::Unchosen || player->GetLevel() >= cfg.modeChoiceDeadline)
     {
-        if (err) *err = Acore::StringFormat("Your path is locked in (mode must be chosen before level {}).", cfg.modeChoiceDeadline);
+        if (err) *err = st.mode != Mode::Unchosen
+            ? std::string("Your path is locked in. To switch, use Change path in /cw or at the Hero Advancement NPC.")
+            : Acore::StringFormat("A path must be chosen before level {}.", cfg.modeChoiceDeadline);
         return false;
     }
 
@@ -4085,11 +4138,14 @@ bool ClasslessMgr::SetMode(Player* player, Mode mode, std::string* err)
         GrantGuard noReveal(_revealSuppress); // the starting hand UI shows these
         for (uint32 i = 0; i < cfg.wcStartingAbilities; ++i)
             RollAbility(player);
-        Msg(player, "The Wildcard has been drawn! You received random starting abilities. Reroll them freely at the "
-                    "Hero Advancement NPC until level 10.");
+        Msg(player, Acore::StringFormat("The Wildcard has been drawn! You received random starting abilities. "
+                    "Reroll them for free in /cw or at the Hero Advancement NPC until level {}.", cfg.wcFreeRerollLevel));
     }
     else
+    {
+        PayMissedEssence(st, cfg, player->GetLevel());
         Msg(player, Acore::StringFormat("Classless path chosen. You have |cff00ff00{}|r Ability Essence to spend.", st.abilityEssence));
+    }
 
     SaveState(player);
     return true;
@@ -4100,11 +4156,11 @@ void ClasslessMgr::AnnounceState(Player* player)
     CharState& st = GetState(player);
     if (st.mode == Mode::Classless)
         Msg(player, Acore::StringFormat(
-            "Classless Hero. Abilities: {}, talents: {}, AE: |cff00ff00{}|r, TE: |cff00ff00{}|r.",
+            "Classless Hero. Abilities: {}, talents: {}, Ability Essence: |cff00ff00{}|r, Talent Essence: |cff00ff00{}|r.",
             st.abilities.size(), st.talents.size(), st.abilityEssence, st.talentEssence));
     else if (st.mode == Mode::Wildcard)
         Msg(player, Acore::StringFormat(
-            "Wildcard Hero. Abilities: {}, talents: {}. Rerolls: |cff00ff00{}|r (earned as you level, spend on either).",
+            "Wildcard Hero. Abilities: {}, talents: {}. Reroll charges: |cff00ff00{}|r.",
             st.abilities.size(), st.talents.size(), st.rerolls));
 }
 
@@ -4134,7 +4190,7 @@ void ClasslessMgr::GrantAbilityInternal(Player* player, AbilityEntry const& e, G
             "REPLACE INTO cw_char_abilities (guid, first_spell, source, locked) VALUES ({}, {}, {}, 0)",
             player->GetGUID().GetCounter(), e.firstSpellId, uint32(source));
 
-    if (announce)
+    if (announce && !_revealSuppress)
         Msg(player, Acore::StringFormat("You gained the ability {}{}|r ({}).",
             RarityColor(e.rarity), SpellName(e.firstSpellId), RarityName(e.rarity)));
 
@@ -4673,8 +4729,9 @@ void ClasslessMgr::GrantTalentRankInternal(Player* player, TalentPoolEntry const
 
     // the rank drives the rarity, so the chat line matches the reveal popup
     Rarity shown = RankRarity(t, newRank);
-    Msg(player, Acore::StringFormat("Talent: {}{}|r rank {}/{} ({}).",
-        RarityColor(shown), SpellName(t.rankSpells[newRank - 1]), newRank, uint32(t.maxRank), RarityName(shown)));
+    if (!_revealSuppress)
+        Msg(player, Acore::StringFormat("Talent: {}{}|r rank {}/{} ({}).",
+            RarityColor(shown), SpellName(t.rankSpells[newRank - 1]), newRank, uint32(t.maxRank), RarityName(shown)));
 
     // Whatever this talent cannot be used without: the kit, and the stance or
     // form it is locked to. Safe to run on every rank -- both skip anything
@@ -5094,7 +5151,9 @@ bool ClasslessMgr::BuyAbility(Player* player, uint32 firstSpellId, std::string* 
 
     if (!e || !e->enabled)
     {
-        if (err) *err = "That spell is not part of the classless library.";
+        if (err) *err = sSpellMgr->GetSpellInfo(firstSpellId)
+            ? Acore::StringFormat("{} is not a Hero ability.", SpellName(firstSpellId))
+            : std::string("No Hero ability has that ID.");
         return false;
     }
     if (e->variant && !cfg.elementalInPool)
@@ -5243,7 +5302,7 @@ bool ClasslessMgr::BuyTalentRank(Player* player, uint32 talentId, std::string* e
     uint32 cost = (cfg.talentFlatCost && ownedRank > 0) ? 0 : cfg.talentCostPerRank;
     if (st.talentEssence < cost)
     {
-        if (err) *err = Acore::StringFormat("Not enough Talent Essence ({} needed).", cost);
+        if (err) *err = Acore::StringFormat("Not enough Talent Essence ({} needed, {} available).", cost, st.talentEssence);
         return false;
     }
     if (t->dependsOn)
@@ -5256,7 +5315,15 @@ bool ClasslessMgr::BuyTalentRank(Player* player, uint32 talentId, std::string* e
             depRank = MAX_TALENT_RANK;
         if (depRank < t->dependsOnRank + 1)
         {
-            if (err) *err = "You are missing a prerequisite talent.";
+            if (err)
+            {
+                uint32 const need = uint32(t->dependsOnRank) + 1;
+                TalentPoolEntry const* dep = GetTalent(t->dependsOn);
+                *err = dep
+                    ? Acore::StringFormat("{} needs {} {} in {} first.", SpellName(t->rankSpells[0]), need,
+                          need == 1 ? "rank" : "ranks", SpellName(dep->rankSpells[0]))
+                    : std::string("You are missing a prerequisite talent.");
+            }
             if (auto rep = _replacedTalents.find(t->dependsOn); rep != _replacedTalents.end() && !rep->second.abilityLines.empty())
                 if (err) *err = Acore::StringFormat("That needs the {} ability first. It is in the Abilities list.",
                                                     SpellName(rep->second.abilityLines[0]));
@@ -5330,7 +5397,7 @@ bool ClasslessMgr::Respec(Player* player, std::string* err)
     }
 
     SaveState(player);
-    Msg(player, Acore::StringFormat("Respec complete. AE: |cff00ff00{}|r, TE: |cff00ff00{}|r.",
+    Msg(player, Acore::StringFormat("Respec complete. Ability Essence: |cff00ff00{}|r, Talent Essence: |cff00ff00{}|r.",
         st.abilityEssence, st.talentEssence));
     // Everything is gone, so every class line is provably empty: clear
     // them now rather than leave stale empty tabs until the next login.
@@ -5463,10 +5530,13 @@ void ClasslessMgr::TickBans(CharState& st, ObjectGuid guid)
 
 uint32 ClasslessMgr::OwnedClassMask(CharState const& st) const
 {
+    // Hero-line abilities carry every class bit so every Hero can draw them;
+    // they belong to no class, so they say nothing about which ones you own.
     uint32 mask = 0;
     for (auto const& [firstSpell, owned] : st.abilities)
         if (AbilityEntry const* e = GetAbility(firstSpell))
-            mask |= e->classMask;
+            if (!e->forged)
+                mask |= e->classMask;
     for (auto const& [talentId, rank] : st.talents)
         if (TalentPoolEntry const* t = GetTalent(talentId))
             mask |= t->classMask;
@@ -5553,7 +5623,7 @@ AbilityEntry const* ClasslessMgr::ChooseAbility(Player* player, CharState& st,
         {
             std::vector<AbilityEntry const*> filtered;
             for (AbilityEntry const* e : candidates)
-                if (e->classMask & ownedMask)
+                if (!e->forged && (e->classMask & ownedMask))
                     filtered.push_back(e);
             if (!filtered.empty())
             {
@@ -5597,7 +5667,9 @@ uint32 ClasslessMgr::RollAbility(Player* player, GrantSource source)
     if (synergy)
     {
         st.pity = 0;
-        Msg(player, "|cff00ff88Synergy roll!|r This ability complements your Hero.");
+        if (!_revealSuppress)
+            Msg(player, Acore::StringFormat("|cff00ff88Synergy roll!|r {} fits the abilities you already own.",
+                SpellName(chosen->firstSpellId)));
     }
 
     // The pool is built to exclude everything owned, so this can only fire if
@@ -5749,11 +5821,13 @@ uint32 ClasslessMgr::RollTalent(Player* player)
         if (synergy)
         {
             st.pity = 0;
-            Msg(player, "|cff00ff88Synergy roll!|r This talent complements your Hero.");
+            if (!_revealSuppress)
+                Msg(player, Acore::StringFormat("|cff00ff88Synergy roll!|r {} fits the abilities you already own.",
+                    SpellName(chosen->rankSpells[0])));
         }
 
         // the roll decides the RANK too, not just the talent, on its own
-        // weight ladder: rank 5 is roughly a twentieth as likely as rank 1
+        // weight ladder: rank 5 is about a tenth as likely as rank 1
         uint8 newRank = RollTalentRank(*chosen, 0);
         if (!newRank)
             return lastGranted; // no rank to give (a zero-rank talent row)
@@ -5824,8 +5898,10 @@ bool ClasslessMgr::Reroll(Player* player, bool isTalent, uint32 entry, std::stri
         if (scrolls && !player->HasItemCount(cfg.wcScrollItemId, int32(scrolls)))
         {
             if (err) *err = extraScrolls
-                ? Acore::StringFormat("That costs {} Reroll Scrolls and you do not have that many.", scrolls)
-                : std::string("No rerolls left. You earn one with every roll the Wildcard deals you, or buy a Reroll Scroll.");
+                ? Acore::StringFormat("That costs {} Reroll Scroll{}, and you have {}.", scrolls, scrolls == 1 ? "" : "s",
+                      player->GetItemCount(cfg.wcScrollItemId))
+                : Acore::StringFormat("No reroll charges or Reroll Scrolls left. You earn {} charges each level, "
+                      "or you can buy a Reroll Scroll.", cfg.wcRerollsPerLevel);
             return false;
         }
         if (spendCharge)
@@ -5910,12 +5986,13 @@ bool ClasslessMgr::Reroll(Player* player, bool isTalent, uint32 entry, std::stri
         if (!free)
         {
             if (st.rerolls > 0)
-                --st.rerolls; // earned charge (granted with every roll)
+                --st.rerolls; // earned charge (granted every level)
             else if (player->HasItemCount(cfg.wcScrollItemId, 1))
                 player->DestroyItemCount(cfg.wcScrollItemId, 1, true);
             else
             {
-                if (err) *err = "No rerolls left. You earn one with every roll the Wildcard deals you, or buy a Reroll Scroll.";
+                if (err) *err = Acore::StringFormat("No reroll charges or Reroll Scrolls left. You earn {} charges each level, "
+                    "or you can buy a Reroll Scroll.", cfg.wcRerollsPerLevel);
                 return false;
             }
         }

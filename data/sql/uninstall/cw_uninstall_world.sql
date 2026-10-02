@@ -1,5 +1,5 @@
 -- mod-classless-wildcard: WORLD DB uninstall.
--- NOT auto-applied — run by hand, with the worldserver STOPPED, only when
+-- NOT auto-applied. Run it by hand, with the worldserver STOPPED, only when
 -- removing the module. See "Uninstall / revert" in README.md.
 
 -- Class requirements on quests, put back before the backup table is dropped.
@@ -89,13 +89,16 @@ DROP PROCEDURE IF EXISTS cw_uninstall_npc;
 DELETE FROM `creature_template_model` WHERE `CreatureID` = 990100;
 DELETE FROM `creature_template` WHERE `entry` = 990100;
 
+-- the chat commands' help text (cw_world_commands.sql)
+DELETE FROM `command` WHERE `name` IN ('classless', 'wildcard') OR `name` LIKE 'classless %' OR `name` LIKE 'wildcard %';
+
 -- all-race/class skill validity rows (restores stock race/class skill rules;
 -- at next login the core deletes now-invalid cross-class spells and skills
 -- from every character automatically)
 DELETE FROM `skillraceclassinfo_dbc` WHERE `ID` BETWEEN 990000 AND 990999;
 
 -- playercreateinfo rows added by cw_world_hero_races.sql (and by the older
--- cw_all_race_class.sql, for installs that predate it) — no-ops if absent
+-- cw_all_race_class.sql, for installs that predate it); no-ops if absent
 DELETE FROM `charstartoutfit_dbc` WHERE `ID` >= 900000;
 
 -- the two stock spell scripts this module took over (cw_world_spell_scripts.sql),

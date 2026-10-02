@@ -1024,12 +1024,14 @@ public:
                     player->removeSpell(rankSpell, SPEC_MASK_ALL, false);
             if (refund)
                 player->ModifyMoney(int32(refund));
-            ChatHandler(player->GetSession()).SendSysMessage(
-                refund
-                ? "|cff00ccff[Classless]|r That spell is managed by the classless system. Your money has been "
-                  "returned. Learn it through the Hero Advancement NPC (or /cw) instead of a class trainer."
-                : "|cff00ccff[Classless]|r That spell is managed by the classless system. Learn it through the "
-                  "Hero Advancement NPC (or /cw) instead of a class trainer.");
+            bool const wildcard = sClasslessMgr->GetState(player).mode == Mode::Wildcard;
+            std::string text = Acore::StringFormat("|cff00ccff[Hero]|r Heroes cannot learn {} this way. {}",
+                sClasslessMgr->SpellNameOf(firstSpell),
+                wildcard ? "Wildcard abilities come from your rolls."
+                         : "Buy it with Ability Essence in /cw or at the Hero Advancement NPC.");
+            if (refund)
+                text += " Your money has been returned.";
+            ChatHandler(player->GetSession()).SendSysMessage(text);
         }, 1ms);
     }
 };

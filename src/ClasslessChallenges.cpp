@@ -258,7 +258,9 @@ public:
             return;
         st->ruleTickMs = 0;
 
-        if (st->run == uint8(ChallengeId::Hourglass) && player->IsAlive())
+        // The sand holds still in battlegrounds and arenas, where deaths are free.
+        if (st->run == uint8(ChallengeId::Hourglass) && player->IsAlive()
+            && !player->InBattleground() && !player->InArena())
         {
             uint32 const limit = HourglassLimit(player->GetLevel());
             uint32 const before = st->runData;

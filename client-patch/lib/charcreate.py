@@ -1,6 +1,6 @@
 """Make the character-creation screen read as classless.
 
-The server offers one class per race (the Warrior shell, shown as "Hero"), so
+The server offers one class per race (the Paladin chassis, shown as "Hero"), so
 the creation screen already displays a single class button. This appends a small
 hook to CharacterCreate.lua that hides that leftover button entirely, leaving the
 Hero name and description, so the screen looks intentionally classless rather

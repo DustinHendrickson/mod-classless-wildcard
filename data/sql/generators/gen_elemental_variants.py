@@ -196,18 +196,22 @@ ELEMENTS = [
     dict(key="fire",   idx=1, prefix="Fiery",    school=4,  word="Fire",   kit=728,
          payload=("dot", 2000, DURATION_6S), coeff=None,
          text="Burns the target for $o2 {E} damage over $d.",
+         aura_tip="Burning for $s2 {E} damage every $t2 sec.",
          hue=(255, 96, 24), glyph="flame"),
     dict(key="frost",  idx=2, prefix="Frozen",   school=16, word="Frost",  kit=4991,
          payload=("aura", A_MOD_DECREASE_SPEED, -31, 0, DURATION_6S), coeff=None,
-         text="Slows the target's movement by $s2% for $d.",
+         text="Reduces the target's movement speed by $s2% for $d.",
+         aura_tip="Movement speed reduced by $s2%.",
          hue=(72, 196, 255), glyph="snowflake"),
     dict(key="earth",  idx=3, prefix="Earthen",  school=8,  word="Nature", kit=3055,
          payload=("aura", A_MOD_MELEE_HASTE, -11, 0, DURATION_6S), coeff=None,
          text="Increases the time between the target's attacks by $s2% for $d.",
+         aura_tip="Time between attacks increased by $s2%.",
          hue=(150, 100, 30), glyph="boulder"),
     dict(key="poison", idx=4, prefix="Venomous", school=8,  word="Nature", kit=3031,
          payload=("dot", 3000, DURATION_12S), coeff=None,
          text="Poisons the target for $o2 {E} damage over $d.",
+         aura_tip="Poisoned for $s2 {E} damage every $t2 sec.",
          hue=(110, 255, 60), glyph="drop"),
     # Arcane's identity is the raw number: no debuff, a hit half again as big.
     dict(key="arcane", idx=5, prefix="Arcane",   school=64, word="Arcane", kit=1005,
@@ -216,6 +220,7 @@ ELEMENTS = [
     dict(key="shadow", idx=6, prefix="Shadow",   school=32, word="Shadow", kit=6898,
          payload=("aura", A_MOD_HEALING_PCT, -21, 127, DURATION_6S), coeff=None,
          text="Reduces the effectiveness of healing on the target by $s2% for $d.",
+         aura_tip="Healing received reduced by $s2%.",
          hue=(72, 36, 130), glyph="crescent"),
     # Holy's is sustain, and it costs no slot: the hit is a HEALTH_LEECH, so the
     # heal rides on the damage the whole strike lands. The core reads the share
@@ -227,6 +232,14 @@ ELEMENTS = [
          hue=(255, 210, 84), glyph="sun"),
 ]
 ELEMENT_BY_KEY = {e["key"]: e for e in ELEMENTS}
+
+# Names that would repeat a stock spell's. The client looks some tooltips up
+# by name, so these variants take a name of their own.
+NAME_OVERRIDES = {
+    ("Cleave", "arcane"): "Mystic Cleave",
+    ("Cleave", "holy"):   "Hallowed Cleave",
+    ("Cleave", "shadow"): "Umbral Cleave",
+}
 
 # ---- DBC reading ---------------------------------------------------------------
 
@@ -361,7 +374,7 @@ DESCRIPTIONS = {
     "Shred": "Shred the target, causing $s1% weapon damage as {E} damage{payload}.  Must be behind the target.  Awards $s3 combo $lpoint:points;.",
     "Ravage": "Ravage the target, causing $s1% weapon damage as {E} damage{payload}.  Must be prowling and behind the target.  Awards $s3 combo $lpoint:points;.",
     "Maul": "A strong attack that deals $s1% weapon damage as {E} damage{payload} and causes a high amount of threat.",
-    "Overpower": "Instantly overpower the enemy, causing $s1% weapon damage as {E} damage{payload}.  Only useable after the target dodges.  The Overpower cannot be blocked, dodged or parried.",
+    "Overpower": "Instantly overpower the enemy, causing $s1% weapon damage as {E} damage{payload}.  Only usable after the target dodges.  The Overpower cannot be blocked, dodged or parried.",
     "Ambush": "Ambush the target, causing $s1% weapon damage as {E} damage{payload}.  Must be stealthed and behind the target.  Requires a dagger in the main hand.  Awards $s3 combo $lpoint:points;.",
     "Hemorrhage": "An instant strike that deals $s1% weapon damage as {E} damage{payload} and causes the target to hemorrhage, increasing any Physical damage dealt to the target by up to $s3.  Lasts $n charges or $d.  Awards 1 combo point.",
     "Mortal Strike": "A vicious strike that deals $s1% weapon damage as {E} damage{payload} and wounds the target, reducing the effectiveness of any healing by $s3% for $d.",
@@ -565,7 +578,7 @@ def build_variant(spell, sla, icon, visual, durations, base_id, base_index, rank
     setf(F["SpellDescriptionVariableID"], 0)
 
     # -- text
-    name = "%s %s" % (elem["prefix"], base_name)
+    name = NAME_OVERRIDES.get((base_name, elem["key"]), "%s %s" % (elem["prefix"], base_name))
     rank_text = vals[F["Rank"]]
     word = elem["word"]
     # What actually went into slot 2 -- the element's own, unless the base
@@ -579,7 +592,8 @@ def build_variant(spell, sla, icon, visual, durations, base_id, base_index, rank
     tooltip = ""
     if kind in ("dot", "aura"):
         desc += "  " + elem["text"].replace("{E}", word)
-        tooltip = elem["text"].replace("{E}", word)
+        # the debuff icon describes the state, the way Blizzard's own do
+        tooltip = elem["aura_tip"].replace("{E}", word)
     elif kind == "leech":
         desc += "  Heals you for %d%% of the damage dealt." % round(payload[1] * 100)
     bad = check_tokens(desc, slots, duration)

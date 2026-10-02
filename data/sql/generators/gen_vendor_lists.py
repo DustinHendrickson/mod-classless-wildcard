@@ -145,7 +145,7 @@ CATS = [
     (0, "Weapons",            "every blade, bow, staff and wand"),
     (1, "Armor",              "chest, legs, shoulders, cloaks and shields"),
     (2, "Jewelry & off-hand", "necks, rings, trinkets and held items"),
-    (3, "Heirlooms",          "bought once, they scale with you to 80"),
+    (3, "Heirloom gear",      "bought once, it scales with you to 80"),
 ]
 
 # category -> tier -> items.  Heirlooms carry RequiredLevel 1 because they
@@ -273,11 +273,8 @@ for entry, cat, tier, label, got in lists:
 L.append(",\n".join(rows) + ";")
 L.append("")
 
-L.append("-- the NPC's own list stays the supplies counter, so right-clicking")
-L.append("-- the vendor without going through the gossip menu still works")
+L.append("-- Reroll Scrolls sell through the NPC's gossip at the level-scaled price")
 L.append("DELETE FROM `npc_vendor` WHERE `entry` = %d AND `item` = %d;" % (NPC, SCROLL))
-L.append("INSERT INTO `npc_vendor` (`entry`, `slot`, `item`, `maxcount`, `incrtime`, `ExtendedCost`, `VerifiedBuild`)")
-L.append("VALUES (%d, 1, %d, 0, 0, 0, %d);" % (NPC, SCROLL, VERIFIED))
 L.append("")
 
 io.open(OUT_SQL, "w", encoding="utf-8", newline="\n").write("\n".join(L))

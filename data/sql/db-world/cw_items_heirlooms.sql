@@ -1,4 +1,4 @@
-﻿-- mod-classless-wildcard: Hero heirlooms (level-scaling gear)
+-- mod-classless-wildcard: Hero heirlooms (level-scaling gear)
 --
 -- Heirlooms are the 3.3.5 client's own level-scaling system, so these grow with
 -- the character from level 1 to 80 with no custom code:
@@ -21,7 +21,7 @@
 --
 -- The point of the set is that a Hero can wear ANY armor with ANY stats, so it
 -- deliberately pairs armor classes with the stats their original class could
--- never use: spellpower plate, strength mail, agility cloth.
+-- never use: spell power plate, strength mail, agility cloth.
 --
 -- Stats, armor and weapon damage all come from the scaling tables, which is why
 -- every stat/armor/damage column below is zero.
@@ -39,13 +39,13 @@ VALUES
 -- ---------------------------------------------------------------------------
 (990250, 2, 7, 'Everkeen Warblade', 32722, 7, 134221824, 1, 65000, 13000, 13, -1, -1, 1, 1, 1,
    1, 516, 0, 2600, 1, 100, 1, 3,
- 'Strength, stamina and crit -- and it never outgrows you.', 12340, 0),
+ 'Strength, stamina and critical strike. It never outgrows you.', 12340, 0),
 (990251, 2, 15, 'Everkeen Fang', 29706, 7, 134221824, 1, 65000, 13000, 13, -1, -1, 1, 1, 1,
    2, 516, 0, 1700, 1, 100, 1, 3,
  'A dagger that sharpens itself as you rise.', 12340, 0),
 (990252, 2, 7, 'Everkeen Spellblade', 31309, 7, 134221824, 1, 65000, 13000, 13, -1, -1, 1, 1, 1,
    334, 2052, 0, 2400, 1, 100, 1, 3,
- 'A sword that carries spellpower instead of muscle.', 12340, 0),
+ 'An edge that sharpens with every spell you learn.', 12340, 0),
 (990253, 2, 1, 'Everkeen Reaver', 31735, 7, 134221824, 1, 100000, 20000, 17, -1, -1, 1, 1, 1,
    1, 1032, 0, 3600, 1, 130, 1, 1,
  'Two hands, one very long career.', 12340, 0),
@@ -54,7 +54,7 @@ VALUES
  'A caster stave that keeps pace with its bearer.', 12340, 0),
 (990255, 2, 10, 'Everkeen Warstaff', 33015, 7, 134221824, 1, 100000, 20000, 17, -1, -1, 1, 1, 1,
    1, 1032, 0, 3400, 1, 130, 4, 2,
- 'A staff swung, not channelled. Strength and stamina.', 12340, 0),
+ 'A staff swung, not channeled. Strength and stamina.', 12340, 0),
 (990256, 2, 2, 'Everkeen Longbow', 31338, 7, 134221824, 1, 65000, 13000, 15, -1, -1, 1, 1, 1,
    2, 8208, 0, 2800, 1, 90, 2, 0,
  'Agility and attack power at range, forever.', 12340, 100),
@@ -67,13 +67,13 @@ VALUES
 -- ---------------------------------------------------------------------------
 (990258, 4, 4, 'Timeless Plate Chestguard', 31083, 7, 134221824, 1, 37500, 7500, 5, -1, -1, 1, 1, 1,
    336, 8388616, 0, 0, 1, 165, 6, 0,
- 'Full plate that channels spellpower. Cast from inside a fortress.', 12340, 0),
+ 'Full plate that channels spell power. Cast from inside a fortress.', 12340, 0),
 (990259, 4, 4, 'Timeless Plate Pauldrons', 26662, 7, 134221824, 1, 22500, 4500, 3, -1, -1, 1, 1, 1,
    336, 257, 0, 0, 1, 120, 6, 0,
  'Spellcaster shoulders, in the heaviest armor there is.', 12340, 0),
 (990260, 4, 3, 'Timeless Mail Hauberk', 25222, 7, 134221824, 1, 37500, 7500, 5, -1, -1, 1, 1, 1,
    1, 4194312, 0, 0, 1, 150, 5, 0,
- 'Mail cut for raw strength.', 12340, 0),
+ 'Mail that grows with the arm inside it.', 12340, 0),
 (990261, 4, 3, 'Timeless Mail Spaulders', 32128, 7, 134221824, 1, 22500, 4500, 3, -1, -1, 1, 1, 1,
    1, 129, 0, 0, 1, 110, 5, 0,
  'Strength and stamina, on a mail frame.', 12340, 0),
@@ -91,23 +91,23 @@ VALUES
  'Silk shoulders for a knife fighter.', 12340, 0),
 (990266, 4, 3, 'Timeless Mail Vest of Insight', 31641, 7, 134221824, 1, 37500, 7500, 5, -1, -1, 1, 1, 1,
    334, 4194312, 0, 0, 1, 150, 5, 0,
- 'Mail that favours intellect and spirit over brawn.', 12340, 0),
+ 'Mail that favors intellect and spirit over brawn.', 12340, 0),
 (990267, 4, 2, 'Timeless Leather Vest of Ruin', 14496, 7, 134221824, 1, 37500, 7500, 5, -1, -1, 1, 1, 1,
    336, 2097160, 0, 0, 1, 130, 8, 0,
- 'Spellpower leather -- mobility without the silk.', 12340, 0),
+ 'Spell power leather: mobility without the silk.', 12340, 0),
 (990268, 4, 1, 'Timeless Greatcloak', 31978, 7, 134221824, 1, 22500, 4500, 16, -1, -1, 1, 1, 1,
    334, 524296, 0, 0, 1, 0, 7, 0,
  'A cloak woven for spellcasters, and it grows with them.', 12340, 0),
 (990269, 4, 1, 'Timeless Warcloak', 24159, 7, 134221824, 1, 22500, 4500, 16, -1, -1, 1, 1, 1,
    331, 524296, 0, 0, 1, 0, 7, 0,
- 'A cloak for the ones who close the distance.', 12340, 0),
+ 'A cloak that keeps pace with you, level after level.', 12340, 0),
 
 -- ---------------------------------------------------------------------------
 -- Trinkets -- single-stat scaling, one for each build direction
 -- ---------------------------------------------------------------------------
 (990270, 4, 0, 'Everflowing Spell Focus', 34149, 7, 134221824, 1, 24000, 4800, 12, -1, -1, 1, 1, 1,
    271, 2, 0, 0, 1, 0, 0, 0,
- 'Pure spellpower, scaled to whoever holds it.', 12340, 0),
+ 'Pure spell power, scaled to whoever holds it.', 12340, 0),
 (990271, 4, 0, 'Everquick Chronometer', 39186, 7, 134221824, 1, 24000, 4800, 12, -1, -1, 1, 1, 1,
    251, 2, 0, 0, 1, 0, 0, 0,
  'Pure haste. Everything you do, sooner.', 12340, 0),

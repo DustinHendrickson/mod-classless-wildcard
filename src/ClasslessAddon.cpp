@@ -32,6 +32,7 @@
 #include "StringFormat.h"
 #include "Tokenize.h"
 #include "WorldPacket.h"
+#include "World.h"
 #include "WorldSession.h"
 
 #include <cmath>
@@ -139,14 +140,27 @@ namespace
         // never appear once a realm turned it on.
         // The Hero button is hidden the same way when forged spells are off,
         // so a realm that does not run them has no button opening an empty page.
-        SendAddon(player, Acore::StringFormat("CFG|{}|{}|{}|{}",
+        // Fields 6 to 29 are the realm's numbers the Help guide quotes, so
+        // its text follows the config rather than the shipped defaults.
+        // Field 30 is the path a Hero is given when the choice runs out.
+        SendAddon(player, Acore::StringFormat("CFG|{}|{}|{}|{}|{}|{}|{}|{}|{}|{}|{}|{}|{}|{}|{}|{}|{}|{}|{}|{}|{}|{}|{}|{}|{}|{}|{}|{}|{}",
             cfg.talentCostPerRank, cfg.talentFlatCost ? 1 : 0,
-            cfg.includeDeathKnight ? 1 : 0, cfg.forgedEnable ? 1 : 0));
+            cfg.includeDeathKnight ? 1 : 0, cfg.forgedEnable ? 1 : 0,
+            cfg.startingAbilityEssence, uint32(cfg.essenceStartLevel), cfg.abilityEssencePerLevel,
+            uint32(cfg.talentEssenceStartLevel), cfg.talentEssencePerLevel,
+            cfg.abilityCostByRarity[0], cfg.abilityCostByRarity[1], cfg.abilityCostByRarity[2],
+            cfg.abilityCostByRarity[3], cfg.abilityCostByRarity[4],
+            cfg.wcStartingAbilities, uint32(cfg.wcRollStartLevel), cfg.wcRerollsPerLevel,
+            cfg.wcSynergyBaseChance, cfg.wcSynergyIncrement, cfg.wcSynergyBanRolls,
+            cfg.wcRarityWeights[0], cfg.wcRarityWeights[4],
+            cfg.rebirthKillXpFirst, cfg.rebirthKillXpPerRank, cfg.rebirthKillXpMax,
+            cfg.rebirthStatPctPerRank, cfg.rebirthStatPctMax,
+            sWorld->getIntConfig(CONFIG_MAX_PLAYER_LEVEL), uint32(cfg.defaultMode)));
     }
 
     void SendErr(Player* player, std::string const& text)
     {
-        SendAddon(player, "ERR|" + Sanitize(text));
+        SendAddon(player, "ERR|" + SanitizeText(text));
     }
 
     void SendOk(Player* player, std::string const& op)

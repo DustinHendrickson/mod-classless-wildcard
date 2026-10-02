@@ -95,7 +95,7 @@ UPDATE `cw_vlist` SET `entry` = 990134, `subname` = 'Jewelry & off-hand', `Scrip
 INSERT INTO `creature_template` SELECT * FROM `cw_vlist`;
 DROP TEMPORARY TABLE `cw_vlist`;
 CREATE TEMPORARY TABLE `cw_vlist` AS SELECT * FROM `creature_template` WHERE `entry` = 990100;
-UPDATE `cw_vlist` SET `entry` = 990144, `subname` = 'Heirlooms', `ScriptName` = '';
+UPDATE `cw_vlist` SET `entry` = 990144, `subname` = 'Heirloom gear', `ScriptName` = '';
 INSERT INTO `creature_template` SELECT * FROM `cw_vlist`;
 DROP TEMPORARY TABLE `cw_vlist`;
 
@@ -674,8 +674,5 @@ VALUES
 (990144, 22, 990264, 0, 0, 0, 12340),
 (990144, 23, 990257, 0, 0, 0, 12340);
 
--- the NPC's own list stays the supplies counter, so right-clicking
--- the vendor without going through the gossip menu still works
+-- Reroll Scrolls sell through the NPC's gossip at the level-scaled price
 DELETE FROM `npc_vendor` WHERE `entry` = 990100 AND `item` = 990101;
-INSERT INTO `npc_vendor` (`entry`, `slot`, `item`, `maxcount`, `incrtime`, `ExtendedCost`, `VerifiedBuild`)
-VALUES (990100, 1, 990101, 0, 0, 0, 12340);

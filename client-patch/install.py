@@ -9,12 +9,10 @@ client side needs:
   * installs the ClasslessWildcard addon
   * clears the client Cache so the new data is picked up
 
-The default install never modifies Wow.exe. The optional --creation-text flag
-also rewrites the creation-screen class blurb; because that is a signed
-interface file, --creation-text also applies the well-known "allow custom
+The install also rewrites the creation-screen class blurb. That is a signed
+interface file, so the installer applies the well-known "allow custom
 interface" patch to Wow.exe (backed up first) so the client loads it. Confirmed
-working on a stock 3.3.5a build 12340 client. Off by default because it edits
-the executable.
+working on a stock 3.3.5a build 12340 client. --no-creation-text skips both.
 
 Everything is reversible with --uninstall.
 
@@ -513,7 +511,7 @@ def clear_cache(wow_dir, dry_run, report):
         report.append("  cache            %d cached record(s) deleted "
                       "(the client rebuilds it on next login)" % before)
     else:
-        report.append("  cache            COULD NOT CLEAR -- %d of %d file(s) are "
+        report.append("  cache            COULD NOT CLEAR: %d of %d file(s) are "
                       "still locked. The game is open: CLOSE IT, delete the Cache "
                       "folder yourself, and start the game again. Until you do, "
                       "items show the wrong icon and ranged weapons say \"Out of "
@@ -588,7 +586,7 @@ def do_install(args, wow_dir):
     if args.exe:
         print("  This installs the full Hero client. The creation-screen text edits")
         print("  a signed interface file, so Wow.exe is patched (the well-known")
-        print("  \"allow custom interface\" patch) to accept it -- backed up first to")
+        print("  \"allow custom interface\" patch) to accept it, backed up first to")
         print("  Wow.exe.classless-bak and reversible with --uninstall. CLOSE THE")
         print("  GAME before running this, or the patch cannot be written.")
         print()
@@ -698,11 +696,11 @@ def do_install(args, wow_dir):
                 exe_patched = True
             except PermissionError:
                 exe_locked = True
-                report.append("  Wow.exe          COULD NOT WRITE -- close the "
+                report.append("  Wow.exe          COULD NOT WRITE: close the "
                               "game and re-run")
             except (OSError, RuntimeError) as error:
                 exe_locked = True
-                report.append("  Wow.exe          NOT PATCHED -- %s" % error)
+                report.append("  Wow.exe          NOT PATCHED: %s" % error)
 
     addon_rel = None
     if args.addon:
@@ -716,7 +714,7 @@ def do_install(args, wow_dir):
     # earlier returned.
     if not args.dry_run and not cache_left and count_cache_files(wow_dir):
         cache_left = count_cache_files(wow_dir)
-        report.append("  cache            CAME BACK while installing -- the game "
+        report.append("  cache            CAME BACK while installing: the game "
                       "is open. Close it, delete the Cache folder, then start the "
                       "game.")
 
@@ -738,7 +736,7 @@ def do_install(args, wow_dir):
         return 0
 
     if exe_locked:
-        print("Almost done -- the game was open, so Wow.exe was not patched and")
+        print("Almost done. The game was open, so Wow.exe was not patched and")
         print("the creation-screen text will show as corrupt until it is. Close")
         print("World of Warcraft completely and run this installer again to finish.")
         print()
@@ -754,7 +752,7 @@ def do_install(args, wow_dir):
         print("icon and ranged weapons say \"Out of range\".")
         print()
 
-    print("Done. Start the game and every class will read %s." % args.name)
+    print("Done. Start the game; every character is now a %s." % args.name)
     if args.glue and not exe_locked:
         print("The creation screen now shows the Hero pitch. If it instead says")
         print("the interface is corrupt, re-run with --uninstall to revert.")
@@ -865,9 +863,9 @@ def do_uninstall(args, wow_dir):
                     locked.append(addon_rel)
                     report.append("  LOCKED, not removed: %s" % addon_rel)
 
-    # Current versions never touch Wow.exe, but an install from an older
-    # version might have, so always offer to restore it -- restore() is a
-    # no-op ("was not patched; left alone") when there is nothing to undo.
+    # The creation text patches Wow.exe, so always offer to restore it.
+    # restore() is a no-op ("was not patched; left alone") when an install
+    # ran with --no-creation-text and there is nothing to undo.
     exe = find_wow_exe(wow_dir)
     if exe:
         if args.dry_run:

@@ -1,7 +1,7 @@
 -- mod-classless-wildcard: the challenge runs' creature.
 --
--- Pursued's hunter. Spawned by the server at the Hero's side every ten
--- minutes, releveled on the spot to the Hero's level plus two and made elite
+-- Pursued's hunter. Spawned by the server at the Hero's side every 15 to 30
+-- minutes of played time, releveled on the spot to the Hero's level plus two and made elite
 -- by hand (CW_ReLevelCreature), so the level range here is only a floor and a
 -- ceiling. Faction 14 is hostile to everyone. The model is the Syndicate
 -- Assassin's (display 3727, Syndicate Assassin 2246 in the core's own dump),

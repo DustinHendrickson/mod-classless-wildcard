@@ -1,4 +1,4 @@
--- ClasslessWildcard: Character Advancement panel for mod-classless-wildcard
+-- ClasslessWildcard: Hero Advancement panel for mod-classless-wildcard
 -- WotLK 3.3.5a client. Talks to the server over the "CWCL" addon channel.
 
 local PREFIX = "CWCL"
@@ -7,7 +7,6 @@ local PREFIX = "CWCL"
 -- that ceiling -- go over and nothing below the offending line is
 -- ever defined.
 local ANIM = {}
-local ADDON_VERSION = "0.9.5"
 
 local RARITY_COLORS = {
     [0] = "|cffffffff", -- common
@@ -66,7 +65,13 @@ local CW = {
               runes = nil, runic = 0, runicMax = 0 },
     classIndex = 1,
     -- classless talent pricing; the server overrides these via the CFG message
-    talentCost = 1, talentFlat = true,
+    talentCost = 1, talentFlat = false,
+    -- the realm's numbers the Help guide quotes; the server sends them in CFG
+    rules = { startAE = 3, aeStart = 4, aePer = 1, teStart = 10, tePer = 1,
+              abilityCost = { 1, 2, 3, 5, 8 }, wcStart = 4, wcRollStart = 10,
+              rerollsPerLevel = 3, synBase = 10, synInc = 10, banRolls = 25,
+              weightCommon = 100, weightLegendary = 25, xpFirst = 100, xpPerRank = 50,
+              xpMax = 300, statPct = 3, statMax = 15, maxLevel = 80, defaultMode = 0 },
     abilPage = 0, abilTotal = 1, abilRows = {},
     tabs = {}, tabIndex = 1,
     talPage = 0, talTotal = 1, talRows = {},
@@ -87,7 +92,7 @@ local function Send(msg)
 end
 
 local function Print(msg)
-    DEFAULT_CHAT_FRAME:AddMessage("|cff00ccff[Classless]|r " .. msg)
+    DEFAULT_CHAT_FRAME:AddMessage("|cff00ccff[Hero]|r " .. msg)
 end
 
 local function SpellLabel(spellId, rarity)
@@ -136,7 +141,7 @@ end
 CW.RequestAbil, CW.RequestTal = RequestAbil, RequestTal
 
 -- ---------------------------------------------------------------------------
--- main frame: "Character Advancement" — Ascension-style single-screen layout
+-- main frame: "Hero Advancement" — Ascension-style single-screen layout
 -- (class strip on top, Abilities + Talents panes, My Build sidebar, bottom bar)
 -- ---------------------------------------------------------------------------
 local frame = CreateFrame("Frame", "ClasslessWildcardFrame", UIParent)
@@ -189,6 +194,8 @@ frame:SetScript("OnDragStart", frame.StartMoving)
 frame:SetScript("OnDragStop", frame.StopMovingOrSizing)
 frame:Hide()
 tinsert(UISpecialFrames, "ClasslessWildcardFrame")
+tinsert(UISpecialFrames, "ClasslessWildcardTalentReroll")
+tinsert(UISpecialFrames, "ClasslessWildcardHand")
 
 -- clickable dice crest: opens the Wildcard roll/reroll experience
 local titleBtn = CreateFrame("Button", nil, frame)
@@ -263,9 +270,9 @@ titleBtn:SetScript("OnEnter", function(self)
         GameTooltip:AddLine("Only Wildcard Heroes roll the dice for abilities.", 0.8, 0.8, 0.8, true)
     elseif (s.level or 1) < (s.freeReroll or 10) then
         GameTooltip:SetText("|cffffd100Roll your Starting Hand|r")
-        GameTooltip:AddLine("Click to reroll your starter abilities.", 0.3, 1, 0.3, true)
-        GameTooltip:AddLine("Free before level " .. (s.freeReroll or 10)
-            .. " -- lock the ones you like.", 0.6, 0.9, 0.6, true)
+        GameTooltip:AddLine("Click to open your Starting Hand.", 0.3, 1, 0.3, true)
+        GameTooltip:AddLine("Rerolls are free before level " .. (s.freeReroll or 10)
+            .. ". Lock the ones you like.", 0.6, 0.9, 0.6, true)
     else
         GameTooltip:SetText("Starting Hand (closed)")
         GameTooltip:AddLine("Free starter rolls end at level " .. (s.freeReroll or 10) .. ".",
@@ -297,7 +304,7 @@ end)
 
 local title = frame:CreateFontString(nil, "OVERLAY", "GameFontNormalLarge")
 title:SetPoint("TOP", 0, -18)
-title:SetText("Character Advancement")
+title:SetText("Hero Advancement")
 
 local closeBtn = CreateFrame("Button", nil, frame, "UIPanelCloseButton")
 closeBtn:SetPoint("TOPRIGHT", -8, -8)
@@ -955,18 +962,59 @@ local respecBtn = CreateFrame("Button", nil, frame, "UIPanelButtonTemplate")
 respecBtn:SetWidth(90); respecBtn:SetHeight(22)
 respecBtn:SetPoint("BOTTOMRIGHT", -20, 26)
 respecBtn:SetText("Respec")
-respecBtn:SetScript("OnClick", function() Send("RESPEC") end)
+respecBtn:SetScript("OnClick", function() StaticPopup_Show("CW_CLASSLESS_RESPEC") end)
+respecBtn:SetScript("OnEnter", function(self)
+    GameTooltip:SetOwner(self, "ANCHOR_TOP")
+    GameTooltip:SetText("Respec")
+    GameTooltip:AddLine("Unlearn every ability and talent. All essence is refunded, and it is free.", 1, 1, 1, true)
+    GameTooltip:Show()
+end)
+respecBtn:SetScript("OnLeave", function() GameTooltip:Hide() end)
+StaticPopupDialogs["CW_CLASSLESS_RESPEC"] = {
+    text = "Unlearn every ability and talent? All essence is refunded. Heirloom abilities stay.",
+    button1 = "Respec",
+    button2 = "Cancel",
+    OnAccept = function() Send("RESPEC") end,
+    timeout = 0, whileDead = 1, hideOnEscape = 1, preferredIndex = 3,
+}
+-- 4.2: an archetype replaces the build, so it asks first
+StaticPopupDialogs["CW_CLASSLESS_ARCHETYPE"] = {
+    text = "Follow %s? Your abilities and talents are unlearned and refunded, then its build is bought for you as you level.",
+    button1 = "Follow",
+    button2 = "Cancel",
+    OnAccept = function(self)
+        if self.data then Send("ARCHAPPLY " .. self.data) end
+        if CW.SetTab then CW.SetTab("HERO") end   -- show what the archetype bought
+    end,
+    timeout = 0, whileDead = 1, hideOnEscape = 1, preferredIndex = 3,
+}
+StaticPopupDialogs["CW_CLASSLESS_BUYLIFE"] = {
+    text = "Spend %d shards on an extra life for your next run?",
+    button1 = "Buy",
+    button2 = "Cancel",
+    OnAccept = function() Send("BUYLIFE") end,
+    timeout = 0, whileDead = 1, hideOnEscape = 1, preferredIndex = 3,
+}
 
 -- Change path: the cheaper thing Rebirth used to be. Wipes the build at this
 -- level and starts the other path from here, for gold (the server enforces
 -- the cost). The Rebirth button opens this before the level cap.
 StaticPopupDialogs["CW_CLASSLESS_PATH"] = {
-    text = "Changing path wipes your Hero's abilities and talents and starts the\nnew path at your current level for |cffffd100%d gold|r. Choose your new path:",
+    text = "Changing path wipes your Hero's abilities and talents and starts again at your current level for |cffffd100%d gold|r: on the Classless path, or with a new Wildcard deal.",
     button1 = "Classless",
     button2 = "Cancel",
-    button3 = "Wildcard",
+    button3 = "New deal",
     OnAccept = function() Send("PATH 0") end,   -- Classless
     OnAlt    = function() Send("PATH 1") end,   -- Wildcard
+    timeout = 0, whileDead = 1, hideOnEscape = 1, preferredIndex = 3,
+}
+-- A Classless Hero can only change to the Wildcard; starting Classless over
+-- is the free respec.
+StaticPopupDialogs["CW_CLASSLESS_PATH_WILDCARD"] = {
+    text = "Changing to the Wildcard path wipes your Hero's abilities and talents and deals a new hand at your current level for |cffffd100%d gold|r.",
+    button1 = "Wildcard",
+    button2 = "Cancel",
+    OnAccept = function() Send("PATH 1") end,
     timeout = 0, whileDead = 1, hideOnEscape = 1, preferredIndex = 3,
 }
 -- Rebirth: the new life at level 1. Confirmed last, once the heirlooms and
@@ -985,12 +1033,15 @@ rebirthBtn:SetText("Rebirth")
 rebirthBtn:Hide()
 rebirthBtn:SetScript("OnClick", function()
     local s = CW.state
-    if s.rebirthReady == 1 then
+    if s.mode == 255 then
+        frame:Hide()
+        CW.ShowPathChoice()
+    elseif s.rebirthReady == 1 then
         CW.OpenRebirth()
     elseif s.runReady == 1 then
         CW.OpenRuns()      -- a fresh Wildcard Hero: a run with nothing to carry
     else
-        StaticPopup_Show("CW_CLASSLESS_PATH", s.rebirthCost or 0)
+        StaticPopup_Show(s.mode == 0 and "CW_CLASSLESS_PATH_WILDCARD" or "CW_CLASSLESS_PATH", s.rebirthCost or 0)
     end
 end)
 rebirthBtn:SetScript("OnEnter", function(self)
@@ -1003,7 +1054,7 @@ rebirthBtn:SetScript("OnEnter", function(self)
     elseif s.runReady == 1 then
         GameTooltip:SetText("|cffff4444Challenge run|r")
         GameTooltip:AddLine("Level from here under one rule, with a fixed number of lives.", 0.8, 0.8, 0.8, true)
-        GameTooltip:AddLine("Reach level 80 with a life in hand for gold, a title, and on most challenges an ability no roll or shop can give.", 0.8, 0.8, 0.8, true)
+        GameTooltip:AddLine("Reach level " .. CW.rules.maxLevel .. " with a life left for gold, a title, and an ability no roll or shop can give.", 0.8, 0.8, 0.8, true)
         GameTooltip:AddLine("Open to see every challenge, its rule and its rewards.", 0.6, 0.6, 0.6, true)
     else
         GameTooltip:SetText("Change path")
@@ -1219,6 +1270,8 @@ do
         fly.picked = {}
         fly.page = 0
         if CW.runFly then CW.runFly:Hide() end
+        CW.statFly:Hide(); CW.helpFly:Hide(); CW.archFly:Hide()
+        if CW.setFly then CW.setFly:Hide() end
         Send("OWN")   -- the list is redrawn when the fresh answer lands
         CW.RenderRebirth()
         fly:Show()
@@ -1382,7 +1435,7 @@ do
     fly.life = CreateFrame("Button", nil, fly, "UIPanelButtonTemplate")
     fly.life:SetWidth(200); fly.life:SetHeight(24)
     fly.life:SetPoint("BOTTOMLEFT", 12, 10)
-    fly.life:SetScript("OnClick", function() Send("BUYLIFE") end)
+    fly.life:SetScript("OnClick", function() StaticPopup_Show("CW_CLASSLESS_BUYLIFE", CW.EXTRA_LIFE_SHARDS) end)
     fly.life:SetScript("OnEnter", function(self)
         GameTooltip:SetOwner(self, "ANCHOR_TOP")
         GameTooltip:SetText("Extra life")
@@ -1740,7 +1793,7 @@ do
 
         fly.shards:SetText("Shards  |cff00ff00" .. (s.shards or 0) .. "|r"
             .. ((s.extraLife or 0) > 0 and "     |cff00ff00extra life held|r" or ""))
-        fly.life:SetText((s.extraLife or 0) > 0 and "Extra life held" or ("Buy an extra life  (" .. CW.EXTRA_LIFE_SHARDS .. ")"))
+        fly.life:SetText((s.extraLife or 0) > 0 and "Extra life held" or ("Buy an extra life  (" .. CW.EXTRA_LIFE_SHARDS .. " shards)"))
         if (s.extraLife or 0) > 0 or (s.shards or 0) < CW.EXTRA_LIFE_SHARDS then fly.life:Disable() else fly.life:Enable() end
 
         for i = 1, ROWS do
@@ -1793,6 +1846,8 @@ do
         if CW.rebirthFly then CW.rebirthFly:Hide() end
         if CW.archFly then CW.archFly:Hide() end
         if CW.helpFly then CW.helpFly:Hide() end
+        if CW.statFly then CW.statFly:Hide() end
+        if CW.setFly then CW.setFly:Hide() end
         Send("CHL")
         CW.RenderRuns(true)
         fly:Show()
@@ -2111,15 +2166,19 @@ local function RenderArchFly()
     if #list > 0 then
         archFly.intro:SetText(archFly.INTRO)
     elseif CW.archetypesLoaded then
-        archFly.intro:SetText("No archetypes are configured on this realm.")
+        archFly.intro:SetText("No archetypes are available.")
     else
         archFly.intro:SetText("Loading...")
     end
     local top = 30 + TextHeight(archFly.intro) + 12
     local shown, used = FillArchRows(archFly.list, list, function(arch)
-        Send("ARCHAPPLY " .. (arch.following and 0 or arch.id)) -- 0 = stop following
         archFly:Hide()
-        CW.SetTab("HERO") -- show what the archetype bought
+        if arch.following then
+            Send("ARCHAPPLY 0")   -- stop following: nothing is lost
+        else
+            local dlg = StaticPopup_Show("CW_CLASSLESS_ARCHETYPE", arch.name)
+            if dlg then dlg.data = arch.id end
+        end
     end, 14, top)
     archFly:SetHeight(top + math.max(used, ARCH_ROW_H) + 10)
 end
@@ -2185,7 +2244,7 @@ local function StatPerPoint(i)
     local uni = s.uniStats
     if i == 1 then
         return "+" .. Rate(s.strMeleeAP or 2)
-            .. " melee attack power, +0.5 block value (less a flat 10)"
+            .. " melee attack power, +0.5 block value"
     elseif i == 2 then
         local melee = (s.agiMeleeAP or 0) + (uni and (s.apPerAgi or 0) or 0)
         local ranged = (s.agiRangedAP or 1) + (uni and (s.rapPerAgi or 0) or 0)
@@ -2321,66 +2380,83 @@ function CW.StatContribution(i, value)
     return table.concat(out, ", ")
 end
 
+local function HelpKey()
+    local key = GetBindingKey and GetBindingKey("CLASSLESSWILDCARD_TOGGLE")
+    if key then
+        return "|cffffff00" .. key .. "|r|cffaaaaaa, |r"
+    end
+    return ""
+end
+
 local function BuildHelpText()
+    local r, s = CW.rules, CW.state
+    local free = s.freeReroll or 10
+    local cap = r.maxLevel
+    local c = r.abilityCost
+    local teByCap = math.max(0, cap - r.teStart + 1) * r.tePer
+    local talentPrice = CW.talentFlat
+        and ("Each talent costs " .. (CW.talentCost or 1) .. " TE, whatever rank you take it to.")
+        or ("Each talent rank costs " .. (CW.talentCost or 1) .. " TE, so a 5-rank talent costs " .. 5 * (CW.talentCost or 1) .. " TE in full.")
+    local cooldown = math.max(0, r.banRolls - 1)
     return table.concat({
-"|cffffd100You are a Hero.|r |cffffffffThere is no class to pick|r -- character creation offers races only, and every character becomes a Hero. Every Hero runs on the same hidden base class, which grants no special abilities and locks nothing away. Your |cffffffffrace|r is the choice that carries anything: its racial traits are yours to keep. Everything else -- every ability and talent -- you earn yourself, and you can take it from |cffffffffany class in the game|r.",
+"|cffffd100You are a Hero.|r Your race keeps its racial traits. Every ability and talent you earn yourself, and you can take it from |cffffffffany class in the game|r.",
 "",
-"You gain that power one of two ways. You choose a path per character, and can |cffffd100Change path|r later for gold. At the level cap, |cffffd100Rebirth|r starts a new life with a permanent rank, and a |cffffd100Challenge run|r is a life under one rule. Both are explained at the bottom.",
+"You gain that power one of two ways, chosen per character. You can |cffffd100Change path|r later for gold. At level " .. cap .. ", |cffffd100Rebirth|r starts a new life with a permanent rank, and a |cffffd100Challenge run|r is a life under one rule. Both are explained at the bottom.",
 "",
-"|cff00ccff==  CLASSLESS  --  you choose  ==|r",
+"|cff00ccff==  CLASSLESS: you choose  ==|r",
 "Spend two currencies to buy exactly what you want:",
-"   |cffffd100Ability Essence (AE)|r  buys abilities.",
-"   |cffffd100Talent Essence (TE)|r  buys talent ranks, one point per rank.",
-"You start with |cff00ff003 AE|r and earn |cff00ff00+1 AE every level from 4|r, the pace a class learns its abilities at. |cff00ff00Talent Essence arrives from level 10, +1 a level|r: 71 by 80, a full talent build.",
-"Abilities are priced by rarity -- |cff9d9d9d1|r / |cff1eff002|r / |cff0070dd3|r / |cffa335ee5|r / |cffff80008|r AE from common to legendary. Talents cost Talent Essence per rank and respect their tree's prerequisites and tier rules -- ranking one to 5 costs 5 TE, so pick your capstones carefully.",
-"Unlearning an ability refunds what you paid, |cffffd100Respec|r unlearns everything at once, free, and every ability line you own |cff00ff00ranks up on its own|r as you level. Talents that teach a spell (Pyroblast, Mortal Strike, Mangle) are not in the talent trees here: the spell is in the Abilities list instead, with every rank, and owning it counts as that talent for prerequisites and tree points.",
-"|cffffd100Archetypes|r are builds you follow from level 1 to 80. Pick one from the |cffffd100Archetypes|r button on this panel or at the Hero Advancement NPC: it replaces your build (abilities and talents refunded, free) and from then on buys its abilities and talents for you as each becomes available. Everything it buys is a normal purchase, and you can stop following it at any time.",
+"   |cffffd100Ability Essence (AE)|r buys abilities.",
+"   |cffffd100Talent Essence (TE)|r buys talent ranks.",
+"You start with |cff00ff00" .. r.startAE .. " AE|r and earn |cff00ff00+" .. r.aePer .. " AE every level from " .. r.aeStart .. "|r. |cff00ff00Talent Essence arrives from level " .. r.teStart .. ", +" .. r.tePer .. " a level|r: " .. teByCap .. " by level " .. cap .. ".",
+"Abilities are priced by rarity: |cffffffff" .. c[1] .. "|r / |cff1eff00" .. c[2] .. "|r / |cff0070dd" .. c[3] .. "|r / |cffa335ee" .. c[4] .. "|r / |cffff8000" .. c[5] .. "|r AE from common to legendary. " .. talentPrice .. " Talents follow their tree's prerequisites, and each tier opens at its level.",
+"Unlearning an ability refunds what you paid. |cffffd100Respec|r unlearns everything at once, free. Every ability line you own |cff00ff00ranks up on its own|r as you level. Talents that teach a spell (Pyroblast, Mortal Strike, Mangle) are in the Abilities list instead, with every rank, and owning one counts as that talent for prerequisites.",
+"|cffffd100Archetypes|r are builds you follow from level 1 to " .. cap .. ". Pick one from the |cffffd100Archetypes|r button on this panel or at the Hero Advancement NPC. It replaces your build (abilities and talents refunded, free), then buys its abilities and talents for you as each becomes available. Everything it buys is a normal purchase, and you can stop following it at any time.",
 "",
-"|cffff8800==  WILDCARD  --  the dice choose  ==|r",
-"The server rolls abilities and talents for you on a fixed schedule:",
-"   |cff00ff00Level 1:|r  4 random abilities to begin.",
-"   |cff00ff00From level 10:|r  one roll every level, alternating -- an ability on the even levels, a talent on the odd ones. Talents come no more often than abilities because a talent roll can land on rank 5 outright.",
-"Rolls are rarity-weighted: a legendary turns up about a quarter as often as a common, so most of what you are dealt is common and a legendary is a real find.",
-"A talent roll also rolls the |cffffd100rank|r you land on, and the rank IS its rarity: rank 1 common, rank 2 uncommon, rank 3 rare, rank 4 epic, |cffff8000rank 5 legendary|r. The rank is drawn from anything above what you already have, not one step up, so a talent you hold at rank 2 can jump straight to rank 5 -- and a talent you have never seen can arrive at its top rank. A high rank is the jackpot: rolls cost you nothing, so landing on rank 5 hands you the full-strength talent for free, where a Classless Hero pays for every rank up to it. A roll only ever gives you a talent you do not already have, so nothing you own is ever taken or replaced. One roll gives you one thing: it never chains.",
-"   |cffffd100Deepening a talent|r -- because a roll never raises a rank, the way to push a talent higher is to reroll it and stake |cffffd100Reroll Scrolls|r on it. The reroll costs its charge as usual and trades the talent away for a new one; every extra scroll you stake buys a chance to keep it and raise its rank instead. If the stake lands the new rank is drawn from anything above the one you hold, so it can jump more than one. If it fails the scrolls are spent and the talent is traded away as normal. Use the circular arrow beside a talent in |cffffd100My Build|r.",
+"|cffff8800==  WILDCARD: the dice choose  ==|r",
+"The dice deal you abilities and talents on a fixed schedule:",
+"   |cff00ff00Level 1:|r " .. r.wcStart .. " random abilities to begin.",
+"   |cff00ff00From level " .. r.wcRollStart .. ":|r one roll every level, alternating between an ability and a talent.",
+"Rolls are weighted by rarity: a legendary is weighted " .. r.weightLegendary .. " against a common's " .. r.weightCommon .. ", so most of what you are dealt is common and a legendary is a real find.",
+"A talent roll also rolls the |cffffd100rank|r you land on, and the rank is its rarity: rank 1 common, rank 2 uncommon, rank 3 rare, rank 4 epic, |cffff8000rank 5 legendary|r. A talent you have never had can arrive at any rank up to its top one, for free. A roll only ever gives you something you do not already own, and it never replaces anything you have.",
+"   |cffffd100Deepening a talent:|r a roll never raises a rank you already hold. To push a talent higher, reroll it and stake |cffffd100Reroll Scrolls|r on it. The reroll costs its charge as usual and trades the talent for a new one; every extra scroll you stake buys a chance to keep it and raise its rank instead, possibly by more than one. If the stake fails the scrolls are spent and the talent is traded away. Use the circular arrow beside a talent in |cffffd100My Build|r.",
 "You steer your luck:",
-"   |cffffd100Rerolls|r -- every level from 10 grants you 3 reroll charges, and rerolls are free below level 10. One pool, spent on abilities or talents alike. Reroll straight from the popup, or later from |cffffd100My Build|r using the circular arrow next to anything you own.",
-"   |cffffd100Lock|r -- while the starting hand is open, the padlock holds an ability back from |cffffd100Roll Abilities|r, which rerolls everything unlocked at once. Once free rolls end the padlocks come off for good: from then on you reroll one ability at a time, and only the one you choose.",
-"   |cffffd100Synergy & pity|r -- some rolls are narrowed to abilities that fit the classes you already own. The chance of that starts at 10% and climbs by 10 points every time you reroll, so a cold streak keeps improving your odds until it pays off, then resets. Anything you reroll also goes on a cooldown, so the reroll can never hand you straight back what you just got rid of. That cooldown lasts 24 rolls, which is around 16 levels, so rerolling something is closer to a lasting decision than a do-over. If you reroll through everything available at your level, the cooldowns lift so you always get something you can actually use.",
-"   |cffffd100Reroll Scrolls|r -- one scroll, good for an ability OR a talent, for when your charges run dry. Earn them, buy them from the Hero Advancement NPC, or use the |cffffd100Buy Scroll|r button on this panel (the price scales with level -- silver early, gold near the cap).",
-"Open the roll screen any time with the |cffffd100dice crest|r at the top-left of this window.",
+"   |cffffd100Rerolls:|r free below level " .. free .. ". From level " .. r.wcRollStart .. ", every level grants " .. r.rerollsPerLevel .. " reroll charges, spent on abilities or talents alike. Reroll from the roll reveal, or later from |cffffd100My Build|r with the circular arrow next to anything you own.",
+"   |cffffd100Lock:|r while your Starting Hand is open, a padlock holds an ability back from |cffffd100Roll Abilities|r, which rerolls everything unlocked at once. At level " .. free .. " the padlocks come off: from then on you reroll one ability at a time, and only the one you choose.",
+"   |cffffd100Synergy:|r some rolls only offer abilities that share a class with something you already own. The chance starts at " .. r.synBase .. "% and climbs " .. r.synInc .. " points every time you reroll, then resets when a synergy roll lands.",
+"   |cffffd100Reroll cooldown:|r anything you reroll cannot come back for the next " .. cooldown .. " rolls, about " .. cooldown .. " levels. If everything you could use is owned or on cooldown, the cooldowns lift so you always get something usable.",
+"   |cffffd100Reroll Scrolls:|r one scroll rerolls an ability or a talent once your charges run out. Buy them from level " .. free .. " at the Hero Advancement NPC or with |cffffd100Buy Scroll|r on this panel; the price rises with level.",
+"Below level " .. free .. ", the |cffffd100dice crest|r at the top-left of this window reopens your Starting Hand.",
 "",
 "|cff40ff40==  Shared by both paths  ==|r",
-"   |cffffd100Universal resources|r -- you carry mana, rage AND energy at once, and each spell draws its own, so nothing is ever unusable. The extra bars sit beside your unit frame and remember where you drag them. |cffffd100Settings|r on this panel picks which of them to show, including runes, runic power and combo points; |cffffd100/cwbars|r toggles the lot.",
-"   |cffffd100Primary stats|r -- you get points every level to spend across STR / AGI / STA / INT / SPI, and reallocating them is free at any time. Open the |cffffd100Stats|r button and hover any stat to see exactly what it is doing for your Hero right now.",
-"      |cffffd100Strength|r -- " .. StatPerPoint(1) .. " per point.",
-"      |cffffd100Agility|r -- " .. StatPerPoint(2) .. " per point.",
-"      |cffffd100Stamina|r -- " .. StatPerPoint(3) .. " per point.",
-"      |cffffd100Intellect|r -- " .. StatPerPoint(4) .. " per point.",
-"      |cffffd100Spirit|r -- increases " .. StatPerPoint(5) .. ". Mana regeneration pauses for 5 seconds after you cast. Talents such as Meditation, Arcane Meditation and Intensity let it continue while casting, and any Hero can learn them.",
-"   Every stat does something for every Hero, so spend toward the build you are playing.",
-"   |cffffd100Proficiencies|r -- every armor and weapon type, dual wield included, is trained for you automatically.",
-"   |cffffd100Riding|r -- trained for you too, free, at the levels a trainer would sell it: Apprentice at 20, Journeyman at 40, flying at 60, Northrend flying at 68 and epic flying at 70. Mounts themselves are bought and earned as they always were. The class mounts (Warhorse, Charger, Felsteed, Dreadsteed, Deathcharger) are the exception: those are abilities, so they come from a roll or from Ability Essence like anything else.",
-"   |cffffd100Abilities that come as a set|r -- an ability that can only be used in a stance or a form brings that form with it, and an ability that needs others to be any use brings those: Rend and Charge bring Battle Stance, Cat Form brings Claw and Prowl, Tame Beast brings Call Pet, Revive Pet, Feed Pet and Dismiss Pet. These extras are free, they are not one of your rolls, and they leave when nothing you own still needs them. To be rid of one, reroll or unlearn the ability it came with.",
-"   |cffffd100No class tools|r -- spells that ask for a class item, such as Stoneskin Totem asking for an Earth Totem, cast without it. Reagents still apply.",
-"   |cffffd100Change path|r -- after your path locks in, the |cffffd100Rebirth|r button wipes your build and starts the other path at your current level, for gold. Your level, quests and gear stay.",
+"   |cffffd100Universal resources:|r you carry mana, rage and energy at once, and each spell draws its own. The extra bars sit under your player frame and remember where you drag them. |cffffd100Settings|r on this panel picks which to show, including runes, runic power and combo points; |cffffd100/cwbars|r toggles them all.",
+"   |cffffd100Primary stats:|r you get points every level to spend across Strength, Agility, Stamina, Intellect and Spirit, and reallocating them is free at any time. Open |cffffd100Stats|r and hover a stat to see what it is doing for you right now. Each point gives:",
+"      |cffffd100Strength:|r " .. StatPerPoint(1) .. ".",
+"      |cffffd100Agility:|r " .. StatPerPoint(2) .. ".",
+"      |cffffd100Stamina:|r " .. StatPerPoint(3) .. ".",
+"      |cffffd100Intellect:|r " .. StatPerPoint(4) .. ".",
+"      |cffffd100Spirit:|r " .. StatPerPoint(5) .. ". Mana regeneration pauses for 5 seconds after you cast; Meditation, Arcane Meditation and Intensity let some of it continue.",
+"   |cffffd100Proficiencies:|r every armor and weapon type, dual wield included, is yours from level 1.",
+"   |cffffd100Riding:|r trained for you, free: Apprentice at 20, Journeyman at 40, flying at 60, Northrend flying at 68 and epic flying at 70. Mounts are bought and earned as normal. The class mounts (Warhorse, Charger, Felsteed, Dreadsteed, Acherus Deathcharger) are abilities, so they come from a roll or from Ability Essence.",
+"   |cffffd100Abilities that come as a set:|r an ability that only works in a stance or form brings that form, and one that needs others brings those: Rend and Charge bring Battle Stance, Cat Form brings Claw and Prowl, Tame Beast brings Call Pet, Revive Pet, Feed Pet and Dismiss Pet. These extras are free, are not one of your rolls, and leave when nothing you own needs them.",
+"   |cffffd100No class tools:|r spells that ask for a class item, such as Stoneskin Totem asking for an Earth Totem, cast without it. Reagents still apply.",
+"   |cffffd100Change path:|r once your path is set, the |cffffd100Change path|r button wipes your build and starts again at your current level, for gold. Your level, quests and gear stay.",
 "",
-"|cffff8800==  REBIRTH  --  a new life at the cap  ==|r",
-"At level 80 the Rebirth button starts you over at level 1. Your quests are forgotten, so every zone pays XP again; worn gear goes into your bags; your gold, bank, reputation, riding and flight paths all stay. You wake at your race's starting area, on the path you choose.",
+"|cffff8800==  REBIRTH: a new life at level " .. cap .. "  ==|r",
+"At level " .. cap .. " the |cffffd100Rebirth|r button starts you over at level 1. Your quests are forgotten, so every zone pays XP again; worn gear goes into your bags; your gold, bank, reputation, riding and flight paths stay. You start at your race's starting area, on the path you choose.",
 "Each Rebirth raises a |cffffd100rank|r that is yours for good:",
-"   |cff00ff00+100% kill and dungeon XP|r for the first, +50% more for each after, up to +300%. Quest XP climbs more gently.",
-"   |cff00ff00+3% to every stat|r per rank, up to +15%.",
-"   |cffffd100Heirlooms|r -- carry one ability through, usable from level 1 and never rerolled or refunded. Each rank lets you carry one more.",
-"   Classless Heroes start the new life with extra essence per rank. A title per rank: the Reborn, the Twice Reborn, and on.",
-"The price climbs with the rank, since the quests come back with their one-time rewards.",
+"   |cff00ff00+" .. r.xpFirst .. "% kill XP|r for the first, +" .. r.xpPerRank .. "% more for each after, up to +" .. r.xpMax .. "%. Quest XP rises more gently.",
+"   |cff00ff00+" .. r.statPct .. "% to every primary stat|r per rank, up to +" .. r.statMax .. "%.",
+"   |cffffd100Heirlooms:|r carry one ability through, usable from level 1 and never rerolled or refunded. Each rank lets you carry one more.",
+"   Classless Heroes start the new life with bonus Ability and Talent Essence per rank. A title per rank: the Reborn, the Twice Reborn, and so on.",
+"The price rises with each rank.",
 "",
-"|cffff4444==  CHALLENGE RUNS  --  one rule, counted lives  ==|r",
-"A run is a life under one rule on either path. Start one from the Rebirth button at the cap (it is a Rebirth, heirlooms and all) or as a fresh Hero up to level " .. (CW.state.deadline or 5) .. ". Pick a challenge, read its rule, go.",
-"   |cffffd100Lives|r -- the hearts on the run badge in the top-right of this panel, one per life, emptied as you lose them. Hover the badge for your challenge's rule and rewards, and on Hourglass the time left on the level; click it for the challenge page. A death costs one; battlegrounds, arenas and duels are free. Rules that make the world deadlier give five, rules that change how you fight give three, and |cffffd100Hardcore|r gives one because the rule is death itself.",
-"   |cffffd100Running out|r ends the run: the rule lifts and you keep everything. |cffffd100Reaching 80|r with a life in hand finishes it, and pays the challenge's gold, its title, and on some runs an ability no roll or shop can give, kept as an heirloom. Finish with no life lost for |cffffd100the Unbroken|r.",
-"   |cffffd100Shards|r -- every run pays them when it ends, finished or not: one per level reached, two per level past 60, a third more for a run with no life lost. They buy one |cffffd100extra life|r for your next run, on the challenge page.",
+"|cffff4444==  CHALLENGE RUNS: one rule, counted lives  ==|r",
+"A run is a life under one rule on either path. Start one from the Rebirth button at level " .. cap .. " (it is a Rebirth, heirlooms and all), or as a new Hero up to level " .. (s.deadline or 5) .. ". Pick a challenge, read its rule, go.",
+"   |cffffd100Lives:|r the hearts on the run badge at the top-right of this panel. Hover the badge for your challenge's rule and rewards, and on Hourglass the time left on the level; click it for the challenge page. Each challenge shows how many lives it gives. A death costs one; battlegrounds, arenas and duels are free.",
+"   |cffffd100Running out|r ends the run: the rule lifts and you keep everything. |cffffd100Reaching " .. cap .. "|r with a life left finishes it. Your first finish of a challenge pays its gold, its title, and an ability no roll or shop can give, kept as an heirloom. Finish with no life lost for |cffffd100the Unbroken|r.",
+"   |cffffd100Shards:|r every run pays them when it ends, finished or not: one per level reached, two per level past 60, and a third more for a run with no life lost. They buy an |cffffd100extra life|r for your next run, on the challenge page.",
 "",
-"|cffaaaaaaEverything here can also be done at the Hero Advancement NPC, found in every major city beside the guild master. Open this panel any time with |r|cffffff00N|r|cffaaaaaa (the old Talents key -- talents live here now), |r|cffffff00/cw|r|cffaaaaaa, or the dice button on your minimap. Rebind the key under Key Bindings > ClasslessWildcard.|r",
+"|cffaaaaaaEverything here can also be done at the Hero Advancement NPC in every capital city, Dalaran and Shattrath. Open this panel with |r" .. HelpKey() .. "|cffffff00/cw|r|cffaaaaaa, or the dice button on your minimap. Rebind the key under Key Bindings > Hero Advancement.|r",
 }, "\n")
 end
 
@@ -2397,6 +2473,7 @@ end
 CW.RefreshHelpText = RefreshHelpText
 RefreshHelpText()
 CW.helpFly = helpFly
+CW.helpText = helpText
 
 helpBtn:SetScript("OnClick", function()
     statFly:Hide(); archFly:Hide(); CW.setFly:Hide()
@@ -2456,6 +2533,13 @@ local function UpdateStatsButton()
     local unspent = (CW.stats.budget or 0) - PendingSpent()
     if unspent < 0 then unspent = 0 end
     statsBtn:SetText("Stats (" .. unspent .. ")")
+    -- a realm with stat allocation off has nothing to open
+    if CW.stats.enabled == 0 then
+        statsBtn:Hide()
+        if CW.statFly then CW.statFly:Hide() end
+    else
+        statsBtn:Show()
+    end
 end
 CW.UpdateStatsButton = UpdateStatsButton
 
@@ -2476,16 +2560,16 @@ local function UpdateStatus()
     if s.mode == 0 then
         statusText:SetText(modeText .. "   Ability Essence: |cff00ff00" .. s.ae .. "|r   Talent Essence: |cff00ff00" .. s.te .. "|r")
         subStatusText:SetText("Level " .. s.level)
-        bottomText:SetText("Ability Essence: |cff00ff00" .. s.ae .. "|r    Talent Essence: |cff00ff00" .. s.te .. "|r")
-        respecBtn:Enable()
+        bottomText:SetText("")
+        respecBtn:Show()
         if s.rebirth == 1 then CW.rebirthBtn:Show() else CW.rebirthBtn:Hide() end
         CW.buyScrollBtn:Hide()
         CW.archBtn:Show()
     elseif s.mode == 1 then
-        statusText:SetText(modeText .. "   Rerolls: |cff00ff00" .. s.rerolls .. "|r")
-        subStatusText:SetText("Level " .. s.level .. "   Scrolls: " .. s.scrolls .. "   Synergy chance: " .. s.chance .. "%   Pity: " .. s.pity)
-        bottomText:SetText("Rerolls: |cff00ff00" .. s.rerolls .. "|r    Reroll Scrolls: |cff00ff00" .. s.scrolls .. "|r")
-        respecBtn:Disable()
+        statusText:SetText(modeText .. "   Reroll charges: |cff00ff00" .. s.rerolls .. "|r   Reroll Scrolls: |cff00ff00" .. s.scrolls .. "|r")
+        subStatusText:SetText("Level " .. s.level .. "   Synergy chance: " .. s.chance .. "%")
+        bottomText:SetText("")
+        respecBtn:Hide()
         if s.rebirth == 1 then CW.rebirthBtn:Show() else CW.rebirthBtn:Hide() end
         CW.archBtn:Hide(); CW.archFly:Hide()
         if s.scrollBuy == 1 then
@@ -2494,8 +2578,11 @@ local function UpdateStatus()
         else CW.buyScrollBtn:Hide() end
     else
         statusText:SetText(modeText)
-        subStatusText:SetText("Choose your path before level " .. s.deadline .. "!")
-        CW.rebirthBtn:Hide()
+        subStatusText:SetText("Choose your path before level " .. s.deadline .. ", or you start on the "
+            .. (CW.rules.defaultMode == 1 and "Wildcard" or "Classless") .. " path.")
+        respecBtn:Hide()
+        CW.rebirthBtn:SetText("Choose path")
+        CW.rebirthBtn:Show()
         CW.buyScrollBtn:Hide()
         CW.archBtn:Hide(); CW.archFly:Hide()
         bottomText:SetText("")
@@ -2535,7 +2622,15 @@ local function RenderAbilPane()
                 w:SetScript("OnClick", nil)
             else
                 w.sub:SetText(typeTag .. e.cost .. " Ability Essence" .. lvlText)
-                w.tipLine = e.owned == 1 and "Known" or "Click to learn"
+                if e.owned == 1 then
+                    w.tipLine = "Known"
+                elseif s.mode ~= 0 then
+                    w.tipLine = "Choose the Classless path to buy abilities."
+                elseif (e.lvl or 1) > (s.level or 1) then
+                    w.tipLine = "Requires level " .. e.lvl
+                else
+                    w.tipLine = "Click to learn"
+                end
                 local id = e.id
                 w:SetScript("OnClick", function()
                     if s.mode == 0 and e.owned ~= 1 and (e.lvl or 1) <= (CW.state.level or 1) then
@@ -2615,16 +2710,24 @@ local function RenderTalPane()
                 and ("|cffaaaaaa" .. (t.active == 1 and "Active" or "Passive") .. "|r  ") or ""
             if s.mode == 1 then
                 w.sub:SetText(typeTag .. (RARITY_NAMES[t.rarity] or "") .. LevelTag(tlvl, s.level))
-                w.tipLine = "Rolled at level-up"
+                w.tipLine = "Dealt by Wildcard rolls"
                 w:SetScript("OnClick", nil)
             else
-                -- price comes from the server (CFG), not an assumption: a
-                -- talent costs one point for ALL its ranks by default
+                -- price comes from the server (CFG): per rank by default,
+                -- or one charge for all ranks when TalentFlatCost is on
                 local cost = CW.talentCost or 1
                 local costText = cost .. " Talent Essence"
                     .. (CW.talentFlat and " (all ranks)" or "/rank")
-                w.sub:SetText(typeTag .. "Row " .. (t.row + 1) .. "  " .. costText .. LevelTag(tlvl, s.level))
-                w.tipLine = t.owned >= t.max and "Maxed" or "Click to learn a rank"
+                w.sub:SetText(typeTag .. "Tier " .. (t.row + 1) .. "  " .. costText .. LevelTag(tlvl, s.level))
+                if t.owned >= t.max then
+                    w.tipLine = "Maxed"
+                elseif s.mode ~= 0 then
+                    w.tipLine = "Choose the Classless path to buy talents."
+                elseif (tlvl or 1) > (s.level or 1) then
+                    w.tipLine = "Requires level " .. tlvl
+                else
+                    w.tipLine = "Click to learn a rank"
+                end
                 local id = t.talentId
                 w:SetScript("OnClick", function()
                     if s.mode == 0 and t.owned < t.max then Send("TALBUY " .. id) end
@@ -2679,7 +2782,8 @@ CW.buildRows = buildRows
 local function RenderBuild()
     local s = CW.state
     local list = BuildList()
-    buildHeader:SetText("|cffffd100My Build|r  |cffaaaaaa(" .. #CW.owned .. " abilities, " .. #CW.ownedT .. " talents)|r")
+    buildHeader:SetText("|cffffd100My Build|r  |cffaaaaaa(" .. #CW.owned .. (#CW.owned == 1 and " ability, " or " abilities, ")
+        .. #CW.ownedT .. (#CW.ownedT == 1 and " talent)|r" or " talents)|r"))
     local total = math.max(1, math.ceil(#list / BUILD_ROWS))
     if CW.buildPageNo >= total then CW.buildPageNo = total - 1 end
     buildPage:SetText((CW.buildPageNo + 1) .. " / " .. total)
@@ -3042,8 +3146,12 @@ wizTitle:SetText("Choose Your Path, Hero")
 local wizText = wizard:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
 wizText:SetPoint("TOP", 0, -46)
 wizText:SetWidth(370)
-local WIZ_PATH_TEXT = "Every spell and talent of every class awaits. You have no class of your own, only a shared chassis (resource bar and base stats). Will you choose each ability yourself, or let the Wildcard decide your fate?"
-wizText:SetText(WIZ_PATH_TEXT)
+function CW.WizPathText()
+    return "Every spell and talent of every class is open to you. Will you choose each ability yourself, "
+        .. "or let the Wildcard deal them?\n\nChoose before level " .. (CW.state.deadline or 5)
+        .. ", or you start on the " .. (CW.rules.defaultMode == 1 and "Wildcard" or "Classless") .. " path."
+end
+wizText:SetText(CW.WizPathText())
 
 local wizClassless = CreateFrame("Button", nil, wizard, "UIPanelButtonTemplate")
 wizClassless:SetWidth(340); wizClassless:SetHeight(30)
@@ -3088,7 +3196,7 @@ local function ShowPathChoice()
     wizard:SetWidth(WIZ_W); wizard:SetHeight(WIZ_H)
     wizTitle:SetText("Choose Your Path, Hero")
     wizText:SetWidth(370)
-    wizText:SetText(WIZ_PATH_TEXT)
+    wizText:SetText(CW.WizPathText())
     wizClassless:Show(); wizWildcard:Show(); wizLater:Show()
     wizList.scroll:Hide()
     for _, r in ipairs(wizList.rows) do r:Hide() end
@@ -3104,7 +3212,7 @@ local function ShowArchetypeChoices()
     if #list > 0 then
         wizText:SetText("An archetype is a build you follow: its abilities and talents are bought for you as you level, all the way to 80. Change or stop it later from the Archetypes button.")
     else
-        wizText:SetText("No archetypes are configured on this realm.")
+        wizText:SetText("No archetypes are available.")
     end
     wizard:SetWidth(WIZ_ARCH_W)
     local top = 46 + TextHeight(wizText) + 14
@@ -3471,7 +3579,7 @@ barsFrame.comboMouse:SetScript("OnEnter", function(self)
     GameTooltip:AddLine("Combo Points")
     GameTooltip:AddLine(string.format("%d of 5 on your target.", barsFrame.comboCount or 0),
         1, 1, 1)
-    GameTooltip:AddLine("Anything that builds them builds them, whatever else you have picked.",
+    GameTooltip:AddLine("Any ability that builds combo points builds them for you.",
         0.7, 0.7, 0.7, true)
     GameTooltip:Show()
 end)
@@ -3929,8 +4037,8 @@ do
             .. "it and raise its rank. If the stake fails, it is traded away as normal.\n\n"
             .. "You have |cff00ff00" .. (s.scrolls or 0) .. "|r Reroll Scroll"
             .. (((s.scrolls or 0) == 1) and "" or "s")
-            .. ((s.scrolls or 0) > 0 and "." or ", and up to |cffffd100" .. (s.tuMaxScrolls or 0)
-                .. "|r can be staked on one reroll. Buy them with the button on this panel."))
+            .. ". Up to |cffffd100" .. (s.tuMaxScrolls or 0) .. "|r can be staked on one reroll."
+            .. (s.scrollBuy == 1 and " Buy more with Buy Scroll on the Hero Advancement panel." or ""))
         if max > 0 then
             fly.stake:SetText("Stake |cffffd100" .. n .. "|r  =  |cff00ff00" .. odds .. "%|r to raise its rank")
         else
@@ -4003,7 +4111,7 @@ do
     local ROWS = {
         { head = "Resource bars" },
         { key = "frame", label = "Show the bars",
-          tip = "The mini-bars beside your unit frame. Drag them anywhere you like." },
+          tip = "The mini-bars under your player frame. Drag them anywhere you like." },
         { key = "lock", label = "Lock in place",
           tip = "Stops the bars being dragged by accident." },
         { head = "Show a bar for" },
@@ -4446,12 +4554,15 @@ SlashCmdList["CLASSLESSWILDCARDBARS"] = function(msg)
     elseif cmd == "reset" then
         CW.ResetBarsPosition()
         Print("Resource bars moved back under the player frame.")
-    elseif cmd == "show" or cmd == "hide" then
-        ClasslessWildcardDB.hideBars = (cmd == "hide")
+    elseif cmd == "show" or cmd == "hide" or cmd == "" then
+        if cmd == "" then
+            ClasslessWildcardDB.hideBars = not ClasslessWildcardDB.hideBars
+        else
+            ClasslessWildcardDB.hideBars = (cmd == "hide")
+        end
         CW.UpdateBarsVisibility()
-    elseif cmd == "" then
-        ClasslessWildcardDB.hideBars = not ClasslessWildcardDB.hideBars
-        CW.UpdateBarsVisibility()
+        Print(ClasslessWildcardDB.hideBars and "Resource bars hidden." or "Resource bars shown.")
+        if CW.setFly and CW.setFly:IsShown() then CW.RenderSettings() end
     else
         Print("/cwbars, or /cwbars show, hide, lock, unlock, reset.")
     end
@@ -4515,7 +4626,7 @@ if Minimap then
         GameTooltip:SetOwner(self, "ANCHOR_LEFT")
         GameTooltip:AddLine("Hero Advancement")
         local key = GetBindingKey and GetBindingKey("CLASSLESSWILDCARD_TOGGLE")
-        GameTooltip:AddLine("Left-click: classless panel" .. (key and ("  (" .. key .. ")") or ""), 1, 1, 1)
+        GameTooltip:AddLine("Left-click: Hero Advancement" .. (key and ("  (" .. key .. ")") or ""), 1, 1, 1)
         GameTooltip:AddLine("Right-click: toggle resource bars", 1, 1, 1)
         GameTooltip:AddLine("Drag to move", 0.7, 0.7, 0.7)
         GameTooltip:Show()
@@ -4549,7 +4660,7 @@ if HelpMicroButton then
             label = MicroButtonTooltipText(label, "CLASSLESSWILDCARD_TOGGLE")
         end
         HelpMicroButton.tooltipText = label
-        HelpMicroButton.newbieText = "Opens the classless panel. Shift-click for the Help / GM window."
+        HelpMicroButton.newbieText = "Opens Hero Advancement. Shift-click for the Help / GM window."
     end
     CW.RefreshMicroTooltip()
 
@@ -4595,7 +4706,7 @@ if PaperDollFrame_SetStat and hooksecurefunc then
         local _, total = UnitStat("player", statIndex)
         local extra = CW.StatContribution and CW.StatContribution(statIndex, total or 0)
         if extra then
-            tip = tip .. "\n\n|cff40ff40Classless: " .. extra .. "|r"
+            tip = tip .. "\n\n|cff40ff40Hero bonus: " .. extra .. "|r"
         end
         statFrame.tooltip2 = tip
     end)
@@ -5139,8 +5250,7 @@ local function ShowResult()
     elseif d.flags == 1 then
         rvSub:SetText("|cff00ff88Synergy roll: it complements your Hero!|r")
     elseif d.isTalent then
-        -- one talent point buys the talent whatever rank it landed on
-        rvSub:SetText((RARITY_NAMES[d.rarity or 0] or "") .. "  |cffaaaaaa- dealt free, all ranks included|r")
+        rvSub:SetText((RARITY_NAMES[d.rarity or 0] or "") .. "  |cffaaaaaaDealt free at Rank " .. (d.rank or 1) .. "|r")
     else
         rvSub:SetText(RARITY_NAMES[d.rarity or 0] or "")
     end
@@ -5460,7 +5570,7 @@ handTitle:SetText("Your Starting Hand")
 local handHint = hand:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
 handHint:SetPoint("TOP", 0, -40)
 handHint:SetText("Click an ability to lock it in: |cffffd100gold ring + closed padlock = kept|r." ..
-    " Roll Abilities rerolls only the unlocked ones. Free until level 10!")
+    " Roll Abilities rerolls only the unlocked ones.")
 
 -- Four cards. Not a layout budget that happens to fit four -- four is the size
 -- of the starting hand, full stop. The server clamps StartingAbilities to the
@@ -5918,7 +6028,7 @@ handRoll:SetScript("OnClick", function()
 end)
 handKeep:SetScript("OnClick", function()
     -- just close it: the hand is the whole point of this screen, and dropping
-    -- the Character Advancement panel on top of a player who has finished with
+    -- the Hero Advancement panel on top of a player who has finished with
     -- it is one modal too many. The panel is a click away on the minimap
     -- button whenever they want it.
     hand:Hide()
@@ -6025,6 +6135,8 @@ local function HandleMessage(msg)
         s.scrollCost = tonumber(p[14]) or 0
         s.scrollBuy = tonumber(p[15]) or 0
         s.freeReroll = tonumber(p[16]) or 10   -- Wildcard.FreeRerollLevel
+        -- the Help guide quotes the free-reroll and path-lock levels
+        if CW.RefreshHelpText and CW.helpFly and CW.helpFly:IsShown() then CW.RefreshHelpText() end
         -- what a scroll staked on a talent reroll buys
         s.tuBase = tonumber(p[17]) or 0
         s.tuPerScroll = tonumber(p[18]) or 0
@@ -6258,7 +6370,7 @@ local function HandleMessage(msg)
     elseif kind == "CFG" then
         -- classless pricing the browser needs to label costs honestly
         CW.talentCost = tonumber(p[2]) or 1
-        CW.talentFlat = (tonumber(p[3]) or 1) == 1
+        CW.talentFlat = (tonumber(p[3]) or 0) == 1
         -- Whether Death Knight content is in the library. Absent from older
         -- servers, which is why the default is off rather than on: a missing
         -- field must not conjure a class button with nothing behind it.
@@ -6270,6 +6382,19 @@ local function HandleMessage(msg)
             CW.dkEnabled, CW.forgedEnabled = dk, forged
             CW.LayoutClassStrip()
         end
+        -- the realm's rules, for the Help guide; absent fields keep the defaults
+        local r = CW.rules
+        local function num(i, key) local v = tonumber(p[i]); if v then r[key] = v end end
+        num(6, "startAE"); num(7, "aeStart"); num(8, "aePer"); num(9, "teStart"); num(10, "tePer")
+        for k = 1, 5 do
+            local v = tonumber(p[10 + k]); if v then r.abilityCost[k] = v end
+        end
+        num(16, "wcStart"); num(17, "wcRollStart"); num(18, "rerollsPerLevel")
+        num(19, "synBase"); num(20, "synInc"); num(21, "banRolls")
+        num(22, "weightCommon"); num(23, "weightLegendary")
+        num(24, "xpFirst"); num(25, "xpPerRank"); num(26, "xpMax")
+        num(27, "statPct"); num(28, "statMax"); num(29, "maxLevel"); num(30, "defaultMode")
+        if CW.RefreshHelpText then CW.RefreshHelpText() end
         RenderList()
 
     elseif kind == "CP" then
@@ -6337,9 +6462,11 @@ local function HandleMessage(msg)
         -- the run is over: finished or not, level, shards, gold, name
         local finished, level, shards, gold, name = tonumber(p[2]) or 0, tonumber(p[3]) or 1,
             tonumber(p[4]) or 0, tonumber(p[5]) or 0, p[6] or "the run"
+        local shardText = shards .. (shards == 1 and " shard" or " shards")
         StaticPopup_Show("CW_RUN_END", finished == 1
-            and ("|cff00ff00" .. name .. " complete.|r\n\n" .. shards .. " shards and " .. gold .. " gold. The rule lifts.")
-            or ("|cffff4444" .. name .. " is over.|r\n\nYou reached level " .. level .. " and earned " .. shards .. " shards. The rule lifts."))
+            and ("|cff00ff00" .. name .. " complete.|r\n\n" .. shardText
+                .. (gold > 0 and (" and " .. gold .. " gold") or "") .. ". The rule lifts.")
+            or ("|cffff4444" .. name .. " is over.|r\n\nYou reached level " .. level .. " and earned " .. shardText .. ". The rule lifts."))
         Send("STATE")
         Send("OWN")
 
@@ -6755,10 +6882,11 @@ SlashCmdList["CLASSLESSWILDCARD"] = function(msg)
         elseif CW.CanShowHand() then
             hand:Show()
         else
-            Print("The Starting Hand is only available to Wildcard Heroes below level 10. Reroll from |cffffff00My Build|r instead.")
+            Print("The Starting Hand is only available to Wildcard Heroes below level " .. (CW.state.freeReroll or 10)
+                .. ". Reroll from |cffffff00My Build|r instead.")
         end
         return
-    elseif msg == "testroll" then
+    elseif msg == "testroll" and ClasslessWildcardDB and ClasslessWildcardDB.dev then
         -- preview the reveal without a real roll (Fireball, random rarity).
         -- test = true keeps Reroll local: the ability is not really owned, so
         -- asking the server to reroll it just answers "you do not own that".
@@ -6772,7 +6900,7 @@ end
 -- ---------------------------------------------------------------------------
 -- key bindings (Bindings.xml declares the actions; these are their handlers)
 -- ---------------------------------------------------------------------------
-BINDING_HEADER_CLASSLESSWILDCARD = "ClasslessWildcard"
+BINDING_HEADER_CLASSLESSWILDCARD = "Hero Advancement"
 BINDING_NAME_CLASSLESSWILDCARD_TOGGLE = "Toggle Hero Advancement"
 BINDING_NAME_CLASSLESSWILDCARD_HELP = "Toggle the Help guide"
 BINDING_NAME_CLASSLESSWILDCARD_BARS = "Toggle the resource bars"
@@ -6900,8 +7028,8 @@ function CW.ClaimHotkey()
         ClasslessWildcardDB.hotkeyClaimed = true
         if CW.RefreshMicroTooltip then CW.RefreshMicroTooltip() end
         Print("Hotkey |cffffff00" .. key .. "|r opens the Hero Advancement panel"
-            .. (occupied and " (it replaced the unused Talents frame)" or "")
-            .. ". Rebind it under Key Bindings > ClasslessWildcard.")
+            .. (occupied and ", in place of the Talents key" or "")
+            .. ". Rebind it under Key Bindings > Hero Advancement.")
         return true
     end
 
@@ -6911,7 +7039,7 @@ function CW.ClaimHotkey()
     end
 
     ClasslessWildcardDB.hotkeyClaimed = true
-    Print("No free hotkey was available. Bind |cffffff00Toggle Hero Advancement|r under Key Bindings > ClasslessWildcard.")
+    Print("No free hotkey was available. Bind |cffffff00Toggle Hero Advancement|r under Key Bindings > Hero Advancement.")
 end
 
 -- Our confirm popups get a dark, near-opaque backing. The stock dialog
@@ -6950,4 +7078,4 @@ end
 -- exposed for debugging and third-party extensions
 _G.ClasslessWildcard_API = CW
 
-Print("ClasslessWildcard |cffffd100v" .. ADDON_VERSION .. "|r loaded. Type |cffffff00/cw|r to open the Hero Advancement panel, or |cffffff00/cw help|r for a guide.")
+

@@ -205,7 +205,7 @@ BUILDS = [
              ("Priest", "Discipline", "Meditation", 3), ("Priest", "Discipline", "Inner Focus", 1),
              ("Priest", "Discipline", "Improved Power Word: Shield", 3), ("Priest", "Discipline", "Mental Agility", 2),
          ]),
-    dict(id=5, name="Stealthy Healer",
+    dict(id=5, name="Thornshade",
          description="Druidic infiltrator: slip through shadows, restore life from hiding.",
          abilities=[
              ("Druid", "Healing Touch"), ("Rogue", "Stealth"), ("Druid", "Wrath"), ("Druid", "Mark of the Wild"),
@@ -421,7 +421,7 @@ BUILDS = [
              ("Paladin", "Seal of Righteousness"), ("Paladin", "Judgement of Light"), ("Paladin", "Blessing of Might"),
              ("Paladin", "Divine Protection"), ("Paladin", "Hammer of Justice"), ("Warrior", "Bloodrage"),
              ("Warrior", "Shield Bash"), ("Paladin", "Righteous Defense"), ("Paladin", "Righteous Fury"),
-             ("Warrior", "Shield Block"), ("Paladin", "Consecration"), ("Warrior", "Holy Cleave"),
+             ("Warrior", "Shield Block"), ("Paladin", "Consecration"), ("Warrior", "Hallowed Cleave"),
              ("Warrior", "Shield Wall"), ("Paladin", "Divine Shield"), ("Warrior", "Shield Slam"),
              ("Paladin", "Holy Shield"), ("Paladin", "Cleanse"),
              ("Warrior", "Holy Devastate"), ("Paladin", "Avenger's Shield"),
