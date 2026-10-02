@@ -314,12 +314,18 @@ subStatusText:SetPoint("TOP", 0, -56)
 -- the gem is set into it while the life is still in hand. Used for the run's
 -- lives in the header, in the challenge list and on the challenge page, so
 -- lives look the same everywhere they appear.
-function CW.MakePip(parent, size, layer)
-    local bg = parent:CreateTexture(nil, layer or "OVERLAY")
+--
+-- The socket and the gem sit on DIFFERENT draw layers, socket on ARTWORK and
+-- gem on OVERLAY. They used to share OVERLAY with the gem one sub-level up,
+-- and in game some pips drew their opaque socket over their own gem and came
+-- out empty. Two layers is the order the client always keeps, and it is how
+-- the combo-point bar (barsFrame) has always stacked the same two pieces.
+function CW.MakePip(parent, size)
+    local bg = parent:CreateTexture(nil, "ARTWORK")
     bg:SetWidth(size); bg:SetHeight(size)
     bg:SetTexture("Interface\\ComboFrame\\ComboPoint")
     bg:SetTexCoord(0, 0.375, 0, 0.75)          -- the 12x12 socket
-    bg.gem = parent:CreateTexture(nil, layer or "OVERLAY", nil, 1)
+    bg.gem = parent:CreateTexture(nil, "OVERLAY")
     bg.gem:SetWidth(size * 0.55); bg.gem:SetHeight(size * 0.46)
     bg.gem:SetPoint("CENTER", bg, "CENTER", 0, 0)
     bg.gem:SetTexture("Interface\\ComboFrame\\ComboPoint")

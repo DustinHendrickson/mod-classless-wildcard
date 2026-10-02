@@ -97,7 +97,12 @@ StubMT.__index = function(self, k)
     -- these take a NAME and set the global, which is how Blizzard's own code
     -- finds "<tab>Flash"; the generic fallback below dropped it
     if k == "CreateTexture" or k == "CreateFontString" then
-        return function(s, name, ...) return Stub(k, name, s) end
+        -- the draw layer is kept, so a test can check what draws over what
+        return function(s, name, layer, ...)
+            local o = Stub(k, name, s)
+            rawset(o, "__layer", layer)
+            return o
+        end
     end
     if NUMERIC[k] then
         return function(s)
@@ -1468,6 +1473,11 @@ def test_challenge_runs(h):
     h.check([bool(rows[1]["pips"][k]["__shown"]) for k in range(1, 7)] == [True] * 5 + [False],
             "Nemesis draws five life pips")
     h.check(rows[1]["pips"][1]["gem"]["__shown"] is True, "and each pip carries its gem")
+    layers = {(str(rows[i]["pips"][k]["__layer"]), str(rows[i]["pips"][k]["gem"]["__layer"]))
+              for i in range(1, 4) for k in range(1, 7)}
+    layers |= {(str(CW.lifeIcons[k]["__layer"]), str(CW.lifeIcons[k]["gem"]["__layer"])) for k in range(1, 7)}
+    h.check(layers == {("ARTWORK", "OVERLAY")},
+            "every gem draws on a layer above its socket, never the same one: %r" % layers)
     h.check(rows[3]["done"]["__shown"] is True and rows[2]["done"]["__shown"] is False,
             "a finished challenge is ticked, an unfinished one is not")
     h.check("1000" in str(rows[2]["gold"]["__text"]) and "UI-GoldIcon" in str(rows[2]["gold"]["__text"]),
