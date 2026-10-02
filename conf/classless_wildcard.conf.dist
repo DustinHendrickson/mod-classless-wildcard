@@ -861,7 +861,8 @@ ClasslessWildcard.Rebirth.CostGold = 100
 #    ClasslessWildcard.Rebirth.KillXpPctFirst
 #    ClasslessWildcard.Rebirth.KillXpPctPerRank
 #    ClasslessWildcard.Rebirth.KillXpPctMax
-#        Extra kill XP, in percent: the first Rebirth gives
+#        Extra kill and dungeon XP (including the Dungeon Finder's reward), in
+#        percent: the first Rebirth gives
 #        KillXpPctFirst, every Rebirth after it adds KillXpPctPerRank, capped
 #        at KillXpPctMax. Kills are where a reborn Hero levels, since the
 #        quests they forgot are the ones they already did once.

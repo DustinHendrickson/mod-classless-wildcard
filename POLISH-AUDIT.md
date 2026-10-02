@@ -28,7 +28,7 @@ Abbreviations: **Lua** = `client-addon/ClasslessWildcard/ClasslessWildcard.lua`,
 
 ## 2. Wrong information shown to players
 
-**Status: fixed in batch 2, except 2.28 (README and conf now say kill XP; the code is unchanged).**
+**Status: fixed in batch 2; 2.28 fixed after: the Dungeon Finder reward gets the kill rate.**
 
 | # | Where | Current | Fix |
 |---|---|---|---|
@@ -85,7 +85,7 @@ Abbreviations: **Lua** = `client-addon/ClasslessWildcard/ClasslessWildcard.lua`,
 
 ## 4. Missing feedback and confirms
 
-**Status: fixed in batch 3. 4.14 is partial: the talent reroll dialog and Starting Hand now close with Escape, but Escape over a flyout still closes the whole panel (closing the flyout first would mean replacing a Blizzard function, which risks taint).**
+**Status: fixed in batch 3; 4.14 finished after: an open flyout takes the panel's place in UISpecialFrames, so Escape closes it first.**
 
 | # | Where | Problem |
 |---|---|---|
@@ -142,7 +142,7 @@ Abbreviations: **Lua** = `client-addon/ClasslessWildcard/ClasslessWildcard.lua`,
 
 ## 7. Lower priority
 
-**Status: the Hero-line tooltip tokens were done in batch 5 for every spell whose number lives in its own effects (Sentry Bolt, Spore Wash, Turnabout, Sanguine Pact and Brink still carry literals). The rest of this section is not done.**
+**Status: all done. The two PaperDollFrame_SetStat hooks did not conflict: the second was written for a later client's (frame, unit, index) signature and never ran on 3.3.5, so it was removed. Five Hero-line tooltips (Sentry Bolt, Spore Wash, Turnabout, Sanguine Pact, Brink) keep literal numbers because the value lives in another spell or a script.**
 
 - Hardcoded numbers in Hero-line tooltips where an effect token exists (18 spells, Forged:585-1612). They match today but will drift.
 - Two `PaperDollFrame_SetStat` hooks overwrite each other (Lua:3811, 4590) with disagreeing stat descriptions.

@@ -908,12 +908,14 @@ public:
 
     // Rebirth's XP rate. Kills and dungeons are where a reborn Hero levels,
     // since the quests they already did are the ones they forgot; everything
-    // else gets the gentler curve.
+    // else gets the gentler curve. The Dungeon Finder's completion reward
+    // arrives as a quest (XPSOURCE_QUEST_DF), so it is named here too.
     void OnPlayerGiveXP(Player* player, uint32& amount, Unit* /*victim*/, uint8 xpSource) override
     {
         if (!sClasslessMgr->cfg.enabled || !amount)
             return;
-        if (uint32 const pct = sClasslessMgr->RebirthXpPct(player, xpSource == XPSOURCE_KILL))
+        bool const killRate = xpSource == XPSOURCE_KILL || xpSource == XPSOURCE_QUEST_DF;
+        if (uint32 const pct = sClasslessMgr->RebirthXpPct(player, killRate))
             amount += CalculatePct(amount, pct);
     }
 

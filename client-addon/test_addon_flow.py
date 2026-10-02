@@ -58,7 +58,11 @@ StubMT.__index = function(self, k)
     if k == "Show" then return function(s) rawset(s, "__shown", true) end end
     if k == "Hide" then return function(s) rawset(s, "__shown", false) end end
     if k == "IsShown" or k == "IsVisible" then return function(s) return rawget(s, "__shown") end end
-    if k == "SetScript" or k == "HookScript" then return function(s, n, f) rawget(s, "__scripts")[n] = f end end
+    if k == "SetScript" then return function(s, n, f) rawget(s, "__scripts")[n] = f end end
+    if k == "HookScript" then return function(s, n, f)
+        local old = rawget(s, "__scripts")[n]
+        rawget(s, "__scripts")[n] = old and function(...) old(...); return f(...) end or f
+    end end
     if k == "GetScript" then return function(s, n) return rawget(s, "__scripts")[n] end end
     if k == "RegisterEvent" then return function(s, e) rawget(s, "__events")[e] = true end end
     if k == "SetText" then return function(s, t) rawset(s, "__text", t) end end
@@ -149,6 +153,7 @@ end })
 
 -- WoW's Lua aliases
 tinsert, tremove = table.insert, table.remove
+UISpecialFrames = {}
 format, strlower, strupper, strlen, strsub, strfind, strmatch, gsub, strrep =
     string.format, string.lower, string.upper, string.len, string.sub, string.find, string.match, string.gsub, string.rep
 floor, ceil, abs, max, min = math.floor, math.ceil, math.abs, math.max, math.min
@@ -2554,6 +2559,25 @@ def test_confirms(h):
             "/cwbars hide and show say what they did: %r" % printed)
 
 
+def test_escape(h):
+    """Escape closes the open flyout before the panel."""
+    print("--- escape: a flyout first, then the panel")
+    CW, g = h.CW, h.g
+    listed = lambda: [str(v) for v in g.UISpecialFrames.values()]
+    g.ClasslessWildcardFrame["__shown"] = True
+    CW.statFly["__shown"] = True
+    CW.SyncEscape()
+    h.check("ClasslessWildcardStats" in listed() and "ClasslessWildcardFrame" not in listed(),
+            "with Stats open, Escape would close Stats and leave the panel: %r" % listed())
+    CW.statFly["__shown"] = False
+    CW.SyncEscape()
+    h.check("ClasslessWildcardFrame" in listed() and "ClasslessWildcardStats" not in listed(),
+            "with no flyout open, Escape closes the panel again: %r" % listed())
+    h.check("ClasslessWildcardTalentReroll" in listed() and "ClasslessWildcardHand" in listed(),
+            "the standalone dialogs stay on the list")
+    g.ClasslessWildcardFrame["__shown"] = False
+
+
 def test_help_text(h):
     """The Help guide quotes the realm's own numbers and keeps the house style."""
     print("--- help: the guide follows the realm's config")
@@ -2575,7 +2599,7 @@ def test_help_text(h):
     h.check("free below level 12" in t and "every level grants 4 reroll charges" in t,
             "free-reroll level from S, charges per level from CFG")
     h.check("next 29 rolls, about 29 levels" in t, "reroll cooldown from CFG: %s" % ("next 29 rolls" in t))
-    h.check("+150% kill XP|r for the first, +60% more for each after, up to +400%" in t, "Rebirth XP from CFG")
+    h.check("+150% kill and dungeon XP|r for the first, +60% more for each after, up to +400%" in t, "Rebirth XP from CFG")
     h.check("At level 70 the |cffffd100Rebirth|r button" in t, "the level cap from CFG")
     # put the shipped defaults back for anything after this
     h.recv("CFG|1|0|1|1|3|4|1|10|1|1|2|3|5|8|4|10|3|10|10|25|100|25|100|50|300|3|15|80")
@@ -3003,6 +3027,7 @@ def main():
     test_paperdoll(h)
     test_stats(h)
     test_confirms(h)
+    test_escape(h)
     test_help_text(h)
     test_spellbook(h)
     test_talent_unlearn(h)

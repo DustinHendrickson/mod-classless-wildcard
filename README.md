@@ -116,7 +116,7 @@ with your build on the right. Lock or reroll anything you own from the same wind
   - **Kept:** gold, bags, bank, reputation, riding, flight paths, and the **heirloom** abilities
     you choose to carry (usable from level 1, one more per rank).
   - **Reset:** your build and your quest log. Worn gear goes into your bags.
-  - **Per rank:** +100% kill XP for the first, +50% per rank after (max +300%); +3%
+  - **Per rank:** +100% kill and dungeon XP for the first, +50% per rank after (max +300%); +3%
     to every primary stat (max +15%); starting essence on the Classless path; a title (*the
     Reborn*, *the Twice Reborn*, *the Thrice Reborn*, *the Many-Lived*, *the Eternal*).
   - The gold price rises with rank. Start one from the panel's Rebirth button.
@@ -520,7 +520,7 @@ documented inline and prefixed `ClasslessWildcard.`. The common ones:
 | `AllowModeChoice` | `1` | `0` forces `DefaultMode` for everyone |
 | `ModeChoiceDeadline` | `5` | Level the path locks at |
 | `Rebirth.Enable` / `Rebirth.CostGold` | `1` / `100` | Path change price; Rebirth costs this times (rank + 1) |
-| `Rebirth.KillXpPctFirst` / `PerRank` / `Max` | `100` / `50` / `300` | Kill XP bonus per Rebirth rank, % |
+| `Rebirth.KillXpPctFirst` / `PerRank` / `Max` | `100` / `50` / `300` | Kill and dungeon XP bonus per Rebirth rank, % |
 | `Rebirth.OtherXpPctPerRank` / `Max` | `25` / `100` | Quest, exploration and battleground XP bonus per rank, % |
 | `Rebirth.StatPctPerRank` / `Max` | `3` / `15` | Primary stat bonus per rank, % |
 | `Rebirth.LegacyAbilityEssence` / `LegacyTalentEssence` | `3` / `2` | Starting essence per rank, Classless |

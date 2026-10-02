@@ -926,6 +926,10 @@ for i = 1, BUILD_ROWS do
         if self.spellId then
             GameTooltip:SetOwner(self, "ANCHOR_LEFT")
             GameTooltip:SetHyperlink("spell:" .. self.spellId)
+            if self.note then
+                GameTooltip:AddLine(" ")
+                GameTooltip:AddLine(self.note, 0.6, 0.6, 0.6, true)
+            end
             GameTooltip:Show()
         end
     end)
@@ -2444,7 +2448,7 @@ local function BuildHelpText()
 "|cffff8800==  REBIRTH: a new life at level " .. cap .. "  ==|r",
 "At level " .. cap .. " the |cffffd100Rebirth|r button starts you over at level 1. Your quests are forgotten, so every zone pays XP again; worn gear goes into your bags; your gold, bank, reputation, riding and flight paths stay. You start at your race's starting area, on the path you choose.",
 "Each Rebirth raises a |cffffd100rank|r that is yours for good:",
-"   |cff00ff00+" .. r.xpFirst .. "% kill XP|r for the first, +" .. r.xpPerRank .. "% more for each after, up to +" .. r.xpMax .. "%. Quest XP rises more gently.",
+"   |cff00ff00+" .. r.xpFirst .. "% kill and dungeon XP|r for the first, +" .. r.xpPerRank .. "% more for each after, up to +" .. r.xpMax .. "%. Quest XP rises more gently.",
 "   |cff00ff00+" .. r.statPct .. "% to every primary stat|r per rank, up to +" .. r.statMax .. "%.",
 "   |cffffd100Heirlooms:|r carry one ability through, usable from level 1 and never rerolled or refunded. Each rank lets you carry one more.",
 "   Classless Heroes start the new life with bonus Ability and Talent Essence per rank. A title per rank: the Reborn, the Twice Reborn, and so on.",
@@ -2611,11 +2615,13 @@ local function RenderAbilPane()
         if e then
             w.spellId = e.id
             w.icon:SetTexture(SpellIcon(e.id))
-            w.name:SetText(SpellLabel(e.id, e.rarity) .. (e.passive == 1 and " |cff888888(passive)|r" or ""))
             if e.owned == 1 then w.check:Show() else w.check:Hide() end
             local lvlText = LevelTag(e.lvl, s.level)
             local typeTag = (CW.abilSort == 5 or CW.abilType ~= 1)
                 and ("|cffaaaaaa" .. (CW.BROWSE.TYPE_NAMES[e.type or 0] or "") .. "|r  ") or ""
+            -- the type tag already says Passive when it is shown
+            w.name:SetText(SpellLabel(e.id, e.rarity)
+                .. ((e.passive == 1 and typeTag == "") and " |cff888888(passive)|r" or ""))
             if s.mode == 1 then
                 w.sub:SetText(typeTag .. (RARITY_NAMES[e.rarity] or "") .. lvlText)
                 w.tipLine = "Dealt by Wildcard rolls"
@@ -2802,11 +2808,16 @@ local function RenderBuild()
             -- nothing this life, is never rerolled and never refunded, so it
             -- gets the same treatment, with its own note.
             local freebie = it.kind == "A" and (it.source == 2 or it.source == 3 or it.source == 4)
+            r.note = nil
             if freebie then
                 suffix = suffix .. (it.source == 4 and "  |cffff8800heirloom|r"
-                                    or it.source == 3 and "  |cffaaaaaacame free|r"
-                                    or "  |cffaaaaaawith a talent|r")
+                                    or it.source == 3 and "  |cffaaaaaafree|r"
+                                    or "  |cffaaaaaatalent|r")
+                r.note = it.source == 4 and "Heirloom: carried through Rebirth, usable from level 1, never rerolled."
+                    or it.source == 3 and "Came free with another ability, and leaves with it."
+                    or "Came with a talent, and leaves with it."
             end
+            r.name:SetWidth(freebie and (BUILD_W - 36) or (BUILD_W - 86))
             r.name:SetText(SpellLabel(it.spell, it.rarity) .. suffix)
             if freebie then
                 r.lockBtn:Hide()
@@ -4683,33 +4694,6 @@ for _, tbl in ipairs({ LOCALIZED_CLASS_NAMES_MALE, LOCALIZED_CLASS_NAMES_FEMALE 
             tbl[token] = HERO_NAME
         end
     end
-end
-
--- ---------------------------------------------------------------------------
--- character sheet stat tooltips: the stock UI describes stats by CLASS (a
--- warrior gets no Intellect text at all); Heroes are classless, so describe
--- what each stat does under the universal stat system
--- ---------------------------------------------------------------------------
-if PaperDollFrame_SetStat and hooksecurefunc then
-    local STAT_TIPS = {
-        [1] = "Increases your melee attack power and block value.",
-        [2] = "Increases your melee and ranged attack power, critical strike chance and dodge chance.",
-        [3] = "Increases your health.",
-        [4] = "Increases your mana, spell power and spell critical strike chance.",
-        [5] = "Increases your mana and health regeneration.",
-    }
-    hooksecurefunc("PaperDollFrame_SetStat", function(statFrame, unit, statIndex)
-        if unit ~= "player" or not STAT_TIPS[statIndex] then return end
-        local tip = STAT_TIPS[statIndex]
-        -- append what the classless layer is adding on top, so the sheet agrees
-        -- with the Stats panel instead of describing a class this Hero is not
-        local _, total = UnitStat("player", statIndex)
-        local extra = CW.StatContribution and CW.StatContribution(statIndex, total or 0)
-        if extra then
-            tip = tip .. "\n\n|cff40ff40Hero bonus: " .. extra .. "|r"
-        end
-        statFrame.tooltip2 = tip
-    end)
 end
 
 -- ---------------------------------------------------------------------------
@@ -6895,6 +6879,40 @@ SlashCmdList["CLASSLESSWILDCARD"] = function(msg)
         return
     end
     if frame:IsShown() then frame:Hide() else frame:Show() end
+end
+
+-- ---------------------------------------------------------------------------
+-- Escape closes an open flyout first and the panel after. Blizzard's Escape
+-- hides every shown frame named in UISpecialFrames at once, so while a
+-- flyout is open it takes the panel's place in that list, and gives it back
+-- when it closes. Nothing of Blizzard's is replaced, so nothing is tainted.
+-- ---------------------------------------------------------------------------
+do
+    local FLYOUTS = { "ClasslessWildcardStats", "ClasslessWildcardArchetypes", "ClasslessWildcardHelp",
+                      "ClasslessWildcardSettings", "ClasslessWildcardRebirth", "ClasslessWildcardRuns" }
+    local function Listed(name, on)
+        for i = #UISpecialFrames, 1, -1 do
+            if UISpecialFrames[i] == name then tremove(UISpecialFrames, i) end
+        end
+        if on then tinsert(UISpecialFrames, name) end
+    end
+    function CW.SyncEscape()
+        local open = false
+        for _, name in ipairs(FLYOUTS) do
+            local f = _G[name]
+            local shown = f and f:IsVisible() and true or false
+            Listed(name, shown)
+            open = open or shown
+        end
+        Listed("ClasslessWildcardFrame", not open)
+    end
+    for _, name in ipairs(FLYOUTS) do
+        local f = _G[name]
+        if f then
+            f:HookScript("OnShow", CW.SyncEscape)
+            f:HookScript("OnHide", CW.SyncEscape)
+        end
+    end
 end
 
 -- ---------------------------------------------------------------------------
