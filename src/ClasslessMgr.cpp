@@ -1113,6 +1113,9 @@ void ClasslessMgr::BuildLibrary()
 
     LOG_INFO("module", "mod-classless-wildcard: library built — {} ability lines, {} talents.",
              _abilities.size(), _talents.size());
+    LOG_INFO("module", CoreHasWandSchoolContext
+        ? "mod-classless-wildcard: wand shots deal the wand's own damage school (core has CLASS_CONTEXT_WAND_SCHOOL)."
+        : "mod-classless-wildcard: wand shots deal Physical damage: this core predates CLASS_CONTEXT_WAND_SCHOOL.");
 }
 
 void ClasslessMgr::LoadOverrides(std::unordered_set<uint32>* overridden)

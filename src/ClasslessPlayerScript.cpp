@@ -514,6 +514,11 @@ public:
                 }
             }
             default:
+                // A wand shot takes the wand's own damage school (see
+                // IsWandSchoolContext). Every Hero is a wand user, so this
+                // joins the yes below; a core without the context never asks.
+                if (IsWandSchoolContext(context))
+                    break;
                 return std::nullopt;
         }
 
@@ -1254,18 +1259,6 @@ class spell_cw_pet_hit_expertise_scaling : public AuraScript
             spell_cw_pet_hit_expertise_scaling::HandlePeriodic, EFFECT_ALL, SPELL_AURA_ANY);
     }
 };
-
-// 5019 - Shoot, the wand attack
-//
-// The core gives the shot the WAND's own damage school -- fire, shadow,
-// arcane -- but only for CLASSMASK_WAND_USERS, which is mage, priest and
-// warlock. That is a raw class mask with no hook behind it, so a Hero's wand
-// fired as PHYSICAL (Shoot's own school is 1) and had its damage cut by the
-// target's armour however elemental the wand was. The module teaches wand
-// proficiency and Shoot on purpose, so Heroes do carry them.
-//
-// Only fills the gap: a real wand user already has the core's override, and
-// this leaves them alone rather than doing it twice.
 
 // -49182 Blade Barrier, and -49208 / -49467 / -54639 Death Rune
 //

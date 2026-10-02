@@ -208,7 +208,9 @@ nothing for that part; items, XP, gold and reputation are paid as normal.
 
 ### Known limits
 
-- A wand fires as Physical rather than its own school. This only affects resistance.
+- On a core without AzerothCore's `CLASS_CONTEXT_WAND_SCHOOL`, a wand fires as Physical rather than
+  its own school, so armor reduces it and school resistances do not. The module uses the context as
+  soon as the core has it; the worldserver log says at startup which applies.
 - Other UI addons are not supported. Anything that reads class, spellbook, talent frames or power
   type may display wrongly or throw errors.
 

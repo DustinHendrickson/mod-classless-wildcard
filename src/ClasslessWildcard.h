@@ -20,7 +20,9 @@
 
 #include "Define.h"
 #include "ObjectGuid.h"
+#include "UnitDefines.h"
 #include <array>
+#include <type_traits>
 #include <map>
 #include <set>
 #include <string>
@@ -32,6 +34,34 @@ class Player;
 
 namespace ClasslessWildcard
 {
+    // Wand shots and their damage school.
+    //
+    // The core gives a wand shot the wand's own school (Fire, Shadow, ...)
+    // only for Priest, Mage and Warlock, by raw class mask, so a Hero's wand
+    // fires as Physical and armour cuts it. Spell::m_spellSchoolMask is
+    // protected, so a module cannot correct it. The fix belongs in the core:
+    // route that check through IsClass with CLASS_CONTEXT_WAND_SCHOOL, which
+    // the module's OnPlayerIsClass then answers for every Hero.
+    //
+    // Until a core carries that context this compiles to false and the module
+    // still builds; once it does, wand shots take their school with no edit
+    // here. The detection is by name, so it must match the core's enumerator.
+    template <typename E, typename = void>
+    struct HasWandSchoolContext : std::false_type { };
+    template <typename E>
+    struct HasWandSchoolContext<E, std::void_t<decltype(E::CLASS_CONTEXT_WAND_SCHOOL)>> : std::true_type { };
+
+    constexpr bool CoreHasWandSchoolContext = HasWandSchoolContext<ClassContext>::value;
+
+    template <typename E>
+    constexpr bool IsWandSchoolContext(E context)
+    {
+        if constexpr (HasWandSchoolContext<E>::value)
+            return context == E::CLASS_CONTEXT_WAND_SCHOOL;
+        else
+            return false;
+    }
+
     // implemented in ClasslessAddon.cpp: raw push to the client addon
     // (used e.g. for "RV|..." roll-reveal notifications)
     void PushAddon(Player* player, std::string const& body);
