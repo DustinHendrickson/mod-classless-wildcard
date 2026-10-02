@@ -139,6 +139,15 @@ void CW_ReLevelCreature(Creature* creature, uint8 level, bool elite)
 // =====================================================================
 // What a Hero on a run earns, loses, wears and is healed for.
 // =====================================================================
+uint32 ClasslessMgr::HourglassSecondsLeft(Player* player)
+{
+    CharState* st = player ? FindState(player) : nullptr;
+    if (!st || st->run != uint8(ChallengeId::Hourglass))
+        return 0;
+    uint32 const limit = HourglassLimit(player->GetLevel());
+    return st->runData < limit ? limit - st->runData : 0;
+}
+
 class cw_challenge_rules : public PlayerScript
 {
 public:

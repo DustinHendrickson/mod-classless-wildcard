@@ -343,44 +343,141 @@ function CW.SetPip(pip, shown, alive)
     if alive then pip.gem:Show() else pip.gem:Hide() end
 end
 
--- The challenge run's lives: one pip per life the run started with, the lost
--- ones empty and dimmed. Six is the most a run can have (five plus a bought
--- extra life). Hidden when there is no run.
-CW.lifeIcons = {}
-for i = 1, 6 do
-    CW.lifeIcons[i] = CW.MakePip(frame, 14)
+-- The run badge, top-right under the close button: the challenge being run,
+-- its reward ability's icon, and one heart per life it started with. Hover it
+-- for the whole challenge (how it plays, lives, the clock where there is one,
+-- what level 80 pays); click it for the challenge page. Hidden with no run.
+--
+-- Measured: 190 x 46 at -44/-30 from the top-right corner, clear of the close
+-- button (-8 to -40) and, to the left, of the centred status lines: its left
+-- edge is 241 from the centre, and the longest of them (Classless, both
+-- essences in four figures and a Rebirth rank) is about 440 wide. Icon 34 at 6; name on the icon's top, hearts on its
+-- bottom; the count right-aligned on the hearts' line.
+do
+    local b = CreateFrame("Button", "ClasslessWildcardRunBadge", frame)
+    b:SetWidth(190); b:SetHeight(46)
+    b:SetPoint("TOPRIGHT", frame, "TOPRIGHT", -44, -30)
+    b:SetBackdrop({
+        bgFile = "Interface\\Buttons\\WHITE8X8",
+        edgeFile = "Interface\\Tooltips\\UI-Tooltip-Border",
+        tile = false, edgeSize = 12,
+        insets = { left = 3, right = 3, top = 3, bottom = 3 },
+    })
+    b:SetBackdropColor(0.10, 0.02, 0.02, 0.88)
+    b:SetBackdropBorderColor(0.70, 0.18, 0.12, 1)
+    b:SetHighlightTexture("Interface\\QuestFrame\\UI-QuestTitleHighlight", "ADD")
+    b.icon = b:CreateTexture(nil, "ARTWORK")
+    b.icon:SetWidth(34); b.icon:SetHeight(34)
+    b.icon:SetPoint("LEFT", b, "LEFT", 6, 0)
+    b.icon:SetTexCoord(0.07, 0.93, 0.07, 0.93)
+    b:Hide()
+    CW.runBadge = b
+
+    CW.runText = b:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+    CW.runText:SetPoint("TOPLEFT", b.icon, "TOPRIGHT", 8, -1)
+    CW.runText:SetPoint("RIGHT", b, "RIGHT", -8, 0)
+    CW.runText:SetJustifyH("LEFT")
+    CW.runCount = b:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+    CW.runCount:SetPoint("BOTTOMRIGHT", b, "BOTTOMRIGHT", -8, 8)
+    CW.runCount:SetJustifyH("RIGHT")
+
+    -- One pip per life the run started with, the lost ones empty. Six is the
+    -- most a run can have (five plus a bought extra life).
+    CW.lifeIcons = {}
+    for i = 1, 6 do
+        local t = CW.MakePip(b, 14)
+        t:SetPoint("BOTTOMLEFT", b.icon, "BOTTOMRIGHT", 8 + (i - 1) * 16, 0)
+        CW.lifeIcons[i] = t
+    end
+
+    local function Minutes(sec)
+        sec = math.max(0, math.floor(sec))
+        if sec < 60 then return "under a minute" end
+        local m = math.floor(sec / 60)
+        return m .. (m == 1 and " minute" or " minutes")
+    end
+
+    -- the hover card: everything the challenge page says about the live run,
+    -- without opening it
+    function CW.RunTooltip(self)
+        local s = CW.state
+        local c = CW.challengesById and CW.challengesById[s.run or 0]
+        GameTooltip:SetOwner(self, "ANCHOR_NONE")
+        GameTooltip:ClearAllPoints()
+        GameTooltip:SetPoint("TOPRIGHT", self, "BOTTOMRIGHT", 0, -4)
+        GameTooltip:SetText(c and c.name or "Challenge run", 1, 0.27, 0.27)
+        GameTooltip:AddLine("Your challenge run", 0.6, 0.6, 0.6)
+        if not c then
+            GameTooltip:AddLine("Loading the challenge...", 0.8, 0.8, 0.8)
+            GameTooltip:Show()
+            return
+        end
+        GameTooltip:AddLine(" ")
+        GameTooltip:AddLine(c.detail ~= "" and c.detail or c.rule, 1, 1, 1, true)
+        GameTooltip:AddLine(" ")
+        GameTooltip:AddDoubleLine("Lives", (s.lives or 0) .. " of " .. (s.livesMax or 0) .. " left",
+            1, 0.82, 0, 1, 1, 1)
+        if (s.hourglassLeft or 0) > 0 then
+            local left = s.hourglassLeft - (GetTime() - (CW.hourglassAt or GetTime()))
+            local low = left < 300 and 0.4 or 1   -- red in the last five minutes, as the warning says
+            GameTooltip:AddDoubleLine("This level's clock", Minutes(left) .. " left", 1, 0.82, 0, 1, low, low)
+        end
+        GameTooltip:AddLine("A death costs one life. Battlegrounds, arenas and duels cost nothing. "
+            .. "Run out and the rule lifts; you keep your level, gear and build.", 0.7, 0.7, 0.7, true)
+        GameTooltip:AddLine(" ")
+        GameTooltip:AddLine("Reach level 80 with a life left for", 1, 0.82, 0)
+        GameTooltip:AddDoubleLine("Gold", "|cffffffff" .. (c.gold or 0)
+            .. "|r|TInterface\\MoneyFrame\\UI-GoldIcon:14:14:2:0|t", 0.8, 0.8, 0.8, 1, 1, 1)
+        local title = (c.title or ""):gsub("%%s", UnitName("player") or "you")
+        if title ~= "" then
+            GameTooltip:AddDoubleLine("Title", title, 0.8, 0.8, 0.8, 0.9, 0.8, 0.5)
+        end
+        if (c.reward or 0) > 0 then
+            GameTooltip:AddDoubleLine("Ability", (GetSpellInfo(c.reward)) or "Reward ability",
+                0.8, 0.8, 0.8, 0.64, 0.21, 0.93)
+        end
+        if c.finished == 1 then
+            GameTooltip:AddLine("You finished this challenge before: this time it pays shards only.", 0.6, 0.6, 0.6, true)
+        end
+        GameTooltip:AddLine(" ")
+        GameTooltip:AddLine("Click for the challenge page: tips, the ability's tooltip and your record.", 0.3, 1, 0.3, true)
+        GameTooltip:Show()
+    end
+
+    b:SetScript("OnEnter", function(self)
+        CW.RunTooltip(self)
+        -- the clock moves while the card is up; a fresh state redraws it
+        if (CW.state.hourglassLeft or 0) > 0 then Send("STATE") end
+    end)
+    b:SetScript("OnLeave", function() GameTooltip:Hide() end)
+    b:SetScript("OnClick", function()
+        GameTooltip:Hide()
+        if CW.runFly and CW.OpenRuns then
+            CW.runFly.selected = CW.state.run
+            CW.OpenRuns()
+        end
+    end)
 end
--- Top-right corner, under the close button, where nothing else lives: the
--- status lines are centred and the class strip starts at -70, so the run's
--- name sits on the status line's level and the lives on the sub-status
--- line's, both right-aligned and clear of the strip.
-CW.runText = frame:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
-CW.runText:SetPoint("TOPRIGHT", -48, -42)
-CW.runText:SetJustifyH("RIGHT")
-CW.runText:Hide()
 
 function CW.UpdateLives()
     local s = CW.state
-    local icons = CW.lifeIcons
+    local b, icons = CW.runBadge, CW.lifeIcons
     if (s.run or 0) == 0 or (s.livesMax or 0) == 0 then
         for i = 1, #icons do CW.SetPip(icons[i], false) end
-        CW.runText:Hide()
+        b:Hide()
+        if GameTooltip:IsOwned(b) then GameTooltip:Hide() end
         return
     end
-    local name = CW.RunName and CW.RunName(s.run) or ("Challenge " .. s.run)
-    CW.runText:SetText("|cffff4444" .. name .. "|r   " .. s.lives .. " of " .. s.livesMax .. " lives")
-    CW.runText:Show()
+    local c = CW.challengesById and CW.challengesById[s.run]
+    CW.runText:SetText("|cffff5544" .. (c and c.name or ("Challenge " .. s.run)) .. "|r")
+    CW.runCount:SetText((s.lives or 0) .. " of " .. s.livesMax)
+    b.icon:SetTexture(c and (c.reward or 0) > 0 and SpellIcon(c.reward) or "Interface\\Icons\\INV_Misc_Bone_HumanSkull_01")
     local n = math.min(#icons, s.livesMax)
     for i = 1, #icons do
-        local t = icons[i]
-        if i <= n then
-            t:ClearAllPoints()
-            t:SetPoint("TOPRIGHT", frame, "TOPRIGHT", -48 - (n - i) * 16, -58)
-            CW.SetPip(t, true, i <= (s.lives or 0))
-        else
-            CW.SetPip(t, false)
-        end
+        CW.SetPip(icons[i], i <= n, i <= (s.lives or 0))
     end
+    b:Show()
+    if GameTooltip:IsOwned(b) then CW.RunTooltip(b) end
 end
 
 -- Blizzard page-arrow styling
@@ -2248,7 +2345,7 @@ local function BuildHelpText()
 "",
 "|cffff4444==  CHALLENGE RUNS  --  one rule, counted lives  ==|r",
 "A run is a life under one rule on either path. Start one from the Rebirth button at the cap (it is a Rebirth, heirlooms and all) or as a fresh Hero up to level " .. (CW.state.deadline or 5) .. ". Pick a challenge, read its rule, go.",
-"   |cffffd100Lives|r -- the hearts in the top-right of this panel, one per life, emptied as you lose them. A death costs one; battlegrounds, arenas and duels are free. Rules that make the world deadlier give five, rules that change how you fight give three, and |cffffd100Hardcore|r gives one because the rule is death itself.",
+"   |cffffd100Lives|r -- the hearts on the run badge in the top-right of this panel, one per life, emptied as you lose them. Hover the badge for your challenge's rule and rewards, and on Hourglass the time left on the level; click it for the challenge page. A death costs one; battlegrounds, arenas and duels are free. Rules that make the world deadlier give five, rules that change how you fight give three, and |cffffd100Hardcore|r gives one because the rule is death itself.",
 "   |cffffd100Running out|r ends the run: the rule lifts and you keep everything. |cffffd100Reaching 80|r with a life in hand finishes it, and pays the challenge's gold, its title, and on some runs an ability no roll or shop can give, kept as an heirloom. Finish with no life lost for |cffffd100the Unbroken|r.",
 "   |cffffd100Shards|r -- every run pays them when it ends, finished or not: one per level reached, two per level past 60, a third more for a run with no life lost. They buy one |cffffd100extra life|r for your next run, on the challenge page.",
 "",
@@ -5891,6 +5988,8 @@ local function HandleMessage(msg)
         s.shards = tonumber(p[27]) or 0
         s.extraLife = tonumber(p[28]) or 0
         s.runReady = tonumber(p[29]) or 0
+        s.hourglassLeft = tonumber(p[30]) or 0   -- Hourglass: seconds left on this level
+        CW.hourglassAt = GetTime()
         -- the live run is named from the challenge list, which a fresh login
         -- has not fetched yet: ask once, so the header does not say "Challenge 3"
         if s.run > 0 and #CW.challenges == 0 and not CW._askedChallenges then
@@ -6728,6 +6827,39 @@ function CW.ClaimHotkey()
 
     ClasslessWildcardDB.hotkeyClaimed = true
     Print("No free hotkey was available. Bind |cffffff00Toggle Hero Advancement|r under Key Bindings > ClasslessWildcard.")
+end
+
+-- Our confirm popups get a dark, near-opaque backing. The stock dialog
+-- background is see-through, and over this panel's title and class strip the
+-- popup's text was hard to read. StaticPopup1 to 4 are shared with the rest of
+-- the UI, so the backing shows only while one of ours is up and hides with it.
+-- Every CW_ dialog is wrapped, including any added later in this file.
+do
+    local function Backing(popup)
+        if not popup.cwBacking then
+            local t = popup:CreateTexture(nil, "BACKGROUND")
+            t:SetTexture("Interface\\Buttons\\WHITE8X8")
+            t:SetVertexColor(0.02, 0.02, 0.03, 0.92)
+            -- inside the dialog border's own insets, so the gold frame stays
+            t:SetPoint("TOPLEFT", popup, "TOPLEFT", 11, -11)
+            t:SetPoint("BOTTOMRIGHT", popup, "BOTTOMRIGHT", -11, 11)
+            popup.cwBacking = t
+        end
+        return popup.cwBacking
+    end
+    for key, d in pairs(StaticPopupDialogs) do
+        if type(key) == "string" and key:sub(1, 3) == "CW_" and type(d) == "table" then
+            local show, hide = d.OnShow, d.OnHide
+            d.OnShow = function(self, ...)
+                Backing(self):Show()
+                if show then return show(self, ...) end
+            end
+            d.OnHide = function(self, ...)
+                if self.cwBacking then self.cwBacking:Hide() end
+                if hide then return hide(self, ...) end
+            end
+        end
+    end
 end
 
 -- exposed for debugging and third-party extensions

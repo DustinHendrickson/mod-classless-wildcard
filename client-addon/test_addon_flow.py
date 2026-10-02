@@ -24,6 +24,7 @@ Run:  python3 test_addon_flow.py
 """
 import io
 import os
+import re
 import sys
 
 try:
@@ -303,6 +304,7 @@ function GameTooltip:AddLine(t) TIP[table.getn(TIP) + 1] = tostring(t) end
 function GameTooltip:AddDoubleLine(a, b) TIP[table.getn(TIP) + 1] = tostring(a) .. " " .. tostring(b) end
 function GameTooltip:Show() TIP.shown = true end
 function GameTooltip:Hide() TIP.shown = false end
+function GameTooltip:IsOwned(o) return TIP.owner == o and TIP.shown == true end
 function TipText() return table.concat(TIP, " | ") end
 
 for i = 1, 6 do CreateFrame("Frame", "PlayerStatFrameLeft" .. i) end
@@ -1427,9 +1429,9 @@ def test_rebirth(h):
 # The Rebirth fields (20-23) and the challenge-run fields (24-29): run id,
 # lives, lives at the start, shards, extra life held, run can start.
 def run_state(mode, level, rebirths=0, ready=0, price=100, heirlooms=1,
-              run=0, lives=0, lives_max=0, shards=0, extra=0, run_ready=0):
-    return rebirth_state(mode, level, rebirths, ready, price, heirlooms) + "|%d|%d|%d|%d|%d|%d" % (
-        run, lives, lives_max, shards, extra, run_ready)
+              run=0, lives=0, lives_max=0, shards=0, extra=0, run_ready=0, clock=0):
+    return rebirth_state(mode, level, rebirths, ready, price, heirlooms) + "|%d|%d|%d|%d|%d|%d|%d" % (
+        run, lives, lives_max, shards, extra, run_ready, clock)
 
 
 def test_challenge_runs(h):
@@ -1437,6 +1439,20 @@ def test_challenge_runs(h):
     CW, g = h.CW, h.g
     popups = g.StaticPopupDialogs
     runs = CW.runFly
+
+    # Every one of our popups draws a dark backing while it is up (the stock
+    # dialog background is see-through over the panel) and drops it on hide,
+    # since the popup frames are shared with the rest of the UI.
+    keys = [k for k in popups.keys() if str(k).startswith("CW_")]
+    dark_ok = len(keys) >= 7
+    for k in keys:
+        f = g.CreateFrame("Frame")
+        popups[k]["OnShow"](f)
+        b = f["cwBacking"]
+        dark_ok = dark_ok and b is not None and b["__shown"] is not False and (b["__alpha"] or 1) == 1
+        popups[k]["OnHide"](f)
+        dark_ok = dark_ok and b["__shown"] is False
+    h.check(dark_ok, "all %d CW popups show a dark backing and hide it with them" % len(keys))
 
     # A fresh Wildcard Hero under the deadline: the button is the Challenge,
     # and its tooltip says so rather than describing a path change.
@@ -1503,6 +1519,17 @@ def test_challenge_runs(h):
         _f = _st.unpack("<BBBHHBHHHHBB", _hdr)
         art_ok = art_ok and _f[2] == 2 and _f[8] == 32 and _f[9] == 32 and _f[10] == 32 and _f[11] == 0x08
     h.check(art_ok, "both hearts ship in the addon folder as 32 x 32 TGAs with alpha")
+    # Every path separator in code is doubled. A single backslash before a
+    # letter is a Lua escape, not a separator: the path the client gets is
+    # wrong and it draws nothing, with no error anywhere. (\n, \r and \t are
+    # the escapes this file means; no path segment here starts with them.)
+    _lone = []
+    with io.open(ADDON, encoding="utf-8") as _fh:
+        for _no, _ln in enumerate(_fh, 1):
+            _code = _ln.split("--", 1)[0]
+            if re.search(r'(?<!\\)\\(?![nrt])[A-Za-z]', _code):
+                _lone.append((_no, _code.strip()[:80]))
+    h.check(not _lone, "every path in the addon doubles its backslashes: %r" % _lone[:3])
     h.check(rows[3]["done"]["__shown"] is True and rows[2]["done"]["__shown"] is False,
             "a finished challenge is ticked, an unfinished one is not")
     h.check("1000" in str(rows[2]["gold"]["__text"]) and "UI-GoldIcon" in str(rows[2]["gold"]["__text"]),
@@ -1577,9 +1604,33 @@ def test_challenge_runs(h):
 
     # The run is live: name and lives in the top-right of the panel.
     h.recv(run_state(1, 3, run=3, lives=3, lives_max=3))
-    h.check(CW.runText["__shown"] is True and "Hardcore" in str(CW.runText["__text"]) and "3 of 3" in str(CW.runText["__text"]),
-            "the header names the run and counts lives: %r" % str(CW.runText["__text"]))
+    badge = CW.runBadge
+    h.check(badge["__shown"] is True and "Hardcore" in str(CW.runText["__text"]) and str(CW.runCount["__text"]) == "3 of 3",
+            "the header badge names the run and counts lives: %r, %r" % (str(CW.runText["__text"]), str(CW.runCount["__text"])))
     h.check(all(CW.lifeIcons[i]["__shown"] for i in range(1, 4)) and not CW.lifeIcons[4]["__shown"], "three life pips, no more")
+    h.check(all(g.rawequal(CW.lifeIcons[i]["__parent"], badge) for i in range(1, 7)), "the hearts sit in the badge")
+
+    # Hovering the badge shows the whole challenge without opening anything.
+    badge["__scripts"]["OnEnter"](badge)
+    tip = str(g.TipText())
+    hc = CW.challengesById[3]
+    h.check(g.rawequal(g.TIP.owner, badge) and g.TIP.shown is True and "Hardcore" in tip and "Your challenge run" in tip
+            and str(hc.detail or hc.rule)[:40] in tip and "Lives 3 of 3 left" in tip and "Gold" in tip
+            and "Click for the challenge page" in tip and "clock" not in tip,
+            "the badge's hover card has the rule, the lives and the rewards: %r" % tip[:300])
+    h.check(("Title" in tip) == (str(hc.title or "") != ""), "the title is named when the challenge has one")
+    # a fresh state while the card is up redraws it with the new count
+    h.recv(run_state(1, 3, run=3, lives=3, lives_max=3, clock=725))
+    tip = str(g.TipText())
+    h.check(CW.state.hourglassLeft == 725 and "This level's clock 12 minutes left" in tip,
+            "field 30, Hourglass's clock, shows on the card while it is up: %r" % tip[-200:])
+    badge["__scripts"]["OnLeave"](badge)
+    h.check(g.TIP.shown is False, "leaving the badge hides the card")
+    # clicking it opens the challenge page on the live run
+    runs["selected"] = 1
+    h.click(badge)
+    h.check(runs["__shown"] is True and runs["selected"] == 3, "clicking the badge opens the page on the live run")
+    runs["close"]["__scripts"]["OnClick"](runs["close"])
     h.check(str(CW.rebirthBtn["__text"]) == "Change path", "on a run the button is the path change again")
 
     # A death: the popup says what was lost, a heart dims, state is asked for.
@@ -1597,7 +1648,7 @@ def test_challenge_runs(h):
     h.recv("RE|0|17|19|0|Hardcore")
     h.check(g.LAST_POPUP == "CW_RUN_END" and "STATE" in h.sent() and "OWN" in h.sent(), "the end pops up and refreshes everything")
     h.recv(run_state(1, 17, shards=19))
-    h.check(CW.runText["__shown"] is False and not CW.lifeIcons[1]["__shown"], "no run, no lives shown")
+    h.check(CW.runBadge["__shown"] is False and not CW.lifeIcons[1]["__shown"], "no run, no badge, no lives shown")
 
     # At the cap the picker's challenge button leads here with the heirlooms.
     h.recv(run_state(1, 80, rebirths=1, ready=1, price=200, heirlooms=2, shards=40, run_ready=1))

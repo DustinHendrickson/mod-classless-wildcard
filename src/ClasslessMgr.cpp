@@ -2483,7 +2483,13 @@ bool ClasslessMgr::Rebirth(Player* player, Mode target, std::vector<uint32> cons
 namespace
 {
     constexpr uint32 UNBROKEN_TITLE = 185;        // "the Unbroken": a run with no life lost (TITLES, gen_forged_spells.py)
-    constexpr uint32 HUNTER_EVERY_MS = 10 * MINUTE * IN_MILLISECONDS;
+    // Pursued: the next hunter is a random 15 to 30 minutes of played time
+    // away. The countdown lives in runData, in seconds, so it survives a
+    // logout; 0 means a hunter is due or out.
+    constexpr uint32 HUNTER_MIN_S = 15 * MINUTE;
+    constexpr uint32 HUNTER_MAX_S = 30 * MINUTE;
+    constexpr uint32 HUNTER_LOGIN_GRACE_S = 15;   // a hunter due at logout waits out the loading screen
+    uint32 NextHunterIn() { return urand(HUNTER_MIN_S, HUNTER_MAX_S); }
     constexpr uint8  NEMESIS_LEVELS_PER_KILL = 5;
     constexpr uint8  NEMESIS_LEVEL_CAP = 83;
     constexpr float  NEMESIS_SCALE = 1.25f;        // the one cue the client cannot ignore
@@ -2502,8 +2508,8 @@ namespace
         { 14, "legion",          "Legion",          4, "Every enemy you engage calls two more of its kind to its side. More to kill, more XP, more ways to die.", 650, 191, "one_against_many",
           "When an enemy engages you, two more of its kind appear beside it and join the fight. They give experience and loot like any other of their kind, and leave after five minutes if the fight never reaches them. Reinforcements never call reinforcements of their own. Bosses, critters and civilians never call at all.",
           "Fight where you have room to back away, and open with abilities that hit several enemies at once. Pull from range so you see the reinforcements coming, and keep away from other groups, since every enemy that joins calls its own." },
-        { 4,  "pursued",         "Pursued",         3, "Every ten minutes a hunter two levels above you finds you and tracks you until one of you dies.", 600, 189, "turnabout",
-          "Every ten minutes of play a Relentless Hunter appears near you, two levels above you, with elite health and damage. It follows you anywhere until one of you dies. Killing it gives its elite experience and starts the clock for the next one. If it kills you it leaves, and the next one comes ten minutes later. Battlegrounds and arenas are safe from it.",
+        { 4,  "pursued",         "Pursued",         3, "Every 15 to 30 minutes of play a hunter two levels above you finds you and tracks you until one of you dies.", 600, 189, "turnabout",
+          "Every 15 to 30 minutes of played time, at random, a Relentless Hunter appears near you, two levels above you, with elite health and damage. It follows you anywhere until one of you dies. Killing it gives its elite experience and starts the clock for the next one. If it kills you it leaves, and a new clock starts. The clock keeps its place when you log out, and a hunter on you when you log out is waiting when you log back in. Battlegrounds and arenas are safe from it.",
           "Keep a defensive ability and a healing option ready at all times, because the hunter can arrive in the middle of another fight. Finish fights quickly, and when the hunter comes, kill it before anything else joins in." },
         { 15, "hourglass",       "Hourglass",       3, "A level clock. Gain a level every 30 minutes played or lose a life. The clock resets with every level, runs 20 minutes below level 20 and 45 past 60.", 500, 192, "rewind",
           "Every level has a time limit, counted while you are logged in and alive. Below level 20 you have 20 minutes per level, from 20 to 60 you have 30, and past 60 you have 45. A warning comes with five minutes left. If time runs out you lose a life and the clock restarts on the same level. Reaching the next level always resets the clock.",
@@ -2618,7 +2624,7 @@ bool ClasslessMgr::StartRun(Player* player, uint8 challengeId, Mode target,
     st.livesMax = ch->lives + st.extraLife;
     st.lives = st.livesMax;
     st.extraLife = 0;
-    st.runData = 0;
+    st.runData = st.run == uint8(ChallengeId::Pursued) ? NextHunterIn() : 0;
     st.nemeses.clear();
     SaveNemeses(player->GetGUID(), st);
     st.hunterTimerMs = 0;
@@ -2679,6 +2685,8 @@ void ClasslessMgr::LoseLife(Player* player, Unit* killer)
             break;
         case ChallengeId::Pursued:
             DespawnHunter(player);   // the one that got you leaves; the clock brings the next
+            st->runData = NextHunterIn();
+            st->hunterTimerMs = 0;
             what = "The hunter leaves you where you fell. Another is coming.";
             break;
         default:
@@ -2871,12 +2879,24 @@ void ClasslessMgr::HunterTick(Player* player, uint32 diffMs)
                 return;
             }
         }
+        // gone without the Hero's kill (another hand, or left behind on
+        // another map): the clock starts over rather than sending one at once
         st->hunterGuid.Clear();
-    }
-    st->hunterTimerMs += diffMs;
-    if (st->hunterTimerMs < HUNTER_EVERY_MS)
+        st->runData = NextHunterIn();
+        st->hunterTimerMs = 0;
         return;
-    st->hunterTimerMs = 0;
+    }
+    if (st->runData)
+    {
+        // played time only: this runs while the Hero is in the world and alive
+        st->hunterTimerMs += diffMs;
+        uint32 const seconds = st->hunterTimerMs / IN_MILLISECONDS;
+        st->hunterTimerMs -= seconds * IN_MILLISECONDS;
+        st->runData = st->runData > seconds ? st->runData - seconds : 0;
+        if (st->runData)
+            return;
+    }
+    // due: SpawnHunter waits out battlegrounds and arenas, so this retries
     SpawnHunter(player);
 }
 
@@ -2916,9 +2936,12 @@ void ClasslessMgr::HunterSlain(Player* player, Creature* creature)
     if (!st || st->run != uint8(ChallengeId::Pursued) || !creature || creature->GetEntry() != HUNTER_ENTRY)
         return;
     st->hunterGuid.Clear();
+    st->runData = NextHunterIn();
+    st->hunterTimerMs = 0;
+    SaveState(player);
     // Nothing on top of the kill itself: an elite two levels up pays its own
     // XP and loot, and anything more would be a thumb on one path's scale.
-    Msg(player, "|cff00ff00The hunter is dead.|r The next is ten minutes out.");
+    Msg(player, "|cff00ff00The hunter is dead.|r Another will find you within 15 to 30 minutes.");
 }
 
 // Price in COPPER so the cost reads as silver in the early game and only grows
@@ -3198,6 +3221,8 @@ void ClasslessMgr::LoadCharacter(Player* player, CharState& st)
         st.lives = f[15].Get<uint8>();
         st.livesMax = f[16].Get<uint8>();
         st.runData = f[17].Get<uint32>();
+        if (st.run == uint8(ChallengeId::Pursued) && !st.runData)
+            st.runData = HUNTER_LOGIN_GRACE_S;    // logged out with a hunter due or on them
         st.shards = f[18].Get<uint32>();
         st.extraLife = f[19].Get<uint8>();
     }

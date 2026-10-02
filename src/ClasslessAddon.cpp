@@ -95,7 +95,7 @@ namespace
         // realm that tuned Wildcard.FreeRerollLevel got an addon that disagreed
         // with its own server. Fields are read by position now, and anything the
         // addon does not know about is ignored, so the packet can simply grow.
-        SendAddon(player, Acore::StringFormat("S|{}|{}|{}|{}|{}|{}|{}|{}|{}|{}|{}|{}|{}|{}|{}|{}|{}|{}|{}|{}|{}|{}|{}|{}|{}|{}|{}|{}",
+        SendAddon(player, Acore::StringFormat("S|{}|{}|{}|{}|{}|{}|{}|{}|{}|{}|{}|{}|{}|{}|{}|{}|{}|{}|{}|{}|{}|{}|{}|{}|{}|{}|{}|{}|{}",
             uint32(st.mode), st.abilityEssence, st.talentEssence, st.pity, chance,
             scrolls, player->GetLevel(), cfg.modeChoiceDeadline,
             cfg.rebirthEnable ? 1 : 0, cfg.rebirthCostGold,
@@ -123,7 +123,10 @@ namespace
             // the cap, or fresh and under the mode deadline on Wildcard).
             uint32(st.run), uint32(st.lives), uint32(st.livesMax), st.shards, uint32(st.extraLife),
             (!st.run && (sClasslessMgr->RebirthEligible(player)
-                         || (player->GetLevel() <= cfg.modeChoiceDeadline && st.mode != Mode::Unchosen))) ? 1 : 0));
+                         || (player->GetLevel() <= cfg.modeChoiceDeadline && st.mode != Mode::Unchosen))) ? 1 : 0,
+            // field 30: Hourglass's clock, seconds left on this level (0 on
+            // any other run), for the run badge's tooltip
+            sClasslessMgr->HourglassSecondsLeft(player)));
 
         // Talent pricing, so the browser can label what a talent actually
         // costs instead of assuming. Sent as its own message rather than more

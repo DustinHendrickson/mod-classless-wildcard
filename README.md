@@ -709,7 +709,7 @@ its title and its reward ability, once per challenge.
 | Nemesis | 5 | Whatever kills you gains five levels, becomes elite and grows. Kill it to take the levels back as XP. | 500 | the Nemesis | Mark of the Nemesis |
 | Elite World | 5 | Every enemy has triple health and double damage. | 750 | Bane of Giants | Giantsbane |
 | Legion | 4 | Every enemy you engage calls two more of its kind. | 650 | the Legionbreaker | One Against Many |
-| Pursued | 3 | A hunter two levels above you arrives every ten minutes and tracks you until one of you dies. | 600 | the Hunted | Turnabout |
+| Pursued | 3 | A hunter two levels above you arrives every 15 to 30 minutes of played time, at random, and tracks you until one of you dies. | 600 | the Hunted | Turnabout |
 | Hourglass | 3 | Gain each level in time or lose a life: 20 minutes below level 20, 30 up to level 60, 45 after. | 500 | the Swift | Rewind |
 | Glass | 3 | Half health, a third more damage. | 400 | the Unshattered | Shatterpoint |
 | Spiteful | 3 | Enemies reflect a fifth of your damage back at you. | 450 | the Scarred | Spite Mirror |

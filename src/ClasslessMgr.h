@@ -184,6 +184,9 @@ public:
     void SpawnHunter(Player* player);
     void DespawnHunter(Player* player);
     void HunterSlain(Player* player, Creature* creature);
+    // Hourglass: seconds left on this level's clock, 0 off that run. For the
+    // addon's run badge.
+    uint32 HourglassSecondsLeft(Player* player);
 
     // Buy a Reroll Scroll for gold straight from the addon panel. Cost scales
     // with level. One scroll covers abilities and talents alike -- the split
