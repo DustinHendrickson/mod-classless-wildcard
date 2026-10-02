@@ -104,12 +104,14 @@ namespace
     // it costs one cycle of counting, never a refund already given.
     std::unordered_map<ObjectGuid::LowType, uint32> _weaveCount;
 
-    // Returns the talent's amount, or 0 when the Hero does not own it.
-    int32 HeroTalentAmount(Unit const* unit, uint32 icon)
+    // Returns the talent's amount, or 0 when the Hero does not own it. A talent
+    // that needs a second number carries it in its next slot (gen_forged_spells.py
+    // `extra`), and its text names it as $s2.
+    int32 HeroTalentAmount(Unit const* unit, uint32 icon, SpellEffIndex slot = EFFECT_0)
     {
         if (!unit)
             return 0;
-        if (AuraEffect* eff = unit->GetDummyAuraEffect(HERO_FAMILY, icon, EFFECT_0))
+        if (AuraEffect* eff = unit->GetDummyAuraEffect(HERO_FAMILY, icon, slot))
             return eff->GetAmount();
         return 0;
     }
@@ -128,8 +130,9 @@ namespace
 
         // Jack of All Trades: one step for every three different classes the
         // Hero has drawn an ability from.
-        if (int32 const perThree = HeroTalentAmount(player, ICON_JACK_OF_ALL))
-            pct += perThree * (sClasslessMgr->OwnedClassCount(player) / 3);
+        if (int32 const step = HeroTalentAmount(player, ICON_JACK_OF_ALL))
+            if (int32 const classes = HeroTalentAmount(player, ICON_JACK_OF_ALL, EFFECT_1))
+                pct += step * (sClasslessMgr->OwnedClassCount(player) / classes);
 
         // Two Schools: only on damage, and only when the school differs from
         // the last one this character dealt. Recorded either way, so repeating
@@ -162,21 +165,23 @@ namespace
     };
     std::unordered_map<ObjectGuid::LowType, RepertoireWindow> _repertoireUsed;
 
-    constexpr uint32 CROSSDRAW_WINDOW_MS = 5000;
+    // The tuning numbers of these lines live in their own spell rows, in the
+    // slots gen_forged_spells.py puts them in, so a tooltip's $s3 and the
+    // script read one value. Only the id layout is fixed here.
     constexpr uint32 CROSSDRAW_COMPANION_OFFSET = 16;   // matches PER_RECIPE / 2
-    constexpr uint8  REPERTOIRE_MAX_STACKS = 5;
-    constexpr int32  REPERTOIRE_PER_STACK = 3;
-    constexpr uint32 QUICKENING_MIN_POINTS = 20;      // rage plus energy, in displayed points
-    constexpr int32  QUICKENING_POINTS_PER_PCT = 5;
-    constexpr int32  QUICKENING_MAX_PCT = 20;
+    constexpr uint32 QUICKENING_DATA_OFFSET = 16;       // the row holding its minimum
     constexpr uint32 RICOCHET_COMPANION_OFFSET = 16;    // matches PER_RECIPE / 2
-    constexpr float  RICOCHET_RANGE = 8.0f;
-    constexpr uint32 RICOCHET_MANA_PCT = 6;              // of maximum mana, per ricochet
     // the creature entries this module owns, from gen_forged_spells.py
     constexpr uint32 FORGED_CREATURE_FIRST = 990110;
     constexpr uint32 FORGED_CREATURE_LAST = 990130;
-    constexpr int32  SURGE_PER_ABILITY_PCT = 8;
-    constexpr int32  SURGE_MAX_PCT = 40;
+
+    // One slot's value off a spell row, worked out for `caster` the way the
+    // client works out the same slot's $s for the tooltip.
+    int32 SlotValue(uint32 spellId, SpellEffIndex slot, Unit const* caster = nullptr)
+    {
+        SpellInfo const* info = sSpellMgr->GetSpellInfo(spellId);
+        return info ? info->Effects[slot].CalcValue(caster) : 0;
+    }
 
     // A CAST, not a swing. Crossdraw asks whether a spell went out just before
     // the strike, so anything that deals weapon damage is explicitly not one:
@@ -271,7 +276,8 @@ public:
         if (!itr->second.used.insert(info->Id).second)
             return;
 
-        uint8 const stacks = uint8(std::min<size_t>(itr->second.used.size(), REPERTOIRE_MAX_STACKS));
+        int32 const limit = std::max<int32>(1, SlotValue(itr->second.auraSpellId, EFFECT_1, player));
+        uint8 const stacks = uint8(std::min<size_t>(itr->second.used.size(), size_t(limit)));
         if (Aura* aura = player->GetAura(itr->second.auraSpellId, player->GetGUID()))
             if (aura->GetStackAmount() != stacks)
                 aura->SetStackAmount(stacks);
@@ -310,7 +316,8 @@ class spell_cw_crossdraw : public SpellScript
         if (itr == _lastDamagingCastMs.end())
             return;
         uint32 const now = uint32(GameTime::GetGameTimeMS().count());
-        if (now < itr->second || now - itr->second > CROSSDRAW_WINDOW_MS)
+        uint32 const window = uint32(std::max<int32>(0, GetSpellInfo()->Effects[EFFECT_1].CalcValue(caster)));
+        if (now < itr->second || now - itr->second > window)
             return;
 
         uint32 const companion = GetSpellInfo()->Id + CROSSDRAW_COMPANION_OFFSET;
@@ -341,15 +348,15 @@ class spell_cw_crossdraw : public SpellScript
 // =====================================================================
 namespace
 {
-    Unit* NextRicochetTarget(Unit* from, Player* owner, uint32 mainId, uint32 bounceId)
+    Unit* NextRicochetTarget(Unit* from, Player* owner, uint32 mainId, uint32 bounceId, float range)
     {
         std::list<Unit*> nearby;
-        Acore::AnyUnfriendlyUnitInObjectRangeCheck check(from, owner, RICOCHET_RANGE);
+        Acore::AnyUnfriendlyUnitInObjectRangeCheck check(from, owner, range);
         Acore::UnitListSearcher<Acore::AnyUnfriendlyUnitInObjectRangeCheck> searcher(from, nearby, check);
-        Cell::VisitObjects(from, searcher, RICOCHET_RANGE);
+        Cell::VisitObjects(from, searcher, range);
 
         Unit* best = nullptr;
-        float bestDist = RICOCHET_RANGE + 1.0f;
+        float bestDist = range + 1.0f;
         for (Unit* u : nearby)
         {
             if (u == from || u == owner || !u->IsAlive())
@@ -372,12 +379,14 @@ namespace
     {
         if (remaining <= 0 || !from || !owner)
             return;
-        if (!sSpellMgr->GetSpellInfo(bounceId))
-            return;                                     // the rank's companion row is missing
-        Unit* next = NextRicochetTarget(from, owner, mainId, bounceId);
+        SpellInfo const* main = sSpellMgr->GetSpellInfo(mainId);
+        if (!main || !sSpellMgr->GetSpellInfo(bounceId))
+            return;                                     // the rank's rows are missing
+        Unit* next = NextRicochetTarget(from, owner, mainId, bounceId, main->Effects[EFFECT_2].CalcRadius(owner));
         if (!next)
             return;
-        uint32 const cost = std::max<uint32>(1, owner->GetMaxPower(POWER_MANA) * RICOCHET_MANA_PCT / 100);
+        uint32 const manaPct = uint32(std::max<int32>(0, main->Effects[EFFECT_2].CalcValue(owner)));
+        uint32 const cost = std::max<uint32>(1, owner->GetMaxPower(POWER_MANA) * manaPct / 100);
         if (uint32(owner->GetPower(POWER_MANA)) < cost)
             return;                                     // what you cannot pay for, it does not do
         owner->ModifyPower(POWER_MANA, -int32(cost));
@@ -452,7 +461,8 @@ class spell_cw_quickening : public SpellScript
         if (!caster)
             return SPELL_FAILED_BAD_TARGETS;
         // rage is stored ten to the displayed point; energy is not
-        if (caster->GetPower(POWER_RAGE) / 10 + caster->GetPower(POWER_ENERGY) < int32(QUICKENING_MIN_POINTS))
+        int32 const least = SlotValue(GetSpellInfo()->Id + QUICKENING_DATA_OFFSET, EFFECT_0, caster);
+        if (caster->GetPower(POWER_RAGE) / 10 + caster->GetPower(POWER_ENERGY) < least)
             return SPELL_FAILED_NO_POWER;
         return SPELL_CAST_OK;
     }
@@ -465,8 +475,10 @@ class spell_cw_quickening : public SpellScript
         int32 const rage = caster->GetPower(POWER_RAGE);      // stored units, ten a point
         int32 const energy = caster->GetPower(POWER_ENERGY);
         // Adrenal Surge raises the ceiling, nothing else about the spell.
-        int32 const cap = QUICKENING_MAX_PCT + HeroTalentAmount(caster, ICON_ADRENAL_SURGE);
-        _pct = std::min<int32>((rage / 10 + energy) / QUICKENING_POINTS_PER_PCT, cap);
+        int32 const cap = GetSpellInfo()->Effects[EFFECT_0].CalcValue(caster)
+            + HeroTalentAmount(caster, ICON_ADRENAL_SURGE);
+        int32 const perPct = std::max<int32>(1, GetSpellInfo()->Effects[EFFECT_2].CalcValue(caster));
+        _pct = std::min<int32>((rage / 10 + energy) / perPct, cap);
         caster->ModifyPower(POWER_RAGE, -rage);
         caster->ModifyPower(POWER_ENERGY, -energy);
     }
@@ -516,7 +528,8 @@ class spell_cw_repertoire : public AuraScript
 
     void CalcAmount(AuraEffect const* aurEff, int32& amount, bool& /*canBeRecalculated*/)
     {
-        amount = REPERTOIRE_PER_STACK * int32(aurEff->GetBase()->GetStackAmount());
+        amount = GetSpellInfo()->Effects[EFFECT_0].CalcValue(GetCaster())
+            * int32(aurEff->GetBase()->GetStackAmount());
     }
 
     void Register() override
@@ -556,7 +569,8 @@ class spell_cw_wildcard_surge : public SpellScript
                 if (e->rarity == Rarity::Epic || e->rarity == Rarity::Legendary)
                     ++good;
 
-        int32 const bonus = std::min<int32>(int32(good) * SURGE_PER_ABILITY_PCT, SURGE_MAX_PCT);
+        int32 const bonus = std::min<int32>(int32(good) * GetSpellInfo()->Effects[EFFECT_1].CalcValue(caster),
+                                            GetSpellInfo()->Effects[EFFECT_2].CalcValue(caster));
         if (bonus)
             SetHitDamage(GetHitDamage() * (100 + bonus) / 100);
     }
@@ -737,16 +751,22 @@ public:
 // -- so the entry IS how a turret knows its rank. Nothing here holds a spell
 // id, and another rank needs no edit to this file.
 // =====================================================================
+// The turret's own numbers ride on the bolt it fires, slot 3: the value is
+// its reach in yards and the amplitude its time between shots. The tooltip
+// quotes the same slot as ${pet}s3 and ${pet}t3.
 namespace
 {
-    constexpr uint32 SENTRY_SHOT_MS = 1000;
-    constexpr float SENTRY_RANGE = 20.0f;
+    uint32 SentryInterval(Creature const* turret)
+    {
+        SpellInfo const* bolt = sSpellMgr->GetSpellInfo(turret->m_spells[0]);
+        return bolt ? uint32(std::max<int32>(0, bolt->Effects[EFFECT_2].Amplitude)) : 0;
+    }
 }
 
 struct npc_cw_reclaimed_sentry : public NullCreatureAI
 {
     explicit npc_cw_reclaimed_sentry(Creature* creature)
-        : NullCreatureAI(creature), _timer(SENTRY_SHOT_MS) { }
+        : NullCreatureAI(creature), _timer(SentryInterval(creature)) { }
 
     void UpdateAI(uint32 diff) override
     {
@@ -755,11 +775,13 @@ struct npc_cw_reclaimed_sentry : public NullCreatureAI
             _timer -= diff;
             return;
         }
-        _timer = SENTRY_SHOT_MS;
 
         uint32 const bolt = me->m_spells[0];
-        if (!bolt || !sSpellMgr->GetSpellInfo(bolt))
+        SpellInfo const* boltInfo = bolt ? sSpellMgr->GetSpellInfo(bolt) : nullptr;
+        uint32 const interval = SentryInterval(me);
+        if (!boltInfo || !interval)
             return;                     // this entry's bolt row is missing
+        _timer = interval;
 
         TempSummon const* summon = me->ToTempSummon();
         if (!summon)
@@ -771,14 +793,14 @@ struct npc_cw_reclaimed_sentry : public NullCreatureAI
         // Overclocked shortens the interval by its own percentage. Read from
         // the OWNER, because the turret carries no talents of its own.
         if (int32 const faster = HeroTalentAmount(owner, ICON_OVERCLOCKED))
-            _timer = std::max<uint32>(200, SENTRY_SHOT_MS - CalculatePct(SENTRY_SHOT_MS, faster));
+            _timer = std::max<uint32>(200, interval - CalculatePct(interval, faster));
 
         // Wider Net promises a bigger radius on "everything you place", and
         // the turret's reach is this constant rather than a radius column, so
         // the spell-mod system never saw it. Asked of the owner's modifiers
         // against the line's own id: every rank shares the line's class bit,
         // so the first rank answers for all of them.
-        float range = SENTRY_RANGE;
+        float range = float(boltInfo->Effects[EFFECT_2].CalcValue(owner));
         if (uint32 const line = sClasslessMgr->ForgedLine("reclaimed_sentry"))
             owner->ApplySpellMod(line, SPELLMOD_RADIUS, range);
 
@@ -949,12 +971,11 @@ class spell_cw_area_control : public SpellScript
 {
     PrepareSpellScript(spell_cw_area_control);
 
-    static constexpr uint8 MAX_PAID = 5;
-
     void Caught()
     {
         Player* caster = GetCaster() ? GetCaster()->ToPlayer() : nullptr;
-        if (!caster || !GetHitUnit() || _paid >= MAX_PAID)
+        if (!caster || !GetHitUnit()
+            || _paid >= HeroTalentAmount(caster, ICON_OPPORTUNIST, EFFECT_1))
             return;
 
         int32 const energy = HeroTalentAmount(caster, ICON_OPPORTUNIST);
@@ -971,7 +992,7 @@ class spell_cw_area_control : public SpellScript
     }
 
 private:
-    uint8 _paid = 0;
+    int32 _paid = 0;
 };
 
 // =====================================================================
@@ -1284,19 +1305,12 @@ namespace
         return out;
     }
 
-    constexpr int32  NEMESIS_BONUS_PCT = 15;
-    constexpr float  NEMESIS_LEAP_RANGE = 30.0f;
-    constexpr int32  NEMESIS_RESTORE_PCT = 20;
-    constexpr int32  ONE_AGAINST_MANY_STEP = 5;
-    constexpr uint32 ONE_AGAINST_MANY_MAX = 5;
-    constexpr float  ONE_AGAINST_MANY_RANGE = 10.0f;
-    constexpr int32  TURNABOUT_BONUS_PCT = 50;
-    constexpr int32  SHATTER_COST_PCT = 30;
-    constexpr float  SHATTER_RANGE = 8.0f;
-    constexpr uint32 LAST_BREATH_COOLDOWN_MS = 5 * MINUTE * IN_MILLISECONDS;
-    constexpr int32  SANGUINE_HEAL_PCT = 30;
-    constexpr int32  SANGUINE_SHIELD_CAP_PCT = 20;
-    constexpr uint32 BRINK_MAX_PCT = 100;
+    // The live amount of one slot of an aura `unit` carries, 0 when it has none.
+    int32 AuraSlot(Unit const* unit, uint32 spellId, SpellEffIndex slot, ObjectGuid caster = ObjectGuid::Empty)
+    {
+        AuraEffect const* eff = unit ? unit->GetAuraEffect(spellId, slot, caster) : nullptr;
+        return eff ? eff->GetAmount() : 0;
+    }
 }
 
 // Giantsbane: a strike that grows with how much bigger the target is.
@@ -1311,8 +1325,11 @@ class spell_cw_giantsbane : public SpellScript
         Unit* target = GetHitUnit();
         if (!caster || !target || !caster->GetMaxHealth())
             return;
+        // slot 2 is the cap, slot 3 the % per 1% of health the target has over you
+        int32 const cap = GetSpellInfo()->Effects[EFFECT_1].CalcValue(caster);
+        int32 const rate = GetSpellInfo()->Effects[EFFECT_2].CalcValue(caster);
         float const ratio = float(target->GetMaxHealth()) / float(caster->GetMaxHealth());
-        int32 const bonus = std::clamp(int32((ratio - 1.0f) * 100.0f), 0, 100);
+        int32 const bonus = std::clamp(int32((ratio - 1.0f) * 100.0f * float(rate)), 0, std::max(0, cap));
         if (bonus)
             SetHitDamage(GetHitDamage() * (100 + bonus) / 100);
     }
@@ -1334,12 +1351,16 @@ class spell_cw_one_against_many : public AuraScript
         Unit* owner = GetUnitOwner();
         if (!owner)
             return;
-        uint32 const n = std::min<uint32>(uint32(EnemiesNear(owner, owner, ONE_AGAINST_MANY_RANGE).size()),
-                                          ONE_AGAINST_MANY_MAX);
+        // slot 1 holds the most enemies counted and how near they must be;
+        // slots 2 and 3 hold what each one is worth
+        SpellInfo const* info = GetSpellInfo();
+        float const range = info->Effects[EFFECT_0].CalcRadius(owner);
+        uint32 const most = uint32(std::max<int32>(0, info->Effects[EFFECT_0].CalcValue(owner)));
+        uint32 const n = std::min<uint32>(uint32(EnemiesNear(owner, owner, range).size()), most);
         if (AuraEffect* up = GetAura()->GetEffect(EFFECT_1))
-            up->ChangeAmount(ONE_AGAINST_MANY_STEP * int32(n));
+            up->ChangeAmount(info->Effects[EFFECT_1].CalcValue(owner) * int32(n));
         if (AuraEffect* down = GetAura()->GetEffect(EFFECT_2))
-            down->ChangeAmount(-ONE_AGAINST_MANY_STEP * int32(n));
+            down->ChangeAmount(info->Effects[EFFECT_2].CalcValue(owner) * int32(n));
     }
 
     void Applied(AuraEffect const* /*aurEff*/, AuraEffectHandleModes /*mode*/)
@@ -1441,7 +1462,7 @@ class spell_cw_shatterpoint : public SpellScript
         Unit* caster = GetCaster();
         if (!caster)
             return;
-        _spent = caster->CountPctFromCurHealth(SHATTER_COST_PCT);
+        _spent = caster->CountPctFromCurHealth(GetSpellInfo()->Effects[EFFECT_1].CalcValue(caster));
         if (_spent >= caster->GetHealth())
             _spent = caster->GetHealth() > 1 ? caster->GetHealth() - 1 : 0;
         if (_spent)
@@ -1450,7 +1471,8 @@ class spell_cw_shatterpoint : public SpellScript
 
     void Empower()
     {
-        _total = GetHitDamage() + int32(3 * _spent);
+        _total = GetHitDamage()
+            + int32(CalculatePct(_spent, GetSpellInfo()->Effects[EFFECT_2].CalcValue(GetCaster())));
         SetHitDamage(_total);
     }
 
@@ -1464,12 +1486,17 @@ class spell_cw_shatterpoint : public SpellScript
         if (!target || !owner || _total < 2)
             return;
         uint32 const shard = GetSpellInfo()->Id + REWARD_COMPANION_OFFSET;
-        if (!sSpellMgr->GetSpellInfo(shard))
+        SpellInfo const* shardInfo = sSpellMgr->GetSpellInfo(shard);
+        if (!shardInfo)
             return;
-        for (Unit* next : EnemiesNear(target, owner, SHATTER_RANGE))
+        // the shard's slot 2: its share of the damage, and how far it shatters
+        int32 const share = CalculatePct(_total, shardInfo->Effects[EFFECT_1].CalcValue(owner));
+        if (share < 1)
+            return;
+        for (Unit* next : EnemiesNear(target, owner, shardInfo->Effects[EFFECT_1].CalcRadius(owner)))
         {
             CustomSpellValues values;
-            values.AddSpellMod(SPELLVALUE_BASE_POINT0, _total / 2);
+            values.AddSpellMod(SPELLVALUE_BASE_POINT0, share);
             target->CastCustomSpell(shard, values, next, TRIGGERED_FULL_MASK, nullptr, nullptr, owner->GetGUID());
         }
     }
@@ -1505,7 +1532,9 @@ class spell_cw_last_breath : public AuraScript
             return;
         absorbAmount = dmgInfo.GetDamage() - player->GetHealth() + 1;
         player->CastSpell(player, buff, true);
-        player->AddSpellCooldown(buff, 0, LAST_BREATH_COOLDOWN_MS);
+        // slot 2 is the cooldown, in seconds
+        player->AddSpellCooldown(buff, 0, uint32(std::max<int32>(0, GetSpellInfo()->Effects[EFFECT_1].CalcValue(player)))
+                                          * IN_MILLISECONDS);
         ChatHandler(player->GetSession()).SendSysMessage("|cffff8800Last Breath|r: you refuse to fall.");
     }
 
@@ -1553,7 +1582,7 @@ class spell_cw_ironbound : public AuraScript
     void Armor(AuraEffect const* /*aurEff*/, int32& amount, bool& /*canBeRecalculated*/)
     {
         if (Unit* caster = GetCaster())
-            amount = int32(caster->CountPctFromMaxHealth(50));
+            amount = int32(caster->CountPctFromMaxHealth(GetSpellInfo()->Effects[EFFECT_0].CalcValue(caster)));
     }
 
     void Register() override
@@ -1621,13 +1650,16 @@ public:
                 if (Player* player = aura->GetCaster() ? aura->GetCaster()->ToPlayer() : nullptr)
                     if (player->IsAlive())
                     {
-                        player->ModifyHealth(int32(player->CountPctFromMaxHealth(NEMESIS_RESTORE_PCT)));
-                        player->ModifyPower(POWER_MANA, int32(CalculatePct(player->GetMaxPower(POWER_MANA), NEMESIS_RESTORE_PCT)));
+                        SpellInfo const* info = aura->GetSpellInfo();
+                        int32 const restore = info->Effects[EFFECT_1].CalcValue(player);
+                        float const leap = float(info->Effects[EFFECT_2].CalcValue(player));
+                        player->ModifyHealth(int32(player->CountPctFromMaxHealth(restore)));
+                        player->ModifyPower(POWER_MANA, int32(CalculatePct(player->GetMaxPower(POWER_MANA), restore)));
                         if (uint32 const due = mark + REWARD_COMPANION_OFFSET; sSpellMgr->GetSpellInfo(due))
                             player->CastSpell(player, due, true);   // the golden surge
                         Unit* next = nullptr;
-                        float best = NEMESIS_LEAP_RANGE + 1.0f;
-                        for (Unit* u : EnemiesNear(player, player, NEMESIS_LEAP_RANGE))
+                        float best = leap + 1.0f;
+                        for (Unit* u : EnemiesNear(player, player, leap))
                             if (u != unit && !u->HasAura(mark, player->GetGUID()))
                                 if (float const d = player->GetDistance(u); d < best)
                                 {
@@ -1657,21 +1689,27 @@ private:
         if (Player* dealer = attacker->ToPlayer())
         {
             int32 pct = 100;
-            if (uint32 const mark = RewardLine("mark_of_the_nemesis"); mark && target->HasAura(mark, dealer->GetGUID()))
-                pct += NEMESIS_BONUS_PCT;
+            if (uint32 const mark = RewardLine("mark_of_the_nemesis"))
+                pct += AuraSlot(target, mark, EFFECT_0, dealer->GetGUID());
             if (uint32 const stun = RewardCompanion("turnabout"); stun && target->HasAura(stun, dealer->GetGUID()))
-                pct += TURNABOUT_BONUS_PCT;
+                pct += SlotValue(RewardLine("turnabout"), EFFECT_0, dealer);
             if (uint32 const brink = RewardLine("brink"); brink && dealer->HasAura(brink))
-                pct += int32(std::min<uint32>(BRINK_MAX_PCT, uint32((100.0f - dealer->GetHealthPct()) * 2.0f)));
+            {
+                // slot 2: % per 1% of health missing; slot 3: the cap
+                int32 const rate = AuraSlot(dealer, brink, EFFECT_1);
+                int32 const cap = AuraSlot(dealer, brink, EFFECT_2);
+                pct += std::min<int32>(cap, int32((100.0f - dealer->GetHealthPct()) * float(rate)));
+            }
             if (pct != 100)
                 damage = uint32(uint64(damage) * uint32(pct) / 100);
 
             if (dealer->IsAlive())
             {
                 if (uint32 const breath = RewardCompanion("last_breath"); breath && dealer->HasAura(breath))
-                    dealer->ModifyHealth(int32(damage));
+                    dealer->ModifyHealth(int32(CalculatePct(damage, AuraSlot(dealer, breath, EFFECT_0))));
                 else if (uint32 const pact = RewardLine("sanguine_pact"); pact && dealer->HasAura(pact))
-                    Sanguine(dealer, CalculatePct(damage, SANGUINE_HEAL_PCT));
+                    Sanguine(dealer, CalculatePct(damage, AuraSlot(dealer, pact, EFFECT_0)),
+                             AuraSlot(dealer, pact, EFFECT_1));
             }
         }
 
@@ -1683,7 +1721,7 @@ private:
         uint32 const spite = RewardLine("spite_mirror");
         uint32 const spiteBolt = RewardCompanion("spite_mirror");
         if (spite && victim->HasAura(spite) && !(spellInfo && spellInfo->Id == spiteBolt))
-            Later(victim, attacker, spiteBolt, int32(damage / 3));
+            Later(victim, attacker, spiteBolt, int32(CalculatePct(damage, AuraSlot(victim, spite, EFFECT_0))));
         if (uint32 const turn = RewardLine("turnabout"); turn && victim->HasAura(turn) && victim->IsValidAttackTarget(attacker))
         {
             victim->RemoveAurasDueToSpell(turn);
@@ -1692,8 +1730,8 @@ private:
     }
 
     // Heal by the hit; what spills over full health grows the shield, held
-    // to a fifth of maximum health.
-    static void Sanguine(Player* dealer, uint32 heal)
+    // to `capPct` of maximum health (the pact's slot 2).
+    static void Sanguine(Player* dealer, uint32 heal, int32 capPct)
     {
         uint32 const missing = dealer->GetMaxHealth() - dealer->GetHealth();
         uint32 const healed = std::min(heal, missing);
@@ -1703,7 +1741,7 @@ private:
         uint32 const shield = RewardCompanion("sanguine_pact");
         if (!over || !shield)
             return;
-        int32 const cap = int32(dealer->CountPctFromMaxHealth(SANGUINE_SHIELD_CAP_PCT));
+        int32 const cap = int32(dealer->CountPctFromMaxHealth(capPct));
         if (AuraEffect* eff = dealer->GetAuraEffect(shield, EFFECT_0))
             eff->ChangeAmount(std::min<int32>(cap, eff->GetAmount() + int32(over)));
         else

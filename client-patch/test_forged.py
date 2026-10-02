@@ -1174,6 +1174,11 @@ def main():
     for n in range(len(blocks) - 1):
         cls, a = blocks[n]
         body = cpp[a:blocks[n + 1][1]]
+        # the class itself, to its closing brace: free functions between two
+        # classes (Ricochet Shot's helpers follow Crossdraw) are neither's
+        close = body.find("\n};")
+        if close != -1:
+            body = body[:close + 3]
         ids = bound.get(cls, [])
         if not ids:
             mismatch.append("%s is registered but no spell_script_names row names it" % cls)

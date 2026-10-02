@@ -142,7 +142,7 @@ Abbreviations: **Lua** = `client-addon/ClasslessWildcard/ClasslessWildcard.lua`,
 
 ## 7. Lower priority
 
-**Status: all done. The two PaperDollFrame_SetStat hooks did not conflict: the second was written for a later client's (frame, unit, index) signature and never ran on 3.3.5, so it was removed. Five Hero-line tooltips (Sentry Bolt, Spore Wash, Turnabout, Sanguine Pact, Brink) keep literal numbers because the value lives in another spell or a script.**
+**Status: all done. The two PaperDollFrame_SetStat hooks did not conflict: the second was written for a later client's (frame, unit, index) signature and never ran on 3.3.5, so it was removed. Every number a Hero-line tooltip states now comes from a spell slot the script also reads (see the Hero-line data rule in gen_forged_spells.py's check_text_tokens).**
 
 - Hardcoded numbers in Hero-line tooltips where an effect token exists (18 spells, Forged:585-1612). They match today but will drift.
 - Two `PaperDollFrame_SetStat` hooks overwrite each other (Lua:3811, 4590) with disagreeing stat descriptions.
