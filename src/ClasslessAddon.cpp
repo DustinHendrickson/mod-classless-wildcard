@@ -66,17 +66,8 @@ namespace
         player->GetSession()->SendPacket(&data);
     }
 
-    // For fields inside ':'/';'-delimited list records: every delimiter goes.
-    std::string Sanitize(std::string s)
-    {
-        for (char& c : s)
-            if (c == '|' || c == ';' || c == ':' || c == '\t' || c == '\n')
-                c = ' ';
-        return s;
-    }
-
-    // For a whole '|'-delimited field of free text (archetype names and
-    // descriptions): colons and semicolons are ordinary punctuation there.
+    // For a whole '|'-delimited field of free text (archetype names,
+    // descriptions, errors): colons and semicolons are ordinary punctuation.
     std::string SanitizeText(std::string s)
     {
         for (char& c : s)
