@@ -1482,6 +1482,11 @@ def test_challenge_runs(h):
     CW, g = h.CW, h.g
     popups = g.StaticPopupDialogs
     runs = CW.runFly
+    panel = g.ClasslessWildcardFrame
+    h.check(runs["__w"] == panel["__w"] and runs["__h"] == panel["__h"],
+            "the challenge screen is as big as the panel (%sx%s, panel %sx%s)"
+            % (runs["__w"], runs["__h"], panel["__w"], panel["__h"]))
+    h.check("either path" not in str(runs["listSub"]["__text"]), "the subtitle makes no path claim")
 
     # Every one of our popups draws a dark backing while it is up (the stock
     # dialog background is see-through over the panel) and drops it on hide,

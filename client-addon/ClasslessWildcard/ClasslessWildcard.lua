@@ -1286,8 +1286,8 @@ StaticPopupDialogs["CW_RUN_END"] = {
     timeout = 0, whileDead = 1, hideOnEscape = 1, preferredIndex = 3,
 }
 do
-    -- The whole body of the panel, from under the title to above the bottom
-    -- bar: 910 x 474. Two panes. On the left every challenge, all twelve at
+    -- The whole panel, edge to edge, so the challenges get its full size.
+    -- Two panes. On the left every challenge, all twelve at
     -- once, each a row with its lives as pips and its gold. On the right the
     -- one selected, in full: the rule, how it plays, what it takes to start,
     -- its lives, every reward with the reward ability's own tooltip, and the
@@ -1298,11 +1298,10 @@ do
     -- Measured, left: title -12, subtitle -34, twelve rows of 29 from -54 (to
     -- -402), shards at 40 from the bottom, Extra life at 10. Right: name -12,
     -- rule -40 (two lines, to -72), divider -80, scroll from -86 to 46 from
-    -- the bottom, Start at 12, the summary at 18.
+    -- the bottom, Start at 12, the summary at 18. Widths follow the panel's.
     local fly = CreateFrame("Frame", "ClasslessWildcardRuns", frame)
-    fly:SetPoint("TOPLEFT", frame, "TOPLEFT", 20, -70)
-    fly:SetPoint("BOTTOMRIGHT", frame, "BOTTOMRIGHT", -20, 56)
-    fly:SetWidth(910); fly:SetHeight(474)
+    fly:SetAllPoints(frame)
+    fly:SetWidth(frame:GetWidth()); fly:SetHeight(frame:GetHeight())
     CW.OverPanel(fly)   -- under the confirm popups, over the panel
     fly:SetBackdrop({
         bgFile = "Interface\\Buttons\\WHITE8X8",
@@ -1315,7 +1314,9 @@ do
     fly:Hide()
     CW.runFly = fly
     fly.selected = nil
-    local ROWS, ROW_H, LEFT_W, RX, CW_W = 12, 29, 284, 318, 520
+    local FLY_W = frame:GetWidth()
+    -- the right pane's text column: the scroll frame's width less its bar
+    local ROWS, ROW_H, LEFT_W, RX, CW_W = 12, 29, 284, 318, FLY_W - 318 - 72
     -- gold as the game draws it: the amount, then the gold coin
     local function Coin(amount, size)
         size = size or 14
@@ -1336,7 +1337,7 @@ do
     fly.listSub:SetPoint("TOPLEFT", 16, -34)
     fly.listSub:SetWidth(LEFT_W)
     fly.listSub:SetJustifyH("LEFT")
-    fly.listSub:SetText("|cffaaaaaaOne rule, counted lives, either path.|r")
+    fly.listSub:SetText("|cffaaaaaaOne rule, counted lives.|r")
 
     fly.rows = {}
     for i = 1, ROWS do
@@ -1407,11 +1408,11 @@ do
     -- ---- right: the header -------------------------------------------------
     fly.dName = fly:CreateFontString(nil, "OVERLAY", "GameFontNormalLarge")
     fly.dName:SetPoint("TOPLEFT", RX, -12)
-    fly.dName:SetWidth(910 - RX - 40)       -- a width, not a RIGHT anchor: that would centre it vertically
+    fly.dName:SetWidth(FLY_W - RX - 40)     -- a width, not a RIGHT anchor: that would centre it vertically
     fly.dName:SetJustifyH("LEFT")
     fly.rule = fly:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
     fly.rule:SetPoint("TOPLEFT", RX, -40)
-    fly.rule:SetWidth(910 - RX - 40)
+    fly.rule:SetWidth(FLY_W - RX - 40)
     fly.rule:SetJustifyH("LEFT")
     fly.rule:SetJustifyV("TOP")
     fly.rule:SetHeight(34)
