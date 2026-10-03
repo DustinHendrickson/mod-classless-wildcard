@@ -342,7 +342,7 @@ namespace ClasslessWildcard
         bool   announce = true;
         uint8  defaultMode = 0;
         bool   allowModeChoice = true;
-        uint8  modeChoiceDeadline = 5;
+        uint8  modeChoiceDeadline = 2;
 
         // library filters
         bool   includeDeathKnight = true;

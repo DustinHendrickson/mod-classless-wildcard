@@ -144,7 +144,7 @@ void ClasslessMgr::LoadConfig(bool /*reload*/)
     cfg.announce = sConfigMgr->GetOption<bool>("ClasslessWildcard.Announce", true);
     cfg.defaultMode = sConfigMgr->GetOption<uint8>("ClasslessWildcard.DefaultMode", 0);
     cfg.allowModeChoice = sConfigMgr->GetOption<bool>("ClasslessWildcard.AllowModeChoice", true);
-    cfg.modeChoiceDeadline = sConfigMgr->GetOption<uint8>("ClasslessWildcard.ModeChoiceDeadline", 5);
+    cfg.modeChoiceDeadline = sConfigMgr->GetOption<uint8>("ClasslessWildcard.ModeChoiceDeadline", 2);
 
     cfg.includeDeathKnight = sConfigMgr->GetOption<bool>("ClasslessWildcard.IncludeDeathKnight", true);
     cfg.includeRacials = sConfigMgr->GetOption<bool>("ClasslessWildcard.IncludeRacials", false);
@@ -3641,8 +3641,11 @@ void ClasslessMgr::HandleFirstLogin(Player* player)
             Msg(player, "Welcome, Hero! Your race keeps its racial traits. You carry mana, rage and energy at "
                         "once, every stat is worth having, and every spell, talent, weapon and armor type in the "
                         "game is open to you.");
-            Msg(player, "Choose your path in |cffffff00/cw|r or at the |cffffff00Hero Advancement|r NPC: Classless, "
-                        "where you buy every ability, or Wildcard, where the dice deal them.");
+            Msg(player, Acore::StringFormat("Choose your path before level {} in |cffffff00/cw|r or at the "
+                        "|cffffff00Hero Advancement|r NPC: Classless, where you buy every ability, or Wildcard, "
+                        "where the dice deal them. Choose nothing and you walk the {} path. This character "
+                        "keeps its path for good.", uint32(cfg.modeChoiceDeadline),
+                        cfg.defaultMode == uint8(Mode::Wildcard) ? "Wildcard" : "Classless"));
         }
         else
             AnnounceState(player);
@@ -5524,7 +5527,7 @@ AbilityEntry const* ClasslessMgr::ChooseAbility(Player* player, CharState& st,
         total += RollWeight(e->rarity, e->weight);
     AbilityEntry const* chosen = nullptr;
     if (!total) // all weights zero -> uniform pick
-        chosen = candidates[urand(0, candidates.size() - 1)];
+        chosen = candidates[urand(0, uint32(candidates.size() - 1))];
     else
     {
         uint32 pick = urand(0, total - 1);
@@ -5671,7 +5674,7 @@ TalentPoolEntry const* ClasslessMgr::ChooseTalent(Player* player, CharState& st,
             total += RollWeight(t->rarity, t->weight);
         TalentPoolEntry const* chosen = nullptr;
         if (!total) // all weights zero -> uniform pick
-            chosen = candidates[urand(0, candidates.size() - 1)];
+            chosen = candidates[urand(0, uint32(candidates.size() - 1))];
         else
         {
             uint32 pick = urand(0, total - 1);

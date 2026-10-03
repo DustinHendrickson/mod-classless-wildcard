@@ -255,7 +255,7 @@ epic; Lay on Hands, Rebirth and the 41-point talents are legendary.
 ## Challenge runs
 
 A run is one life under one rule, on the character's own path. Start one from the Rebirth picker
-at the level cap, or on a new Hero up to level 5.
+at the level cap, or on a new Hero up to level 2.
 
 - **Lives.** Each death costs one. Battlegrounds, arenas and duels are free. At zero, the run ends
   and you keep everything.
@@ -391,7 +391,7 @@ spellbook tab. You can own a base attack and its variants together.
 | Command | What it does |
 | ------- | ------------ |
 | `.classless status` | Path, owned abilities and talents, essence, reroll charges, cooldowns |
-| `.classless mode classless\|wildcard` | Choose your path, before level 5 |
+| `.classless mode classless\|wildcard` | Choose your path, at level 1 |
 | `.classless learn <spellId>` | Buy an ability |
 | `.classless unlearn <spellId>` | Drop an ability for a refund |
 | `.classless talent <talentId>` | Buy the next rank of a talent |
@@ -517,7 +517,7 @@ documented inline and prefixed `ClasslessWildcard.`. The common ones:
 | `Enable` | `1` | Master switch |
 | `DefaultMode` | `0` | `0` Classless, `1` Wildcard |
 | `AllowModeChoice` | `1` | `0` forces `DefaultMode` for everyone |
-| `ModeChoiceDeadline` | `5` | Level the path locks at |
+| `ModeChoiceDeadline` | `2` | Level the path locks at |
 | `Rebirth.Enable` / `Rebirth.CostGold` | `1` / `100` | Rebirth; it costs this times (rank + 1) gold |
 | `Rebirth.KillXpPctFirst` / `PerRank` / `Max` | `100` / `50` / `300` | Kill and dungeon XP bonus per Rebirth rank, % |
 | `Rebirth.OtherXpPctPerRank` / `Max` | `25` / `100` | Quest, exploration and battleground XP bonus per rank, % |

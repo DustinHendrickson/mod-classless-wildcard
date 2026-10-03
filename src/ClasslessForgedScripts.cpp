@@ -462,7 +462,7 @@ class spell_cw_quickening : public SpellScript
             return SPELL_FAILED_BAD_TARGETS;
         // rage is stored ten to the displayed point; energy is not
         int32 const least = SlotValue(GetSpellInfo()->Id + QUICKENING_DATA_OFFSET, EFFECT_0, caster);
-        if (caster->GetPower(POWER_RAGE) / 10 + caster->GetPower(POWER_ENERGY) < least)
+        if (int32(caster->GetPower(POWER_RAGE) / 10 + caster->GetPower(POWER_ENERGY)) < least)
             return SPELL_FAILED_NO_POWER;
         return SPELL_CAST_OK;
     }

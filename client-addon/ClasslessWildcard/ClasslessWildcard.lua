@@ -44,7 +44,7 @@ local CLASS_ORDER = { 1, 2, 3, 4, 5, 6, 7, 8, 9, 11, CLASS_HERO }
 -- ---------------------------------------------------------------------------
 local CW = {
     state = { mode = 255, ae = 0, te = 0, pity = 0, chance = 0, scrolls = 0,
-              level = 1, deadline = 5, rebirth = 0, rebirthCost = 0,
+              level = 1, deadline = 2, rebirth = 0, rebirthCost = 0,
               -- Rebirth, the New Game Plus: the rank, whether this character
               -- can be reborn now (at the cap), its gold price, and how many
               -- heirlooms the rank lets them carry through. rebirthCost above
@@ -1621,7 +1621,7 @@ do
                 .. name .. " applies from the moment you start until you reach level 80 or run out of lives."
         else
             status = NO .. "|cffff4444You cannot start a run on this character right now.|r"
-            what = "A run can be started on a new character up to level " .. (s.deadline or 5)
+            what = "A run can be started on a new character up to level " .. (s.deadline or 2)
                 .. ", or on a character at level 80, where it begins with a Rebirth back to level 1."
         end
         fly.req:SetText(status .. "\n" .. what)
@@ -2418,7 +2418,7 @@ local function BuildHelpText()
 "The price rises with each rank.",
 "",
 "|cffff4444==  CHALLENGE RUNS: one rule, counted lives  ==|r",
-"A run is a life under one rule on either path. Start one from the Rebirth button at level " .. cap .. " (it is a Rebirth, heirlooms and all), or as a new Hero up to level " .. (s.deadline or 5) .. ". Pick a challenge, read its rule, go.",
+"A run is a life under one rule, on your own path. Start one from the Rebirth button at level " .. cap .. " (it is a Rebirth, heirlooms and all), or as a new Hero up to level " .. (s.deadline or 2) .. ". Pick a challenge, read its rule, go.",
 "   |cffffd100Lives:|r the hearts on the run badge at the top-right of this panel. Hover the badge for your challenge's rule and rewards, and on Hourglass the time left on the level; click it for the challenge page. Each challenge shows how many lives it gives. A death costs one; battlegrounds, arenas and duels are free.",
 "   |cffffd100Running out|r ends the run: the rule lifts and you keep everything. |cffffd100Reaching " .. cap .. "|r with a life left finishes it. Your first finish of a challenge pays its gold, its title, and an ability no roll or shop can give, kept as an heirloom. Finish with no life lost for |cffffd100the Unbroken|r.",
 "   |cffffd100Shards:|r every run pays them when it ends, finished or not: one per level reached, two per level past 60, and a third more for a run with no life lost. They buy an |cffffd100extra life|r for your next run, on the challenge page.",
@@ -3123,7 +3123,7 @@ wizText:SetPoint("TOP", 0, -46)
 wizText:SetWidth(370)
 function CW.WizPathText()
     return "Every spell and talent of every class is open to you. Will you choose each ability yourself, "
-        .. "or let the Wildcard deal them?\n\nChoose before level " .. (CW.state.deadline or 5)
+        .. "or let the Wildcard deal them?\n\nChoose before level " .. (CW.state.deadline or 2)
         .. ", or you start on the " .. (CW.rules.defaultMode == 1 and "Wildcard" or "Classless") .. " path."
 end
 wizText:SetText(CW.WizPathText())
@@ -6066,7 +6066,7 @@ local function HandleMessage(msg)
         local s = CW.state
         local wasLevel = s.level
         s.mode, s.ae, s.te, s.pity, s.chance = tonumber(p[2]) or 255, tonumber(p[3]) or 0, tonumber(p[4]) or 0, tonumber(p[5]) or 0, tonumber(p[6]) or 0
-        s.scrolls, s.level, s.deadline = tonumber(p[7]) or 0, tonumber(p[8]) or 1, tonumber(p[9]) or 5
+        s.scrolls, s.level, s.deadline = tonumber(p[7]) or 0, tonumber(p[8]) or 1, tonumber(p[9]) or 2
         s.rebirth, s.rebirthCost = tonumber(p[10]) or 0, tonumber(p[11]) or 0
         -- Read every field by position, unconditionally. There used to be a
         -- branch here that treated a 16-field packet as a pre-merge server
