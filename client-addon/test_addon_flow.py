@@ -1586,9 +1586,9 @@ def test_challenge_runs(h):
     h.check(str(runs["detail"]["__text"]) == "A creature that kills you becomes your nemesis. Kill one and the levels come back.",
             "the full text is joined from its pieces: %r" % str(runs["detail"]["__text"]))
     req = str(runs["req"]["__text"])
-    h.check("You can start this now" in req and "Nothing about your character resets" in req
-            and "level 1" in req and "Wildcard" in req and "Nemesis" in req,
-            "Starting this run says it can start now and what happens to this character: %r" % req[:120])
+    h.check("You can start this now" in req and "until you reach level 80" in req
+            and "Nothing about your character" not in req,
+            "Starting this run says it can start now and when the rule ends: %r" % req[:120])
     h.check("Rebirth" not in req and "Either path" not in req,
             "and says nothing that does not apply to them")
     h.check("Remember what killed you" in str(runs["tips"]["__text"]) and runs["tips"]["__shown"] is True,
