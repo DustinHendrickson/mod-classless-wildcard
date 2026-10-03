@@ -1592,9 +1592,7 @@ do
             fly.hTips:Hide(); fly.hTips.line:Hide(); fly.tips:Hide()
         end
 
-        -- Starting this run: whether this character can start it right now,
-        -- and exactly what happens to them when they do. One status line,
-        -- then what it means, for the one case this character is in.
+        -- Starting this run: whether this character can start it right now.
         y = PlaceHeader(fly.hReq, y)
         local cap = CW.rules.maxLevel
         local status
