@@ -1747,29 +1747,32 @@ def test_challenge_runs(h):
     h.recv(run_state(1, 17, shards=19))
     h.check(CW.runBadge["__shown"] is False and not CW.lifeIcons[1]["__shown"], "no run, no badge, no lives shown")
 
-    # At the cap the picker's challenge button leads here with the heirlooms.
-    h.recv(run_state(1, 80, rebirths=1, ready=1, price=200, heirlooms=2, shards=40, run_ready=1))
-    h.recv("OA|133:0:0:1;686:0:0:4;")
-    h.recv("OAE|")
-    h.recv("OT|")
-    h.recv("OTE|")
+    # Challenges have nothing to do with Rebirth: the picker has no way into
+    # one, and at the cap a run cannot start.
+    h.recv(run_state(1, 80, rebirths=1, ready=1, price=200, heirlooms=2, shards=40, run_ready=0))
     CW.OpenRebirth()
-    CW.ToggleHeirloom(686)
-    h.click(CW.rebirthFly["challenge"])
-    h.check(runs["__shown"] is True and CW.rebirthFly["__shown"] is False, "the picker hands over to the challenge screen")
+    h.check(CW.rebirthFly["challenge"] is None, "the Rebirth picker has no challenge button")
+    CW.rebirthFly["__shown"] = False
+    CW.OpenRuns()
     h.check(runs["back"] is None and runs["close"]["__shown"] is True,
             "no Back button anywhere, only the X in the corner")
     req = str(runs["req"]["__text"])
-    h.check("Rebirth" in req and "200 gold" in req and "level 1" in req and "heirloom" in req,
-            "at level 80 it says starting is a Rebirth, its price, and what is kept: %r" % req[:120])
+    h.check("before level 5" in req and "Rebirth" not in req and "gold" not in req,
+            "at the cap it says when runs start, and nothing about Rebirth: %r" % req[:120])
+    h.check(runs["start"]["__enabled"] is False, "and Start is off")
     h.check(runs["life"]["__enabled"] is True, "forty shards buy the extra life")
+
+    # After a Rebirth the character is at level 1 and starts one like anyone.
+    h.recv(run_state(1, 1, rebirths=1, shards=40, run_ready=1))
+    CW.RenderRuns()
+    h.check(runs["start"]["__enabled"] is True, "a reborn character at level 1 can start a run")
     h.click(runs["rows"][1])
     h.clear_sent()
     CW.AskRun()
-    h.check(g.LAST_POPUP == "CW_RUN_CONFIRM", "at the cap it is the same plain confirm: %r" % g.LAST_POPUP)
+    h.check(g.LAST_POPUP == "CW_RUN_CONFIRM", "the plain confirm: %r" % g.LAST_POPUP)
     h.check(popups["CW_RUN_CONFIRM"]["button3"] is None, "with no path to pick")
     popups["CW_RUN_CONFIRM"]["OnAccept"]()
-    h.check(h.sent() == ["RUN 1 686"], "the run carries the ticked heirlooms and no path: %r" % h.sent())
+    h.check(h.sent() == ["RUN 1"], "the run carries the challenge alone: %r" % h.sent())
     h.click(runs["close"])
     h.check(runs["__shown"] is False, "the X closes the screen")
 

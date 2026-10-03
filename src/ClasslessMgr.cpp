@@ -2295,6 +2295,11 @@ bool ClasslessMgr::Rebirth(Player* player, std::vector<uint32> const& heirlooms,
     }
     player->ModifyMoney(-costCopper);
 
+    // A Rebirth ends any run the character is on. It is at the level cap, so
+    // a run with a life left is finished; the new life can start a new one.
+    if (st.run)
+        EndRun(player, st.lives > 0);
+
     uint32 const guid = player->GetGUID().GetCounter();
     GrantGuard bulk(_bulkCorrections);   // one push at the end, not one per spell
 
@@ -2487,16 +2492,10 @@ bool ClasslessMgr::OnRun(Player* player, ChallengeId id)
     return st && !st->exempt && st->run == uint8(id);
 }
 
-bool ClasslessMgr::StartRun(Player* player, uint8 challengeId,
-                            std::vector<uint32> const& heirlooms, std::string* err)
+bool ClasslessMgr::StartRun(Player* player, uint8 challengeId, std::string* err)
 {
     CharState& st = GetState(player);
     Challenge const* ch = GetChallenge(challengeId);
-    if (!cfg.rebirthEnable)
-    {
-        if (err) *err = "Rebirth is disabled on this realm, and a challenge run is a Rebirth.";
-        return false;
-    }
     if (st.exempt)
     {
         if (err) *err = "This character does not walk the Hero's path.";
@@ -2514,21 +2513,16 @@ bool ClasslessMgr::StartRun(Player* player, uint8 challengeId,
         return false;
     }
 
-    uint32 const cap = sWorld->getIntConfig(CONFIG_MAX_PLAYER_LEVEL);
-    // The run is on the path the character already walks: at the cap it
-    // begins with a Rebirth, on a fresh Hero it simply begins.
-    // the same window as the path itself: before ModeChoiceDeadline
-    bool const fresh = player->GetLevel() < cfg.modeChoiceDeadline && st.mode != Mode::Unchosen;
-    if (RebirthEligible(player))
+    // Before ModeChoiceDeadline, the same window as the path itself, and on
+    // the path the character already walks.
+    if (player->GetLevel() >= cfg.modeChoiceDeadline)
     {
-        if (!Rebirth(player, heirlooms, err))
-            return false;
+        if (err) *err = Acore::StringFormat("Challenge runs start before level {}.", uint32(cfg.modeChoiceDeadline));
+        return false;
     }
-    else if (!fresh)
+    if (st.mode == Mode::Unchosen)
     {
-        if (err) *err = Acore::StringFormat(
-            "A challenge run starts at level {} as a Rebirth, or on a new Hero who has chosen a path, before level {}.",
-            cap, uint32(cfg.modeChoiceDeadline));
+        if (err) *err = "Choose your path first.";
         return false;
     }
 

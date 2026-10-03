@@ -302,7 +302,7 @@ public:
     }
 
     // The ability ids in a command's tail, and whether it ends in "confirm".
-    // Rebirth and a run at the cap wipe the build, so the
+    // Rebirth wipes the build, so the
     // command describes what will happen until it is repeated with confirm.
     static std::vector<uint32> ParseIdsAndConfirm(Tail args, bool& confirmed)
     {
@@ -363,7 +363,8 @@ public:
             return true;
         Player* player = handler->GetSession()->GetPlayer();
         CharState& st = sClasslessMgr->GetState(player);
-        handler->SendSysMessage("Challenge runs (.classless run <id> [heirloom ability ID ...]):");
+        handler->SendSysMessage(Acore::StringFormat("Challenge runs, started before level {} with .classless run <id>:",
+            uint32(sClasslessMgr->cfg.modeChoiceDeadline)));
         for (Challenge const& ch : ClasslessMgr::Challenges())
         {
             auto best = st.runBest.find(ch.id);
@@ -381,23 +382,14 @@ public:
         return true;
     }
 
-    // ".classless run <id> [heirloom ability id ...] [confirm]": start a
-    // challenge run on the character's own path. At the cap the run is a
-    // Rebirth, so it asks for confirm the same way.
-    static bool HandleRun(ChatHandler* handler, uint32 challengeId, Tail heirloomArgs)
+    // ".classless run <id>": start a challenge run, before ModeChoiceDeadline.
+    static bool HandleRun(ChatHandler* handler, uint32 challengeId)
     {
         if (!CheckEnabled(handler))
             return true;
         std::string err;
-        bool confirmed;
-        std::vector<uint32> heirlooms = ParseIdsAndConfirm(heirloomArgs, confirmed);
         Player* player = handler->GetSession()->GetPlayer();
-        if (!confirmed && sClasslessMgr->RebirthEligible(player))
-        {
-            DescribeRebirth(handler, player, Acore::StringFormat(".classless run {}{}", challengeId, IdList(heirlooms)));
-            return true;
-        }
-        if (!sClasslessMgr->StartRun(player, uint8(challengeId), heirlooms, &err) && !err.empty())
+        if (!sClasslessMgr->StartRun(player, uint8(challengeId), &err) && !err.empty())
             handler->SendSysMessage(err);
         return true;
     }

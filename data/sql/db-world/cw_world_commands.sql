@@ -18,7 +18,7 @@ INSERT INTO `command` (`name`, `security`, `help`) VALUES
 ('classless archetype', 0, 'Syntax: .classless archetype $id\r\nFollows an archetype, replacing your build. 0 stops following. Classless path only.'),
 ('classless rebirth', 0, 'Syntax: .classless rebirth [$abilityId ...] confirm\r\nAt the level cap: back to level 1 on your path with a permanent Rebirth rank, carrying the listed heirloom abilities. Without confirm, shows what it will do.'),
 ('classless challenges', 0, 'Syntax: .classless challenges\r\nLists the challenge runs with their IDs, lives and rewards.'),
-('classless run', 0, 'Syntax: .classless run $id [$abilityId ...] confirm\r\nStarts a challenge run on your path. At the level cap it is a Rebirth and needs confirm.'),
+('classless run', 0, 'Syntax: .classless run $id\r\nStarts a challenge run on a new character, before its path is locked in. .classless challenges lists the IDs.'),
 ('wildcard', 0, 'Syntax: .wildcard $subcommand\r\nWildcard path commands. Type .help wildcard for the list.'),
 ('wildcard status', 0, 'Syntax: .wildcard status\r\nShows your path, abilities and talents, reroll charges, synergy chance and reroll cooldowns.'),
 ('wildcard reroll', 0, 'Syntax: .wildcard reroll $spellId\r\nRerolls an ability you own. Free below the free-reroll level, then a reroll charge or a Reroll Scroll.'),

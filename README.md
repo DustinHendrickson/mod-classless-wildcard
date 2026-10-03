@@ -254,8 +254,8 @@ epic; Lay on Hands, Rebirth and the 41-point talents are legendary.
 
 ## Challenge runs
 
-A run is one life under one rule, on the character's own path. Start one from the Rebirth picker
-at the level cap, or on a new Hero before level 2.
+A run is one life under one rule, on the character's own path. Challenge runs start before level 2
+(`ModeChoiceDeadline`).
 
 - **Lives.** Each death costs one. Battlegrounds, arenas and duels are free. At zero, the run ends
   and you keep everything.
@@ -403,7 +403,7 @@ spellbook tab. You can own a base attack and its variants together.
 | `.classless archetype <id>` | Follow an archetype. `0` stops |
 | `.classless rebirth [ability IDs] confirm` | Rebirth at the level cap, carrying the listed heirloom abilities |
 | `.classless challenges` | List challenge runs |
-| `.classless run <id> [ability IDs]` | Start a challenge run. At the level cap it is a Rebirth and needs `confirm` |
+| `.classless run <id>` | Start a challenge run, before level 2 |
 
 ### `.wildcard`
 

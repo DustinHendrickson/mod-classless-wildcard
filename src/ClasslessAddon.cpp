@@ -111,11 +111,10 @@ namespace
             sClasslessMgr->RebirthCost(st), sClasslessMgr->MaxHeirlooms(st),
             // fields 24-29: the challenge run. Which (0 = none), lives left
             // and lives it started with, shards, whether an extra life is
-            // held for the next run, and whether a run could start now (at
-            // the cap, or fresh and under the mode deadline on Wildcard).
+            // held for the next run, and whether a run could start now:
+            // before ModeChoiceDeadline, with a path chosen, not already on one.
             uint32(st.run), uint32(st.lives), uint32(st.livesMax), st.shards, uint32(st.extraLife),
-            (!st.run && (sClasslessMgr->RebirthEligible(player)
-                         || (player->GetLevel() < cfg.modeChoiceDeadline && st.mode != Mode::Unchosen))) ? 1 : 0,
+            (!st.run && player->GetLevel() < cfg.modeChoiceDeadline && st.mode != Mode::Unchosen) ? 1 : 0,
             // field 30: Hourglass's clock, seconds left on this level (0 on
             // any other run), for the run badge's tooltip
             sClasslessMgr->HourglassSecondsLeft(player)));
@@ -949,14 +948,8 @@ namespace
         }
         else if (cmd == "RUN")
         {
-            // "RUN <challenge> [heirloom ability id ...]": a challenge run on
-            // the character's own path, which at the cap is a Rebirth with a
-            // rule and on a fresh Hero simply begins
-            std::vector<uint32> heirlooms;
-            for (size_t i = 2; i < args.size(); ++i)
-                if (uint32 id = argNum(i))
-                    heirlooms.push_back(id);
-            if (sClasslessMgr->StartRun(player, uint8(argNum(1)), heirlooms, &err))
+            // "RUN <challenge>": a challenge run, before ModeChoiceDeadline
+            if (sClasslessMgr->StartRun(player, uint8(argNum(1)), &err))
             {
                 SendOk(player, "RUN");
                 SendState(player);

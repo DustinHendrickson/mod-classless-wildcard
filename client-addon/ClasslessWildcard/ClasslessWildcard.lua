@@ -1031,7 +1031,6 @@ rebirthBtn:SetScript("OnEnter", function(self)
     if s.rebirthReady == 1 then
         GameTooltip:SetText("|cffff8800Rebirth|r")
         GameTooltip:AddLine("Start a new life at level 1 with a permanent rank that stacks: more kill XP, a bonus to every stat, and an heirloom ability carried through.", 0.8, 0.8, 0.8, true)
-        GameTooltip:AddLine("A challenge run starts from here too.", 0.6, 0.6, 0.6, true)
     elseif s.runReady == 1 then
         GameTooltip:SetText("|cffff4444Challenge run|r")
         GameTooltip:AddLine("Level from here under one rule, with a fixed number of lives.", 0.8, 0.8, 0.8, true)
@@ -1067,8 +1066,8 @@ do
     -- 460 x 470, centred on the panel, in the panel's own flyout dress.
     -- Measured top to bottom so nothing can overlap whatever the text wraps
     -- to: title -12, intro -30 (six lines at most, to -108), count -114, eight
-    -- rows of 24 from -132 (to -324), the page arrows at -340, Challenge run
-    -- at -402, Be reborn and Cancel at -434.
+    -- rows of 24 from -132 (to -324), the page arrows at -340, Be reborn and
+    -- Cancel at -434.
     local fly = CreateFrame("Frame", "ClasslessWildcardRebirth", frame)
     fly:SetWidth(460); fly:SetHeight(470)
     fly:SetPoint("CENTER", frame, "CENTER", 0, 0)
@@ -1155,19 +1154,6 @@ do
     fly.pageText:SetPoint("TOP", 0, -347)
     fly.prev:SetScript("OnClick", function() fly.page = math.max(0, fly.page - 1); CW.RenderRebirth() end)
     fly.next:SetScript("OnClick", function() fly.page = fly.page + 1; CW.RenderRebirth() end)
-
-    -- The third way out of the picker: a challenge run, with whatever
-    -- heirlooms are ticked above carried into it.
-    fly.challenge = CreateFrame("Button", nil, fly, "UIPanelButtonTemplate")
-    fly.challenge:SetWidth(170); fly.challenge:SetHeight(24)
-    fly.challenge:SetPoint("BOTTOMLEFT", 14, 44)
-    fly.challenge:SetText("Challenge run...")
-    fly.challenge:SetScript("OnClick", function() CW.OpenRuns() end)
-    fly.challengeNote = fly:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
-    fly.challengeNote:SetPoint("LEFT", fly.challenge, "RIGHT", 10, 0)
-    fly.challengeNote:SetPoint("RIGHT", fly, "RIGHT", -14, 0)
-    fly.challengeNote:SetJustifyH("LEFT")
-    fly.challengeNote:SetText("|cffaaaaaaThe new life under one rule, with counted lives.|r")
 
     fly.reborn = CreateFrame("Button", nil, fly, "UIPanelButtonTemplate")
     fly.reborn:SetWidth(140); fly.reborn:SetHeight(24)
@@ -1282,8 +1268,8 @@ end
 -- best this character did on it. Pick one, read its rule, start it. Shards
 -- and the extra life live here too. Everything hangs on CW.runFly.
 CW.challenges = {}
--- A run is on the character's own path, at the cap (where it begins with a
--- Rebirth) or on a fresh Hero alike, so the last word only confirms.
+-- A run starts before the path deadline on the character's own path, so
+-- the last word only confirms.
 StaticPopupDialogs["CW_RUN_CONFIRM"] = {
     text = "%s",
     button1 = "Begin the run",
@@ -1598,22 +1584,16 @@ do
         local status
         local live = CW.challengesById and CW.challengesById[s.run or 0]
         local lives = (s.lives or 0) .. " of " .. (s.livesMax or 0) .. ((s.livesMax or 0) == 1 and " life" or " lives") .. " left"
-        -- Only what the player cannot already tell: whether it can start, and
-        -- at the cap that starting it is a Rebirth and what that costs. When
+        -- Only what the player cannot already tell: whether it can start. When
         -- the run ends is under Lives and Rewards below.
         if (s.run or 0) > 0 and s.run == c.id then
             status = "|cffff8800You are on this run|r: " .. lives .. "."
         elseif (s.run or 0) > 0 then
-            status = NO .. "|cffff4444You are on " .. (live and live.name or "another run") .. "|r: " .. lives
-                .. ". Finish it or lose your last life before starting another."
-        elseif s.rebirthReady == 1 then
-            status = OK .. "|cff00ff00You can start this now.|r It begins with a |cffff8800Rebirth|r: back to level 1 for |cffffd100"
-                .. (s.rebirthPrice or 0) .. " gold|r, with the heirlooms ticked on the Rebirth page."
+            status = NO .. "|cffff4444You are on " .. (live and live.name or "another run") .. "|r: " .. lives .. "."
         elseif s.runReady == 1 then
             status = OK .. "|cff00ff00You can start this now.|r"
         else
-            status = NO .. "|cffff4444You cannot start a run on this character.|r Runs start on a new character before level "
-                .. (s.deadline or 2) .. ", or at level " .. cap .. " with a Rebirth."
+            status = NO .. "|cffff4444Challenge runs start before level " .. (s.deadline or 2) .. ".|r"
         end
         fly.req:SetText(status)
         Place(fly.req, 0, y)
@@ -1786,9 +1766,8 @@ do
             FillDetail(c, s)
             fly.scroll:Show()
             local lives = math.min(6, c.lives + ((s.extraLife or 0) > 0 and 1 or 0))
-            fly.summary:SetText("Starts with |cffffffff" .. lives .. (lives == 1 and " life" or " lives") .. "|r"
-                .. (s.rebirthReady == 1 and ("     Rebirth costs " .. Coin(s.rebirthPrice or 0)) or ""))
-            local canStart = (s.run or 0) == 0 and (s.rebirthReady == 1 or s.runReady == 1)
+            fly.summary:SetText("Starts with |cffffffff" .. lives .. (lives == 1 and " life" or " lives") .. "|r")
+            local canStart = (s.run or 0) == 0 and s.runReady == 1
             if canStart then fly.start:Enable() else fly.start:Disable() end
         else
             fly.dName:SetText("Challenge Runs")
@@ -1816,28 +1795,14 @@ do
         local s = CW.state
         local chosen = #CW.challenges > 0 and Selected() or nil
         if not chosen then return end
-        local ids = {}
-        if s.rebirthReady == 1 and CW.rebirthFly then
-            for id in pairs(CW.rebirthFly.picked or {}) do tinsert(ids, id) end
-            table.sort(ids)
-        end
-        fly.pendingId, fly.pendingIds = chosen.id, ids
+        fly.pendingId = chosen.id
         local lives = chosen.lives + ((s.extraLife or 0) > 0 and 1 or 0)
-        local text = "|cffff4444" .. chosen.name .. "|r with " .. lives .. (lives == 1 and " life" or " lives") .. ".\n\n" .. chosen.rule
-        local path = s.mode == 0 and "|cff00ccffClassless|r" or "|cffff8800Wildcard|r"
-        if s.rebirthReady == 1 then
-            text = text .. "\n\nThis is a Rebirth: back to level 1 on your " .. path .. " path for |cffffd100"
-                .. (s.rebirthPrice or 0) .. " gold|r, carrying " .. #ids .. (#ids == 1 and " heirloom." or " heirlooms.")
-        else
-            text = text .. "\n\nOn your " .. path .. " path, from where you stand."
-        end
-        StaticPopup_Show("CW_RUN_CONFIRM", text)
+        StaticPopup_Show("CW_RUN_CONFIRM", "|cffff4444" .. chosen.name .. "|r with " .. lives
+            .. (lives == 1 and " life" or " lives") .. ".\n\n" .. chosen.rule)
     end
 
     function fly.Confirm()
-        local parts = { "RUN", tostring(fly.pendingId or 0) }
-        for _, id in ipairs(fly.pendingIds or {}) do tinsert(parts, tostring(id)) end
-        Send(table.concat(parts, " "))
+        Send("RUN " .. (fly.pendingId or 0))
     end
 end
 CW.EXTRA_LIFE_SHARDS = 30   -- what the server charges; the label only
@@ -2409,7 +2374,7 @@ local function BuildHelpText()
 "The price rises with each rank.",
 "",
 "|cffff4444==  CHALLENGE RUNS: one rule, counted lives  ==|r",
-"A run is a life under one rule, on your own path. Start one from the Rebirth button at level " .. cap .. " (it is a Rebirth, heirlooms and all), or as a new Hero before level " .. (s.deadline or 2) .. ". Pick a challenge, read its rule, go.",
+"A run is a life under one rule, on your own path. Challenge runs start before level " .. (s.deadline or 2) .. ". Pick a challenge, read its rule, go.",
 "   |cffffd100Lives:|r the hearts on the run badge at the top-right of this panel. Hover the badge for your challenge's rule and rewards, and on Hourglass the time left on the level; click it for the challenge page. Each challenge shows how many lives it gives. A death costs one; battlegrounds, arenas and duels are free.",
 "   |cffffd100Running out|r ends the run: the rule lifts and you keep everything. |cffffd100Reaching " .. cap .. "|r with a life left finishes it. Your first finish of a challenge pays its gold, its title, and an ability no roll or shop can give, kept as an heirloom. Finish with no life lost for |cffffd100the Unbroken|r.",
 "   |cffffd100Shards:|r every run pays them when it ends, finished or not: one per level reached, two per level past 60, and a third more for a run with no life lost. They buy an |cffffd100extra life|r for your next run, on the challenge page.",
@@ -2515,7 +2480,7 @@ local function UpdateStatus()
     -- Challenge for a fresh Hero, and nothing in between. A path is for good.
     CW.UpdateLives()
     CW.rebirthBtn:SetText(s.rebirthReady == 1 and "Rebirth" or "Challenge")
-    local rebirthOffered = s.rebirth == 1 and (s.rebirthReady == 1 or s.runReady == 1)
+    local rebirthOffered = (s.rebirth == 1 and s.rebirthReady == 1) or s.runReady == 1
     if s.mode == 0 then
         statusText:SetText(modeText .. "   Ability Essence: |cff00ff00" .. s.ae .. "|r   Talent Essence: |cff00ff00" .. s.te .. "|r")
         subStatusText:SetText("Level " .. s.level)

@@ -161,11 +161,9 @@ public:
     static ClasslessWildcard::Challenge const* GetChallenge(uint8 id);
     static constexpr uint32 HUNTER_ENTRY = 990131;      // Pursued's hunter, cw_world_challenges.sql
     static constexpr uint32 EXTRA_LIFE_SHARDS = 30;
-    // A run is a Rebirth at the cap (heirlooms and all) or a fresh Hero still
-    // under the mode deadline. Either way the character stays on its own
+    // A run starts before ModeChoiceDeadline. The character stays on its own
     // path; only the rule and the lives are added.
-    bool StartRun(Player* player, uint8 challengeId,
-                  std::vector<uint32> const& heirlooms, std::string* err);
+    bool StartRun(Player* player, uint8 challengeId, std::string* err);
     bool OnRun(Player* player, ClasslessWildcard::ChallengeId id);   // this rule, live, on this character
     // A death on a run. Battleground, arena and duel deaths are free.
     void LoseLife(Player* player, Unit* killer);
