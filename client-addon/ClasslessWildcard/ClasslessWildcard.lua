@@ -1597,28 +1597,27 @@ do
         -- then what it means, for the one case this character is in.
         y = PlaceHeader(fly.hReq, y)
         local cap = CW.rules.maxLevel
-        local status, what
+        local status
         local live = CW.challengesById and CW.challengesById[s.run or 0]
         local lives = (s.lives or 0) .. " of " .. (s.livesMax or 0) .. ((s.livesMax or 0) == 1 and " life" or " lives") .. " left"
+        -- Only what the player cannot already tell: whether it can start, and
+        -- at the cap that starting it is a Rebirth and what that costs. When
+        -- the run ends is under Lives and Rewards below.
         if (s.run or 0) > 0 and s.run == c.id then
             status = "|cffff8800You are on this run|r: " .. lives .. "."
-            what = "Reach level " .. cap .. " with a life left to finish it. Lose your last life and it ends with shards only."
         elseif (s.run or 0) > 0 then
-            status = NO .. "|cffff4444You are on " .. (live and live.name or "another run") .. "|r: " .. lives .. "."
-            what = "Finish it or lose your last life before starting another."
+            status = NO .. "|cffff4444You are on " .. (live and live.name or "another run") .. "|r: " .. lives
+                .. ". Finish it or lose your last life before starting another."
         elseif s.rebirthReady == 1 then
-            status = OK .. "|cff00ff00You can start this now.|r It begins with a |cffff8800Rebirth|r."
-            what = "Back to level 1 for |cffffd100" .. (s.rebirthPrice or 0) .. " gold|r, with the heirlooms ticked on the Rebirth page. "
-                .. "The rule lasts until you reach level " .. cap .. " again or lose your last life."
+            status = OK .. "|cff00ff00You can start this now.|r It begins with a |cffff8800Rebirth|r: back to level 1 for |cffffd100"
+                .. (s.rebirthPrice or 0) .. " gold|r, with the heirlooms ticked on the Rebirth page."
         elseif s.runReady == 1 then
             status = OK .. "|cff00ff00You can start this now.|r"
-            what = "The rule lasts from now until you reach level " .. cap .. " or lose your last life."
         else
-            status = NO .. "|cffff4444You cannot start a run on this character.|r"
-            what = "Runs start on a new character before level " .. (s.deadline or 2)
-                .. ", or at level " .. cap .. " with a Rebirth."
+            status = NO .. "|cffff4444You cannot start a run on this character.|r Runs start on a new character before level "
+                .. (s.deadline or 2) .. ", or at level " .. cap .. " with a Rebirth."
         end
-        fly.req:SetText(status .. "\n" .. what)
+        fly.req:SetText(status)
         Place(fly.req, 0, y)
         y = y + H(fly.req, 60) + 18
 
