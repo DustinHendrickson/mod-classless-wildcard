@@ -16,7 +16,6 @@ INSERT INTO `command` (`name`, `security`, `help`) VALUES
 ('classless bar', 0, 'Syntax: .classless bar mana|rage|energy|default\r\nChooses which resource the main power bar shows.'),
 ('classless archetypes', 0, 'Syntax: .classless archetypes\r\nLists the archetypes and their IDs.'),
 ('classless archetype', 0, 'Syntax: .classless archetype $id\r\nFollows an archetype, replacing your build. 0 stops following. Classless path only.'),
-('classless path', 0, 'Syntax: .classless path classless|wildcard confirm\r\nWipes your build and starts a path at your current level, for gold. Without confirm, shows what it will do.'),
 ('classless rebirth', 0, 'Syntax: .classless rebirth classless|wildcard [$abilityId ...] confirm\r\nAt the level cap: back to level 1 with a permanent Rebirth rank, carrying the listed heirloom abilities. Without confirm, shows what it will do.'),
 ('classless challenges', 0, 'Syntax: .classless challenges\r\nLists the challenge runs with their IDs, lives and rewards.'),
 ('classless run', 0, 'Syntax: .classless run $id classless|wildcard [$abilityId ...] confirm\r\nStarts a challenge run. At the level cap it is a Rebirth and needs confirm.'),

@@ -899,9 +899,6 @@ namespace
             sClasslessMgr->Rebirth(player, Mode(uint8(argNum(1))), heirlooms, &err)
                 ? SendOk(player, "REBIRTH") : SendErr(player, err);
         }
-        else if (cmd == "PATH")
-            // "PATH <mode>": the cheaper path change at the current level
-            sClasslessMgr->SwitchPath(player, Mode(uint8(argNum(1))), &err) ? SendOk(player, "PATH") : SendErr(player, err);
         else if (cmd == "CHL")
         {
             // The challenge list, one message per challenge: id, name, lives,

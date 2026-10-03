@@ -51,9 +51,6 @@ namespace
         ACT_VENDOR            = 70,
         ACT_VENDOR_SUPPLIES   = 71,
         ACT_ARCHETYPES        = 80,
-        ACT_REBIRTH           = 90,
-        ACT_REBIRTH_CLASSLESS = 91,
-        ACT_REBIRTH_WILDCARD  = 92,
         BASE_VENDOR_CATEGORY  = 100,   // + index into VENDOR_CATEGORIES
         BASE_VENDOR_LIST      = 200,   // + index into VENDOR_LISTS
         BASE_ARCHETYPE        = 90000, // + archetypeId (keep below BASE_CLASS_PAGE)
@@ -130,10 +127,10 @@ namespace
         {
             AddGossipItemFor(player, GOSSIP_ICON_TRAINER, "|cff00ccffChoose the Classless path|r (pick every ability yourself)",
                 GOSSIP_SENDER_MAIN, ACT_MODE_CLASSLESS,
-                "Walk the Classless path? Once chosen, you can only switch with Change path, which costs gold.", 0, false);
+                "Walk the Classless path? This character keeps it for good.", 0, false);
             AddGossipItemFor(player, GOSSIP_ICON_BATTLE, "|cffff8800Choose the Wildcard path|r (random abilities, reroll what you dislike)",
                 GOSSIP_SENDER_MAIN, ACT_MODE_WILDCARD,
-                "Walk the Wildcard path? Once chosen, you can only switch with Change path, which costs gold.", 0, false);
+                "Walk the Wildcard path? This character keeps it for good.", 0, false);
         }
         else if (st.mode == Mode::Classless)
         {
@@ -164,11 +161,12 @@ namespace
                                  : "Browse the Hero's wares (gear and heirlooms)...",
                              GOSSIP_SENDER_MAIN, ACT_VENDOR);
 
-        if (st.mode != Mode::Unchosen && cfg.rebirthEnable)
-            AddGossipItemFor(player, GOSSIP_ICON_BATTLE,
-                Acore::StringFormat("|cffff4444Change path|r: wipe the build and start the other path at this level ({} gold)",
-                                    cfg.rebirthCostGold),
-                GOSSIP_SENDER_MAIN, ACT_REBIRTH);
+        // Rebirth picks heirlooms, which a gossip menu cannot do, so at the
+        // cap the menu says where to go.
+        if (cfg.rebirthEnable && sClasslessMgr->RebirthEligible(player))
+            AddGossipItemFor(player, GOSSIP_ICON_CHAT,
+                "Rebirth into a new life at level 1 is done from the Hero Advancement panel (/cw).",
+                GOSSIP_SENDER_MAIN, ACT_MAIN);
 
         SendGossipMenuFor(player, DEFAULT_GOSSIP_MESSAGE, creature->GetGUID());
     }
@@ -731,39 +729,6 @@ public:
                 break;
             case ACT_ARCHETYPES:
                 ShowArchetypes(player, creature);
-                break;
-            case ACT_REBIRTH:
-            {
-                ClearGossipMenuFor(player);
-                uint32 const cost = sClasslessMgr->cfg.rebirthCostGold * GOLD;
-                // Classless to Classless is the free respec, not a paid change.
-                if (sClasslessMgr->GetState(player).mode != Mode::Classless)
-                    AddGossipItemFor(player, GOSSIP_ICON_TRAINER,
-                        "Change to the Classless path from here",
-                        GOSSIP_SENDER_MAIN, ACT_REBIRTH_CLASSLESS,
-                        "Change to the Classless path? Every ability and talent is wiped, and you keep your level, quests and gear.",
-                        cost, false);
-                AddGossipItemFor(player, GOSSIP_ICON_BATTLE,
-                    sClasslessMgr->GetState(player).mode == Mode::Wildcard
-                        ? "Take a new Wildcard deal from here" : "Change to the Wildcard path from here",
-                    GOSSIP_SENDER_MAIN, ACT_REBIRTH_WILDCARD,
-                    "Every ability and talent is wiped and dealt again by the Wildcard. You keep your level, quests and gear.",
-                    cost, false);
-                // Rebirth proper picks heirlooms, which a gossip menu cannot
-                // do, so at the cap the menu says where to go.
-                if (sClasslessMgr->RebirthEligible(player))
-                    AddGossipItemFor(player, GOSSIP_ICON_CHAT,
-                        "Rebirth into a new life at level 1 is done from the Hero Advancement panel (/cw).",
-                        GOSSIP_SENDER_MAIN, ACT_REBIRTH);
-                AddGossipItemFor(player, GOSSIP_ICON_TALK, "<- Back", GOSSIP_SENDER_MAIN, ACT_MAIN);
-                SendGossipMenuFor(player, DEFAULT_GOSSIP_MESSAGE, creature->GetGUID());
-                break;
-            }
-            case ACT_REBIRTH_CLASSLESS:
-            case ACT_REBIRTH_WILDCARD:
-                if (!sClasslessMgr->SwitchPath(player, action == ACT_REBIRTH_CLASSLESS ? Mode::Classless : Mode::Wildcard, &err) && !err.empty())
-                    ChatHandler(player->GetSession()).SendSysMessage(err);
-                ShowMain(player, creature);
                 break;
             case ACT_VENDOR:
                 ShowVendorMenu(player, creature);

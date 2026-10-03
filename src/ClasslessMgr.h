@@ -147,7 +147,6 @@ public:
                  std::vector<uint32> const& heirlooms, std::string* err);
     // The cheaper thing Rebirth used to be: wipe the build at the current
     // level and start the chosen path from there, for the flat price.
-    bool SwitchPath(Player* player, ClasslessWildcard::Mode target, std::string* err);
     uint32 RebirthCost(ClasslessWildcard::CharState const& st) const;  // gold
     uint32 MaxHeirlooms(ClasslessWildcard::CharState const& st) const;
     bool   RebirthEligible(Player* player) const;                      // at the cap

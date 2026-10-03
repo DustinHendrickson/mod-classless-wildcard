@@ -560,11 +560,9 @@ namespace ClasslessWildcard
 
         // Rebirth: New Game Plus. At the level cap a Hero starts over at 1
         // with the quest log forgotten, keeps gold, bags, reputation, riding
-        // and flight paths, and carries a permanent rank that stacks. The
-        // same switch and base price also cover the cheaper path change,
-        // which wipes the build at the current level and rolls it again.
+        // and flight paths, and carries a permanent rank that stacks.
         bool   rebirthEnable = true;
-        uint32 rebirthCostGold = 100;      // path change; a Rebirth costs this x (rank + 1)
+        uint32 rebirthCostGold = 100;      // a Rebirth costs this x (rank + 1)
         uint32 rebirthKillXpFirst = 100;   // percent extra kill and dungeon XP at rank 1
         uint32 rebirthKillXpPerRank = 50;  // added for every rank after the first
         uint32 rebirthKillXpMax = 300;     // cap

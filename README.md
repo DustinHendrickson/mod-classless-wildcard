@@ -109,9 +109,6 @@ with your build on the right. Lock or reroll anything you own from the same wind
   and keep what was bought.
   - Two-class: *Blade Dancer*, *Battle Mage*, *Ranger of the Light*, *Shadow Mender*, *Thornshade*, *Storm Warrior*
   - Elemental: *Hellfire Knight*, *Rime Reaver*, *Stoneguard*, *Venomstalker*, *Nightclaw*, *Dawnward*, *Spellblade*
-- **Change path.** A full reset at your current level, for gold. Classless Heroes move to the
-  Wildcard; Wildcard Heroes move to Classless or take a fresh deal. A Wildcard deal replays the
-  whole roll schedule.
 - **Rebirth.** At the level cap, start over at level 1 with a permanent rank that stacks.
   - **Kept:** gold, bags, bank, reputation, riding, flight paths, and the **heirloom** abilities
     you choose to carry (usable from level 1, one more per rank).
@@ -403,7 +400,6 @@ spellbook tab. You can own a base attack and its variants together.
 | `.classless bar mana\|rage\|energy\|default` | Choose which resource the main bar shows |
 | `.classless archetypes` | List archetypes and their IDs |
 | `.classless archetype <id>` | Follow an archetype. `0` stops |
-| `.classless path classless\|wildcard confirm` | Change path, for gold. Without `confirm`, says what it will do |
 | `.classless rebirth classless\|wildcard [ability IDs] confirm` | Rebirth at the level cap, carrying the listed heirloom abilities |
 | `.classless challenges` | List challenge runs |
 | `.classless run <id> classless\|wildcard [ability IDs]` | Start a challenge run. At the level cap it is a Rebirth and needs `confirm` |
@@ -521,7 +517,7 @@ documented inline and prefixed `ClasslessWildcard.`. The common ones:
 | `DefaultMode` | `0` | `0` Classless, `1` Wildcard |
 | `AllowModeChoice` | `1` | `0` forces `DefaultMode` for everyone |
 | `ModeChoiceDeadline` | `5` | Level the path locks at |
-| `Rebirth.Enable` / `Rebirth.CostGold` | `1` / `100` | Path change price; Rebirth costs this times (rank + 1) |
+| `Rebirth.Enable` / `Rebirth.CostGold` | `1` / `100` | Rebirth; it costs this times (rank + 1) gold |
 | `Rebirth.KillXpPctFirst` / `PerRank` / `Max` | `100` / `50` / `300` | Kill and dungeon XP bonus per Rebirth rank, % |
 | `Rebirth.OtherXpPctPerRank` / `Max` | `25` / `100` | Quest, exploration and battleground XP bonus per rank, % |
 | `Rebirth.StatPctPerRank` / `Max` | `3` / `15` | Primary stat bonus per rank, % |

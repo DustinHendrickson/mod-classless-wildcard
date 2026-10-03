@@ -53,7 +53,6 @@ public:
             { "archetypes", HandleArchetypes, SEC_PLAYER, Console::No },
             { "archetype", HandleArchetype,   SEC_PLAYER, Console::No },
             { "rebirth", HandleRebirth,       SEC_PLAYER, Console::No },
-            { "path",    HandlePath,          SEC_PLAYER, Console::No },
             { "challenges", HandleChallenges, SEC_PLAYER, Console::No },
             { "run",     HandleRun,           SEC_PLAYER, Console::No },
         };
@@ -303,7 +302,7 @@ public:
     }
 
     // The ability ids in a command's tail, and whether it ends in "confirm".
-    // Rebirth, a run at the cap and a path change wipe the build, so the
+    // Rebirth and a run at the cap wipe the build, so the
     // command describes what will happen until it is repeated with confirm.
     static std::vector<uint32> ParseIdsAndConfirm(Tail args, bool& confirmed)
     {
@@ -413,34 +412,6 @@ public:
             return true;
         }
         if (!sClasslessMgr->StartRun(player, uint8(challengeId), target, heirlooms, &err) && !err.empty())
-            handler->SendSysMessage(err);
-        return true;
-    }
-
-    // ".classless path classless|wildcard [confirm]": the path change at the
-    // current level. Without confirm it says what it costs and does nothing.
-    static bool HandlePath(ChatHandler* handler, std::string modeArg, Tail rest)
-    {
-        if (!CheckEnabled(handler))
-            return true;
-        std::string err;
-        Mode target;
-        if (!ParsePath(modeArg, target))
-        {
-            handler->SendSysMessage("Usage: .classless path classless | wildcard confirm (wipes the build at this level, costs gold)");
-            return true;
-        }
-        bool confirmed;
-        ParseIdsAndConfirm(rest, confirmed);
-        if (!confirmed)
-        {
-            handler->PSendSysMessage("Changing path wipes every ability and talent and starts the {} path at your current "
-                "level, for {} gold. Your level, quests and gear stay.",
-                target == Mode::Classless ? "Classless" : "Wildcard", sClasslessMgr->cfg.rebirthCostGold);
-            handler->PSendSysMessage("Type .classless path {} confirm to go ahead.", modeArg);
-            return true;
-        }
-        if (!sClasslessMgr->SwitchPath(handler->GetSession()->GetPlayer(), target, &err) && !err.empty())
             handler->SendSysMessage(err);
         return true;
     }

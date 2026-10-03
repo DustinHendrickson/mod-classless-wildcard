@@ -48,7 +48,7 @@ local CW = {
               -- Rebirth, the New Game Plus: the rank, whether this character
               -- can be reborn now (at the cap), its gold price, and how many
               -- heirlooms the rank lets them carry through. rebirthCost above
-              -- is the cheaper path change.
+              -- is the configured base price; the server sends it, unused here.
               rebirths = 0, rebirthReady = 0, rebirthPrice = 0, heirloomMax = 1,
               -- the challenge run: which (0 none), lives left and started
               -- with, shards, an extra life held, and whether one can start
@@ -1000,27 +1000,6 @@ StaticPopupDialogs["CW_CLASSLESS_BUYLIFE"] = {
     timeout = 0, whileDead = 1, hideOnEscape = 1, preferredIndex = 3,
 }
 
--- Change path: the cheaper thing Rebirth used to be. Wipes the build at this
--- level and starts the other path from here, for gold (the server enforces
--- the cost). The Rebirth button opens this before the level cap.
-StaticPopupDialogs["CW_CLASSLESS_PATH"] = {
-    text = "Changing path wipes your Hero's abilities and talents and starts again at your current level for |cffffd100%d gold|r: on the Classless path, or with a new Wildcard deal.",
-    button1 = "Classless",
-    button2 = "Cancel",
-    button3 = "New deal",
-    OnAccept = function() Send("PATH 0") end,   -- Classless
-    OnAlt    = function() Send("PATH 1") end,   -- Wildcard
-    timeout = 0, whileDead = 1, hideOnEscape = 1, preferredIndex = 3,
-}
--- A Classless Hero can only change to the Wildcard; starting Classless over
--- is the free respec.
-StaticPopupDialogs["CW_CLASSLESS_PATH_WILDCARD"] = {
-    text = "Changing to the Wildcard path wipes your Hero's abilities and talents and deals a new hand at your current level for |cffffd100%d gold|r.",
-    button1 = "Wildcard",
-    button2 = "Cancel",
-    OnAccept = function() Send("PATH 1") end,
-    timeout = 0, whileDead = 1, hideOnEscape = 1, preferredIndex = 3,
-}
 -- Rebirth: the new life at level 1. Confirmed last, once the heirlooms and
 -- the path are chosen in the picker below, which fills in what gets sent.
 StaticPopupDialogs["CW_CLASSLESS_REBIRTH"] = {
@@ -1043,9 +1022,7 @@ rebirthBtn:SetScript("OnClick", function()
     elseif s.rebirthReady == 1 then
         CW.OpenRebirth()
     elseif s.runReady == 1 then
-        CW.OpenRuns()      -- a fresh Wildcard Hero: a run with nothing to carry
-    else
-        StaticPopup_Show(s.mode == 0 and "CW_CLASSLESS_PATH_WILDCARD" or "CW_CLASSLESS_PATH", s.rebirthCost or 0)
+        CW.OpenRuns()      -- a fresh Hero: a run with nothing to carry
     end
 end)
 rebirthBtn:SetScript("OnEnter", function(self)
@@ -1060,10 +1037,9 @@ rebirthBtn:SetScript("OnEnter", function(self)
         GameTooltip:AddLine("Level from here under one rule, with a fixed number of lives.", 0.8, 0.8, 0.8, true)
         GameTooltip:AddLine("Reach level " .. CW.rules.maxLevel .. " with a life left for gold, a title, and an ability no roll or shop can give.", 0.8, 0.8, 0.8, true)
         GameTooltip:AddLine("Open to see every challenge, its rule and its rewards.", 0.6, 0.6, 0.6, true)
-    else
-        GameTooltip:SetText("Change path")
-        GameTooltip:AddLine("Wipe the build and start the other path at this level.", 0.8, 0.8, 0.8, true)
-        GameTooltip:AddLine("Rebirth, the new life at level 1, opens at the level cap.", 0.6, 0.6, 0.6, true)
+    elseif s.mode == 255 then
+        GameTooltip:SetText("Choose path")
+        GameTooltip:AddLine("Classless or Wildcard. This character keeps the path it chooses.", 0.8, 0.8, 0.8, true)
     end
     GameTooltip:Show()
 end)
@@ -2405,7 +2381,7 @@ local function BuildHelpText()
     return table.concat({
 "|cffffd100You are a Hero.|r Your race keeps its racial traits. Every ability and talent you earn yourself, and you can take it from |cffffffffany class in the game|r.",
 "",
-"You gain that power one of two ways, chosen per character. You can |cffffd100Change path|r later for gold. At level " .. cap .. ", |cffffd100Rebirth|r starts a new life with a permanent rank, and a |cffffd100Challenge run|r is a life under one rule. Both are explained at the bottom.",
+"You gain that power one of two ways, chosen per character, and a character keeps the path it chooses. At level " .. cap .. ", |cffffd100Rebirth|r starts a new life with a permanent rank, and a |cffffd100Challenge run|r is a life under one rule. Both are explained at the bottom.",
 "",
 "|cff00ccff==  CLASSLESS: you choose  ==|r",
 "Spend two currencies to buy exactly what you want:",
@@ -2443,7 +2419,6 @@ local function BuildHelpText()
 "   |cffffd100Riding:|r trained for you, free: Apprentice at 20, Journeyman at 40, flying at 60, Northrend flying at 68 and epic flying at 70. Mounts are bought and earned as normal. The class mounts (Warhorse, Charger, Felsteed, Dreadsteed, Acherus Deathcharger) are abilities, so they come from a roll or from Ability Essence.",
 "   |cffffd100Abilities that come as a set:|r an ability that only works in a stance or form brings that form, and one that needs others brings those: Rend and Charge bring Battle Stance, Cat Form brings Claw and Prowl, Tame Beast brings Call Pet, Revive Pet, Feed Pet and Dismiss Pet. These extras are free, are not one of your rolls, and leave when nothing you own needs them.",
 "   |cffffd100No class tools:|r spells that ask for a class item, such as Stoneskin Totem asking for an Earth Totem, cast without it. Reagents still apply.",
-"   |cffffd100Change path:|r once your path is set, the |cffffd100Change path|r button wipes your build and starts again at your current level, for gold. Your level, quests and gear stay.",
 "",
 "|cffff8800==  REBIRTH: a new life at level " .. cap .. "  ==|r",
 "At level " .. cap .. " the |cffffd100Rebirth|r button starts you over at level 1. Your quests are forgotten, so every zone pays XP again; worn gear goes into your bags; your gold, bank, reputation, riding and flight paths stay. You start at your race's starting area, on the path you choose.",
@@ -2558,15 +2533,16 @@ local function UpdateStatus()
     titleGlow:SetAlpha(CW.GlowBase())
     -- The challenge run rides in the top-right with its lives, and the
     -- bottom-right button says what it will do: Rebirth at the cap, a
-    -- Challenge for a fresh Wildcard Hero, otherwise the path change.
+    -- Challenge for a fresh Hero, and nothing in between. A path is for good.
     CW.UpdateLives()
-    CW.rebirthBtn:SetText(s.rebirthReady == 1 and "Rebirth" or (s.runReady == 1 and "Challenge" or "Change path"))
+    CW.rebirthBtn:SetText(s.rebirthReady == 1 and "Rebirth" or "Challenge")
+    local rebirthOffered = s.rebirth == 1 and (s.rebirthReady == 1 or s.runReady == 1)
     if s.mode == 0 then
         statusText:SetText(modeText .. "   Ability Essence: |cff00ff00" .. s.ae .. "|r   Talent Essence: |cff00ff00" .. s.te .. "|r")
         subStatusText:SetText("Level " .. s.level)
         bottomText:SetText("")
         respecBtn:Show()
-        if s.rebirth == 1 then CW.rebirthBtn:Show() else CW.rebirthBtn:Hide() end
+        if rebirthOffered then CW.rebirthBtn:Show() else CW.rebirthBtn:Hide() end
         CW.buyScrollBtn:Hide()
         CW.archBtn:Show()
     elseif s.mode == 1 then
@@ -2574,7 +2550,7 @@ local function UpdateStatus()
         subStatusText:SetText("Level " .. s.level .. "   Synergy chance: " .. s.chance .. "%")
         bottomText:SetText("")
         respecBtn:Hide()
-        if s.rebirth == 1 then CW.rebirthBtn:Show() else CW.rebirthBtn:Hide() end
+        if rebirthOffered then CW.rebirthBtn:Show() else CW.rebirthBtn:Hide() end
         CW.archBtn:Hide(); CW.archFly:Hide()
         if s.scrollBuy == 1 then
             CW.buyScrollBtn:SetText("Buy Scroll  " .. GetCoinTextureString(s.scrollCost or 0))

@@ -1389,34 +1389,24 @@ def rebirth_state(mode, level, rebirths, ready, price, heirlooms):
 
 
 def test_rebirth(h):
-    print("--- Rebirth: the path change below the cap, the new life at it")
+    print("--- Rebirth: nothing below the cap, the new life at it")
     CW, g = h.CW, h.g
     frame = g.ClasslessWildcardFrame
     popups = g.StaticPopupDialogs
     fly = CW.rebirthFly
 
-    # Below the cap the button is the old path change, and it says so.
+    # Below the cap, past the challenge window, there is nothing to offer: a
+    # character keeps the path it chose, so the button is not there at all.
     h.recv(rebirth_state(1, 20, 0, 0, 100, 1))
     s = CW.state
     h.check(s.rebirths == 0 and s.rebirthReady == 0 and s.rebirthPrice == 100 and s.heirloomMax == 1,
             "rebirth fields read from 20-23 (%s %s %s %s)" % (s.rebirths, s.rebirthReady, s.rebirthPrice, s.heirloomMax))
-    h.check(CW.rebirthBtn["__shown"] is True, "the button shows while Rebirth is enabled")
+    h.check(CW.rebirthBtn["__shown"] is False, "a Wildcard Hero below the cap gets no button")
     h.check(CW.GlowBase() == 0, "no glow on a crest that was never reborn")
-    h.clear_sent()
-    h.click(CW.rebirthBtn)
-    h.check(g.LAST_POPUP == "CW_CLASSLESS_PATH", "below the cap the button asks about a path change: %r" % g.LAST_POPUP)
-    h.check(fly["__shown"] is False, "and the picker stays closed")
-    popups["CW_CLASSLESS_PATH"]["OnAlt"]()
-    h.check("PATH 1" in h.sent(), "the path change sends PATH, not REBIRTH: %r" % h.sent())
-
-    # A Classless Hero is offered only the Wildcard: Classless over is the free respec.
     h.recv(rebirth_state(0, 20, 0, 0, 100, 1))
-    h.clear_sent()
-    h.click(CW.rebirthBtn)
-    h.check(g.LAST_POPUP == "CW_CLASSLESS_PATH_WILDCARD",
-            "a Classless Hero is asked only about the Wildcard: %r" % g.LAST_POPUP)
-    popups["CW_CLASSLESS_PATH_WILDCARD"]["OnAccept"]()
-    h.check(h.sent() == ["PATH 1"], "and accepting sends PATH 1: %r" % h.sent())
+    h.check(CW.rebirthBtn["__shown"] is False, "nor does a Classless one")
+    h.check("CW_CLASSLESS_PATH" not in [str(k) for k in popups.keys()],
+            "and there is no path-change popup left to open")
 
     # At the cap with two Rebirths behind them: the rank shows, the crest
     # glows, and the button opens the picker.
@@ -1726,7 +1716,7 @@ def test_challenge_runs(h):
     h.click(badge)
     h.check(runs["__shown"] is True and runs["selected"] == 3, "clicking the badge opens the page on the live run")
     runs["close"]["__scripts"]["OnClick"](runs["close"])
-    h.check(str(CW.rebirthBtn["__text"]) == "Change path", "on a run the button is the path change again")
+    h.check(CW.rebirthBtn["__shown"] is False, "on a run, below the cap, the button is not offered")
 
     # A death: the popup says what was lost, a heart dims, state is asked for.
     h.clear_sent()

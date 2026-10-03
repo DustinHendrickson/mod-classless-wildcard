@@ -2082,123 +2082,6 @@ std::vector<std::pair<uint32, uint8>> ClasslessMgr::ArchetypeQueue(Player* playe
     return out;
 }
 
-// The path change: what Rebirth was before it became New Game Plus. Wipes
-// the build at the CURRENT level and starts the chosen path from there, for
-// the flat price. Nothing about the character's level, quests or gear moves.
-bool ClasslessMgr::SwitchPath(Player* player, Mode target, std::string* err)
-{
-    CharState& st = GetState(player);
-    if (!cfg.rebirthEnable)
-    {
-        if (err) *err = "Changing path is disabled on this realm.";
-        return false;
-    }
-    if (target != Mode::Classless && target != Mode::Wildcard)
-    {
-        if (err) *err = "Choose a valid path: classless or wildcard.";
-        return false;
-    }
-    if (st.exempt)
-    {
-        if (err) *err = "This character is not a Hero.";
-        return false;
-    }
-    if (st.mode == Mode::Unchosen)
-    {
-        if (err) *err = "Choose your path first.";
-        return false;
-    }
-    // Wildcard to Wildcard is a paid re-deal, the only way out of a rolled
-    // build. Classless to Classless is what the free respec already does.
-    if (st.mode == Mode::Classless && target == Mode::Classless)
-    {
-        if (err) *err = "You already walk the Classless path. Unlearn everything to start over for free.";
-        return false;
-    }
-
-    int32 costCopper = int32(cfg.rebirthCostGold) * GOLD;
-    if (!player->HasEnoughMoney(costCopper))
-    {
-        if (err) *err = Acore::StringFormat("Changing path costs {} gold. You have {}.",
-            cfg.rebirthCostGold, player->GetMoney() / GOLD);
-        return false;
-    }
-    player->ModifyMoney(-costCopper);
-
-    uint32 guid = player->GetGUID().GetCounter();
-
-    // wipe everything -- except an heirloom, which a Rebirth promised would
-    // stay for this whole life, whichever path it is lived on
-    std::vector<uint32> ownedAbilities;
-    for (auto const& [firstSpell, owned] : st.abilities)
-        if (owned.source != GrantSource::Heirloom)
-            ownedAbilities.push_back(firstSpell);
-    for (uint32 firstSpell : ownedAbilities)
-        if (AbilityEntry const* e = GetAbility(firstSpell))
-            RemoveAbilityInternal(player, *e);
-
-    std::vector<uint32> ownedTalents;
-    for (auto const& [talentId, rank] : st.talents)
-        ownedTalents.push_back(talentId);
-    for (uint32 talentId : ownedTalents)
-        if (TalentPoolEntry const* t = GetTalent(talentId))
-            RemoveTalentInternal(player, *t);
-
-    st.bans.clear();
-    st.pity = 0;
-    st.archetype = 0;
-    CharacterDatabase.Execute("DELETE FROM cw_char_bans WHERE guid = {}", guid);
-
-    st.mode = target;
-    uint8 level = player->GetLevel();
-    st.lastProcessedLevel = level;
-
-    if (target == Mode::Classless)
-    {
-        st.abilityEssence = cfg.startingAbilityEssence + LevelsEarned(level, cfg.essenceStartLevel) * cfg.abilityEssencePerLevel
-            + st.rebirths * cfg.rebirthLegacyAbilityEssence;
-        st.talentEssence = LevelsEarned(level, cfg.talentEssenceStartLevel) * cfg.talentEssencePerLevel
-            + st.rebirths * cfg.rebirthLegacyTalentEssence;
-        SaveState(player);
-        Msg(player, Acore::StringFormat("|cffff8800Path changed.|r You walk the Classless path anew. "
-            "Ability Essence: |cff00ff00{}|r, Talent Essence: |cff00ff00{}|r.", st.abilityEssence, st.talentEssence));
-    }
-    else
-    {
-        st.abilityEssence = 0;
-        st.talentEssence = 0;
-        SaveState(player);
-        Msg(player, "|cffff8800Path changed.|r The Wildcard takes your fate. Rolling your Hero...");
-
-        GrantGuard noReveal(_revealSuppress); // bulk regrant: no popup spam
-        for (uint32 i = 0; i < cfg.wcStartingAbilities; ++i)
-            RollAbility(player);
-
-        // replay the roll schedule (and its earned rerolls) for every level gained
-        for (uint8 lvl = cfg.wcRollStartLevel; lvl <= level; ++lvl)
-        {
-            uint32 offset = lvl - cfg.wcRollStartLevel;
-            if ((offset + cfg.wcTalentRollOffset) % cfg.wcTalentEveryLevels == 0)
-                RollTalent(player);
-            if (offset % cfg.wcAbilityEveryLevels == 0)
-                RollAbility(player);
-            // Rerolls are earned by LEVELLING, not by the individual roll, so
-            // the charge is the same whichever kind of roll the level carried.
-            st.rerolls += cfg.wcRerollsPerLevel;
-        }
-        SaveState(player);
-        Msg(player, Acore::StringFormat("The Wildcard dealt you {} abilit{} and {} talent{}.",
-            uint32(st.abilities.size()), st.abilities.size() == 1 ? "y" : "ies",
-            uint32(st.talents.size()), st.talents.size() == 1 ? "" : "s"));
-    }
-
-    UpdateAbilityRanks(player);
-    // Everything is gone, so every class line is provably empty: clear
-    // them now rather than leave stale empty tabs until the next login.
-    SyncSpellbookTabs(player, true);
-    return true;
-}
-
 // =========================================================================
 // Rebirth: New Game Plus.
 //
@@ -4129,7 +4012,7 @@ bool ClasslessMgr::SetMode(Player* player, Mode mode, std::string* err)
     if (st.mode != Mode::Unchosen || player->GetLevel() >= cfg.modeChoiceDeadline)
     {
         if (err) *err = st.mode != Mode::Unchosen
-            ? std::string("Your path is locked in. To switch, use Change path in /cw or at the Hero Advancement NPC.")
+            ? std::string("Your path is locked in. A character keeps the path it chose.")
             : Acore::StringFormat("A path must be chosen before level {}.", cfg.modeChoiceDeadline);
         return false;
     }

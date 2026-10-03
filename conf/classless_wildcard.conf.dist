@@ -843,16 +843,12 @@ ClasslessWildcard.WorldDrops.HeirloomChance = 2.0
 #        stacks: more kill XP, a percent on every stat, legacy essence on the
 #        Classless path, one more heirloom next time, and a title per rank.
 #        The character wakes at their race's starting area.
-#
-#        CHANGE PATH wipes the build at the current level and starts a path
-#        from there, for CostGold. A change to the Wildcard replays the roll
-#        schedule for the character's level.
 #        Default: 1
 ClasslessWildcard.Rebirth.Enable = 1
 
 #    ClasslessWildcard.Rebirth.CostGold
-#        Gold cost of a path change, and the base price of a Rebirth: a
-#        Rebirth costs this times (rank + 1), so the second one costs double,
+#        The base price of a Rebirth, in gold: a Rebirth costs this times
+#        (rank + 1), so the second one costs double,
 #        the third triple. Quests come back with their one-time rewards, which
 #        is why the price climbs.
 #        Default: 100
