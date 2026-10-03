@@ -334,30 +334,24 @@ public:
         handler->PSendSysMessage("Type {} confirm to go ahead.", command);
     }
 
-    // ".classless rebirth classless|wildcard [heirloom ability id ...] [confirm]":
-    // New Game Plus, at the level cap. The ids are owned ability lines
-    // carried through; the panel is the friendlier way to choose them.
-    static bool HandleRebirth(ChatHandler* handler, std::string modeArg, Tail heirloomArgs)
+    // ".classless rebirth [heirloom ability id ...] [confirm]": New Game Plus,
+    // at the level cap, on the character's own path. The ids are owned
+    // ability lines carried through; the panel is the friendlier way to
+    // choose them.
+    static bool HandleRebirth(ChatHandler* handler, Tail heirloomArgs)
     {
         if (!CheckEnabled(handler))
             return true;
         std::string err;
-        Mode target;
-        if (!ParsePath(modeArg, target))
-        {
-            handler->SendSysMessage("Usage: .classless rebirth classless | wildcard [heirloom ability ID ...] confirm "
-                                    "(level cap only: back to level 1 with a permanent Rebirth rank)");
-            return true;
-        }
         bool confirmed;
         std::vector<uint32> heirlooms = ParseIdsAndConfirm(heirloomArgs, confirmed);
         Player* player = handler->GetSession()->GetPlayer();
         if (!confirmed && sClasslessMgr->RebirthEligible(player))
         {
-            DescribeRebirth(handler, player, ".classless rebirth " + modeArg + IdList(heirlooms));
+            DescribeRebirth(handler, player, ".classless rebirth" + IdList(heirlooms));
             return true;
         }
-        if (!sClasslessMgr->Rebirth(player, target, heirlooms, &err) && !err.empty())
+        if (!sClasslessMgr->Rebirth(player, heirlooms, &err) && !err.empty())
             handler->SendSysMessage(err);
         return true;
     }
@@ -369,7 +363,7 @@ public:
             return true;
         Player* player = handler->GetSession()->GetPlayer();
         CharState& st = sClasslessMgr->GetState(player);
-        handler->SendSysMessage("Challenge runs (.classless run <id> classless | wildcard [heirloom ability ID ...]):");
+        handler->SendSysMessage("Challenge runs (.classless run <id> [heirloom ability ID ...]):");
         for (Challenge const& ch : ClasslessMgr::Challenges())
         {
             auto best = st.runBest.find(ch.id);
@@ -387,31 +381,23 @@ public:
         return true;
     }
 
-    // ".classless run <id> classless|wildcard [heirloom ability id ...] [confirm]":
-    // start a challenge run. The path is the one a Rebirth at the cap lands on;
-    // a fresh Hero runs on the path they already chose whatever is typed. At
-    // the cap the run is a Rebirth, so it asks for confirm the same way.
-    static bool HandleRun(ChatHandler* handler, uint32 challengeId, std::string modeArg, Tail heirloomArgs)
+    // ".classless run <id> [heirloom ability id ...] [confirm]": start a
+    // challenge run on the character's own path. At the cap the run is a
+    // Rebirth, so it asks for confirm the same way.
+    static bool HandleRun(ChatHandler* handler, uint32 challengeId, Tail heirloomArgs)
     {
         if (!CheckEnabled(handler))
             return true;
         std::string err;
-        Mode target;
-        if (!ParsePath(modeArg, target))
-        {
-            handler->SendSysMessage("Usage: .classless run <id> classless | wildcard [heirloom ability ID ...] "
-                                    "(.classless challenges lists the IDs)");
-            return true;
-        }
         bool confirmed;
         std::vector<uint32> heirlooms = ParseIdsAndConfirm(heirloomArgs, confirmed);
         Player* player = handler->GetSession()->GetPlayer();
         if (!confirmed && sClasslessMgr->RebirthEligible(player))
         {
-            DescribeRebirth(handler, player, Acore::StringFormat(".classless run {} {}{}", challengeId, modeArg, IdList(heirlooms)));
+            DescribeRebirth(handler, player, Acore::StringFormat(".classless run {}{}", challengeId, IdList(heirlooms)));
             return true;
         }
-        if (!sClasslessMgr->StartRun(player, uint8(challengeId), target, heirlooms, &err) && !err.empty())
+        if (!sClasslessMgr->StartRun(player, uint8(challengeId), heirlooms, &err) && !err.empty())
             handler->SendSysMessage(err);
         return true;
     }

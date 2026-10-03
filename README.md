@@ -45,7 +45,8 @@ There are no classes. Character creation offers a race and nothing else, and eve
 a **Hero**. Race keeps its racial traits. Every ability and talent is earned in game and can come
 from any class.
 
-There are two paths, chosen per character (or forced realm-wide by config):
+There are two paths, chosen once per character (or forced realm-wide by config). A character
+keeps its path for good, through Rebirth and challenge runs:
 
 |                    | **Classless** (free pick)                                    | **Wildcard** (rolled)                                    |
 | ------------------ | ------------------------------------------------------------ | -------------------------------------------------------- |
@@ -110,8 +111,8 @@ with your build on the right. Lock or reroll anything you own from the same wind
   - Two-class: *Blade Dancer*, *Battle Mage*, *Ranger of the Light*, *Shadow Mender*, *Thornshade*, *Storm Warrior*
   - Elemental: *Hellfire Knight*, *Rime Reaver*, *Stoneguard*, *Venomstalker*, *Nightclaw*, *Dawnward*, *Spellblade*
 - **Rebirth.** At the level cap, start over at level 1 with a permanent rank that stacks.
-  - **Kept:** gold, bags, bank, reputation, riding, flight paths, and the **heirloom** abilities
-    you choose to carry (usable from level 1, one more per rank).
+  - **Kept:** your path, gold, bags, bank, reputation, riding, flight paths, and the **heirloom**
+    abilities you choose to carry (usable from level 1, one more per rank).
   - **Reset:** your build and your quest log. Worn gear goes into your bags.
   - **Per rank:** +100% kill and dungeon XP for the first, +50% per rank after (max +300%); +3%
     to every primary stat (max +15%); starting essence on the Classless path; a title (*the
@@ -253,8 +254,8 @@ epic; Lay on Hands, Rebirth and the 41-point talents are legendary.
 
 ## Challenge runs
 
-A run is one life under one rule, on either path. Start one from the Rebirth picker at the level
-cap, or on a new Hero up to level 5.
+A run is one life under one rule, on the character's own path. Start one from the Rebirth picker
+at the level cap, or on a new Hero up to level 5.
 
 - **Lives.** Each death costs one. Battlegrounds, arenas and duels are free. At zero, the run ends
   and you keep everything.
@@ -400,9 +401,9 @@ spellbook tab. You can own a base attack and its variants together.
 | `.classless bar mana\|rage\|energy\|default` | Choose which resource the main bar shows |
 | `.classless archetypes` | List archetypes and their IDs |
 | `.classless archetype <id>` | Follow an archetype. `0` stops |
-| `.classless rebirth classless\|wildcard [ability IDs] confirm` | Rebirth at the level cap, carrying the listed heirloom abilities |
+| `.classless rebirth [ability IDs] confirm` | Rebirth at the level cap, carrying the listed heirloom abilities |
 | `.classless challenges` | List challenge runs |
-| `.classless run <id> classless\|wildcard [ability IDs]` | Start a challenge run. At the level cap it is a Rebirth and needs `confirm` |
+| `.classless run <id> [ability IDs]` | Start a challenge run. At the level cap it is a Rebirth and needs `confirm` |
 
 ### `.wildcard`
 

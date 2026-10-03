@@ -1058,7 +1058,7 @@ function CW.OverPanel(screen)
 end
 
 -- Rebirth picker ------------------------------------------------------------
--- Which abilities come along, and which path the new life starts on. Rows
+-- Which abilities come along into the new life, on the character's own path. Rows
 -- are the owned abilities a Rebirth may carry: what was picked or rolled,
 -- and heirlooms already carried once. What came with a talent or free with
 -- another ability cannot be carried on its own, and the server refuses it.
@@ -1068,7 +1068,7 @@ do
     -- Measured top to bottom so nothing can overlap whatever the text wraps
     -- to: title -12, intro -30 (six lines at most, to -108), count -114, eight
     -- rows of 24 from -132 (to -324), the page arrows at -340, Challenge run
-    -- at -402, the path buttons at -434.
+    -- at -402, Be reborn and Cancel at -434.
     local fly = CreateFrame("Frame", "ClasslessWildcardRebirth", frame)
     fly:SetWidth(460); fly:SetHeight(470)
     fly:SetPoint("CENTER", frame, "CENTER", 0, 0)
@@ -1099,6 +1099,7 @@ do
         .. "Gold, bags, bank, reputation, riding and flight paths stay; worn gear goes into your bags. "
         .. "Each Rebirth adds a permanent rank: more kill XP, a bonus to every stat, legacy essence on the Classless path, "
         .. "one more heirloom next time, and a title. "
+        .. "You stay on your path. "
         .. "Tick the abilities to carry with you. An heirloom is usable from level 1 and never rerolled.")
 
     fly.count = fly:CreateFontString(nil, "OVERLAY", "GameFontNormal")
@@ -1168,16 +1169,11 @@ do
     fly.challengeNote:SetJustifyH("LEFT")
     fly.challengeNote:SetText("|cffaaaaaaThe new life under one rule, with counted lives.|r")
 
-    fly.classless = CreateFrame("Button", nil, fly, "UIPanelButtonTemplate")
-    fly.classless:SetWidth(140); fly.classless:SetHeight(24)
-    fly.classless:SetPoint("BOTTOMLEFT", 14, 12)
-    fly.classless:SetText("Reborn as Classless")
-    fly.classless:SetScript("OnClick", function() CW.AskRebirth(0) end)
-    fly.wildcard = CreateFrame("Button", nil, fly, "UIPanelButtonTemplate")
-    fly.wildcard:SetWidth(140); fly.wildcard:SetHeight(24)
-    fly.wildcard:SetPoint("BOTTOM", 0, 12)
-    fly.wildcard:SetText("Reborn as Wildcard")
-    fly.wildcard:SetScript("OnClick", function() CW.AskRebirth(1) end)
+    fly.reborn = CreateFrame("Button", nil, fly, "UIPanelButtonTemplate")
+    fly.reborn:SetWidth(140); fly.reborn:SetHeight(24)
+    fly.reborn:SetPoint("BOTTOMLEFT", 14, 12)
+    fly.reborn:SetText("Be reborn")
+    fly.reborn:SetScript("OnClick", function() CW.AskRebirth() end)
     fly.cancel = CreateFrame("Button", nil, fly, "UIPanelButtonTemplate")
     fly.cancel:SetWidth(90); fly.cancel:SetHeight(24)
     fly.cancel:SetPoint("BOTTOMRIGHT", -14, 12)
@@ -1257,25 +1253,25 @@ do
         fly:Show()
     end
 
-    -- The last word before it is sent: which path, which heirlooms, what it
-    -- costs. The popup's OK calls fly.Confirm, which sends exactly this.
-    function CW.AskRebirth(mode)
+    -- The last word before it is sent: which heirlooms, and what it costs.
+    -- The popup's OK calls fly.Confirm, which sends exactly this.
+    function CW.AskRebirth()
         local s = CW.state
         local ids = {}
         for id in pairs(fly.picked) do tinsert(ids, id) end
         table.sort(ids)
-        fly.pendingMode, fly.pendingIds = mode, ids
+        fly.pendingIds = ids
         local names = {}
         for _, id in ipairs(ids) do tinsert(names, (GetSpellInfo(id)) or ("#" .. id)) end
-        local path = mode == 0 and "|cff00ccffClassless|r" or "|cffff8800Wildcard|r"
+        local path = s.mode == 0 and "|cff00ccffClassless|r" or "|cffff8800Wildcard|r"
         StaticPopup_Show("CW_CLASSLESS_REBIRTH",
-            "Rebirth " .. ((s.rebirths or 0) + 1) .. " on the " .. path .. " path for |cffffd100"
+            "Rebirth " .. ((s.rebirths or 0) + 1) .. " on your " .. path .. " path for |cffffd100"
             .. (s.rebirthPrice or 0) .. " gold|r.\n\nBack to level 1. Heirlooms: "
             .. (#names > 0 and table.concat(names, ", ") or "none") .. ".")
     end
 
     function fly.Confirm()
-        local parts = { "REBIRTH", tostring(fly.pendingMode or 0) }
+        local parts = { "REBIRTH" }
         for _, id in ipairs(fly.pendingIds or {}) do tinsert(parts, tostring(id)) end
         Send(table.concat(parts, " "))
     end
@@ -1286,22 +1282,13 @@ end
 -- best this character did on it. Pick one, read its rule, start it. Shards
 -- and the extra life live here too. Everything hangs on CW.runFly.
 CW.challenges = {}
--- At the cap a run is a Rebirth onto a path, so the last word asks which;
--- a fresh Hero runs on the path they already chose and only confirms.
+-- A run is on the character's own path, at the cap (where it begins with a
+-- Rebirth) or on a fresh Hero alike, so the last word only confirms.
 StaticPopupDialogs["CW_RUN_CONFIRM"] = {
-    text = "%s",
-    button1 = "Classless",
-    button2 = "Cancel",
-    button3 = "Wildcard",
-    OnAccept = function() if CW.runFly and CW.runFly.Confirm then CW.runFly.Confirm(0) end end,
-    OnAlt    = function() if CW.runFly and CW.runFly.Confirm then CW.runFly.Confirm(1) end end,
-    timeout = 0, whileDead = 1, hideOnEscape = 1, preferredIndex = 3,
-}
-StaticPopupDialogs["CW_RUN_CONFIRM_FRESH"] = {
     text = "%s",
     button1 = "Begin the run",
     button2 = "Cancel",
-    OnAccept = function() if CW.runFly and CW.runFly.Confirm then CW.runFly.Confirm(CW.state.mode) end end,
+    OnAccept = function() if CW.runFly and CW.runFly.Confirm then CW.runFly.Confirm() end end,
     timeout = 0, whileDead = 1, hideOnEscape = 1, preferredIndex = 3,
 }
 StaticPopupDialogs["CW_RUN_DEATH"] = {
@@ -1621,7 +1608,8 @@ do
             what = "You can start " .. name .. " once that run ends, either by reaching level 80 or by losing your last life."
         elseif s.rebirthReady == 1 then
             status = OK .. "|cff00ff00You can start this now.|r Because you are level 80, starting it is a |cffff8800Rebirth|r."
-            what = "You go back to level 1 for |cffffd100" .. (s.rebirthPrice or 0) .. " gold|r, on the path you choose when you confirm. "
+            what = "You go back to level 1 for |cffffd100" .. (s.rebirthPrice or 0) .. " gold|r, on your "
+                .. (s.mode == 0 and "|cff00ccffClassless|r" or "|cffff8800Wildcard|r") .. " path. "
                 .. "Your quests reset, so every zone gives experience again. You keep your gold, bags, bank, reputation, riding and flight paths, "
                 .. "and the heirloom abilities you ticked on the Rebirth page. "
                 .. name .. " applies from level 1 until you reach 80 again or run out of lives."
@@ -1845,18 +1833,18 @@ do
         fly.pendingId, fly.pendingIds = chosen.id, ids
         local lives = chosen.lives + ((s.extraLife or 0) > 0 and 1 or 0)
         local text = "|cffff4444" .. chosen.name .. "|r with " .. lives .. (lives == 1 and " life" or " lives") .. ".\n\n" .. chosen.rule
+        local path = s.mode == 0 and "|cff00ccffClassless|r" or "|cffff8800Wildcard|r"
         if s.rebirthReady == 1 then
-            text = text .. "\n\nThis is a Rebirth: back to level 1 for |cffffd100" .. (s.rebirthPrice or 0)
-                .. " gold|r, carrying " .. #ids .. (#ids == 1 and " heirloom" or " heirlooms") .. ". Choose the path for the new life:"
-            StaticPopup_Show("CW_RUN_CONFIRM", text)
+            text = text .. "\n\nThis is a Rebirth: back to level 1 on your " .. path .. " path for |cffffd100"
+                .. (s.rebirthPrice or 0) .. " gold|r, carrying " .. #ids .. (#ids == 1 and " heirloom." or " heirlooms.")
         else
-            text = text .. "\n\nOn the " .. (s.mode == 0 and "|cff00ccffClassless|r" or "|cffff8800Wildcard|r") .. " path, from where you stand."
-            StaticPopup_Show("CW_RUN_CONFIRM_FRESH", text)
+            text = text .. "\n\nOn your " .. path .. " path, from where you stand."
         end
+        StaticPopup_Show("CW_RUN_CONFIRM", text)
     end
 
-    function fly.Confirm(mode)
-        local parts = { "RUN", tostring(fly.pendingId or 0), tostring(mode or 0) }
+    function fly.Confirm()
+        local parts = { "RUN", tostring(fly.pendingId or 0) }
         for _, id in ipairs(fly.pendingIds or {}) do tinsert(parts, tostring(id)) end
         Send(table.concat(parts, " "))
     end
@@ -2421,7 +2409,7 @@ local function BuildHelpText()
 "   |cffffd100No class tools:|r spells that ask for a class item, such as Stoneskin Totem asking for an Earth Totem, cast without it. Reagents still apply.",
 "",
 "|cffff8800==  REBIRTH: a new life at level " .. cap .. "  ==|r",
-"At level " .. cap .. " the |cffffd100Rebirth|r button starts you over at level 1. Your quests are forgotten, so every zone pays XP again; worn gear goes into your bags; your gold, bank, reputation, riding and flight paths stay. You start at your race's starting area, on the path you choose.",
+"At level " .. cap .. " the |cffffd100Rebirth|r button starts you over at level 1. Your quests are forgotten, so every zone pays XP again; worn gear goes into your bags; your gold, bank, reputation, riding and flight paths stay. You start at your race's starting area, on the same path.",
 "Each Rebirth raises a |cffffd100rank|r that is yours for good:",
 "   |cff00ff00+" .. r.xpFirst .. "% kill and dungeon XP|r for the first, +" .. r.xpPerRank .. "% more for each after, up to +" .. r.xpMax .. "%. Quest XP rises more gently.",
 "   |cff00ff00+" .. r.statPct .. "% to every primary stat|r per rank, up to +" .. r.statMax .. "%.",

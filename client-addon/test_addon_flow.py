@@ -1439,13 +1439,18 @@ def test_rebirth(h):
     h.check("2" in str(fly["count"]["__text"]) and "200" in str(fly["count"]["__text"]),
             "the picker counts and prices: %r" % str(fly["count"]["__text"]))
 
-    # The confirm names the path and the heirlooms, and OK sends exactly them.
+    # The confirm names the character's own path and the heirlooms; OK sends
+    # the heirlooms and nothing about a path, which is never chosen again.
+    h.check(fly["reborn"] is not None and fly["classless"] is None and fly["wildcard"] is None,
+            "one Be reborn button, no path buttons")
     h.clear_sent()
-    CW.AskRebirth(1)
+    CW.AskRebirth()
     h.check(g.LAST_POPUP == "CW_CLASSLESS_REBIRTH", "the last word is a popup: %r" % g.LAST_POPUP)
+    h.check("your" in str(g.LAST_POPUP_ARG) and "Wildcard" in str(g.LAST_POPUP_ARG),
+            "it names the path the character already walks: %r" % str(g.LAST_POPUP_ARG)[:60])
     h.check(h.sent() == [], "nothing is sent before the popup is accepted")
     popups["CW_CLASSLESS_REBIRTH"]["OnAccept"]()
-    h.check("REBIRTH 1 133 686" in h.sent(), "accepting sends the path and the heirlooms: %r" % h.sent())
+    h.check(h.sent() == ["REBIRTH 133 686"], "accepting sends only the heirlooms: %r" % h.sent())
     h.recv("OK|REBIRTH")
     h.check(fly["__shown"] is False, "the picker closes once the new life has begun")
 
@@ -1634,9 +1639,9 @@ def test_challenge_runs(h):
     # Start it: the confirm, then RUN with no heirlooms.
     h.clear_sent()
     CW.AskRun()
-    h.check(g.LAST_POPUP == "CW_RUN_CONFIRM_FRESH" and h.sent() == [], "a fresh Hero gets the plain confirm, nothing sent yet: %r" % g.LAST_POPUP)
-    popups["CW_RUN_CONFIRM_FRESH"]["OnAccept"]()
-    h.check("RUN 3 1" in h.sent(), "accepting sends RUN with the challenge and the path already chosen: %r" % h.sent())
+    h.check(g.LAST_POPUP == "CW_RUN_CONFIRM" and h.sent() == [], "a fresh Hero gets the plain confirm, nothing sent yet: %r" % g.LAST_POPUP)
+    popups["CW_RUN_CONFIRM"]["OnAccept"]()
+    h.check(h.sent() == ["RUN 3"], "accepting sends RUN with the challenge alone: %r" % h.sent())
     h.recv("OK|RUN")
     h.check(runs["__shown"] is False, "the screen closes once the run has begun")
 
@@ -1761,12 +1766,10 @@ def test_challenge_runs(h):
     h.click(runs["rows"][1])
     h.clear_sent()
     CW.AskRun()
-    h.check(g.LAST_POPUP == "CW_RUN_CONFIRM", "at the cap the confirm asks for the path: %r" % g.LAST_POPUP)
-    popups["CW_RUN_CONFIRM"]["OnAlt"]()
-    h.check("RUN 1 1 686" in h.sent(), "Wildcard chosen: the run carries the path and the ticked heirlooms: %r" % h.sent())
-    h.clear_sent()
+    h.check(g.LAST_POPUP == "CW_RUN_CONFIRM", "at the cap it is the same plain confirm: %r" % g.LAST_POPUP)
+    h.check(popups["CW_RUN_CONFIRM"]["button3"] is None, "with no path to pick")
     popups["CW_RUN_CONFIRM"]["OnAccept"]()
-    h.check("RUN 1 0 686" in h.sent(), "and Classless is the other button: %r" % h.sent())
+    h.check(h.sent() == ["RUN 1 686"], "the run carries the ticked heirlooms and no path: %r" % h.sent())
     h.click(runs["close"])
     h.check(runs["__shown"] is False, "the X closes the screen")
 

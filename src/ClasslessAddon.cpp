@@ -889,14 +889,14 @@ namespace
             sClasslessMgr->ApplyArchetype(player, argNum(1), &err) ? SendOk(player, "ARCH") : SendErr(player, err);
         else if (cmd == "REBIRTH")
         {
-            // "REBIRTH <mode> [heirloom ability id ...]": New Game Plus. The
-            // ids are the owned lines carried through, as many as the rank
-            // allows; the server refuses the rest.
+            // "REBIRTH [heirloom ability id ...]": New Game Plus on the
+            // character's own path. The ids are the owned lines carried
+            // through, as many as the rank allows; the server refuses the rest.
             std::vector<uint32> heirlooms;
-            for (size_t i = 2; i < args.size(); ++i)
+            for (size_t i = 1; i < args.size(); ++i)
                 if (uint32 id = argNum(i))
                     heirlooms.push_back(id);
-            sClasslessMgr->Rebirth(player, Mode(uint8(argNum(1))), heirlooms, &err)
+            sClasslessMgr->Rebirth(player, heirlooms, &err)
                 ? SendOk(player, "REBIRTH") : SendErr(player, err);
         }
         else if (cmd == "CHL")
@@ -958,14 +958,14 @@ namespace
         }
         else if (cmd == "RUN")
         {
-            // "RUN <challenge> <mode> [heirloom ability id ...]": a challenge
-            // run, which is a Rebirth with a rule onto that path (or a fresh
-            // Hero's first life on the path they already chose)
+            // "RUN <challenge> [heirloom ability id ...]": a challenge run on
+            // the character's own path, which at the cap is a Rebirth with a
+            // rule and on a fresh Hero simply begins
             std::vector<uint32> heirlooms;
-            for (size_t i = 3; i < args.size(); ++i)
+            for (size_t i = 2; i < args.size(); ++i)
                 if (uint32 id = argNum(i))
                     heirlooms.push_back(id);
-            if (sClasslessMgr->StartRun(player, uint8(argNum(1)), Mode(uint8(argNum(2))), heirlooms, &err))
+            if (sClasslessMgr->StartRun(player, uint8(argNum(1)), heirlooms, &err))
             {
                 SendOk(player, "RUN");
                 SendState(player);

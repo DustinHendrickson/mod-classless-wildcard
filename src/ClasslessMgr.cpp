@@ -2233,8 +2233,7 @@ void ClasslessMgr::GrantRebirthTitles(Player* player)
                 player->SetTitle(title);
 }
 
-bool ClasslessMgr::Rebirth(Player* player, Mode target, std::vector<uint32> const& heirlooms,
-                           std::string* err)
+bool ClasslessMgr::Rebirth(Player* player, std::vector<uint32> const& heirlooms, std::string* err)
 {
     CharState& st = GetState(player);
     if (!cfg.rebirthEnable)
@@ -2247,9 +2246,9 @@ bool ClasslessMgr::Rebirth(Player* player, Mode target, std::vector<uint32> cons
         if (err) *err = "This character does not walk the Hero's path.";
         return false;
     }
-    if (target != Mode::Classless && target != Mode::Wildcard)
+    if (st.mode != Mode::Classless && st.mode != Mode::Wildcard)
     {
-        if (err) *err = "Choose a valid path: classless or wildcard.";
+        if (err) *err = "Choose your path first.";
         return false;
     }
     if (!RebirthEligible(player))
@@ -2351,8 +2350,8 @@ bool ClasslessMgr::Rebirth(Player* player, Mode target, std::vector<uint32> cons
     st.lastProcessedLevel = 1;
 
     ++st.rebirths;
-    st.mode = target;
-    if (target == Mode::Classless)
+    // the new life is on the path this character already walks
+    if (st.mode == Mode::Classless)
     {
         st.abilityEssence = cfg.startingAbilityEssence + st.rebirths * cfg.rebirthLegacyAbilityEssence;
         st.talentEssence = st.rebirths * cfg.rebirthLegacyTalentEssence;
@@ -2488,7 +2487,7 @@ bool ClasslessMgr::OnRun(Player* player, ChallengeId id)
     return st && !st->exempt && st->run == uint8(id);
 }
 
-bool ClasslessMgr::StartRun(Player* player, uint8 challengeId, Mode target,
+bool ClasslessMgr::StartRun(Player* player, uint8 challengeId,
                             std::vector<uint32> const& heirlooms, std::string* err)
 {
     CharState& st = GetState(player);
@@ -2516,12 +2515,12 @@ bool ClasslessMgr::StartRun(Player* player, uint8 challengeId, Mode target,
     }
 
     uint32 const cap = sWorld->getIntConfig(CONFIG_MAX_PLAYER_LEVEL);
-    // A fresh Hero runs on the path they already chose; the target only
-    // matters at the cap, where the run is a Rebirth onto it.
+    // The run is on the path the character already walks: at the cap it
+    // begins with a Rebirth, on a fresh Hero it simply begins.
     bool const fresh = player->GetLevel() <= cfg.modeChoiceDeadline && st.mode != Mode::Unchosen;
     if (RebirthEligible(player))
     {
-        if (!Rebirth(player, target, heirlooms, err))
+        if (!Rebirth(player, heirlooms, err))
             return false;
     }
     else if (!fresh)

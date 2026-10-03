@@ -142,11 +142,9 @@ public:
     // (owned ability line ids, at most MaxHeirlooms of them). Gold, bags,
     // reputation, riding and flight paths stay. The Hero's Rebirth rank goes
     // up by one and pays out from then on: XP rate, stat bonus, legacy
-    // essence, one more heirloom next time, a title.
-    bool Rebirth(Player* player, ClasslessWildcard::Mode target,
-                 std::vector<uint32> const& heirlooms, std::string* err);
-    // The cheaper thing Rebirth used to be: wipe the build at the current
-    // level and start the chosen path from there, for the flat price.
+    // essence, one more heirloom next time, a title. The new life is on the
+    // path the character already walks: a path is chosen once, for good.
+    bool Rebirth(Player* player, std::vector<uint32> const& heirlooms, std::string* err);
     uint32 RebirthCost(ClasslessWildcard::CharState const& st) const;  // gold
     uint32 MaxHeirlooms(ClasslessWildcard::CharState const& st) const;
     bool   RebirthEligible(Player* player) const;                      // at the cap
@@ -163,11 +161,10 @@ public:
     static ClasslessWildcard::Challenge const* GetChallenge(uint8 id);
     static constexpr uint32 HUNTER_ENTRY = 990131;      // Pursued's hunter, cw_world_challenges.sql
     static constexpr uint32 EXTRA_LIFE_SHARDS = 30;
-    // A run is a Rebirth at the cap (heirlooms and all, onto the path asked
-    // for) or a fresh Hero still under the mode deadline on whatever path
-    // they chose. Either path plays exactly as it does off a run; only the
-    // rule and the lives are added.
-    bool StartRun(Player* player, uint8 challengeId, ClasslessWildcard::Mode target,
+    // A run is a Rebirth at the cap (heirlooms and all) or a fresh Hero still
+    // under the mode deadline. Either way the character stays on its own
+    // path; only the rule and the lives are added.
+    bool StartRun(Player* player, uint8 challengeId,
                   std::vector<uint32> const& heirlooms, std::string* err);
     bool OnRun(Player* player, ClasslessWildcard::ChallengeId id);   // this rule, live, on this character
     // A death on a run. Battleground, arena and duel deaths are free.
