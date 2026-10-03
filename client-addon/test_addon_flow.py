@@ -1497,9 +1497,9 @@ def test_challenge_runs(h):
         dark_ok = dark_ok and b["__shown"] is False
     h.check(dark_ok, "all %d CW popups show a dark backing and hide it with them" % len(keys))
 
-    # A fresh Wildcard Hero under the deadline: the button is the Challenge,
+    # A new Wildcard Hero at level 1, before the deadline: the button is the Challenge,
     # and its tooltip says so rather than describing a path change.
-    h.recv(run_state(1, 3, run_ready=1))
+    h.recv(run_state(1, 1, run_ready=1))
     s = CW.state
     h.check(s.runReady == 1 and s.run == 0 and s.shards == 0, "run fields read from 24-29")
     h.check(str(CW.rebirthBtn["__text"]) == "Challenge", "a fresh Hero's button offers a Challenge: %r" % str(CW.rebirthBtn["__text"]))
@@ -1587,7 +1587,7 @@ def test_challenge_runs(h):
             "the full text is joined from its pieces: %r" % str(runs["detail"]["__text"]))
     req = str(runs["req"]["__text"])
     h.check("You can start this now" in req and "Nothing about your character resets" in req
-            and "level 3" in req and "Wildcard" in req and "Nemesis" in req,
+            and "level 1" in req and "Wildcard" in req and "Nemesis" in req,
             "Starting this run says it can start now and what happens to this character: %r" % req[:120])
     h.check("Rebirth" not in req and "Either path" not in req,
             "and says nothing that does not apply to them")

@@ -124,7 +124,7 @@ namespace
             // the cap, or fresh and under the mode deadline on Wildcard).
             uint32(st.run), uint32(st.lives), uint32(st.livesMax), st.shards, uint32(st.extraLife),
             (!st.run && (sClasslessMgr->RebirthEligible(player)
-                         || (player->GetLevel() <= cfg.modeChoiceDeadline && st.mode != Mode::Unchosen))) ? 1 : 0,
+                         || (player->GetLevel() < cfg.modeChoiceDeadline && st.mode != Mode::Unchosen))) ? 1 : 0,
             // field 30: Hourglass's clock, seconds left on this level (0 on
             // any other run), for the run badge's tooltip
             sClasslessMgr->HourglassSecondsLeft(player)));

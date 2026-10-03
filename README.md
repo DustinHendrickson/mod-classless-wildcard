@@ -255,7 +255,7 @@ epic; Lay on Hands, Rebirth and the 41-point talents are legendary.
 ## Challenge runs
 
 A run is one life under one rule, on the character's own path. Start one from the Rebirth picker
-at the level cap, or on a new Hero up to level 2.
+at the level cap, or on a new Hero before level 2.
 
 - **Lives.** Each death costs one. Battlegrounds, arenas and duels are free. At zero, the run ends
   and you keep everything.

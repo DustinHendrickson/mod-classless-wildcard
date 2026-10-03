@@ -1621,7 +1621,7 @@ do
                 .. name .. " applies from the moment you start until you reach level 80 or run out of lives."
         else
             status = NO .. "|cffff4444You cannot start a run on this character right now.|r"
-            what = "A run can be started on a new character up to level " .. (s.deadline or 2)
+            what = "A run can be started on a new character before level " .. (s.deadline or 2)
                 .. ", or on a character at level 80, where it begins with a Rebirth back to level 1."
         end
         fly.req:SetText(status .. "\n" .. what)
@@ -2418,7 +2418,7 @@ local function BuildHelpText()
 "The price rises with each rank.",
 "",
 "|cffff4444==  CHALLENGE RUNS: one rule, counted lives  ==|r",
-"A run is a life under one rule, on your own path. Start one from the Rebirth button at level " .. cap .. " (it is a Rebirth, heirlooms and all), or as a new Hero up to level " .. (s.deadline or 2) .. ". Pick a challenge, read its rule, go.",
+"A run is a life under one rule, on your own path. Start one from the Rebirth button at level " .. cap .. " (it is a Rebirth, heirlooms and all), or as a new Hero before level " .. (s.deadline or 2) .. ". Pick a challenge, read its rule, go.",
 "   |cffffd100Lives:|r the hearts on the run badge at the top-right of this panel. Hover the badge for your challenge's rule and rewards, and on Hourglass the time left on the level; click it for the challenge page. Each challenge shows how many lives it gives. A death costs one; battlegrounds, arenas and duels are free.",
 "   |cffffd100Running out|r ends the run: the rule lifts and you keep everything. |cffffd100Reaching " .. cap .. "|r with a life left finishes it. Your first finish of a challenge pays its gold, its title, and an ability no roll or shop can give, kept as an heirloom. Finish with no life lost for |cffffd100the Unbroken|r.",
 "   |cffffd100Shards:|r every run pays them when it ends, finished or not: one per level reached, two per level past 60, and a third more for a run with no life lost. They buy an |cffffd100extra life|r for your next run, on the challenge page.",

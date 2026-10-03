@@ -65,7 +65,7 @@ ClasslessWildcard.AllowModeChoice = 1
 #    ClasslessWildcard.ModeChoiceDeadline
 #        Level at which a character that has not chosen is locked into
 #        DefaultMode. With 2, a path is chosen at level 1 or not at all.
-#        Fresh characters can also start a challenge run up to this level.
+#        A new character must also start any challenge run before this level.
 #        Default: 2
 ClasslessWildcard.ModeChoiceDeadline = 2
 

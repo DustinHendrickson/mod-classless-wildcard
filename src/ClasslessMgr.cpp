@@ -2517,7 +2517,8 @@ bool ClasslessMgr::StartRun(Player* player, uint8 challengeId,
     uint32 const cap = sWorld->getIntConfig(CONFIG_MAX_PLAYER_LEVEL);
     // The run is on the path the character already walks: at the cap it
     // begins with a Rebirth, on a fresh Hero it simply begins.
-    bool const fresh = player->GetLevel() <= cfg.modeChoiceDeadline && st.mode != Mode::Unchosen;
+    // the same window as the path itself: before ModeChoiceDeadline
+    bool const fresh = player->GetLevel() < cfg.modeChoiceDeadline && st.mode != Mode::Unchosen;
     if (RebirthEligible(player))
     {
         if (!Rebirth(player, heirlooms, err))
@@ -2526,7 +2527,7 @@ bool ClasslessMgr::StartRun(Player* player, uint8 challengeId,
     else if (!fresh)
     {
         if (err) *err = Acore::StringFormat(
-            "A challenge run starts at level {} as a Rebirth, or on a fresh Hero who has chosen a path, up to level {}.",
+            "A challenge run starts at level {} as a Rebirth, or on a new Hero who has chosen a path, before level {}.",
             cap, uint32(cfg.modeChoiceDeadline));
         return false;
     }
