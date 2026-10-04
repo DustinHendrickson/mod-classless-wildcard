@@ -225,6 +225,14 @@ public:
     // the core drops action buttons for spells this module teaches a moment
     // too late during login; this puts them back
     void RestoreDroppedActionButtons(Player* player);
+    // Tell the client only the spell modifiers it can apply correctly: those
+    // from spells of its own class's family. `full` overwrites every bit the
+    // core may have sent, for login. See the definition.
+    void SyncClientSpellMods(Player* player, bool full);
+    // A modifier changed: resync once, a tick later, however many changed.
+    void QueueClientSpellModSync(Player* player);
+    // true while SyncClientSpellMods is sending, so its own packets pass
+    static bool IsSendingClientSpellMods();
     void SaveState(Player* player);          // persist scalar state row
     void AnnounceState(Player* player);      // login summary line
     uint32 AbilityCost(ClasslessWildcard::AbilityEntry const& e) const;

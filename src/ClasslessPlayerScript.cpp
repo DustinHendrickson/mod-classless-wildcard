@@ -1368,9 +1368,37 @@ class spell_cw_dk_death_rune : public AuraScript
     }
 };
 
+// Holds back the core's spell modifier packets for a Hero. Their totals mix
+// every class's talents onto bits the client only applies to its own class's
+// spells; ClasslessMgr::SyncClientSpellMods sends the ones it can use instead.
+// A character still loading passes through: the login sync overwrites it all.
+class ClasslessServerScript : public ServerScript
+{
+public:
+    ClasslessServerScript() : ServerScript("ClasslessServerScript", { SERVERHOOK_CAN_PACKET_SEND }) { }
+
+    bool CanPacketSend(WorldSession* session, WorldPacket const& packet) override
+    {
+        uint16 const opcode = packet.GetOpcode();
+        if (opcode != SMSG_SET_FLAT_SPELL_MODIFIER && opcode != SMSG_SET_PCT_SPELL_MODIFIER)
+            return true;
+        if (ClasslessMgr::IsSendingClientSpellMods() || !sClasslessMgr->cfg.enabled || !session)
+            return true;
+        Player* player = session->GetPlayer();
+        if (!player || !player->IsInWorld())
+            return true;
+        CharState* st = sClasslessMgr->FindState(player);
+        if (!st || st->exempt)
+            return true;
+        sClasslessMgr->QueueClientSpellModSync(player);
+        return false;
+    }
+};
+
 void AddClasslessPlayerScripts()
 {
     new ClasslessWorldScript();
+    new ClasslessServerScript();
     new ClasslessPlayerScript();
     RegisterSpellScript(spell_cw_frenzied_regeneration);
     RegisterSpellScript(spell_cw_judgement_of_wisdom);

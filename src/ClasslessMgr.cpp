@@ -36,8 +36,10 @@
 #include "StringConvert.h"
 #include "StringFormat.h"
 #include "Tokenize.h"
+#include "WorldPacket.h"
 #include "WorldSession.h"
 #include <algorithm>
+#include <set>
 
 using namespace ClasslessWildcard;
 
@@ -3849,10 +3851,117 @@ void ClasslessMgr::HandleLogin(Player* player)
     // Last, once every spell this login was going to teach has been taught.
     RestoreDroppedActionButtons(player);
 
+    // After everything this login applied, and behind whatever the core sent
+    // while the character was loading.
+    player->m_Events.AddEventAtOffset([player]() { sClasslessMgr->SyncClientSpellMods(player, true); }, 1ms);
+
     SaveState(player);
 
     if (cfg.announce)
         AnnounceState(player);
+}
+
+// What the client is told about spell modifiers.
+//
+// SMSG_SET_FLAT_SPELL_MODIFIER / _PCT_ carry a bit, an op and a total, and no
+// spell family. Player::AddSpellMod totals every modifier on that bit whatever
+// family it belongs to, and the client applies the total to the spells of ITS
+// OWN class's family (ChrClasses.dbc spellfamily) carrying that bit. For a Hero
+// that is wrong both ways: a warrior or mage talent lands on paladin spells
+// that happen to share its bit -- Improved Fireball's bit 0 lands on Righteous
+// Fury -- and moves their cost, cast time and cooldown in the client's own
+// checks and tooltips while the server charges the real thing.
+//
+// So the core's packets are held back for a Hero (ClasslessServerScript) and
+// this sends the totals the client can use: per bit, only modifiers whose spell
+// is in the client's family. Those match what the server applies exactly,
+// because the server matches on the family too. Every other family is the
+// addon's job, from the server's own numbers (SC records).
+namespace
+{
+    thread_local bool sendingClientSpellMods = false;
+
+    uint32 ClientSpellModKey(SpellModType type, uint8 op, uint8 bit)
+    {
+        return (type == SPELLMOD_PCT ? 0x10000u : 0u) | (uint32(op) << 8) | bit;
+    }
+}
+
+bool ClasslessMgr::IsSendingClientSpellMods()
+{
+    return sendingClientSpellMods;
+}
+
+void ClasslessMgr::QueueClientSpellModSync(Player* player)
+{
+    CharState* st = FindState(player);
+    if (!st || st->clientSpellModSyncQueued)
+        return;
+    st->clientSpellModSyncQueued = true;
+    player->m_Events.AddEventAtOffset([player]() { sClasslessMgr->SyncClientSpellMods(player, false); }, 1ms);
+}
+
+void ClasslessMgr::SyncClientSpellMods(Player* player, bool full)
+{
+    CharState* st = FindState(player);
+    if (!st)
+        return;
+    st->clientSpellModSyncQueued = false;
+    if (st->exempt || !cfg.enabled)
+        return;
+
+    ChrClassesEntry const* chrClass = sChrClassesStore.LookupEntry(player->getClass());
+    uint32 const clientFamily = chrClass ? chrClass->spellfamily : 0;
+
+    // `want` is what the client should hold; `core` is what Player::AddSpellMod
+    // would have told it, so a full sync knows every bit it has to overwrite.
+    std::unordered_map<uint32, int32> want, core;
+    for (uint8 op = 0; op < MAX_SPELLMOD; ++op)
+        for (SpellModifier const* mod : player->GetSpellModList(op))
+        {
+            SpellInfo const* owner = sSpellMgr->GetSpellInfo(mod->spellId);
+            bool const reaches = owner && owner->SpellFamilyName == clientFamily;
+            for (uint8 bit = 0; bit < 96; ++bit)
+            {
+                if (!(mod->mask[bit / 32] & (1u << (bit % 32))))
+                    continue;
+                uint32 const key = ClientSpellModKey(mod->type, op, bit);
+                core[key] += mod->value;
+                if (reaches)
+                    want[key] += mod->value;
+            }
+        }
+
+    std::set<uint32> keys;
+    for (auto const& [key, value] : want)
+        keys.insert(key);
+    for (auto const& [key, value] : st->clientSpellMods)
+        keys.insert(key);
+    if (full)
+        for (auto const& [key, value] : core)
+            keys.insert(key);
+
+    sendingClientSpellMods = true;
+    for (uint32 key : keys)
+    {
+        auto const wantItr = want.find(key);
+        int32 const value = wantItr != want.end() ? wantItr->second : 0;
+        auto const hadItr = st->clientSpellMods.find(key);
+        int32 const had = hadItr != st->clientSpellMods.end() ? hadItr->second : 0;
+        if (!full && value == had)
+            continue;
+        WorldPacket data((key & 0x10000u) ? SMSG_SET_PCT_SPELL_MODIFIER : SMSG_SET_FLAT_SPELL_MODIFIER, 1 + 1 + 4);
+        data << uint8(key & 0xFF);
+        data << uint8((key >> 8) & 0xFF);
+        data << int32(value);
+        player->SendDirectMessage(&data);
+    }
+    sendingClientSpellMods = false;
+
+    st->clientSpellMods.clear();
+    for (auto const& [key, value] : want)
+        if (value)
+            st->clientSpellMods[key] = value;
 }
 
 // Put back the action buttons the core threw away.

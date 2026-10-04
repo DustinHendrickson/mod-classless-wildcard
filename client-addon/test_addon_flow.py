@@ -177,7 +177,7 @@ function SendAddonMessage(prefix, msg, channel, target) SENT[#SENT + 1] = msg en
 function UnitName() return "''' + PLAYER + r'''" end
 function UnitLevel() return 80 end
 function UnitStat() return 10, 10, 0, 0 end
-function UnitPower() return 100 end
+function UnitPower(unit, kind) if kind and POWER and POWER[kind] then return POWER[kind] end return 100 end
 function UnitPowerMax() return 100 end
 function UnitPowerType() return 0, "MANA" end
 function UnitClass() return "Paladin", "PALADIN", 2 end
@@ -210,6 +210,36 @@ function hooksecurefunc(a, b, c)
         fn(...)
         return unpack(out)
     end)
+end
+-- The action bar: Blizzard's own ActionButton_UpdateUsable, line for line from
+-- FrameXML ActionButton.lua (3.3.5a), so the addon's hook on it installs and
+-- runs. ACTIONS[slot] = book slot of the spell on it; USABLE[slot] = what the
+-- client's own copy says, { isUsable, notEnoughMana }.
+ACTIONS, USABLE, POWER = {}, {}, {}
+function GetActionInfo(action)
+    if ACTIONS[action] then return "spell", ACTIONS[action] end
+    return nil
+end
+function IsUsableAction(action)
+    local u = USABLE[action]
+    if u == nil then return 1, nil end
+    return u[1], u[2]
+end
+function ActionButton_UpdateUsable(self)
+    local name = self:GetName()
+    local icon = _G[name.."Icon"]
+    local normalTexture = _G[name.."NormalTexture"]
+    local isUsable, notEnoughMana = IsUsableAction(self.action)
+    if ( isUsable ) then
+        icon:SetVertexColor(1.0, 1.0, 1.0)
+        normalTexture:SetVertexColor(1.0, 1.0, 1.0)
+    elseif ( notEnoughMana ) then
+        icon:SetVertexColor(0.5, 0.5, 1.0)
+        normalTexture:SetVertexColor(0.5, 0.5, 1.0)
+    else
+        icon:SetVertexColor(0.4, 0.4, 0.4)
+        normalTexture:SetVertexColor(1.0, 1.0, 1.0)
+    end
 end
 SOUNDS = {}
 function PlaySound(name) table.insert(SOUNDS, name) end
@@ -2927,6 +2957,73 @@ def test_spell_corrections(h):
             "a new build drops the old answers and asks again: %r" % h.sent())
 
 
+def test_action_usable(h):
+    print("--- action buttons: coloured from the server's cost, not the lowered copy")
+    g = h.g
+    # Heroic Strike on action slot 1, book slot 40. The client's copy says 9
+    # rage, so by its own reckoning it is usable at 12; the server wants 15.
+    h.rt.execute("""
+        local realInfo, realName = GetSpellInfo, GetSpellName
+        function GetSpellInfo(id)
+            if id == 78 then return "Heroic Strike", "Rank 1", "x", 9, false, 1, 0, 0, 5 end
+            return realInfo(id)
+        end
+        function GetSpellName(slot, book)
+            if slot == 40 then return "Heroic Strike", "Rank 1" end
+            if slot == 41 then return "Bash", "Rank 1" end
+            return realName(slot, book)
+        end
+        ACTIONS[1], ACTIONS[2] = 40, 41
+        for i = 1, 2 do
+            local b = CreateFrame("CheckButton", "ActionButton" .. i)
+            CreateFrame("Texture", "ActionButton" .. i .. "Icon")
+            CreateFrame("Texture", "ActionButton" .. i .. "NormalTexture")
+            b.action = i
+        end
+        POWER[1] = 12
+    """)
+    h.recv("SF|78:15:0:0:0:0:0:0:0:0:0:0:0:0;")
+    h.recv("SFE|")
+
+    def rgb(i):
+        c = g["ActionButton%dIcon" % i]["__rgb"]
+        return (c[1], c[2], c[3]) if c else None
+
+    def power_event(kind, unit="player"):
+        for f in g.FRAMES.values():
+            ev = f["__events"]
+            scripts = f["__scripts"]
+            if ev and ev[kind] and scripts and scripts["OnEvent"]:
+                scripts["OnEvent"](f, kind, unit)
+
+    blue, white = (0.5, 0.5, 1.0), (1.0, 1.0, 1.0)
+    g.ActionButton_UpdateUsable(g.ActionButton1)
+    g.ActionButton_UpdateUsable(g.ActionButton2)
+    h.check(rgb(1) == blue, "12 rage against a true 15 draws not-enough-power: %r" % (rgb(1),))
+    h.check(rgb(2) == white, "a spell with no correction keeps the client's colour: %r" % (rgb(2),))
+
+    g.POWER[1] = 15
+    power_event("UNIT_RAGE")
+    h.check(rgb(1) == white, "reaching 15 rage lights it, with no client event: %r" % (rgb(1),))
+
+    g.POWER[1] = 14
+    power_event("UNIT_RAGE", "target")
+    h.check(rgb(1) == white, "another unit's power changes nothing")
+    power_event("UNIT_RAGE")
+    h.check(rgb(1) == blue, "dropping below it greys it again: %r" % (rgb(1),))
+
+    # the client's own refusal still wins: grey for unusable is left alone
+    h.rt.execute("USABLE[1] = { nil, nil }")
+    g.ActionButton_UpdateUsable(g.ActionButton1)
+    h.check(rgb(1) == (0.4, 0.4, 0.4), "an unusable button keeps the client's grey: %r" % (rgb(1),))
+    h.rt.execute("USABLE[1] = nil")
+
+    # a new list with a lower cost (a talent bought) redraws at once
+    h.recv("SF|78:12:0:0:0:0:0:0:0:0:0:0:0:0;")
+    h.recv("SFE|")
+    h.check(rgb(1) == white, "a cheaper cost from the server lights it straight away: %r" % (rgb(1),))
+
+
 def test_layering(h):
     print("--- layering: what draws over what")
     CW = h.CW
@@ -3024,6 +3121,7 @@ def main():
     test_settings(h)
     test_layering(h)
     test_spell_corrections(h)
+    test_action_usable(h)
     test_default_scope(h)
     test_paperdoll(h)
     test_stats(h)

@@ -290,6 +290,12 @@ namespace ClasslessWildcard
         // nothing pushed yet, so the first update always syncs)
         uint8 lastComboPush = 255;
 
+        // The spell modifier totals this client was last told, keyed by
+        // ClientSpellModKey, and whether a resync is already on its way.
+        // Runtime only; see ClasslessMgr::SyncClientSpellMods.
+        std::unordered_map<uint32, int32> clientSpellMods;
+        bool clientSpellModSyncQueued = false;
+
         std::unordered_map<uint32 /*firstSpellId*/, OwnedAbility> abilities;
         std::unordered_map<uint32 /*talentId*/, uint8 /*rank*/>   talents;
         std::vector<RollBan>   bans;

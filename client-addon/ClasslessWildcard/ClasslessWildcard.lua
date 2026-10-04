@@ -6190,6 +6190,7 @@ local function HandleMessage(msg)
         end
     elseif kind == "SFE" then
         CW._collectingFix = false
+        if CW.RefreshUsable then CW.RefreshUsable() end
     elseif kind == "SQ" then
         -- The answer to SFQ: one spell the panel showed before it was bought,
         -- which the login list (spells the Hero owns) never covers. "-" is a
@@ -6675,6 +6676,63 @@ do
             local name, rank = GetSpellName(id, BOOKTYPE_SPELL)
             if not name then return end
             T.decorate(self, CW.spellFixByName[name .. "|" .. (rank or "")])
+        end)
+    end
+end
+
+-- ---------------------------------------------------------------------------
+-- Action buttons and the true cost
+--
+-- The client patch lowers its copy of every talent-reducible cost to the least
+-- any build could pay, so a Hero holding the talent is not refused before the
+-- server is asked. The bar colours a button from that copy, though: Heroic
+-- Strike lit up at 9 rage while the server wanted 15 and refused the press.
+-- The server's cost for every owned spell is in CW.spellFix, so a button whose
+-- spell costs more than the Hero has is drawn the way the client draws "not
+-- enough mana" itself.
+--
+-- ActionButton_UpdateUsable only runs when the CLIENT thinks usability changed,
+-- and by its copy nothing changes between 9 and 15 rage. So every button it has
+-- drawn is drawn again whenever the player's power moves.
+-- ---------------------------------------------------------------------------
+do
+    local U = { buttons = {} }
+
+    function U.short(action)
+        local kind, slot = GetActionInfo(action)
+        if kind ~= "spell" or not slot or slot == 0 then return false end
+        local name, rank = GetSpellName(slot, BOOKTYPE_SPELL)
+        if not name then return false end
+        local id = CW.spellFixByName[name .. "|" .. (rank or "")]
+        local fix = id and CW.spellFix[id]
+        if not fix or not fix.cost or fix.cost <= 0 then return false end
+        local powerType = select(6, GetSpellInfo(id))
+        if type(powerType) ~= "number" or powerType < 0 then return false end
+        return UnitPower("player", powerType) < fix.cost
+    end
+
+    function CW.RefreshUsable()
+        for button in pairs(U.buttons) do
+            if button.action and button:IsVisible() then ActionButton_UpdateUsable(button) end
+        end
+    end
+
+    if ActionButton_UpdateUsable and hooksecurefunc then
+        hooksecurefunc("ActionButton_UpdateUsable", function(self)
+            local name = self:GetName()
+            if not name or not self.action then return end
+            U.buttons[self] = true
+            if IsUsableAction(self.action) and U.short(self.action) then
+                _G[name .. "Icon"]:SetVertexColor(0.5, 0.5, 1.0)
+                _G[name .. "NormalTexture"]:SetVertexColor(0.5, 0.5, 1.0)
+            end
+        end)
+        local watch = CreateFrame("Frame")
+        for _, e in ipairs({ "UNIT_MANA", "UNIT_RAGE", "UNIT_ENERGY", "UNIT_FOCUS", "UNIT_RUNIC_POWER" }) do
+            watch:RegisterEvent(e)
+        end
+        watch:SetScript("OnEvent", function(_, _, unit)
+            if unit == "player" then CW.RefreshUsable() end
         end)
     end
 end
