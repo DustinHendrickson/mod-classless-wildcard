@@ -591,7 +591,8 @@ ClasslessWildcard.TeachProficiencies = 1
 #        The proficiency spells taught, plus the ranged use-abilities: Shoot
 #        5019 fires WANDS only, bows/guns/crossbows need Shoot 3018 and thrown
 #        weapons need Throw 2764. Those two are also taught automatically
-#        whenever the matching proficiency is in this list.
+#        whenever the matching proficiency is in this list, and Auto Shot 75
+#        comes with Shoot 3018. Nothing taught here can be rolled or bought.
 #        Default: cloth, leather, mail, plate, shield, every weapon type,
 #                 wands, both Shoots, Throw and dual wield
 ClasslessWildcard.ProficiencySpells = "9078,9077,8737,750,9116,201,202,196,197,198,199,200,227,1180,15590,264,266,5011,2567,5009,5019,3018,2764,674"

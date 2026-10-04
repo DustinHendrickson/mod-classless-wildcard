@@ -334,6 +334,34 @@ def main(argv):
             check("Spell.dbc tool patch idempotent", not cleared_again,
                   "%d cleared on second pass" % cleared_again)
 
+            # Auto Shot is taught to every Hero, and its stock icon is the
+            # whirlwind the client hides under a hunter's bow.
+            icon_raw = files.find(elemental.SPELLICON)[0]
+            icon_dbc, reiconed = dbc.set_spell_icons(spell_dbc, icon_raw)
+            ic, _icf, irs, _iss = dbc.parse_header(icon_raw)
+            icon_names = {}
+            for index in range(ic):
+                icon_id, name_off = struct.unpack_from("<2I", icon_raw, 20 + index * irs)
+                icon_names[icon_id] = dbc.read_string(icon_raw[20 + ic * irs:], name_off)
+
+            def spell_icon(blob, spell_id):
+                for index in range(sc):
+                    if struct.unpack_from("<I", blob, 20 + index * sr)[0] == spell_id:
+                        return icon_names.get(struct.unpack_from(
+                            "<I", blob, 20 + index * sr + dbc.SPELL_ICON_COLUMN * 4)[0])
+                return None
+
+            check("Auto Shot draws a bow",
+                  spell_icon(icon_dbc, 75) == dbc.SPELL_ICON_OVERRIDES[75],
+                  "%s -> %s" % (spell_icon(spell_dbc, 75), spell_icon(icon_dbc, 75)))
+            stray = sum(1 for index in range(sc)
+                        if spell_dbc[20 + index * sr:20 + (index + 1) * sr]
+                        != icon_dbc[20 + index * sr:20 + (index + 1) * sr]) - reiconed
+            check("only the overridden spells change icon", reiconed == 1 and stray == 0,
+                  "%d changed, %d stray" % (reiconed, stray))
+            check("Spell.dbc icon patch idempotent",
+                  not dbc.set_spell_icons(icon_dbc, icon_raw)[1])
+
             # --- elemental variants ------------------------------------------
             # The generated spell rows must land in THIS client's Spell.dbc,
             # with the base's swing kit and an element impact, and the painted

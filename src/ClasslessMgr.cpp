@@ -622,6 +622,7 @@ void ClasslessMgr::BuildLibrary()
     }
 
     // ---- abilities from SkillLineAbility.dbc (class spells) ----
+    std::vector<uint32> const taught = TaughtSpells();
     for (uint32 i = 0; i < sSkillLineAbilityStore.GetNumRows(); ++i)
     {
         SkillLineAbilityEntry const* sla = sSkillLineAbilityStore.LookupEntry(i);
@@ -684,18 +685,6 @@ void ClasslessMgr::BuildLibrary()
         if (info->IsPassive() && !cfg.includePassives
             && !info->RecoveryTime && !info->CategoryRecoveryTime)
             continue;
-        // There is no auto-repeat filter here, deliberately. One existed, on
-        // the reasoning that a repeating shot is not an ability to roll for --
-        // but Auto Shot is the ONLY auto-repeat spell in the game that sits on
-        // a class skill line, so the filter's whole effect was to delete it.
-        // Shoot and Throw, which that reasoning was really about, live on
-        // weapon proficiency lines and never get this far; the skill-category
-        // check above drops them.
-        //
-        // Auto Shot is what makes a bow a weapon, it is the thing every hunter
-        // shot in the library is built around, and it asks nothing special of
-        // the pool: SpellLevel 1 and no cooldown rate it Common at level 1 on
-        // the ordinary rules. A Hero buys it like anything else.
         // Spells the client will not draw in the spellbook, and that nothing
         // else lists either: the hidden halves of other spells (Light's Beacon,
         // Curse of Doom Effect, Pain Suppression's 44416) and the talent
@@ -734,12 +723,9 @@ void ClasslessMgr::BuildLibrary()
         if (utility)
             continue;
 
-        // spells the module itself teaches as proficiencies
-        bool isProficiency = false;
-        for (uint32 prof : cfg.proficiencySpells)
-            if (prof == sla->Spell)
-                isProficiency = true;
-        if (isProficiency)
+        // spells the module teaches for free: Auto Shot is the one on a class
+        // line, and a free spell is never a card
+        if (std::find(taught.begin(), taught.end(), sla->Spell) != taught.end())
             continue;
 
         uint32 first = sSpellMgr->GetFirstSpellInChain(sla->Spell);
@@ -3439,14 +3425,14 @@ std::vector<uint32> ClasslessMgr::TaughtSpells() const
     {
         return std::find(cfg.proficiencySpells.begin(), cfg.proficiencySpells.end(), id) != cfg.proficiencySpells.end();
     };
+    // Auto Shot goes with them, the same as Parry below: it is what makes a bow
+    // a weapon, not a power to roll or buy. BuildLibrary keeps everything in
+    // this list out of the pool, so it never turns up as a card either.
     if (listed(264) || listed(266) || listed(5011))
+    {
         out.push_back(3018);   // Shoot (bow / gun / crossbow)
-    // Auto Shot is NOT here. It was, for one round, because the pool's
-    // auto-repeat filter meant nothing else could hand it over -- but the
-    // answer to that was to take the filter out, not to give the ability away.
-    // 3018 stays: it is the single shot that comes with the weapon skill, the
-    // proficiency is useless without it, and it is on a weapon line the pool
-    // never stocks.
+        out.push_back(75);     // Auto Shot
+    }
     if (listed(2567))
         out.push_back(2764);   // Throw
 
@@ -3715,6 +3701,41 @@ void ClasslessMgr::HandleLogin(Player* player)
     // characters who passed the line before this rule existed, or while
     // logged out
     ClearStaleLocks(player);
+
+    // A line the Hero owns that is now taught free (Auto Shot, rolled or
+    // bought while it was still in the pool). The spell stays, TeachProficiencies
+    // has just taught it; the slot it took goes back. A rolled card is dealt
+    // again, a bought one is refunded at what it cost.
+    {
+        std::vector<uint32> const taught = TaughtSpells();
+        std::vector<std::pair<uint32, GrantSource>> freed;
+        for (auto const& [first, owned] : st.abilities)
+            if (!GetAbility(first) && std::find(taught.begin(), taught.end(), first) != taught.end())
+                freed.emplace_back(first, owned.source);
+        for (auto const& [first, source] : freed)
+        {
+            st.abilities.erase(first);
+            CharacterDatabase.Execute("DELETE FROM cw_char_abilities WHERE guid = {} AND first_spell = {}",
+                                      player->GetGUID().GetCounter(), first);
+            std::string line = Acore::StringFormat("{} is now taught to every Hero.", SpellName(first));
+            if (source == GrantSource::Rolled && st.mode == Mode::Wildcard)
+            {
+                if (uint32 dealt = RollAbility(player, GrantSource::Rolled))
+                    line += Acore::StringFormat(" {} takes its place.", SpellName(dealt));
+            }
+            else if (source == GrantSource::Picked)
+                if (SpellInfo const* info = sSpellMgr->GetSpellInfo(first))
+                {
+                    uint32 const cost = cfg.abilityCostByRarity[uint8(RarityFromPower(
+                        std::max(info->RecoveryTime, info->CategoryRecoveryTime), 0, uint8(info->SpellLevel)))];
+                    st.abilityEssence += cost;
+                    line += Acore::StringFormat(" {} Ability Essence is back.", cost);
+                }
+            Msg(player, line);
+        }
+        if (!freed.empty())
+            SaveState(player);
+    }
 
     // A talent that has since left the list turns
     // into the ability it stood for: the line is granted at no cost, the
@@ -4744,6 +4765,12 @@ uint32 ClasslessMgr::StripUnearnedSpells(Player* player)
     if (cfg.runeforgingEnable)
         for (auto const& grant : cfg.runeforgingGrants)
             earned.insert(grant.first);
+
+    // And what the module teaches everyone. Auto Shot is AcquireMethod 2 on
+    // Marksmanship, so it sits in _skillLearnedClassSpells and the sweep below
+    // would take it back on the same login that taught it.
+    for (uint32 spellId : TaughtSpells())
+        earned.insert(spellId);
 
     GrantGuard guard(_applyingGrant);
     uint32 removed = 0;

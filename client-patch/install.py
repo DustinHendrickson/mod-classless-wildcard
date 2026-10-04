@@ -243,6 +243,13 @@ def build_data_patch(files, name, report, theme=False):
                   "(totems, relics; reagents untouched; from %s)"
                   % (cleared, os.path.basename(source)))
 
+    # Auto Shot is taught to every Hero at level 1, sword in hand, so its own
+    # icon shows where a hunter would see their bow.
+    icon_raw, _icon_source = files.find(elemental.SPELLICON)
+    payload[SPELL], reiconed = dbc.set_spell_icons(payload[SPELL], icon_raw)
+    report.append("  Spell.dbc        icon replaced on %d stock spell(s) (Auto Shot)"
+                  % reiconed)
+
     # The cost floor used to run here. It runs in apply_client_floors() now, after
     # the generated rows have been appended -- see that function for why.
 

@@ -7,7 +7,8 @@ SkillRaceClassInfo.dbc - which class skill lines the client accepts for the
                          character.
 SkillLineAbility.dbc   - which class each class spell belongs to, which is
                          what actually decides the spellbook's tab set.
-Spell.dbc              - the class tool a spell demands before it may be cast.
+Spell.dbc              - the class tool a spell demands before it may be cast,
+                         and the icon of a stock spell a Hero holds differently.
 
 Both are rewritten from the copy already winning in the client's archive stack,
 so a community patch's version is preserved rather than reverted.
@@ -391,6 +392,60 @@ def clear_spell_tools(data: bytes, class_spells):
     header = WDBC_MAGIC + struct.pack("<4I", record_count, field_count,
                                       record_size, string_size)
     return header + bytes(records) + data[strings_off:], cleared
+
+
+# Spell.dbc column 133 is SpellIconID, a row id in SpellIcon.dbc (ID, path).
+SPELL_ICON_COLUMN = 133
+
+# Stock spells whose own icon is wrong for a Hero. Auto Shot's is
+# Ability_Whirlwind: a hunter never sees it, because the client paints the
+# equipped ranged weapon over it, but a Hero holds Auto Shot from level 1 with a
+# sword in hand and the whirlwind is what shows.
+SPELL_ICON_OVERRIDES = {
+    75: "Interface\\Icons\\INV_Weapon_Bow_05",   # Auto Shot
+}
+
+
+def set_spell_icons(spell_data: bytes, icon_data: bytes, overrides=None):
+    """Point stock spells at a different SpellIcon.dbc row.
+
+    `overrides` maps spell id to an icon PATH, resolved against the client's
+    own SpellIcon.dbc so no row id is assumed. Returns (new_dbc_bytes, changed).
+    """
+    overrides = SPELL_ICON_OVERRIDES if overrides is None else overrides
+
+    icon_count, _icon_fields, icon_size, _icon_strings = parse_header(icon_data)
+    icon_strings = icon_data[20 + icon_count * icon_size:]
+    icon_ids = {}
+    for index in range(icon_count):
+        icon_id, name_off = struct.unpack_from("<2I", icon_data, 20 + index * icon_size)
+        icon_ids[read_string(icon_strings, name_off).lower()] = icon_id
+    wanted = {}
+    for spell_id, path in overrides.items():
+        if path.lower() not in icon_ids:
+            raise DbcError("SpellIcon.dbc has no %s for spell %d" % (path, spell_id))
+        wanted[spell_id] = icon_ids[path.lower()]
+
+    record_count, field_count, record_size, string_size = parse_header(spell_data)
+    if field_count != SPELL_FIELDS or record_size != SPELL_FIELDS * 4:
+        raise DbcError("Spell.dbc is not the 3.3.5a layout this patch understands.")
+    records_off = 20
+    strings_off = records_off + record_count * record_size
+    records = bytearray(spell_data[records_off:strings_off])
+
+    changed = 0
+    for index in range(record_count):
+        base = index * record_size
+        icon_id = wanted.get(struct.unpack_from("<I", records, base)[0])
+        if icon_id is None:
+            continue
+        if struct.unpack_from("<I", records, base + SPELL_ICON_COLUMN * 4)[0] != icon_id:
+            struct.pack_into("<I", records, base + SPELL_ICON_COLUMN * 4, icon_id)
+            changed += 1
+
+    header = WDBC_MAGIC + struct.pack("<4I", record_count, field_count,
+                                      record_size, string_size)
+    return header + bytes(records) + spell_data[strings_off:], changed
 
 
 
