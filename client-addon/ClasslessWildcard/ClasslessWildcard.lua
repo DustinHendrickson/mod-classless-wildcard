@@ -6947,19 +6947,83 @@ end
 -- Pet talents are left exactly as they are: those really are the pet's own
 -- trees, the stock frame draws them correctly, and there is nothing here that
 -- replaces it.
+--
+-- But the Talents button and key open the window on the PLAYER spec, and pet
+-- talents are only a side tab inside it, so sending the player spec away also
+-- sent the pet's with it: a Hero with a tamed beast had no way to spend its
+-- points. So with a pet that has talents the window opens on the pet's spec
+-- and the player spec tabs are hidden; without one it goes to the browser as
+-- before.
 -- ---------------------------------------------------------------------------
 do
-    local function steer()
+    local P = {}
+    CW.talentSteer = P   -- for the harness, which has to run the deferred close
+
+    -- the client's own answer: a tamed beast of a family with a talent tree
+    function P.petHasTalents()
+        return (GetNumTalentGroups(false, true) or 0) > 0
+    end
+
+    function P.steer()
         if not PlayerTalentFrame or not PlayerTalentFrame:IsShown() then return end
         if PlayerTalentFrame.pet then return end      -- pet talents: leave it alone
+        if P.petHasTalents() then
+            PlayerTalentFrame_Open(true, 1)
+            return
+        end
         if InCombatLockdown() then return end         -- panels do not move in combat
         HideUIPanel(PlayerTalentFrame)
         if frame and not frame:IsShown() then frame:Show() end
     end
 
+    -- Any route onto a player spec -- the frame's own default on show, the
+    -- fallback when a pet is dismissed -- goes through PlayerSpecTab_OnClick.
+    -- Turn it to the pet's spec while there is one. With none, close the frame
+    -- a frame later: closing it here would run inside its own OnShow, before
+    -- the Toggle hook above has had the chance to open the browser instead.
+    P.later = CreateFrame("Frame")
+    P.later:Hide()
+    P.later:SetScript("OnUpdate", function(self)
+        self:Hide()
+        if PlayerTalentFrame and PlayerTalentFrame:IsShown() and not PlayerTalentFrame.pet
+           and not P.petHasTalents() and not InCombatLockdown() then
+            HideUIPanel(PlayerTalentFrame)
+        end
+    end)
+
+    function P.onSpecClick(tab)
+        if not tab or not PlayerTalentFrame or not PlayerTalentFrame:IsShown() then return end
+        if PlayerTalentFrame.pet then return end
+        if P.petHasTalents() then
+            PlayerTalentFrame_Open(true, 1)
+        else
+            P.later:Show()
+        end
+    end
+
+    -- the side tabs for the player's own specs: there is nothing on them
+    function P.hidePlayerTabs()
+        for i = 1, 8 do
+            local tab = _G["PlayerSpecTab" .. i]
+            if not tab then break end
+            if type(tab.specIndex) == "string" and not tab.specIndex:find("^pet") then
+                tab:Hide()
+            end
+        end
+    end
+
     local function attach()
         if type(_G.PlayerTalentFrame_Toggle) ~= "function" then return false end
-        hooksecurefunc("PlayerTalentFrame_Toggle", steer)
+        hooksecurefunc("PlayerTalentFrame_Toggle", P.steer)
+        if type(_G.PlayerTalentFrame_Open) == "function" then
+            hooksecurefunc("PlayerTalentFrame_Open", P.steer)
+        end
+        if type(_G.PlayerSpecTab_OnClick) == "function" then
+            hooksecurefunc("PlayerSpecTab_OnClick", P.onSpecClick)
+        end
+        if type(_G.PlayerTalentFrame_UpdateSpecs) == "function" then
+            hooksecurefunc("PlayerTalentFrame_UpdateSpecs", P.hidePlayerTabs)
+        end
         return true
     end
 

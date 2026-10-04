@@ -3024,6 +3024,89 @@ def test_action_usable(h):
     h.check(rgb(1) == white, "a cheaper cost from the server lights it straight away: %r" % (rgb(1),))
 
 
+def test_pet_talents(h):
+    print("--- talent window: the pet's spec with a tamed beast, the browser without")
+    g = h.g
+    # A small model of Blizzard_TalentUI (3.3.5a): the frame shows on the
+    # player spec by default (OnShow clicks the default spec tab), Toggle and
+    # Open then click the spec they were asked for, and every spec change goes
+    # through PlayerSpecTab_OnClick, which is what sets PlayerTalentFrame.pet.
+    h.rt.execute("""
+        PET_TALENT_GROUPS = 0
+        function GetNumTalentGroups(inspect, pet) if pet then return PET_TALENT_GROUPS end return 1 end
+        PlayerTalentFrame = CreateFrame("Frame", "PlayerTalentFrame")
+        PlayerTalentFrame:Hide()
+        PlayerTalentFrame.pet = false
+        for i, spec in ipairs({ "spec1", "spec2", "petspec1" }) do
+            CreateFrame("CheckButton", "PlayerSpecTab" .. i).specIndex = spec
+        end
+        function PlayerSpecTab_OnClick(tab)
+            PlayerTalentFrame.pet = tab.specIndex:find("^pet") ~= nil
+            PlayerTalentFrame_UpdateSpecs()
+        end
+        function PlayerTalentFrame_UpdateSpecs()
+            for i = 1, 3 do _G["PlayerSpecTab" .. i]:Show() end
+        end
+        function ShowUIPanel(f)
+            if f:IsShown() then return end
+            f:Show()
+            if f == PlayerTalentFrame then PlayerSpecTab_OnClick(PlayerSpecTab1) end
+        end
+        function HideUIPanel(f) f:Hide() end
+        function PlayerTalentFrame_Toggle(pet, group)
+            if PlayerTalentFrame:IsShown() then HideUIPanel(PlayerTalentFrame) return end
+            ShowUIPanel(PlayerTalentFrame)
+            PlayerSpecTab_OnClick(pet and PlayerSpecTab3 or PlayerSpecTab1)
+        end
+        function PlayerTalentFrame_Open(pet, group)
+            ShowUIPanel(PlayerTalentFrame)
+            PlayerSpecTab_OnClick(pet and PlayerSpecTab3 or PlayerSpecTab1)
+        end
+    """)
+    # Blizzard_TalentUI loads on demand: the addon attaches when it does
+    for f in g.FRAMES.values():
+        ev, scripts = f["__events"], f["__scripts"]
+        if ev and ev["ADDON_LOADED"] and scripts and scripts["OnEvent"]:
+            scripts["OnEvent"](f, "ADDON_LOADED", "Blizzard_TalentUI")
+
+    talent, panel, P = g.PlayerTalentFrame, g.ClasslessWildcardFrame, h.CW.talentSteer
+
+    def shown(f):
+        return bool(f["__shown"])
+
+    def player_tabs_hidden():
+        return not shown(g.PlayerSpecTab1) and not shown(g.PlayerSpecTab2)
+
+    # no pet: the Talents button goes to the browser, as before
+    panel.Hide(panel)
+    g.PlayerTalentFrame_Toggle(False, 1)
+    P.later["__scripts"]["OnUpdate"](P.later)
+    h.check(not shown(talent) and shown(panel),
+            "without a pet the Talents button opens the browser: talent=%r panel=%r" % (shown(talent), shown(panel)))
+
+    # a tamed beast with talents: the window stays, on the pet's spec
+    panel.Hide(panel)
+    g.PET_TALENT_GROUPS = 1
+    g.PlayerTalentFrame_Toggle(False, 1)
+    h.check(shown(talent) and talent["pet"] and not shown(panel),
+            "with a pet it opens on the pet's talents: talent=%r pet=%r panel=%r"
+            % (shown(talent), talent["pet"], shown(panel)))
+    h.check(player_tabs_hidden() and shown(g.PlayerSpecTab3),
+            "the player spec tabs are hidden, the pet's is not")
+
+    # clicking onto a player spec some other way turns straight back
+    g.PlayerSpecTab_OnClick(g.PlayerSpecTab1)
+    h.check(talent["pet"] and shown(talent), "a player spec turns back to the pet's")
+
+    # the pet goes while the window is up: Blizzard falls back to a player
+    # spec, and the window closes a frame later
+    g.PET_TALENT_GROUPS = 0
+    g.PlayerSpecTab_OnClick(g.PlayerSpecTab1)
+    h.check(shown(talent), "nothing closes inside the click itself")
+    P.later["__scripts"]["OnUpdate"](P.later)
+    h.check(not shown(talent), "the window closes once the pet has gone")
+
+
 def test_layering(h):
     print("--- layering: what draws over what")
     CW = h.CW
@@ -3122,6 +3205,7 @@ def main():
     test_layering(h)
     test_spell_corrections(h)
     test_action_usable(h)
+    test_pet_talents(h)
     test_default_scope(h)
     test_paperdoll(h)
     test_stats(h)
