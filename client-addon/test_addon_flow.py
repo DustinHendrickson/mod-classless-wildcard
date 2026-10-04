@@ -3079,14 +3079,21 @@ def test_pet_talents(h):
 
     # no pet: the window closes, nothing else opens, and one line says why
     panel.Hide(panel)
-    h.rt.execute("PRINTED = {}; DEFAULT_CHAT_FRAME.AddMessage = function(self, m) table.insert(PRINTED, m) end")
+    h.rt.execute("""
+        PRINTED, ERRORS = {}, {}
+        DEFAULT_CHAT_FRAME.AddMessage = function(self, m) table.insert(PRINTED, m) end
+        UIErrorsFrame = CreateFrame("Frame", "UIErrorsFrame")
+        UIErrorsFrame.AddMessage = function(self, m) table.insert(ERRORS, m) end
+    """)
     g.PlayerTalentFrame_Toggle(False, 1)
     P.later["__scripts"]["OnUpdate"](P.later)
     printed = [str(v) for v in g.PRINTED.values()]
+    errors = [str(v) for v in g.ERRORS.values()]
     h.check(not shown(talent) and not shown(panel),
             "without a pet the Talents button opens nothing: talent=%r panel=%r" % (shown(talent), shown(panel)))
-    h.check(len(printed) == 1 and "pet's talents" in printed[0] and "—" not in printed[0],
-            "and says once what the button is for: %r" % printed)
+    h.check(len(errors) == 1 and "Pet talents" in errors[0] and "—" not in errors[0] and not printed,
+            "and says once, centre screen, what the button is for, with nothing in chat: %r / %r"
+            % (errors, printed))
 
     # a tamed beast with talents: the window stays, on the pet's spec
     panel.Hide(panel)
@@ -3109,6 +3116,51 @@ def test_pet_talents(h):
     h.check(shown(talent), "nothing closes inside the click itself")
     P.later["__scripts"]["OnUpdate"](P.later)
     h.check(not shown(talent), "the window closes once the pet has gone")
+
+
+def test_talents_key(h):
+    print("--- J opens the stock Talents window, only when nothing is on J")
+    g, CW = h.g, h.CW
+    # bindings as a table: key -> action, the way WTF stores them
+    h.rt.execute("""
+        BINDS = {}
+        function GetBindingAction(key) return BINDS[key] or "" end
+        function GetBindingKey(action)
+            for k, a in pairs(BINDS) do if a == action then return k end end
+        end
+        function SetBinding(key, action) BINDS[key] = action return 1 end
+        function SaveBindings() end
+    """)
+
+    def claim(binds):
+        h.rt.execute("BINDS = {}; ClasslessWildcardDB = ClasslessWildcardDB or {}; "
+                     "ClasslessWildcardDB.talentsKeyClaimed = nil")
+        for k, a in binds.items():
+            g.BINDS[k] = a
+        CW.ClaimTalentsKey()
+        return {k: g.BINDS[k] for k in list(g.BINDS.keys())}
+
+    got = claim({"T": "ATTACKTARGET", "N": "CLASSLESSWILDCARD_TOGGLE"})
+    h.check(got.get("J") == "TOGGLETALENTS" and got.get("T") == "ATTACKTARGET",
+            "a free J goes to Talents and T keeps Attack Target: %r" % got)
+    got = claim({"J": "MULTIACTIONBAR2BUTTON1"})
+    h.check(got.get("J") == "MULTIACTIONBAR2BUTTON1" and "TOGGLETALENTS" not in got.values(),
+            "a J the player already uses is left alone: %r" % got)
+    got = claim({"F9": "TOGGLETALENTS"})
+    h.check(got.get("J") is None, "Talents already on a key of its own: J is not touched: %r" % got)
+
+    # once per account: a later load does not claim again
+    claim({})
+    g.BINDS["J"] = None
+    CW.ClaimTalentsKey()
+    h.check(g.BINDS["J"] is None, "a player who later clears J is not overridden")
+
+    # Hero Advancement's own claim, with N taken and every fallback busy,
+    # never lands on J
+    h.rt.execute("BINDS = { N = 'MOVEFORWARD', Y = 'TOGGLEACHIEVEMENT', G = 'TARGETLASTHOSTILE', "
+                 "K = 'TOGGLECHARACTER1' }; ClasslessWildcardDB.hotkeyClaimed = nil")
+    CW.ClaimHotkey()
+    h.check(g.BINDS["J"] is None, "Hero Advancement never claims J: %r" % g.BINDS["J"])
 
 
 def test_layering(h):
@@ -3210,6 +3262,7 @@ def main():
     test_spell_corrections(h)
     test_action_usable(h)
     test_pet_talents(h)
+    test_talents_key(h)
     test_default_scope(h)
     test_paperdoll(h)
     test_stats(h)

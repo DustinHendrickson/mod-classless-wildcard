@@ -1068,7 +1068,7 @@ public:
             if (refund)
                 player->ModifyMoney(int32(refund));
             bool const wildcard = sClasslessMgr->GetState(player).mode == Mode::Wildcard;
-            std::string text = Acore::StringFormat("|cff00ccff[Hero]|r Heroes cannot learn {} this way. {}",
+            std::string text = Acore::StringFormat("|cff00ccff[Classless]|r Heroes cannot learn {} this way. {}",
                 sClasslessMgr->SpellNameOf(firstSpell),
                 wildcard ? "Wildcard abilities come from your rolls."
                          : "Buy it with Ability Essence in /cw or at the Hero Advancement NPC.");

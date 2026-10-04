@@ -45,7 +45,7 @@ using namespace ClasslessWildcard;
 
 namespace
 {
-    constexpr char MSG_PREFIX[] = "|cff00ccff[Hero]|r ";
+    constexpr char MSG_PREFIX[] = "|cff00ccff[Classless]|r ";
 
     std::string SpellName(uint32 spellId)
     {

@@ -92,7 +92,7 @@ local function Send(msg)
 end
 
 local function Print(msg)
-    DEFAULT_CHAT_FRAME:AddMessage("|cff00ccff[Hero]|r " .. msg)
+    DEFAULT_CHAT_FRAME:AddMessage("|cff00ccff[Classless]|r " .. msg)
 end
 
 local function SpellLabel(spellId, rarity)
@@ -6810,6 +6810,7 @@ events:SetScript("OnEvent", function(self, event, arg1, arg2, arg3, arg4)
         -- and fetched them.
         Send("STATS")
         if CW.ClaimHotkey then CW.ClaimHotkey() end
+        if CW.ClaimTalentsKey then CW.ClaimTalentsKey() end
         if CW.RefreshMicroTooltip then CW.RefreshMicroTooltip() end
     elseif event == "UPDATE_BINDINGS" then
         -- the player rebound us in Key Bindings: keep the "(N)" suffix honest
@@ -6965,7 +6966,9 @@ do
     end
 
     -- Without a pet the window has nothing for a Hero, so it closes and says
-    -- what the button is for. Hero Advancement has its own button and key.
+    -- what the button is for, where the game says "Not enough rage": the
+    -- centre-screen line that fades by itself. Hero Advancement has its own
+    -- button and key.
     function P.steer()
         if not PlayerTalentFrame or not PlayerTalentFrame:IsShown() then return end
         if PlayerTalentFrame.pet then return end      -- pet talents: leave it alone
@@ -6975,7 +6978,7 @@ do
         end
         if InCombatLockdown() then return end         -- panels do not move in combat
         HideUIPanel(PlayerTalentFrame)
-        Print("The Talents button opens your pet's talents when a tamed beast is out.")
+        UIErrorsFrame:AddMessage("Pet talents open here when you have a tamed beast out.", 1.0, 0.82, 0.0)
     end
 
     -- Any route onto a player spec -- the frame's own default on show, the
@@ -7061,9 +7064,11 @@ end
 -- while it still IS the talent binding: if the player has put something of
 -- their own there we leave it alone and fall back to a genuinely free key.
 -- Everything is rebindable under Key Bindings > ClasslessWildcard.
+-- J is not a fallback here: it is the stock Talents key's new home, below,
+-- and the only letter WTF\DefaultBindings.wtf leaves unbound.
 local PREFERRED_KEY = "N"
 local REPLACEABLE_ACTIONS = { TOGGLETALENTS = true }
-local FALLBACK_KEYS = { "J", "Y", "G", "K" }
+local FALLBACK_KEYS = { "Y", "G", "K" }
 
 function CW.ClaimHotkey()
     ClasslessWildcardDB = ClasslessWildcardDB or {}
@@ -7103,6 +7108,26 @@ function CW.ClaimHotkey()
 
     ClasslessWildcardDB.hotkeyClaimed = true
     Print("No free hotkey was available. Bind |cffffff00Toggle Hero Advancement|r under Key Bindings > Hero Advancement.")
+end
+
+-- N went to Hero Advancement, which left the stock Talents action with no key,
+-- and that window is where a tamed beast's talents are. Give it J, once per
+-- account: J is the one letter the stock defaults leave free (T is Attack
+-- Target). Only while J is still unbound and Talents has no key of its own; a
+-- player who has put anything on either keeps it.
+function CW.ClaimTalentsKey()
+    ClasslessWildcardDB = ClasslessWildcardDB or {}
+    if ClasslessWildcardDB.talentsKeyClaimed then return end
+    if InCombatLockdown and InCombatLockdown() then return end
+    if not SetBinding or not SaveBindings or not GetBindingAction then return end
+
+    ClasslessWildcardDB.talentsKeyClaimed = true
+    if GetBindingKey and GetBindingKey("TOGGLETALENTS") then return end
+    local inUse = GetBindingAction("J")
+    if inUse and inUse ~= "" then return end
+    if not SetBinding("J", "TOGGLETALENTS") then return end
+    pcall(SaveBindings, GetCurrentBindingSet and GetCurrentBindingSet() or 1)
+    Print("Hotkey |cffffff00J|r opens the Talents window, where a tamed beast's talents are.")
 end
 
 -- Our confirm popups get a dark, near-opaque backing. The stock dialog
