@@ -15,6 +15,7 @@
 
 #include "Chat.h"
 #include "ClasslessMgr.h"
+#include "Containers.h"
 #include "DBCStores.h"
 #include "DatabaseEnv.h"
 #include "Duration.h"
@@ -1368,6 +1369,205 @@ class spell_cw_dk_death_rune : public AuraScript
     }
 };
 
+// Item and set procs that pick their reward by CLASS. The core switches on
+// getClass() directly, so a Hero always took the chassis's answer: Eye of
+// Gruul and Soul Preserver cheapened Paladin heals only, whatever the Hero
+// healed with; Flask of the North never offered attack power. A Hero is every
+// class at once, so each of these treats one that way: every per-class reward
+// where the rewards cover different spells, and a random one where they are
+// alternatives, the way the core already rolls for its hybrid classes. Anyone
+// else gets the core's own behaviour, line for line.
+namespace
+{
+    bool IsHeroUnit(Unit const* unit)
+    {
+        Player* player = unit ? const_cast<Unit*>(unit)->ToPlayer() : nullptr;
+        return player && sClasslessMgr->cfg.enabled && !sClasslessMgr->IsExempt(player);
+    }
+
+    // druid, paladin, priest, shaman: the classes the per-class healing items
+    // name, in that order; -1 for any other
+    int32 HealerIndex(Unit const* unit)
+    {
+        switch (unit->getClass())
+        {
+            case CLASS_DRUID:   return 0;
+            case CLASS_PALADIN: return 1;
+            case CLASS_PRIEST:  return 2;
+            case CLASS_SHAMAN:  return 3;
+            default:            return -1;
+        }
+    }
+
+    // T3 6-piece Holy Power and Totemic Power, by the target's class:
+    // mp5, spell power, attack power, armor
+    int32 T3BuffIndex(Unit const* unit)
+    {
+        switch (unit->getClass())
+        {
+            case CLASS_PALADIN: case CLASS_PRIEST: case CLASS_SHAMAN: case CLASS_DRUID: return 0;
+            case CLASS_MAGE: case CLASS_WARLOCK: return 1;
+            case CLASS_HUNTER: case CLASS_ROGUE: return 2;
+            case CLASS_WARRIOR: return 3;
+            default: return -1;
+        }
+    }
+}
+
+// 37705 Healing Discount (Eye of Gruul), 60510 Soul Preserver
+class spell_cw_healing_trance : public AuraScript
+{
+    PrepareAuraScript(spell_cw_healing_trance);
+
+    static constexpr uint32 EYE_OF_GRUUL[4]   = { 37721, 37723, 37706, 37722 };
+    static constexpr uint32 SOUL_PRESERVER[4] = { 60512, 60513, 60514, 60515 };
+
+    bool Validate(SpellInfo const* /*spellInfo*/) override
+    {
+        return ValidateSpellInfo({ 37721, 37723, 37706, 37722, 60512, 60513, 60514, 60515 });
+    }
+
+    void HandleProc(AuraEffect const* aurEff, ProcEventInfo& /*eventInfo*/)
+    {
+        PreventDefaultAction();
+        Unit* target = GetTarget();
+        if (!target)
+            return;
+        uint32 const* trances = GetSpellInfo()->Id == 37705 ? EYE_OF_GRUUL : SOUL_PRESERVER;
+        if (IsHeroUnit(target))
+        {
+            for (uint8 i = 0; i < 4; ++i)
+                target->CastSpell(target, trances[i], true, nullptr, aurEff);
+            return;
+        }
+        if (int32 const index = HealerIndex(target); index >= 0)
+            target->CastSpell(target, trances[index], true, nullptr, aurEff);
+    }
+
+    void Register() override
+    {
+        OnEffectProc += AuraEffectProcFn(spell_cw_healing_trance::HandleProc, EFFECT_0, SPELL_AURA_PROC_TRIGGER_SPELL);
+    }
+};
+
+// 37877 Blessing of Faith
+class spell_cw_blessing_of_faith : public SpellScript
+{
+    PrepareSpellScript(spell_cw_blessing_of_faith);
+
+    static constexpr uint32 LOWER_CITY[4] = { 37878, 37879, 37880, 37881 };
+
+    bool Validate(SpellInfo const* /*spellInfo*/) override
+    {
+        return ValidateSpellInfo({ 37878, 37879, 37880, 37881 });
+    }
+
+    void HandleDummy(SpellEffIndex /*effIndex*/)
+    {
+        Unit* target = GetHitUnit();
+        Unit* caster = GetCaster();
+        if (!target || !caster)
+            return;
+        if (IsHeroUnit(target))
+        {
+            for (uint32 spellId : LOWER_CITY)
+                caster->CastSpell(caster, spellId, true);
+            return;
+        }
+        if (int32 const index = HealerIndex(target); index >= 0)
+            caster->CastSpell(caster, LOWER_CITY[index], true);
+    }
+
+    void Register() override
+    {
+        OnEffectHitTarget += SpellEffectFn(spell_cw_blessing_of_faith::HandleDummy, EFFECT_0, SPELL_EFFECT_DUMMY);
+    }
+};
+
+// 67019 Flask of the North
+class spell_cw_flask_of_the_north : public SpellScript
+{
+    PrepareSpellScript(spell_cw_flask_of_the_north);
+
+    static constexpr uint32 SPELL_POWER = 67016, ATTACK_POWER = 67017, STRENGTH = 67018;
+
+    bool Validate(SpellInfo const* /*spellInfo*/) override
+    {
+        return ValidateSpellInfo({ SPELL_POWER, ATTACK_POWER, STRENGTH });
+    }
+
+    void HandleDummy(SpellEffIndex /*effIndex*/)
+    {
+        Unit* caster = GetCaster();
+        if (!caster)
+            return;
+        std::vector<uint32> possible;
+        if (IsHeroUnit(caster))
+            possible = { SPELL_POWER, ATTACK_POWER, STRENGTH };
+        else
+            switch (caster->getClass())
+            {
+                case CLASS_WARLOCK: case CLASS_MAGE: case CLASS_PRIEST:
+                    possible = { SPELL_POWER };
+                    break;
+                case CLASS_DEATH_KNIGHT: case CLASS_WARRIOR:
+                    possible = { STRENGTH };
+                    break;
+                case CLASS_ROGUE: case CLASS_HUNTER:
+                    possible = { ATTACK_POWER };
+                    break;
+                case CLASS_DRUID: case CLASS_PALADIN:
+                    possible = { SPELL_POWER, STRENGTH };
+                    break;
+                case CLASS_SHAMAN:
+                    possible = { SPELL_POWER, ATTACK_POWER };
+                    break;
+                default:
+                    break;
+            }
+        if (!possible.empty())
+            caster->CastSpell(caster, Acore::Containers::SelectRandomContainerElement(possible), true);
+    }
+
+    void Register() override
+    {
+        OnEffectHit += SpellEffectFn(spell_cw_flask_of_the_north::HandleDummy, EFFECT_0, SPELL_EFFECT_DUMMY);
+    }
+};
+
+// 28789 Holy Power and 28823 Totemic Power, the T3 6-piece bonuses
+class spell_cw_t3_6p_bonus : public AuraScript
+{
+    PrepareAuraScript(spell_cw_t3_6p_bonus);
+
+    // mp5, spell power, attack power, armor
+    static constexpr uint32 HOLY_POWER[4]    = { 28795, 28793, 28791, 28790 };
+    static constexpr uint32 TOTEMIC_POWER[4] = { 28824, 28825, 28826, 28827 };
+
+    bool Validate(SpellInfo const* /*spellInfo*/) override
+    {
+        return ValidateSpellInfo({ 28795, 28793, 28791, 28790, 28824, 28825, 28826, 28827 });
+    }
+
+    void HandleProc(AuraEffect const* aurEff, ProcEventInfo& eventInfo)
+    {
+        PreventDefaultAction();
+        Unit* caster = eventInfo.GetActor();
+        Unit* target = eventInfo.GetActionTarget();
+        if (!caster || !target)
+            return;
+        uint32 const* buffs = GetSpellInfo()->Id == 28789 ? HOLY_POWER : TOTEMIC_POWER;
+        int32 const index = IsHeroUnit(target) ? int32(urand(0, 3)) : T3BuffIndex(target);
+        if (index >= 0)
+            caster->CastSpell(target, buffs[index], true, nullptr, aurEff);
+    }
+
+    void Register() override
+    {
+        OnEffectProc += AuraEffectProcFn(spell_cw_t3_6p_bonus::HandleProc, EFFECT_0, SPELL_AURA_DUMMY);
+    }
+};
+
 // Holds back the core's spell modifier packets for a Hero. Their totals mix
 // every class's talents onto bits the client only applies to its own class's
 // spells; ClasslessMgr::SyncClientSpellMods sends the ones it can use instead.
@@ -1405,4 +1605,8 @@ void AddClasslessPlayerScripts()
     RegisterSpellScript(spell_cw_pet_hit_expertise_scaling);
     RegisterSpellScript(spell_cw_dk_blade_barrier);
     RegisterSpellScript(spell_cw_dk_death_rune);
+    RegisterSpellScript(spell_cw_healing_trance);
+    RegisterSpellScript(spell_cw_blessing_of_faith);
+    RegisterSpellScript(spell_cw_flask_of_the_north);
+    RegisterSpellScript(spell_cw_t3_6p_bonus);
 }

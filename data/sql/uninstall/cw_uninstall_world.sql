@@ -106,8 +106,16 @@ DELETE FROM `charstartoutfit_dbc` WHERE `ID` >= 900000;
 DELETE FROM `spell_script_names` WHERE `ScriptName` IN
     ('spell_cw_frenzied_regeneration', 'spell_cw_judgement_of_wisdom',
      'spell_cw_pet_hit_expertise_scaling',
-     'spell_cw_dk_blade_barrier', 'spell_cw_dk_death_rune');
+     'spell_cw_dk_blade_barrier', 'spell_cw_dk_death_rune',
+     'spell_cw_healing_trance', 'spell_cw_blessing_of_faith',
+     'spell_cw_flask_of_the_north', 'spell_cw_t3_6p_bonus');
 INSERT IGNORE INTO `spell_script_names` (`spell_id`, `ScriptName`) VALUES
+(37705, 'spell_item_healing_trance'),
+(60510, 'spell_item_soul_preserver'),
+(37877, 'spell_pal_blessing_of_faith'),
+(67019, 'spell_item_flask_of_the_north'),
+(28789, 'spell_pal_t3_6p_bonus'),
+(28823, 'spell_sha_t3_6p_bonus'),
 (22842, 'spell_dru_frenzied_regeneration'),
 (20186, 'spell_pal_judgement_of_wisdom_mana'),
 -- these two were taken over but never put back: without them a realm that
