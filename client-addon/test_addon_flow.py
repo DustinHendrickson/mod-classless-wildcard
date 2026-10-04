@@ -3025,7 +3025,7 @@ def test_action_usable(h):
 
 
 def test_pet_talents(h):
-    print("--- talent window: the pet's spec with a tamed beast, the browser without")
+    print("--- talent window: the pet's spec with a tamed beast, a hint without")
     g = h.g
     # A small model of Blizzard_TalentUI (3.3.5a): the frame shows on the
     # player spec by default (OnShow clicks the default spec tab), Toggle and
@@ -3077,12 +3077,16 @@ def test_pet_talents(h):
     def player_tabs_hidden():
         return not shown(g.PlayerSpecTab1) and not shown(g.PlayerSpecTab2)
 
-    # no pet: the Talents button goes to the browser, as before
+    # no pet: the window closes, nothing else opens, and one line says why
     panel.Hide(panel)
+    h.rt.execute("PRINTED = {}; DEFAULT_CHAT_FRAME.AddMessage = function(self, m) table.insert(PRINTED, m) end")
     g.PlayerTalentFrame_Toggle(False, 1)
     P.later["__scripts"]["OnUpdate"](P.later)
-    h.check(not shown(talent) and shown(panel),
-            "without a pet the Talents button opens the browser: talent=%r panel=%r" % (shown(talent), shown(panel)))
+    printed = [str(v) for v in g.PRINTED.values()]
+    h.check(not shown(talent) and not shown(panel),
+            "without a pet the Talents button opens nothing: talent=%r panel=%r" % (shown(talent), shown(panel)))
+    h.check(len(printed) == 1 and "pet's talents" in printed[0] and "—" not in printed[0],
+            "and says once what the button is for: %r" % printed)
 
     # a tamed beast with talents: the window stays, on the pet's spec
     panel.Hide(panel)

@@ -6952,8 +6952,8 @@ end
 -- talents are only a side tab inside it, so sending the player spec away also
 -- sent the pet's with it: a Hero with a tamed beast had no way to spend its
 -- points. So with a pet that has talents the window opens on the pet's spec
--- and the player spec tabs are hidden; without one it goes to the browser as
--- before.
+-- and the player spec tabs are hidden; without one it closes again with a
+-- line saying what the button is for.
 -- ---------------------------------------------------------------------------
 do
     local P = {}
@@ -6964,6 +6964,8 @@ do
         return (GetNumTalentGroups(false, true) or 0) > 0
     end
 
+    -- Without a pet the window has nothing for a Hero, so it closes and says
+    -- what the button is for. Hero Advancement has its own button and key.
     function P.steer()
         if not PlayerTalentFrame or not PlayerTalentFrame:IsShown() then return end
         if PlayerTalentFrame.pet then return end      -- pet talents: leave it alone
@@ -6973,7 +6975,7 @@ do
         end
         if InCombatLockdown() then return end         -- panels do not move in combat
         HideUIPanel(PlayerTalentFrame)
-        if frame and not frame:IsShown() then frame:Show() end
+        Print("The Talents button opens your pet's talents when a tamed beast is out.")
     end
 
     -- Any route onto a player spec -- the frame's own default on show, the
