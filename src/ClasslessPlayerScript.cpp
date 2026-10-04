@@ -198,6 +198,25 @@ public:
     // family does.
     static constexpr uint32 OVERPOWER_FAMILY_FLAG = 0x00000004;
 
+    static bool IsDruidForm(ShapeshiftForm form)
+    {
+        switch (form)
+        {
+            case FORM_CAT:
+            case FORM_TREE:
+            case FORM_TRAVEL:
+            case FORM_AQUA:
+            case FORM_BEAR:
+            case FORM_DIREBEAR:
+            case FORM_FLIGHT_EPIC:
+            case FORM_FLIGHT:
+            case FORM_MOONKIN:
+                return true;
+            default:
+                return false;
+        }
+    }
+
     static bool OwnsCounterattack(Player const* player)
     {
         static constexpr uint32 COUNTERATTACK_RANKS[] =
@@ -462,6 +481,22 @@ public:
             // priest one is gated again on actually holding Spirit of
             // Redemption. Only the Death Knight answer has to stay conditional.
             case CLASS_CONTEXT_ABILITY:
+                // The druid question is asked in two places, both about a form
+                // changing: leaving the last form clears snares and roots, and
+                // a shift recalculates Dash and redoes disarm. Those are druid
+                // form rules, so the answer is whether the form being entered
+                // or left IS a druid form. A flat yes cleared snares whenever a
+                // Hero left Stealth, Shadowform or Ghost Wolf, which no class
+                // gets. Swapping stances never reached it either way: the new
+                // stance is registered before the old one comes off.
+                if (playerClass == CLASS_DRUID)
+                {
+                    if (sClasslessMgr->IsExempt(const_cast<Player*>(player)))
+                        return std::nullopt;
+                    CharState const* st = sClasslessMgr->FindState(const_cast<Player*>(player));
+                    return IsDruidForm(player->GetShapeshiftForm())
+                        || (st && IsDruidForm(ShapeshiftForm(st->heldForm)));
+                }
                 if (playerClass != CLASS_DEATH_KNIGHT)
                     break;
                 // From the character's own snapshot, NOT the live config: this
@@ -1568,6 +1603,38 @@ class spell_cw_t3_6p_bonus : public AuraScript
     }
 };
 
+// Which shapeshift form a Hero holds, for the druid answer in OnPlayerIsClass.
+// Both hooks run with the form already settled: apply after the new form's
+// handler has set it, remove after the old one's has cleared it. So in between
+// -- while the core is handling the form coming off -- heldForm still names it.
+class ClasslessFormScript : public UnitScript
+{
+public:
+    ClasslessFormScript() : UnitScript("ClasslessFormScript", true, { UNITHOOK_ON_AURA_APPLY, UNITHOOK_ON_AURA_REMOVE }) { }
+
+    void OnAuraApply(Unit* unit, Aura* aura) override
+    {
+        if (aura && aura->GetSpellInfo()->HasAura(SPELL_AURA_MOD_SHAPESHIFT))
+            Track(unit);
+    }
+
+    void OnAuraRemove(Unit* unit, AuraApplication* aurApp, AuraRemoveMode /*mode*/) override
+    {
+        if (aurApp && aurApp->GetBase()->GetSpellInfo()->HasAura(SPELL_AURA_MOD_SHAPESHIFT))
+            Track(unit);
+    }
+
+private:
+    static void Track(Unit* unit)
+    {
+        Player* player = unit ? unit->ToPlayer() : nullptr;
+        if (!player)
+            return;
+        if (CharState* st = sClasslessMgr->FindState(player))
+            st->heldForm = uint8(player->GetShapeshiftForm());
+    }
+};
+
 // Holds back the core's spell modifier packets for a Hero. Their totals mix
 // every class's talents onto bits the client only applies to its own class's
 // spells; ClasslessMgr::SyncClientSpellMods sends the ones it can use instead.
@@ -1599,6 +1666,7 @@ void AddClasslessPlayerScripts()
 {
     new ClasslessWorldScript();
     new ClasslessServerScript();
+    new ClasslessFormScript();
     new ClasslessPlayerScript();
     RegisterSpellScript(spell_cw_frenzied_regeneration);
     RegisterSpellScript(spell_cw_judgement_of_wisdom);

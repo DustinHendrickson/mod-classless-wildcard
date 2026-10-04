@@ -296,6 +296,11 @@ namespace ClasslessWildcard
         std::unordered_map<uint32, int32> clientSpellMods;
         bool clientSpellModSyncQueued = false;
 
+        // The shapeshift form this Hero was last seen holding, kept by
+        // ClasslessFormScript so a form that is being LEFT can still be named
+        // after the core has already reset it to none. Runtime only.
+        uint8 heldForm = 0;
+
         std::unordered_map<uint32 /*firstSpellId*/, OwnedAbility> abilities;
         std::unordered_map<uint32 /*talentId*/, uint8 /*rank*/>   talents;
         std::vector<RollBan>   bans;
