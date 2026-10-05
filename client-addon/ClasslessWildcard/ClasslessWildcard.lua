@@ -4593,8 +4593,22 @@ if HelpMicroButton then
         end
         HelpMicroButton.tooltipText = label
         HelpMicroButton.newbieText = "Opens Hero Advancement. Shift-click for the Help / GM window."
+
+        -- The stock Talents button only ever shows a tamed beast's talents
+        -- now, so it says so. Blizzard rewrites this title on every binding
+        -- change (TalentMicroButton_OnEvent), hence the hook below.
+        if TalentMicroButton then
+            TalentMicroButton.tooltipText = MicroButtonTooltipText
+                and MicroButtonTooltipText("Pet Talents", "TOGGLETALENTS") or "Pet Talents"
+            TalentMicroButton.newbieText = "Your tamed beast's talents. Your own are in Hero Advancement."
+        end
     end
     CW.RefreshMicroTooltip()
+    -- On the button's script, not the global: its XML binds OnEvent to the
+    -- function itself, so a hook on the name would never run.
+    if TalentMicroButton and TalentMicroButton.HookScript then
+        TalentMicroButton:HookScript("OnEvent", function() CW.RefreshMicroTooltip() end)
+    end
 
     -- REPLACE the button art outright: the "?" is gone, and the die texture is
     -- baked in the micro button's own 32x64 layout, so it fills the art area

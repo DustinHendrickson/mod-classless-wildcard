@@ -3163,6 +3163,22 @@ def test_talents_key(h):
     h.check(g.BINDS["J"] is None, "Hero Advancement never claims J: %r" % g.BINDS["J"])
 
 
+def test_talents_tooltip(h):
+    print("--- the stock Talents button says it is for pet talents")
+    g = h.g
+    btn = g.TalentMicroButton
+    h.check(str(btn["tooltipText"]).startswith("Pet Talents") and "tamed beast" in str(btn["newbieText"]),
+            "after load: %r / %r" % (btn["tooltipText"], btn["newbieText"]))
+    # Blizzard's own handler rewrites the title on a binding change; ours runs after it
+    btn["tooltipText"] = "Talents"
+    on_event = btn["__scripts"]["OnEvent"]
+    h.check(on_event is not None, "the button's OnEvent is hooked")
+    if on_event is not None:
+        on_event(btn, "UPDATE_BINDINGS")
+    h.check(str(btn["tooltipText"]).startswith("Pet Talents"),
+            "a binding change does not put 'Talents' back: %r" % btn["tooltipText"])
+
+
 def test_layering(h):
     print("--- layering: what draws over what")
     CW = h.CW
@@ -3263,6 +3279,7 @@ def main():
     test_action_usable(h)
     test_pet_talents(h)
     test_talents_key(h)
+    test_talents_tooltip(h)
     test_default_scope(h)
     test_paperdoll(h)
     test_stats(h)
