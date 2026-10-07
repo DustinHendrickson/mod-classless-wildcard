@@ -764,7 +764,16 @@ ClasslessWildcard.UniversalStats.RangedAPPerAgility = 1
 #        still carries mana and spell crit on top. Raise it to put casters
 #        ahead on purpose.
 #        Default: 0.5
-ClasslessWildcard.UniversalStats.SpellPowerPerIntellect = 0.5
+ClasslessWildcard.UniversalStats.SpellPowerPerIntellect = 1
+
+#    ClasslessWildcard.UniversalStats.SpellPowerPerSpirit
+#        Spell power per point of Spirit.
+#
+#        Adds direct spell power scaling from Spirit stat, allowing Spirit to
+#        contribute to spell damage and healing alongside its mana regeneration.
+#        Set to 0.0 to disable Spirit → spell power conversion entirely.
+#        Default: 0.0
+ClasslessWildcard.UniversalStats.SpellPowerPerSpirit = 0.0
 
 ########################################################################
 # 12  Primary stat allocation
