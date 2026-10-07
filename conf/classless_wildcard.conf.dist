@@ -764,7 +764,7 @@ ClasslessWildcard.UniversalStats.RangedAPPerAgility = 1
 #        still carries mana and spell crit on top. Raise it to put casters
 #        ahead on purpose.
 #        Default: 0.5
-ClasslessWildcard.UniversalStats.SpellPowerPerIntellect = 1
+ClasslessWildcard.UniversalStats.SpellPowerPerIntellect = 0.5
 
 #    ClasslessWildcard.UniversalStats.SpellPowerPerSpirit
 #        Spell power per point of Spirit.
