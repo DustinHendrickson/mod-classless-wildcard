@@ -285,6 +285,7 @@ namespace ClasslessWildcard
         int32 usMeleeAP = 0;
         int32 usRangedAP = 0;
         int32 usSpellPower = 0;
+        int32 usSpiritSpellPower = 0;
 
         // last combo-point count mirrored to the addon (runtime only; 255 =
         // nothing pushed yet, so the first update always syncs)
@@ -562,6 +563,7 @@ namespace ClasslessWildcard
         float  usMeleeAPPerAgi = 1.0f;
         float  usRangedAPPerAgi = 1.0f;
         float  usSpellPowerPerInt = 0.5f;  // per Intellect point above 10
+        float  usSpellPowerPerSpr = 0.0f;  // per Spirit point
 
         // primary stat allocation
         bool   statsEnable = true;
