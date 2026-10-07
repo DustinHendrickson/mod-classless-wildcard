@@ -924,9 +924,11 @@ public:
         {
             int32 agi = int32(player->GetStat(STAT_AGILITY));
             int32 intel = int32(player->GetStat(STAT_INTELLECT));
+            int32 spirit = int32(player->GetStat(STAT_SPIRIT));
             int32 meleeAP = int32(agi * cfg.usMeleeAPPerAgi);
             int32 rangedAP = int32(agi * cfg.usRangedAPPerAgi);
             int32 spellPower = int32(std::max<int32>(0, intel - 10) * cfg.usSpellPowerPerInt);
+            int32 spiritSpellPower = int32(spirit * cfg.usSpellPowerPerSpr);
 
             if (meleeAP != st.usMeleeAP)
             {
@@ -942,6 +944,11 @@ public:
             {
                 player->ApplySpellPowerBonus(spellPower - st.usSpellPower, true);
                 st.usSpellPower = spellPower;
+            }
+            if (spiritSpellPower != st.usSpiritSpellPower)
+            {
+                player->ApplySpellPowerBonus(spiritSpellPower - st.usSpiritSpellPower, true);
+                st.usSpiritSpellPower = spiritSpellPower;
             }
         }
 
