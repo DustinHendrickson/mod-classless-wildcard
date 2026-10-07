@@ -345,6 +345,7 @@ void ClasslessMgr::LoadConfig(bool /*reload*/)
     cfg.usMeleeAPPerAgi = sConfigMgr->GetOption<float>("ClasslessWildcard.UniversalStats.MeleeAPPerAgility", 1.0f);
     cfg.usRangedAPPerAgi = sConfigMgr->GetOption<float>("ClasslessWildcard.UniversalStats.RangedAPPerAgility", 1.0f);
     cfg.usSpellPowerPerInt = sConfigMgr->GetOption<float>("ClasslessWildcard.UniversalStats.SpellPowerPerIntellect", 0.5f);
+    cfg.usSpellPowerPerSpr = sConfigMgr->GetOption<float>("ClasslessWildcard.UniversalStats.SpellPowerPerSpirit", 0.0f);
 
     cfg.statsEnable = sConfigMgr->GetOption<bool>("ClasslessWildcard.Stats.Enable", true);
     cfg.statStartingPoints = sConfigMgr->GetOption<uint32>("ClasslessWildcard.Stats.StartingPoints", 4);
@@ -6153,4 +6154,3 @@ bool ClasslessMgr::ToggleLock(Player* player, uint32 firstSpellId, std::string* 
             want = !o->second.locked;
     return SetLock(player, firstSpellId, want, err);
 }
-
