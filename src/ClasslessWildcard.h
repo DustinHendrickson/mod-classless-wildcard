@@ -311,6 +311,8 @@ namespace ClasslessWildcard
         // has to stay fixed for the session. Reading the live config instead
         // would let a `.reload config` turn the per-tick rune loop on for
         // characters InitRunes had already skipped, and read a null block.
+        // Heroes only: an exempt character's rune question goes to the core,
+        // which answers from its real class.
         bool runes = false;
         // Last rune state pushed to the addon: which runes are up and what
         // type they are, NOT how many milliseconds are left, because cooldowns

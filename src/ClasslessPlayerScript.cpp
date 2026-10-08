@@ -499,6 +499,12 @@ public:
                 }
                 if (playerClass != CLASS_DEATH_KNIGHT)
                     break;
+                // Exempt characters (bots) keep their real class. CharState::runes
+                // is false for every one of them, so answering from it skipped
+                // InitRunes for a real Death Knight, and anything that reads its
+                // runes (the playerbots AI does, every tick) read a null block.
+                if (sClasslessMgr->IsExempt(const_cast<Player*>(player)))
+                    return std::nullopt;
                 // From the character's own snapshot, NOT the live config: this
                 // same question gates both the one-time InitRunes allocation
                 // and the per-tick loop that reads the block it allocates. If
