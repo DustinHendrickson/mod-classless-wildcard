@@ -6,7 +6,9 @@ nothing to buy while levelling and nothing at the cap. This lays the same
 bands, from a fresh Hero at level 1 to level 80.
 
 Prices come from the medians of real 3.3.5 items (analyze_prices.py), so band-1
-gear costs a few silver and a level 80 piece over a hundred gold.
+gear costs a few silver and a level 80 piece over a hundred gold. Armour, shield
+block, Material and sheath come from real items the same way
+(analyze_stock_items.py).
 
 This file only defines the items. Which shelf the Hero Advancement NPC puts
 each one on is gen_vendor_lists.py's job -- rerun it after changing anything
@@ -17,6 +19,7 @@ Run:  python gen_tiered_gear.py     (writes ../db-world/cw_items_tiered.sql)
 import json, os, textwrap
 
 import displaypick
+import analyze_stock_items as stock
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 OUT = os.path.join(HERE, os.pardir, "db-world", "cw_items_tiered.sql")
@@ -43,14 +46,17 @@ TIER_NAME = {1: "Apprentice's", 10: "Journeyman's", 20: "Adept's",
              30: "Veteran's", 40: "Champion's", 50: "Master's",
              60: "Grand Master's", 70: "Exemplar's", 80: "Ascendant"}
 
-# armor per level for a chest piece, by armour class; other slots scale down
 # item_template.class / subclass, for the RangedModRange rule below
 ITEM_CLASS_WEAPON = 2
 # bow, gun, thrown, crossbow, wand -- every subclass that shoots
 RANGED_WEAPON_SUBCLASSES = (2, 3, 16, 18, 19)
 
-ARMOR_PER_LEVEL = {"cloth": 2.0, "leather": 3.2, "mail": 5.0, "plate": 7.0,
-                   "shield": 26.0}
+# Armour, shield block, Material and sheath all come from real items too:
+# analyze_stock_items.py writes stock_items.json. The server overwrites Material
+# and sheath with whatever Item.dbc says, and gen_item_manifest.py builds the
+# client's Item.dbc rows from the same table, so the two always agree.
+STOCK = stock.load()
+ITEM_SUBCLASS_SHIELD = 6
 
 # Prices come from the game's own data: analyze_prices.py takes the median
 # BuyPrice of ~15,000 real uncommon/rare/epic weapons and armour per level band
@@ -60,72 +66,69 @@ PRICES = json.load(open(os.path.join(HERE, "prices.json"), encoding="utf-8"))
 
 
 
-def T(key, name, cls, sub, inv, disp, stats, *, kind, price, speed=0,
-      armor_class=None, slot=1.0, mat=1, sheath=0, desc=""):
+def T(key, name, cls, sub, inv, disp, stats, *, kind, price, speed=0, desc=""):
     return dict(key=key, name=name, cls=cls, sub=sub, inv=inv, disp=disp,
-                stats=stats, kind=kind, price=price, speed=speed,
-                armor_class=armor_class, slot=slot, mat=mat, sheath=sheath,
-                desc=desc)
+                stats=stats, kind=kind, price=price, speed=speed, desc=desc)
 
 
 TEMPLATES = [
     # ---- weapons: the wrong stat on the wrong weapon, on purpose ----
     T("gun_int", "Arcane Handcannon", 2, 3, 26, "gun",
       [(INT, 1.0), (SP, 1.6), (STA, 0.5)], kind="weapon", price="weapon1h",
-      speed=2900, mat=1, desc="A firearm that answers to intellect."),
+      speed=2900, desc="A firearm that answers to intellect."),
     T("bow_str", "Bruteforce Longbow", 2, 2, 15, "bow",
       [(STR, 1.0), (STA, 0.5)], kind="weapon", price="weapon1h",
-      speed=2800, mat=2, desc="Drawn by main strength, not finesse."),
+      speed=2800, desc="Drawn by main strength, not finesse."),
     T("staff_str", "Ironbark Warstaff", 2, 10, 17, "staff",
       [(STR, 1.2), (STA, 0.8)], kind="weapon", price="weapon2h",
-      speed=3300, mat=4, sheath=2, desc="A staff for hitting things."),
+      speed=3300, desc="A staff for hitting things."),
     T("polearm_int", "Arcane Pike", 2, 6, 17, "polearm",
       [(INT, 1.1), (SP, 1.6), (STA, 0.6)], kind="weapon", price="weapon2h",
-      speed=3300, mat=1, sheath=1, desc="A polearm that reaches further than its blade."),
+      speed=3300, desc="A polearm that reaches further than its blade."),
     T("axe2h_agi", "Windrunner Cleaver", 2, 1, 17, "axe2h",
       [(AGI, 1.2), (STA, 0.8)], kind="weapon", price="weapon2h",
-      speed=3400, mat=1, sheath=1, desc="A greataxe balanced for the fleet of foot."),
+      speed=3400, desc="A greataxe balanced for the fleet of foot."),
     T("dagger_str", "Kingslayer Dagger", 2, 15, 13, "dagger",
       [(STR, 0.9), (STA, 0.5), (CRIT, 0.4)], kind="weapon", price="weapon1h",
-      speed=1800, mat=1, sheath=3, desc="A dagger with a claymore's attitude."),
+      speed=1800, desc="A dagger with a claymore's attitude."),
     T("mace_agi", "Hammer of Quiet Malice", 2, 4, 13, "mace1h",
       [(AGI, 1.0), (STA, 0.5)], kind="weapon", price="weapon1h",
-      speed=2400, mat=1, sheath=3, desc="A mace balanced for someone light on their feet."),
+      speed=2400, desc="A mace balanced for someone light on their feet."),
     T("sword_int", "Spellbinder Blade", 2, 7, 13, "sword1h",
       [(INT, 1.0), (SP, 1.5), (STA, 0.5)], kind="weapon", price="weapon1h",
-      speed=2400, mat=1, sheath=3, desc="A sword that carries spell power instead of muscle."),
+      speed=2400, desc="A sword that carries spell power instead of muscle."),
     T("fist_sp", "Sparkfist Talon", 2, 13, 13, "fist",
       [(SP, 1.6), (INT, 0.7), (STA, 0.5)], kind="weapon", price="weapon1h",
-      speed=2500, mat=1, sheath=3, desc="For those who cast with their knuckles."),
+      speed=2500, desc="For those who cast with their knuckles."),
     T("wand_ap", "Wand of Brutal Focus", 2, 19, 26, "wand",
       [(STR, 0.7), (AP, 1.8)], kind="weapon", price="weapon1h",
-      speed=1800, mat=1, desc="A wand that lends attack power."),
+      speed=1800, desc="A wand that lends attack power."),
 
     # ---- armour: the wrong armour class for the stats it carries ----
     T("plate_chest_sp", "Runeplate Vestment", 4, 4, 5, "plate_chest",
       [(SP, 1.6), (INT, 0.9), (STA, 0.8)], kind="armor", price="big_armor",
-      armor_class="plate", slot=1.0, mat=6, desc="Full plate that channels spell power."),
+      desc="Full plate that channels spell power."),
     T("mail_chest_str", "Bulwark Chainmail", 4, 3, 5, "mail_chest",
       [(STR, 1.1), (STA, 0.9)], kind="armor", price="big_armor",
-      armor_class="mail", slot=1.0, mat=5, desc="Mail cut for raw strength."),
+      desc="Mail cut for raw strength."),
     T("leather_chest_int", "Zealot Hide Jerkin", 4, 2, 5, "leather_chest",
       [(INT, 1.0), (SP, 1.4), (STA, 0.7)], kind="armor", price="big_armor",
-      armor_class="leather", slot=1.0, mat=8, desc="Spell power leather, mobility without the silk."),
+      desc="Spell power leather, mobility without the silk."),
     T("cloth_robe_ap", "Ironweave Battlerobe", 4, 1, 20, "cloth_robe",
       [(AGI, 1.0), (AP, 2.0), (STA, 0.8)], kind="armor", price="big_armor",
-      armor_class="cloth", slot=1.0, mat=7, desc="A robe carrying attack power. Nobody else would dare."),
+      desc="A robe carrying attack power. Nobody else would dare."),
     T("plate_legs_agi", "Legplates of the Windwalker", 4, 4, 7, "plate_legs",
       [(AGI, 1.1), (STA, 0.8)], kind="armor", price="big_armor",
-      armor_class="plate", slot=0.9, mat=6, desc="Plate legs light enough to sprint in. Allegedly."),
+      desc="Plate legs light enough to sprint in. Allegedly."),
     T("mail_legs_sp", "Chainweave Leggings", 4, 3, 7, "mail_legs",
       [(SP, 1.4), (SPI, 0.7), (STA, 0.7)], kind="armor", price="big_armor",
-      armor_class="mail", slot=0.9, mat=5, desc="Mail that favors spirit over brawn."),
+      desc="Mail that favors spirit over brawn."),
     T("cloak_str", "Warcloak of the Untethered", 4, 1, 16, "cloak",
       [(STR, 0.9), (STA, 0.5)], kind="armor", price="small_armor",
-      armor_class="cloth", slot=0.35, mat=7, desc="A cloak for the ones who close the distance."),
+      desc="A cloak for the ones who close the distance."),
     T("shield_int", "Barrier of Raw Intellect", 4, 6, 14, "shield",
       [(INT, 0.9), (SP, 1.3), (STA, 0.6)], kind="armor", price="small_armor",
-      armor_class="shield", slot=1.0, mat=1, desc="A shield for casters who refuse to stand at the back."),
+      desc="A shield for casters who refuse to stand at the back."),
 
     # ---- jewellery and off-hands: hybrid pairs ----
     T("neck_hybrid", "Chain of the Untethered", 4, 0, 2, "neck",
@@ -154,19 +157,15 @@ TEMPLATES = [
 TEMPLATES_W2 = [
     T("plate_head_hit_sp", "Truesight Greathelm", 4, 4, 1, "plate_head",
       [(HIT, 1.2), (SP, 1.3), (INT, 0.7)], kind="armor", price="big_armor",
-      armor_class="plate", slot=0.8, mat=6,
       desc="A plate helm that makes spells land."),
     T("cloth_hands_hit_ap", "Gloves of the Sure Strike", 4, 1, 10, "cloth_hands",
       [(HIT, 1.2), (AP, 1.6), (AGI, 0.6)], kind="armor", price="small_armor",
-      armor_class="cloth", slot=0.55, mat=7,
       desc="Silk gloves for someone who swings first and reads later."),
     T("leather_waist_haste_int", "Girdle of Quickened Thought", 4, 2, 6, "leather_waist",
       [(HASTE, 1.2), (INT, 0.9), (STA, 0.6)], kind="armor", price="small_armor",
-      armor_class="leather", slot=0.6, mat=8,
       desc="Leather cut for a caster in a hurry."),
     T("mail_feet_haste_str", "Boots of the Hasty Brute", 4, 3, 8, "mail_feet",
       [(HASTE, 1.2), (STR, 0.9), (STA, 0.6)], kind="armor", price="small_armor",
-      armor_class="mail", slot=0.7, mat=5,
       desc="Mail boots that hurry a heavy swing."),
 ]
 
@@ -204,7 +203,7 @@ def build_rows(templates, first_entry):
 
             # weapon damage from a dps curve, armour from a per-level curve
             dmin = dmax = delay = 0
-            armor = 0
+            armor = block = 0
             if t["kind"] == "weapon":
                 dps = 1.2 + band * 0.9
                 delay = t["speed"]
@@ -213,8 +212,14 @@ def build_rows(templates, first_entry):
                 dmax = int(round(dps * swing * 1.2))
                 dmin = max(1, dmin)
                 dmax = max(dmin + 1, dmax)
-            elif t["armor_class"]:
-                armor = int(round(ARMOR_PER_LEVEL[t["armor_class"]] * band * t["slot"]))
+            elif t["kind"] == "armor" and t["sub"] == ITEM_SUBCLASS_SHIELD:
+                armor = STOCK["shield"][str(band)]["armor"]
+                block = STOCK["shield"][str(band)]["block"]
+            elif t["kind"] == "armor":
+                chest = STOCK["chest"][str(t["sub"])][str(band)]
+                slot = 1.0 if t["inv"] in (5, 20) else STOCK["ratio"][str(t["sub"])][str(t["inv"])]
+                armor = int(round(chest * slot))
+            mat, sheath = stock.look_of(STOCK, t["cls"], t["sub"], t["inv"])
 
             buy = int(PRICES[t["price"]][str(band)])
             sell = buy // 5
@@ -228,8 +233,8 @@ def build_rows(templates, first_entry):
                 name="%s %s" % (TIER_NAME[band], t["name"]),
                 disp=disp, quality=quality, buy=buy, sell=sell, inv=t["inv"],
                 ilvl=band, req=band, stats=stats, dmin=dmin, dmax=dmax,
-                delay=delay, armor=armor, dur=durability, mat=t["mat"],
-                sheath=t["sheath"], desc=t["desc"], band=band))
+                delay=delay, armor=armor, block=block, dur=durability, mat=mat,
+                sheath=sheath, desc=t["desc"], band=band))
             entry += 1
 
     return rows
@@ -264,7 +269,7 @@ L.append("INSERT INTO `item_template`")
 L.append("  (`entry`, `class`, `subclass`, `name`, `displayid`, `Quality`, `BuyCount`, `BuyPrice`, `SellPrice`,")
 L.append("   `InventoryType`, `AllowableClass`, `AllowableRace`, `ItemLevel`, `RequiredLevel`, `stackable`,")
 L.append("   `stat_type1`, `stat_value1`, `stat_type2`, `stat_value2`, `stat_type3`, `stat_value3`,")
-L.append("   `dmg_min1`, `dmg_max1`, `dmg_type1`, `delay`, `armor`, `bonding`, `MaxDurability`, `Material`, `sheath`,")
+L.append("   `dmg_min1`, `dmg_max1`, `dmg_type1`, `delay`, `armor`, `bonding`, `MaxDurability`, `Material`, `sheath`, `block`,")
 L.append("   `RangedModRange`,")
 L.append("   `description`, `VerifiedBuild`)")
 L.append("VALUES")
@@ -279,12 +284,12 @@ for n, r in enumerate(rows):
     ranged_mod = 100 if (r["cls"] == ITEM_CLASS_WEAPON
                          and r["sub"] in RANGED_WEAPON_SUBCLASSES) else 0
     L.append("(%d, %d, %d, '%s', %d, %d, 1, %d, %d, %d, -1, -1, %d, %d, 1, "
-             "%d, %d, %d, %d, %d, %d, %d, %d, 0, %d, %d, 2, %d, %d, %d, %d, '%s', %d)%s"
+             "%d, %d, %d, %d, %d, %d, %d, %d, 0, %d, %d, 2, %d, %d, %d, %d, %d, '%s', %d)%s"
              % (r["entry"], r["cls"], r["sub"], esc(r["name"]), r["disp"], r["quality"],
                 r["buy"], r["sell"], r["inv"], r["ilvl"], r["req"],
                 s[0][0], s[0][1], s[1][0], s[1][1], s[2][0], s[2][1],
                 r["dmin"], r["dmax"], r["delay"], r["armor"], r["dur"],
-                r["mat"], r["sheath"], ranged_mod, esc(r["desc"]), VERIFIED, end))
+                r["mat"], r["sheath"], r["block"], ranged_mod, esc(r["desc"]), VERIFIED, end))
 
 L.append("")
 

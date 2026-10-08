@@ -40,7 +40,7 @@ VALUES
  'Gauntlets that do not muffle spellcraft.', 12340, 0),
 -- spell power fist weapon (melee caster)
 (990208, 2, 13, 'Sparkfist Talon', 23271, 3, 1, 44527, 8905, 13, -1, -1, 40, 35, 1,
- 5, 10, 45, 20, 7, 6, 38, 71, 0, 2000, 0, 2, 75, 1, 3,
+ 5, 10, 45, 20, 7, 6, 38, 71, 0, 2000, 0, 2, 75, 1, 7,
  'For those who cast with their knuckles.', 12340, 0),
 -- leather healer with strength (paladin-rogue hybrids)
 (990209, 4, 2, 'Bloodfervor Hide Jerkin', 30819, 3, 1, 24841, 4968, 5, -1, -1, 40, 35, 1,
@@ -52,12 +52,16 @@ VALUES
  'A greatsword balanced for the fleet of foot.', 12340, 0),
 -- spirit shield (caster off-hand defense)
 (990211, 4, 6, 'Aegis of Quiet Prayer', 18751, 3, 1, 14976, 2995, 14, -1, -1, 40, 35, 1,
- 5, 12, 6, 12, 7, 8, 0, 0, 0, 0, 2121, 2, 100, 1, 0,
+ 5, 12, 6, 12, 7, 8, 0, 0, 0, 0, 2121, 2, 100, 1, 4,
  'A shield that hums with restorative energy.', 12340, 0),
 -- cloth "tank" chest (sta/armor-heavy robe)
 (990212, 4, 1, 'Bastion Battlerobe of the Hero', 34799, 3, 1, 24841, 4968, 20, -1, -1, 40, 35, 1,
  7, 28, 5, 10, 4, 8, 0, 0, 0, 0, 197, 2, 100, 7, 0,
  'Woven for casters who insist on being hit.', 12340, 0);
+
+-- Shields need a block value or Block stops nothing. Level 30-39 stock
+-- median, as stock_items.json records it (analyze_stock_items.py).
+UPDATE `item_template` SET `block` = 17 WHERE `entry` = 990211;
 
 -- Shelving lives in cw_world_vendor_lists.sql, which reads this file back and
 -- lays every item out by category and level bracket across several vendor

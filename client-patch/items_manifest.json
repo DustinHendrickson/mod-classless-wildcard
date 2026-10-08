@@ -6,7 +6,7 @@
    "display": 1103,
    "entry": 990101,
    "inv": 0,
-   "material": 2,
+   "material": -1,
    "sheathe": 0,
    "sound_sub": -1,
    "sub": 0
@@ -17,7 +17,7 @@
    "entry": 990201,
    "inv": 26,
    "material": 1,
-   "sheathe": 1,
+   "sheathe": 0,
    "sound_sub": -1,
    "sub": 3
   },
@@ -136,7 +136,7 @@
    "display": 6497,
    "entry": 990280,
    "inv": 2,
-   "material": -1,
+   "material": 3,
    "sheathe": 0,
    "sound_sub": -1,
    "sub": 0
@@ -146,7 +146,7 @@
    "display": 64205,
    "entry": 990281,
    "inv": 2,
-   "material": -1,
+   "material": 3,
    "sheathe": 0,
    "sound_sub": -1,
    "sub": 0
@@ -156,7 +156,7 @@
    "display": 9840,
    "entry": 990282,
    "inv": 11,
-   "material": 4,
+   "material": 3,
    "sheathe": 0,
    "sound_sub": -1,
    "sub": 0
@@ -166,7 +166,7 @@
    "display": 43706,
    "entry": 990283,
    "inv": 11,
-   "material": 4,
+   "material": 3,
    "sheathe": 0,
    "sound_sub": -1,
    "sub": 0
@@ -176,8 +176,8 @@
    "display": 25072,
    "entry": 990284,
    "inv": 23,
-   "material": 1,
-   "sheathe": 7,
+   "material": 3,
+   "sheathe": 0,
    "sound_sub": -1,
    "sub": 0
   },
@@ -186,8 +186,8 @@
    "display": 23321,
    "entry": 990285,
    "inv": 23,
-   "material": 1,
-   "sheathe": 7,
+   "material": 3,
+   "sheathe": 0,
    "sound_sub": -1,
    "sub": 0
   },
@@ -247,7 +247,7 @@
    "entry": 990291,
    "inv": 26,
    "material": 1,
-   "sheathe": 1,
+   "sheathe": 0,
    "sound_sub": -1,
    "sub": 3
   },
@@ -367,7 +367,7 @@
    "entry": 990257,
    "inv": 26,
    "material": 1,
-   "sheathe": 1,
+   "sheathe": 0,
    "sound_sub": -1,
    "sub": 3
   },
@@ -406,7 +406,7 @@
    "display": 32128,
    "entry": 990261,
    "inv": 3,
-   "material": 7,
+   "material": 5,
    "sheathe": 0,
    "sound_sub": -1,
    "sub": 3
@@ -527,7 +527,7 @@
    "entry": 990300,
    "inv": 26,
    "material": 1,
-   "sheathe": 1,
+   "sheathe": 0,
    "sound_sub": -1,
    "sub": 3
   },
@@ -706,7 +706,7 @@
    "display": 6497,
    "entry": 990318,
    "inv": 2,
-   "material": -1,
+   "material": 3,
    "sheathe": 0,
    "sound_sub": -1,
    "sub": 0
@@ -716,7 +716,7 @@
    "display": 31657,
    "entry": 990319,
    "inv": 11,
-   "material": 4,
+   "material": 3,
    "sheathe": 0,
    "sound_sub": -1,
    "sub": 0
@@ -736,8 +736,8 @@
    "display": 21608,
    "entry": 990321,
    "inv": 23,
-   "material": 1,
-   "sheathe": 7,
+   "material": 3,
+   "sheathe": 0,
    "sound_sub": -1,
    "sub": 0
   },
@@ -747,7 +747,7 @@
    "entry": 990322,
    "inv": 26,
    "material": 1,
-   "sheathe": 1,
+   "sheathe": 0,
    "sound_sub": -1,
    "sub": 3
   },
@@ -926,7 +926,7 @@
    "display": 18172,
    "entry": 990340,
    "inv": 2,
-   "material": -1,
+   "material": 3,
    "sheathe": 0,
    "sound_sub": -1,
    "sub": 0
@@ -936,7 +936,7 @@
    "display": 43407,
    "entry": 990341,
    "inv": 11,
-   "material": 4,
+   "material": 3,
    "sheathe": 0,
    "sound_sub": -1,
    "sub": 0
@@ -956,8 +956,8 @@
    "display": 28197,
    "entry": 990343,
    "inv": 23,
-   "material": 1,
-   "sheathe": 7,
+   "material": 3,
+   "sheathe": 0,
    "sound_sub": -1,
    "sub": 0
   },
@@ -967,7 +967,7 @@
    "entry": 990344,
    "inv": 26,
    "material": 1,
-   "sheathe": 1,
+   "sheathe": 0,
    "sound_sub": -1,
    "sub": 3
   },
@@ -1146,7 +1146,7 @@
    "display": 6539,
    "entry": 990362,
    "inv": 2,
-   "material": -1,
+   "material": 3,
    "sheathe": 0,
    "sound_sub": -1,
    "sub": 0
@@ -1156,7 +1156,7 @@
    "display": 9837,
    "entry": 990363,
    "inv": 11,
-   "material": 4,
+   "material": 3,
    "sheathe": 0,
    "sound_sub": -1,
    "sub": 0
@@ -1176,8 +1176,8 @@
    "display": 60349,
    "entry": 990365,
    "inv": 23,
-   "material": 1,
-   "sheathe": 7,
+   "material": 3,
+   "sheathe": 0,
    "sound_sub": -1,
    "sub": 0
   },
@@ -1187,7 +1187,7 @@
    "entry": 990366,
    "inv": 26,
    "material": 1,
-   "sheathe": 1,
+   "sheathe": 0,
    "sound_sub": -1,
    "sub": 3
   },
@@ -1366,7 +1366,7 @@
    "display": 40040,
    "entry": 990384,
    "inv": 2,
-   "material": -1,
+   "material": 3,
    "sheathe": 0,
    "sound_sub": -1,
    "sub": 0
@@ -1376,7 +1376,7 @@
    "display": 28733,
    "entry": 990385,
    "inv": 11,
-   "material": 4,
+   "material": 3,
    "sheathe": 0,
    "sound_sub": -1,
    "sub": 0
@@ -1396,8 +1396,8 @@
    "display": 28337,
    "entry": 990387,
    "inv": 23,
-   "material": 1,
-   "sheathe": 7,
+   "material": 3,
+   "sheathe": 0,
    "sound_sub": -1,
    "sub": 0
   },
@@ -1407,7 +1407,7 @@
    "entry": 990388,
    "inv": 26,
    "material": 1,
-   "sheathe": 1,
+   "sheathe": 0,
    "sound_sub": -1,
    "sub": 3
   },
@@ -1586,7 +1586,7 @@
    "display": 15420,
    "entry": 990406,
    "inv": 2,
-   "material": -1,
+   "material": 3,
    "sheathe": 0,
    "sound_sub": -1,
    "sub": 0
@@ -1596,7 +1596,7 @@
    "display": 34189,
    "entry": 990407,
    "inv": 11,
-   "material": 4,
+   "material": 3,
    "sheathe": 0,
    "sound_sub": -1,
    "sub": 0
@@ -1616,8 +1616,8 @@
    "display": 28475,
    "entry": 990409,
    "inv": 23,
-   "material": 1,
-   "sheathe": 7,
+   "material": 3,
+   "sheathe": 0,
    "sound_sub": -1,
    "sub": 0
   },
@@ -1627,7 +1627,7 @@
    "entry": 990410,
    "inv": 26,
    "material": 1,
-   "sheathe": 1,
+   "sheathe": 0,
    "sound_sub": -1,
    "sub": 3
   },
@@ -1806,7 +1806,7 @@
    "display": 39212,
    "entry": 990428,
    "inv": 2,
-   "material": -1,
+   "material": 3,
    "sheathe": 0,
    "sound_sub": -1,
    "sub": 0
@@ -1816,7 +1816,7 @@
    "display": 47325,
    "entry": 990429,
    "inv": 11,
-   "material": 4,
+   "material": 3,
    "sheathe": 0,
    "sound_sub": -1,
    "sub": 0
@@ -1836,8 +1836,8 @@
    "display": 34807,
    "entry": 990431,
    "inv": 23,
-   "material": 1,
-   "sheathe": 7,
+   "material": 3,
+   "sheathe": 0,
    "sound_sub": -1,
    "sub": 0
   },
@@ -1847,7 +1847,7 @@
    "entry": 990432,
    "inv": 26,
    "material": 1,
-   "sheathe": 1,
+   "sheathe": 0,
    "sound_sub": -1,
    "sub": 3
   },
@@ -2026,7 +2026,7 @@
    "display": 32087,
    "entry": 990450,
    "inv": 2,
-   "material": -1,
+   "material": 3,
    "sheathe": 0,
    "sound_sub": -1,
    "sub": 0
@@ -2036,7 +2036,7 @@
    "display": 49229,
    "entry": 990451,
    "inv": 11,
-   "material": 4,
+   "material": 3,
    "sheathe": 0,
    "sound_sub": -1,
    "sub": 0
@@ -2056,8 +2056,8 @@
    "display": 35816,
    "entry": 990453,
    "inv": 23,
-   "material": 1,
-   "sheathe": 7,
+   "material": 3,
+   "sheathe": 0,
    "sound_sub": -1,
    "sub": 0
   },
@@ -2067,7 +2067,7 @@
    "entry": 990454,
    "inv": 26,
    "material": 1,
-   "sheathe": 1,
+   "sheathe": 0,
    "sound_sub": -1,
    "sub": 3
   },
@@ -2246,7 +2246,7 @@
    "display": 53566,
    "entry": 990472,
    "inv": 2,
-   "material": -1,
+   "material": 3,
    "sheathe": 0,
    "sound_sub": -1,
    "sub": 0
@@ -2256,7 +2256,7 @@
    "display": 56104,
    "entry": 990473,
    "inv": 11,
-   "material": 4,
+   "material": 3,
    "sheathe": 0,
    "sound_sub": -1,
    "sub": 0
@@ -2276,8 +2276,8 @@
    "display": 42564,
    "entry": 990475,
    "inv": 23,
-   "material": 1,
-   "sheathe": 7,
+   "material": 3,
+   "sheathe": 0,
    "sound_sub": -1,
    "sub": 0
   },
@@ -2287,7 +2287,7 @@
    "entry": 990476,
    "inv": 26,
    "material": 1,
-   "sheathe": 1,
+   "sheathe": 0,
    "sound_sub": -1,
    "sub": 3
   },
@@ -2466,7 +2466,7 @@
    "display": 64201,
    "entry": 990494,
    "inv": 2,
-   "material": -1,
+   "material": 3,
    "sheathe": 0,
    "sound_sub": -1,
    "sub": 0
@@ -2476,7 +2476,7 @@
    "display": 54513,
    "entry": 990495,
    "inv": 11,
-   "material": 4,
+   "material": 3,
    "sheathe": 0,
    "sound_sub": -1,
    "sub": 0
@@ -2496,8 +2496,8 @@
    "display": 54753,
    "entry": 990497,
    "inv": 23,
-   "material": 1,
-   "sheathe": 7,
+   "material": 3,
+   "sheathe": 0,
    "sound_sub": -1,
    "sub": 0
   },
@@ -2506,7 +2506,7 @@
    "display": 52272,
    "entry": 990500,
    "inv": 1,
-   "material": 8,
+   "material": 6,
    "sheathe": 0,
    "sound_sub": -1,
    "sub": 4
@@ -2546,7 +2546,7 @@
    "display": 24510,
    "entry": 990504,
    "inv": 1,
-   "material": 8,
+   "material": 6,
    "sheathe": 0,
    "sound_sub": -1,
    "sub": 4
@@ -2586,7 +2586,7 @@
    "display": 26257,
    "entry": 990508,
    "inv": 1,
-   "material": 8,
+   "material": 6,
    "sheathe": 0,
    "sound_sub": -1,
    "sub": 4
@@ -2626,7 +2626,7 @@
    "display": 40771,
    "entry": 990512,
    "inv": 1,
-   "material": 8,
+   "material": 6,
    "sheathe": 0,
    "sound_sub": -1,
    "sub": 4
@@ -2666,7 +2666,7 @@
    "display": 42829,
    "entry": 990516,
    "inv": 1,
-   "material": 8,
+   "material": 6,
    "sheathe": 0,
    "sound_sub": -1,
    "sub": 4
@@ -2706,7 +2706,7 @@
    "display": 41135,
    "entry": 990520,
    "inv": 1,
-   "material": 8,
+   "material": 6,
    "sheathe": 0,
    "sound_sub": -1,
    "sub": 4
@@ -2746,7 +2746,7 @@
    "display": 48057,
    "entry": 990524,
    "inv": 1,
-   "material": 8,
+   "material": 6,
    "sheathe": 0,
    "sound_sub": -1,
    "sub": 4
@@ -2786,7 +2786,7 @@
    "display": 57522,
    "entry": 990528,
    "inv": 1,
-   "material": 8,
+   "material": 6,
    "sheathe": 0,
    "sound_sub": -1,
    "sub": 4
@@ -2826,7 +2826,7 @@
    "display": 59603,
    "entry": 990532,
    "inv": 1,
-   "material": 8,
+   "material": 6,
    "sheathe": 0,
    "sound_sub": -1,
    "sub": 4

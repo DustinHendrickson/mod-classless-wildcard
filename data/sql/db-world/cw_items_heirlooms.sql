@@ -50,10 +50,10 @@ VALUES
    1, 1032, 0, 3600, 1, 130, 1, 1,
  'Two hands, one very long career.', 12340, 0),
 (990254, 2, 10, 'Everkeen Battlestaff', 34114, 7, 134221824, 1, 100000, 20000, 17, -1, -1, 1, 1, 1,
-   336, 4104, 0, 3200, 1, 120, 4, 2,
+   336, 4104, 0, 3200, 1, 120, 2, 2,
  'A caster stave that keeps pace with its bearer.', 12340, 0),
 (990255, 2, 10, 'Everkeen Warstaff', 33015, 7, 134221824, 1, 100000, 20000, 17, -1, -1, 1, 1, 1,
-   1, 1032, 0, 3400, 1, 130, 4, 2,
+   1, 1032, 0, 3400, 1, 130, 2, 2,
  'A staff swung, not channeled. Strength and stamina.', 12340, 0),
 (990256, 2, 2, 'Everkeen Longbow', 31338, 7, 134221824, 1, 65000, 13000, 15, -1, -1, 1, 1, 1,
    2, 8208, 0, 2800, 1, 90, 2, 0,
@@ -106,13 +106,13 @@ VALUES
 -- Trinkets -- single-stat scaling, one for each build direction
 -- ---------------------------------------------------------------------------
 (990270, 4, 0, 'Everflowing Spell Focus', 34149, 7, 134221824, 1, 24000, 4800, 12, -1, -1, 1, 1, 1,
-   271, 2, 0, 0, 1, 0, 0, 0,
+   271, 2, 0, 0, 1, 0, 4, 0,
  'Pure spell power, scaled to whoever holds it.', 12340, 0),
 (990271, 4, 0, 'Everquick Chronometer', 39186, 7, 134221824, 1, 24000, 4800, 12, -1, -1, 1, 1, 1,
-   251, 2, 0, 0, 1, 0, 0, 0,
+   251, 2, 0, 0, 1, 0, 4, 0,
  'Pure haste. Everything you do, sooner.', 12340, 0),
 (990272, 4, 0, 'Everseeing Eye', 31029, 7, 134221824, 1, 24000, 4800, 12, -1, -1, 1, 1, 1,
-   104, 2, 0, 0, 1, 0, 0, 0,
+   104, 2, 0, 0, 1, 0, 4, 0,
  'Pure critical strike, whatever it is you are striking with.', 12340, 0);
 
 -- Shelving lives in cw_world_vendor_lists.sql, which reads this file back and

@@ -10,9 +10,12 @@ copy the client had.
 
 So the client patch appends a row per generated item. This writes what it needs.
 
-Material and SheatheType are not in item_template. They are copied from a stock
-item with the same (class, subclass, InventoryType) -- the same donor idea the
-spell generator uses -- so sheathing and the sound a weapon makes stay right.
+Material and SheatheType are what most stock items of the same (class,
+subclass, InventoryType) carry, from stock_items.json (analyze_stock_items.py).
+The server compares both with item_template at startup, logs every mismatch and
+takes the DBC's value, so the SQL files carry the same pair and
+validate_items.py fails if they drift. Taking the FIRST stock row as the donor
+used to give plate helms leather, mail shoulders cloth and guns a back sheath.
 
 Run:  python gen_item_manifest.py
 """
@@ -28,6 +31,7 @@ MOD = os.path.normpath(os.path.join(HERE, "..", "..", ".."))
 sys.path.insert(0, os.path.join(MOD, "client-patch"))
 from lib import clientfs                                    # noqa: E402
 from lib.dbc import parse_header                            # noqa: E402
+import analyze_stock_items                                  # noqa: E402
 
 WORLD = os.path.join(MOD, "data", "sql", "db-world")
 OUT = os.path.join(MOD, "client-patch", "items_manifest.json")
@@ -119,7 +123,16 @@ def main():
     items = read_items()
     print("generated items read: %d" % len(items))
 
-    with clientfs.ClientFiles(CLIENT, clientfs.detect_locales(CLIENT)[0]) as files:
+    # Read the stock Item.dbc, not one an earlier install already appended our
+    # rows to -- ownership decided the way selftest.py and uninstall decide it.
+    import glob
+    from install import _is_our_archive
+    locale = clientfs.detect_locales(CLIENT)[0]
+    own = {os.path.basename(path).lower()
+           for path in glob.glob(os.path.join(CLIENT, "patch-*.MPQ"))
+           + glob.glob(os.path.join(CLIENT, locale, "patch-*.MPQ"))
+           if _is_our_archive(path)}
+    with clientfs.ClientFiles(CLIENT, locale, exclude=own) as files:
         raw, src = files.find("DBFilesClient" + BS + "Item.dbc")
     rows, fields, rec, _slen = parse_header(raw)
     if fields != 8 or rec != 32:
@@ -127,24 +140,20 @@ def main():
                          % (fields, rec))
     print("Item.dbc: %d rows (from %s)" % (rows, os.path.basename(src)))
 
-    # (class, subclass, inventorytype) -> (material, sheathe) from real items
-    donor, taken = {}, {}
+    taken = {}
     for i in range(rows):
-        v = struct.unpack_from("<8i", raw, 20 + i * rec)
-        taken[v[0]] = True
-        donor.setdefault((v[1], v[2], v[6]), (v[4], v[7]))
-        donor.setdefault((v[1], v[2], None), (v[4], v[7]))
+        taken[struct.unpack_from("<i", raw, 20 + i * rec)[0]] = True
+    stock = analyze_stock_items.load()
 
     out, guessed, clash = [], 0, []
     for it in items:
         if it["entry"] in taken:
             clash.append(it["entry"])
             continue
-        mat_sheathe = (donor.get((it["cls"], it["sub"], it["inv"]))
-                       or donor.get((it["cls"], it["sub"], None)))
-        if mat_sheathe is None:
-            mat_sheathe = (-1, 0)
+        key = "%d,%d,%d" % (it["cls"], it["sub"], it["inv"])
+        if key not in stock["look"]:
             guessed += 1
+        mat_sheathe = analyze_stock_items.look_of(stock, it["cls"], it["sub"], it["inv"])
         out.append(dict(entry=it["entry"], cls=it["cls"], sub=it["sub"],
                         sound_sub=-1, material=mat_sheathe[0],
                         display=it["display"], inv=it["inv"],

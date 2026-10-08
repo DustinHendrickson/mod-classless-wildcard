@@ -63,10 +63,10 @@ DELETE FROM `playercreateinfo_item` WHERE `Note` LIKE 'cw kit:%';
 DELETE FROM `item_template` WHERE `entry` IN (990101, 990102);
 INSERT INTO `item_template`
   (`entry`, `class`, `subclass`, `name`, `displayid`, `Quality`, `BuyCount`, `BuyPrice`, `SellPrice`,
-   `InventoryType`, `AllowableClass`, `AllowableRace`, `ItemLevel`, `RequiredLevel`, `maxcount`, `stackable`,
+   `InventoryType`, `AllowableClass`, `AllowableRace`, `ItemLevel`, `RequiredLevel`, `maxcount`, `stackable`, `Material`,
    `BagFamily`, `description`, `VerifiedBuild`)
 VALUES
-(990101, 15, 0, 'Reroll Scroll', 1103, 3, 1, 5000, 0, 0, -1, -1, 1, 1, 0, 20,
+(990101, 15, 0, 'Reroll Scroll', 1103, 3, 1, 5000, 0, 0, -1, -1, 1, 1, 0, 20, -1,
  0, 'A stored Wildcard reroll for an ability or a talent. Used automatically when you reroll with no reroll charges left.', 12340);
 
 -- 990102 is removed: one scroll covers abilities and talents (the DELETE

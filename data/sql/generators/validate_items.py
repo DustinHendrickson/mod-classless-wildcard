@@ -9,11 +9,15 @@ import io, os, re, sys, struct
 sys.path.insert(0, r"B:\code\azerothcore-wotlk\modules\mod-classless-wildcard\client-patch")
 from lib import clientfs
 from lib.dbc import parse_header
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+import analyze_stock_items
 
 WORLD = r"B:\code\azerothcore-wotlk\modules\mod-classless-wildcard\data\sql\db-world"
 # item_template.class / subclass: bow, gun, thrown, crossbow, wand
 ITEM_CLASS_WEAPON = 2
 RANGED_SUBCLASSES = (2, 3, 16, 18, 19)
+ITEM_CLASS_ARMOR, ITEM_SUBCLASS_SHIELD = 4, 6
+STOCK = analyze_stock_items.load()
 
 FILES = ["cw_world_base.sql", "cw_items_pack.sql", "cw_items_pack2.sql",
          "cw_items_heirlooms.sql", "cw_items_tiered.sql"]
@@ -142,6 +146,13 @@ for name in FILES:
     iC = cols.index("class") if "class" in cols else None
     iS = cols.index("subclass") if "subclass" in cols else None
     iR = cols.index("RangedModRange") if "RangedModRange" in cols else None
+    iInv = cols.index("InventoryType")
+    iM = cols.index("Material") if "Material" in cols else None
+    iSh = cols.index("sheath") if "sheath" in cols else None
+    iB = cols.index("block") if "block" in cols else None
+    # a block value can also arrive in a later UPDATE in the same file
+    block_set = {int(e): int(b) for b, e in re.findall(
+        r"UPDATE `item_template` SET `block` = (\d+) WHERE `entry` = (\d+);", src_txt)}
     arity_bad = disp_bad = 0
     lo = hi = None
     for t in rows:
@@ -176,6 +187,25 @@ for name in FILES:
                           "%s -- it reads Out of range at any distance"
                           % (name, e, v[iR]))
                     bad += 1
+        # The server checks Material and sheath against Item.dbc at startup,
+        # logs every mismatch and takes the DBC's value. gen_item_manifest.py
+        # writes the client's Item.dbc rows from the stock table, so the SQL has
+        # to carry the same pair (a missing column is the table default, 0).
+        cls, sub, inv = int(v[iC]), int(v[iS]), int(v[iInv])
+        want = analyze_stock_items.look_of(STOCK, cls, sub, inv)
+        have = (int(v[iM]) if iM is not None else 0,
+                int(v[iSh]) if iSh is not None else 0)
+        if have != want:
+            print("  !! %s: entry %d has Material/sheath %s, Item.dbc will say %s "
+                  "-- the server logs it and overrides the SQL"
+                  % (name, e, have, want))
+            bad += 1
+        # A shield with no block value blocks nothing.
+        if cls == ITEM_CLASS_ARMOR and sub == ITEM_SUBCLASS_SHIELD:
+            blk = block_set.get(e, int(v[iB]) if iB is not None else 0)
+            if blk <= 0:
+                print("  !! %s: entry %d is a shield with no block value" % (name, e))
+                bad += 1
         if e in seen:
             print("  !! entry %d duplicated: %s and %s" % (e, seen[e], name))
             bad += 1
