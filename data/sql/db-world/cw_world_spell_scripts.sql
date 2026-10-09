@@ -35,8 +35,9 @@
 --   Script named 'spell_pal_judgement_of_wisdom_mana' is not assigned in the database.
 --   Script named 'spell_pet_hit_expertise_scalling' is not assigned in the database.
 --
--- red, because it is LOG_ERROR("sql.sql"), and harmless. Seeing those two lines
--- is how you know this file applied.
+-- and one more for each script taken over below, eleven in all. They are red,
+-- because it is LOG_ERROR("sql.sql"), and harmless. Seeing them is how you know
+-- this file applied.
 --
 -- Reversible: data/sql/uninstall/cw_uninstall_world.sql puts the core's rows back.
 

@@ -7077,7 +7077,7 @@ end
 -- opens a dead frame -- taking it over is the whole point. We only claim N
 -- while it still IS the talent binding: if the player has put something of
 -- their own there we leave it alone and fall back to a genuinely free key.
--- Everything is rebindable under Key Bindings > ClasslessWildcard.
+-- Everything is rebindable under Key Bindings > Hero Advancement.
 -- J is not a fallback here: it is the stock Talents key's new home, below,
 -- and the only letter WTF\DefaultBindings.wtf leaves unbound.
 local PREFERRED_KEY = "N"
