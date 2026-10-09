@@ -18,7 +18,7 @@ import tempfile
 HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, HERE)
 
-from lib import (blp, charcreate, clientfs, dbc, elemental, exepatch,  # noqa: E402
+from lib import (blp, charcreate, clientfs, dbc, dkfaces, elemental, exepatch,  # noqa: E402
                  gluestrings, mpq, outfit)
 
 CHRCLASSES = "DBFilesClient\\ChrClasses.dbc"
@@ -262,6 +262,86 @@ def main(argv):
             except dbc.DbcError:
                 refused = True
             check("filling an already filled table is refused", refused)
+
+            # What the installer actually ships: every normal face painted in
+            # each Death Knight tone from this client's own textures, and only
+            # the glowing faces borrowing Blizzard's drawn (glowing) art.
+            from install import _is_ours
+            textures, painted = dkfaces.generate(files, raw)
+            borrowed_dbc, borrowed = dbc.fill_death_knight_skin_faces(raw, normal_faces=False)
+            painted_dbc, p_added, p_retex = dbc.add_generated_faces(borrowed_dbc, painted)
+            shipped, _o = dbc.open_death_knight_appearance(painted_dbc)
+            sc, _sf, ssz, _ss = dbc.parse_header(shipped)
+            s_strings = dbc_strings(shipped)
+            s_rows = [struct.unpack_from("<10I", shipped, 20 + i * ssz) for i in range(sc)]
+            s_face = {(r[1], r[2], r[8], r[9]): r for r in s_rows if r[3] == 1}
+            normal_faces = {(r[1], r[2], r[8]) for r in before
+                            if r[3] == 1 and r[9] == 0 and not r[7] & 0x4}
+            glowing_faces = {(r[1], r[2], r[8]) for r in before
+                             if r[3] == 1 and r[9] == 0 and r[7] & 0x4}
+            missing, glows, wrong_tex = [], [], []
+            for race, sex, face in sorted(normal_faces):
+                for colour in dk_colours.get((race, sex), ()):
+                    row = s_face.get((race, sex, face, colour))
+                    if not row:
+                        missing.append((race, sex, face, colour))
+                        continue
+                    if row[7] != dbc.CHARSECTION_PLAYER:
+                        glows.append((race, sex, face, colour, hex(row[7])))
+                    names = [dbc.read_string(s_strings, row[4]), dbc.read_string(s_strings, row[5])]
+                    if not all(n in textures and n.endswith("_dk%d.blp" % colour) for n in names):
+                        wrong_tex.append((race, sex, face, colour, names[0]))
+            check("every normal face is painted in every Death Knight tone",
+                  not missing and painted and p_added + p_retex == len(painted),
+                  "%d pairs (%d new rows, %d of Blizzard's repointed), %d missing"
+                  % (len(painted), p_added, p_retex, len(missing)))
+            check("a painted face never glows (flags exactly 0x01)",
+                  not glows, "%s" % glows[:3])
+            check("each painted row points at its own painted textures",
+                  not wrong_tex, "%s" % wrong_tex[:2])
+            check("only the glowing faces borrow Blizzard's drawn art",
+                  borrowed and {(b[1], b[2], b[3]) for b in borrowed} <= glowing_faces,
+                  "%d borrowed rows" % len(borrowed))
+            # the Face arrows offer ids below 30000 and skip the rest, so the
+            # painted rows must sit in [20000, 30000) and the borrowed above
+            in_painted = [r for r in s_rows if dbc.CHARSECTIONS_GENERATED_FIRST_ID
+                          <= r[0] < dbc.CHARSECTIONS_FILL_FIRST_ID]
+            in_borrowed = [r for r in s_rows if r[0] >= dbc.CHARSECTIONS_FILL_FIRST_ID]
+            check("painted rows sit in the Face arrows' range, borrowed ones above it",
+                  len(in_painted) == p_added
+                  and all(r[7] == dbc.CHARSECTION_PLAYER for r in in_painted)
+                  and len(in_borrowed) == len(borrowed)
+                  and all(r[7] & 0x10 for r in in_borrowed),
+                  "%d painted, %d borrowed" % (len(in_painted), len(in_borrowed)))
+            blocked_shipped = [(race, sex, face) for (race, sex), colours in sorted(dk_colours.items())
+                               for face in sorted(stock_faces[(race, sex)])
+                               if not colours <= skins_offered(shipped, race, sex, face)]
+            check("with painted faces, every face reaches every Death Knight skin",
+                  not blocked_shipped, "%d blocked" % len(blocked_shipped))
+            bad_blp = []
+            for name, data in textures.items():
+                src = name.replace("\\cw_", "\\").rsplit("_dk", 1)[0] + ".blp"
+                w, h, _px = blp.decode_blp(data)
+                sw, sh, _spx = blp.decode_blp(files.find(src)[0])
+                if (w, h) != (sw, sh) or data[8:12] != bytes((1, 0, 8, 1)):
+                    bad_blp.append(name)
+            check("painted textures are palettized BLP2 at their source's size",
+                  textures and not bad_blp, "%d textures, %d bad" % (len(textures), len(bad_blp)))
+            # The client indexes this table in file order and sizes each list
+            # from the last run of rows (dbc.client_index_misses). Rows
+            # appended in two blocks once cut Human males to 11 faces and lost
+            # every glowing one in game; Blizzard's own table loses none.
+            check("the client's index keeps every row of the stock table",
+                  not dbc.client_index_misses(raw))
+            lost = dbc.client_index_misses(shipped)
+            check("the client's index keeps every row of the shipped table",
+                  not lost, "%d rows unreachable, first %s" % (len(lost), lost[:2]))
+            lost_fb = dbc.client_index_misses(full)
+            check("...and of the borrow-everything fallback",
+                  not lost_fb, "%d rows unreachable" % len(lost_fb))
+            check("uninstall recognises every painted texture as ours",
+                  all(_is_ours(n.lower()) for n in textures)
+                  and not _is_ours("character\\human\\male\\humanmalefacelower00_00.blp"))
             # Wow.exe's eye glow tests the FACE row; the exe patch widens that
             # test from 0x4 to 0x14. It must light exactly the faces that
             # glowed before: no stock face may already carry 0x10.
@@ -678,6 +758,13 @@ def main(argv):
                   built and not wrong,
                   "; ".join(wrong) if wrong else
                   ("all match" if built else "nothing was built"))
+            if installer.CHARSECTIONS in built:
+                lost = dbc.client_index_misses(built[installer.CHARSECTIONS])
+                painted_built = [n for n in built if dkfaces.is_generated_name(n)]
+                check("the installer's CharSections loses no row to the client's index",
+                      not lost, "%d unreachable" % len(lost))
+                check("the installer ships the painted faces",
+                      len(painted_built) > 0, "%d textures" % len(painted_built))
             check("CharBaseInfo present (not a DBC layout)",
                   installer.CHARBASEINFO in built)
 
@@ -806,9 +893,18 @@ def main(argv):
                 exepatch.restore(copy)
                 with open(copy, "rb") as handle:
                     restored = handle.read()
-                # the copy's own backup holds the bytes apply started from
-                check("restore gives back the exe apply started from",
-                      restored == original)
+                # apply backs the copy up before changing it, and restore puts
+                # that back. A client an earlier install fully patched gives
+                # apply nothing to do and so no backup: restore then reverses
+                # every site in place, which must land on the stock exe.
+                if "left alone" in summary:
+                    backup = exepatch.backup_path(exe)
+                    expected, label = (open(backup, "rb").read(), "the stock exe") \
+                        if os.path.isfile(backup) else (None, "no stock copy to compare")
+                else:
+                    expected, label = original, "the exe apply started from"
+                check("restore gives back %s" % label,
+                      expected is not None and restored == expected)
 
     print()
     if FAILURES:

@@ -31,7 +31,7 @@ import sys
 HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, HERE)
 
-from lib import (blp, charcreate, clientfs, dbc, elemental, exepatch,  # noqa: E402
+from lib import (blp, charcreate, clientfs, dbc, dkfaces, elemental, exepatch,  # noqa: E402
                  forged, gluestrings, mpq, outfit)
 
 MANIFEST_NAME = "ClasslessWildcard-install.json"
@@ -211,18 +211,34 @@ def build_data_patch(files, name, report, theme=False):
     # the three extra skin colours, the second set of faces and the extra hair
     # colours that Blizzard reserved for Death Knights. The server never checks
     # appearance against this table, so only the client needs telling.
-    # Those skins were drawn for three faces per race, and the skin arrows skip
-    # a colour the current face has no row for, so every face also gets a
-    # version at each of them (Wow.exe keeps these out of the Face arrow).
+    # Those skins were drawn for three faces per race, with the Death Knight's
+    # glowing eyes painted in, and the skin arrows skip a colour the current
+    # face has no row for. Every normal face is painted in each Death Knight
+    # tone from this client's own textures (lib/dkfaces.py; nothing of
+    # Blizzard's is stored in the repository), and the glowing faces borrow
+    # Blizzard's glowing art (Wow.exe keeps those borrowed rows out of the
+    # Face arrow). If painting fails, every face borrows instead.
     raw, source = files.find(CHARSECTIONS)
-    filled, skin_faces = dbc.fill_death_knight_skin_faces(raw)
+    try:
+        face_textures, painted = dkfaces.generate(files, raw)
+    except (ImportError, dkfaces.FaceError, dbc.DbcError, FileNotFoundError,
+            ValueError) as error:
+        face_textures, painted = {}, []
+        report.append("  CharSections.dbc Death Knight-tone faces not painted (%s); "
+                      "normal faces borrow the drawn ones" % error)
+    filled, borrowed = dbc.fill_death_knight_skin_faces(raw, normal_faces=not painted)
+    added = retextured = 0
+    if painted:
+        filled, added, retextured = dbc.add_generated_faces(filled, painted)
+        payload.update(face_textures)
     patched, opened_looks = dbc.open_death_knight_appearance(filled)
     payload[CHARSECTIONS] = patched
     report.append("  CharSections.dbc %d Death Knight skin, face and hair rows "
-                  "offered to every class, %d faces filled in for the Death "
-                  "Knight skins (from %s)"
-                  % (len(opened_looks) - len(skin_faces), len(skin_faces),
-                     os.path.basename(source)))
+                  "offered to every class (from %s)"
+                  % (len(opened_looks) - len(borrowed), os.path.basename(source)))
+    report.append("  CharSections.dbc %d normal faces painted in the Death Knight "
+                  "tones (%d textures), %d glowing faces borrow the drawn ones"
+                  % (added + retextured, len(face_textures), len(borrowed)))
 
     # The client decides spellbook tabs from its OWN copy of this table, so
     # the server opening every class skill line to every class was invisible
@@ -694,7 +710,10 @@ def do_install(args, wow_dir):
                                   exclude=own_archives(locale)) as files:
             payload = build_locale_patch(files, args.name, report, locale,
                                          theme=args.glue, icon=args.hero_icon)
-        payload.update(dbc_payload)
+        # the painted faces stay in the base archive only: nothing outranks
+        # them there, and a second copy would only double the download
+        payload.update({k: v for k, v in dbc_payload.items()
+                        if not dkfaces.is_generated_name(k)})
         name = "patch-%s-%s.MPQ" % (locale, suffix)
         target = os.path.join(data_dir, locale, name)
         if not args.dry_run:
@@ -807,7 +826,9 @@ _OUR_ICON_PREFIX = (elemental.ICON_DIR + "cw_").lower()
 
 
 def _is_ours(name: str) -> bool:
-    return name in _OUR_FILES or (name.startswith(_OUR_ICON_PREFIX) and name.endswith(".blp"))
+    return (name in _OUR_FILES
+            or (name.startswith(_OUR_ICON_PREFIX) and name.endswith(".blp"))
+            or dkfaces.is_generated_name(name))
 
 
 def _is_our_archive(path):

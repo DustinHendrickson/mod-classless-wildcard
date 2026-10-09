@@ -120,6 +120,58 @@ def encode_palettized(image, reserve=()) -> bytes:
     return bytes(out)
 
 
+def encode_palettized_opaque(image) -> bytes:
+    """Encode a Pillow image as an opaque palettized BLP2, the format the
+    3.3.5a client ships its character face textures in: header 01 00 08 01
+    (encoding 1, alphaDepth 0, alphaType 8, mips), a 256-colour BGRA palette
+    with alpha 0, then index bytes only, every mip level down to 1x1.
+
+    Pillow's C quantizer builds the palette and maps every level onto it, so a
+    few hundred textures encode in seconds (encode_palettized walks pixels in
+    Python and is meant for icons).
+    """
+    from PIL import Image
+
+    rgb = image.convert("RGB")
+    width, height = rgb.size
+    base = rgb.quantize(256, method=Image.Quantize.MEDIANCUT)
+    raw_palette = base.getpalette()[:256 * 3]
+    raw_palette += [0] * (256 * 3 - len(raw_palette))
+
+    levels = [base.tobytes()]
+    w, h = width, height
+    while w > 1 or h > 1:
+        w, h = max(1, w // 2), max(1, h // 2)
+        mip = rgb.resize((w, h), Image.LANCZOS).quantize(
+            palette=base, dither=Image.Dither.NONE)
+        levels.append(mip.tobytes())
+
+    pal_bytes = bytearray()
+    for i in range(256):
+        r, g, b = raw_palette[i * 3:i * 3 + 3]
+        pal_bytes += bytes((b, g, r, 0))
+
+    mip_offsets = [0] * 16
+    mip_sizes = [0] * 16
+    offset = _PIXELS_OFFSET
+    for i, indices in enumerate(levels):
+        mip_offsets[i] = offset
+        mip_sizes[i] = len(indices)
+        offset += len(indices)
+
+    out = bytearray()
+    out += b"BLP2"
+    out += struct.pack("<I", 1)                    # type
+    out += bytes((1, 0, 8, 1))                     # enc, alphaDepth, alphaType, hasMips
+    out += struct.pack("<II", width, height)
+    out += struct.pack("<16I", *mip_offsets)
+    out += struct.pack("<16I", *mip_sizes)
+    out += bytes(pal_bytes)
+    for indices in levels:
+        out += indices
+    return bytes(out)
+
+
 def _nearest(palette, key):
     r, g, b = key
     best, bd = 0, 1 << 30

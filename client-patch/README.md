@@ -164,7 +164,8 @@ Install to this client? [Y/n] y
   ChrClasses.dbc   10 classes renamed to Hero
   ChrClasses.dbc   ranged slot restored on 4 relic classes (bows, guns and wands now show)
   CharBaseInfo.dbc all 10 races, one cosmetic class (shown as Hero)
-  CharSections.dbc 2829 Death Knight skin, face and hair rows offered to every class, 780 faces filled in for the Death Knight skins
+  CharSections.dbc 2667 Death Knight skin, face and hair rows offered to every class
+  CharSections.dbc 471 normal faces painted in the Death Knight tones (942 textures), 471 glowing faces borrow the drawn ones
   SkillRaceClassInfo.dbc  86 class skill lines opened to every class
   SkillLineAbility.dbc  3143 class spells now belong to every class (spellbook tabs for cross-class spells)
   TalentTab.dbc     30 talent trees opened to every class (the client accepts cross-class talents)
@@ -223,7 +224,9 @@ The `Wow.exe` patch is the well-known "allow custom interface" patch (the same o
 Project Reforged patcher uses), confirmed working on a stock 3.3.5a build 12340 client.
 One more byte lets the Death Knight faces keep their glowing eyes on every class, and two
 small additions keep the Face arrow on real faces while the Skin Color arrow reaches the
-Death Knight skins from any face without changing it.
+Death Knight skins from any face without changing it. The installer also paints every
+normal face in the three Death Knight skin tones from your own client (about 30 seconds,
+32 MB), so a normal face keeps its own eyes on a Death Knight skin.
 It is backed up to `Wow.exe.classless-bak` and restored by `--uninstall`.
 
 ---

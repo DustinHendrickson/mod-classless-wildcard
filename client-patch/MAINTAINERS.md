@@ -119,23 +119,65 @@ Knight skin colour for only three faces per race and sex (Human male: faces 0,
 row and the underwear row at `c` all pass the gate, so from any other face the
 new colours were skipped: 520 of 628 face/arrow runs never reached one.
 
-The fix has two halves that only work together:
+Those three were also painted with the Death Knight's glowing blue eyes (the
+eye glow is in the texture, on top of the geoset glow below), so even where
+art exists it is a glowing face. Every face therefore gets a row at each Death
+Knight colour, and the skin arrows reach those colours from any face and
+**never change which face is picked**:
 
-- **Data:** `fill_death_knight_skin_faces` gives every face a row at each
-  Death Knight colour, a copy of the nearest drawn face (a glowing-eye face
-  through its normal counterpart), ids from `CHARSECTIONS_FILL_FIRST_ID`
-  (30000). 780 rows. The skin arrows then reach those colours from any face
-  and **never change which face is picked**: on a Death Knight skin the face
-  shows the nearest drawn look, and back on a normal skin it is the player's
-  own face again.
-- **Wow.exe:** the Face arrows must not see the copies (see "Death Knight
-  skins from any face" under `Wow.exe`). Without that, they stay on a Death
-  Knight skin and show the same three looks over and over.
+- **Normal faces are painted** (`lib/dkfaces.py`, `add_generated_faces`):
+  each normal face's own textures, recoloured into the Death Knight tone at
+  install time from the player's client. **Nothing derived from Blizzard art
+  is in the repository**, only the code. The tone map is a quadratic RGB fit
+  between the normal body skin and the Death Knight one (the same artwork in
+  two tones; within a few levels of 255), baked with the "is it skin" rule
+  into one Pillow `Color3DLUT`. Not skin, so kept: near-white (eye whites),
+  or a colour the body never uses that is also over 45 degrees from its hue
+  and saturated above 0.25 (irises, jewellery). Skin in a colour the body
+  never uses goes through the body's own colour at the same brightness
+  first, because the fit would guess. 471 face/colour pairs, 942 textures,
+  about 32 MB, 30 to 40 seconds, written as palettized BLP2 (Blizzard's face
+  format) named `cw_<original>_dk<colour>.blp` beside the originals, in the
+  base archive only. Rows: 309 new, ids from `CHARSECTIONS_GENERATED_FIRST_ID`
+  (20000), and Blizzard's 162 drawn ones repointed, all flags `0x01` (no glow;
+  a Death Knight never sees normal faces, as in stock).
+- **Glowing faces borrow** (`fill_death_knight_skin_faces(normal_faces=False)`):
+  a copy of the nearest drawn (glowing) face, ids from
+  `CHARSECTIONS_FILL_FIRST_ID` (30000). 471 rows.
+- **Wow.exe:** the Face arrows must not see the borrowed copies (see "Death
+  Knight skins from any face" under `Wow.exe`), or a Death Knight skin shows
+  the same three looks over and over. Painted rows are real, distinct art and
+  stay visible, so on a Death Knight skin the Face arrow steps through every
+  normal face without leaving it.
 
-Two approaches failed in game on 2026-10-09, and the reasons matter. The fill
-alone: the Face arrow (`0x4eb710`) keeps the current skin when the next face
-has a row at it, so it never left a Death Knight skin. A skin-arrow routine
-that switched to a drawn face instead: the switch was one-way, so a player who
+If painting fails (no Pillow, a missing texture), the installer says so and
+every face borrows instead, as in `00e773c`.
+
+**Appended rows must be one sorted block.** The client indexes CharSections
+in file order (`0x4f3e00`): a run of rows sharing race, sex and section sizes
+that race's variation list from the run's highest variation, a run sharing
+the variation sizes its colour list, and in both cases the **last** run wins.
+Rows beyond the sizes are silently dropped. The first painted build appended
+the borrowed copies (faces 12-23) and then the painted rows (faces 0-10) as
+two blocks, so the last run capped Human males at 11 faces: face 11 and every
+glowing face vanished in game, and the skin arrows on those faces stuck.
+`add_generated_faces` now writes everything with an id from 20000 as one
+block sorted by race, sex, section, variation and colour, and
+`dbc.client_index_misses()` replays the three passes; selftest requires it to
+return nothing for the stock table, the shipped table, the fallback and the
+installer's own payload. That broken table lost 2105 rows to it.
+
+The rule for "is it skin" took four tries, each found on the preview sheet:
+"unchanged across normal skins" (the iris swatch is tinted with the skin),
+"in the body's colour range" (a Tauren's grey body rejected real skin), "vivid
+and off-hue" alone (a Blood Elf's skin is so saturated that its fel-green eyes
+counted as skin and turned cyan), then all three together. Blizzard's own
+Tauren Death Knight faces keep the brown band along the lip, so ours does too.
+
+Earlier attempts that failed in game on 2026-10-09: borrowed copies for every
+face (a normal face became a glowing one on a Death Knight skin); before the
+exe filter, the Face arrow (`0x4eb710`) never left a Death Knight skin; and a
+skin-arrow routine that switched to a drawn face, one-way, so a player who
 picked a glowing face lost it after one pass through the skins.
 `test_skin_arrows.py` runs the real arrows to prove the current design.
 

@@ -237,9 +237,13 @@ CHARSECTION_FACE = 1
 # lib/exepatch.py's FACE_ARROW routines compare the row id with this number,
 # so the two must stay equal (selftest checks). Stock ids end near 14100.
 CHARSECTIONS_FILL_FIRST_ID = 30000
+# Faces painted by lib/dkfaces.py get ids from here up, below the copies: they
+# are real, distinct art, so the Face arrows must offer them.
+CHARSECTIONS_GENERATED_FIRST_ID = 20000
+CHARSECTION_PLAYER = 0x01
 
 
-def fill_death_knight_skin_faces(data: bytes):
+def fill_death_knight_skin_faces(data: bytes, normal_faces=True):
     """Give every face a version at each Death Knight skin colour.
 
     Run on the STOCK table, before open_death_knight_appearance: the Death
@@ -261,6 +265,11 @@ def fill_death_knight_skin_faces(data: bytes):
     The Face arrows must not offer these copies, or a Death Knight skin shows
     the same three looks over and over: lib/exepatch.py's FACE_ARROW patch
     makes them skip any face row with an id from CHARSECTIONS_FILL_FIRST_ID up.
+
+    normal_faces=False copies for the glowing-eye faces only: the installer
+    passes it when lib/dkfaces.py has painted every normal face in the Death
+    Knight tones (add_generated_faces), and falls back to copies for all when
+    it cannot.
     """
     record_count, field_count, record_size, string_size = parse_header(data)
     if field_count != CHARSECTIONS_FIELDS:
@@ -306,7 +315,7 @@ def fill_death_knight_skin_faces(data: bytes):
             drawn = sorted(f for (f, c) in table if c == colour)
             if not drawn:
                 continue
-            for face in normal + glowing:
+            for face in (normal if normal_faces else []) + glowing:
                 if (face, colour) in table:
                     continue
                 base = counterpart[face]
@@ -325,6 +334,134 @@ def fill_death_knight_skin_faces(data: bytes):
     header = WDBC_MAGIC + struct.pack("<4I", record_count + len(new_rows),
                                       field_count, record_size, string_size)
     return header + bytes(body) + data[strings_off:strings_off + string_size], added
+
+
+def add_generated_faces(data: bytes, faces):
+    """Point every normal face at its painted Death Knight-tone textures.
+
+    `faces` is lib/dkfaces.generate()'s list of (race, sex, face, colour,
+    lower_path, upper_path). A (face, colour) with no row gets a new one, ids
+    from CHARSECTIONS_GENERATED_FIRST_ID; the few Blizzard drew (with the
+    Death Knight's painted glowing eyes) are pointed at the painted textures
+    instead, so a normal face never glows. Either way the flags become plain
+    0x01: every class but the Death Knight sees it (a Death Knight never sees
+    normal faces), and the eye glow test (0x14) leaves it alone.
+
+    Run on the stock table after fill_death_knight_skin_faces(normal_faces=
+    False), which copies Blizzard's glowing art for the glowing faces first.
+    Returns (new_dbc_bytes, added, retextured).
+    """
+    record_count, field_count, record_size, string_size = parse_header(data)
+    if field_count != CHARSECTIONS_FIELDS:
+        raise DbcError(
+            "CharSections.dbc has %d fields, expected %d. This client build is "
+            "not the 3.3.5a layout this patch understands."
+            % (field_count, CHARSECTIONS_FIELDS))
+    records_off = 20
+    strings_off = records_off + record_count * record_size
+    records = bytearray(data[records_off:strings_off])
+    strings = bytearray(data[strings_off:strings_off + string_size])
+    rows = [struct.unpack_from("<10I", records, i * record_size)
+            for i in range(record_count)]
+    if any(CHARSECTIONS_GENERATED_FIRST_ID <= r[0] < CHARSECTIONS_FILL_FIRST_ID
+           for r in rows):
+        raise DbcError("CharSections.dbc already has painted faces")
+    index = {(r[1], r[2], r[3], r[8], r[9]): i for i, r in enumerate(rows)}
+    offsets = {}
+
+    def string(text):
+        if text not in offsets:
+            offsets[text] = len(strings)
+            strings.extend(text.encode("utf-8") + b"\0")
+        return offsets[text]
+
+    next_id = CHARSECTIONS_GENERATED_FIRST_ID
+    added = retextured = 0
+    new_rows = []
+    for race, sex, face, colour, lower, upper in faces:
+        lo, up = string(lower), string(upper)
+        at = index.get((race, sex, CHARSECTION_FACE, face, colour))
+        if at is not None:
+            base = at * record_size
+            struct.pack_into("<I", records, base + 4 * 4, lo)
+            struct.pack_into("<I", records, base + 5 * 4, up)
+            struct.pack_into("<I", records, base + CHARSECTIONS_FLAGS_FIELD * 4,
+                             CHARSECTION_PLAYER)
+            retextured += 1
+        else:
+            new_rows.append((next_id, race, sex, CHARSECTION_FACE, lo, up, 0,
+                             CHARSECTION_PLAYER, face, colour))
+            next_id += 1
+            added += 1
+    if next_id > CHARSECTIONS_FILL_FIRST_ID:
+        raise DbcError("too many painted faces for the id range")
+    # Everything appended (painted, and the borrowed copies already there)
+    # goes at the end as ONE block sorted by race, sex, section, face and
+    # colour. The client sizes each race's face list from the LAST run of
+    # rows sharing race, sex and section (see client_index_misses): with the
+    # copies (faces 12-23) followed by a separate painted block (faces 0-10),
+    # Human males were cut to 11 faces and every glowing face disappeared.
+    stock_part = bytearray()
+    appended = list(new_rows)
+    for i in range(record_count):
+        row = struct.unpack_from("<10I", records, i * record_size)
+        if row[0] >= CHARSECTIONS_GENERATED_FIRST_ID:
+            appended.append(row)
+        else:
+            stock_part += records[i * record_size:(i + 1) * record_size]
+    appended.sort(key=lambda r: (r[1], r[2], r[3], r[8], r[9], r[0]))
+    for row in appended:
+        stock_part += struct.pack("<10I", *row)
+    header = WDBC_MAGIC + struct.pack("<4I", record_count + len(new_rows),
+                                      field_count, record_size, len(strings))
+    return header + bytes(stock_part) + bytes(strings), added, retextured
+
+
+def client_index_misses(data: bytes):
+    """Rows of CharSections.dbc the client can never look up.
+
+    A replay of Wow.exe 0x4f3e00, which indexes the table by race, sex,
+    section, variation and colour in three passes over the rows IN FILE ORDER:
+
+      1. a run of rows sharing (race, sex, section) sizes that slot's
+         variation list to the run's highest variation + 1; every new run
+         replaces the list, so the LAST run decides
+      2. likewise a run sharing (race, sex, section, variation) sizes that
+         variation's colour list from its highest colour, the last run again
+      3. each row is stored only if its variation and colour fit
+
+    Blizzard's own order loses nothing. Returns [(id, race, sex, section,
+    variation, colour)] for every row step 3 drops, so appending rows in the
+    wrong order shows up here instead of as faces missing in game.
+    """
+    record_count, field_count, record_size, _strings = parse_header(data)
+    rows = [struct.unpack_from("<10I", data, 20 + i * record_size)
+            for i in range(record_count)]
+    rows = [r for r in rows if r[3] < 5]
+    variations, colours = {}, {}
+    current, top = None, 0
+    for r in rows + [None]:
+        key = None if r is None else (r[1], r[2], r[3])
+        if current is not None and key != current:
+            variations[current] = top + 1
+            colours = {k: v for k, v in colours.items() if k[:3] != current}
+            top = 0
+        if r is None:
+            break
+        current, top = key, max(top, r[8])
+    current, top = None, 0
+    for r in rows + [None]:
+        key = None if r is None else (r[1], r[2], r[3], r[8])
+        if current is not None and key != current:
+            if current[3] < variations.get(current[:3], 0):
+                colours[current] = top + 1
+            top = 0
+        if r is None:
+            break
+        current, top = key, max(top, r[9])
+    return [(r[0], r[1], r[2], r[3], r[8], r[9]) for r in rows
+            if not (r[8] < variations.get((r[1], r[2], r[3]), 0)
+                    and r[9] < colours.get((r[1], r[2], r[3], r[8]), 0))]
 
 
 def open_death_knight_appearance(data: bytes):

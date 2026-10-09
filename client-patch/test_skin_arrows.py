@@ -11,14 +11,17 @@ pressed: Skin next/prev (0x4eb150 / 0x4eb290) and Face next/prev (0x4eb710 /
 and the two redraws are faked: SetSkin (0x4ea6b0) and SetFace (0x4ea490) just
 record what would be on screen.
 
-  stock exe, stock table (what shipped before the fill)
+  stock exe, stock table (what shipped before any of this)
       most faces never reach a Death Knight skin: the bug, reproduced
-  stock exe, filled table
-      the Face arrow lands on filled-in copies: why the exe filter exists
-  patched exe, filled table (what the installer ships)
+  stock exe, shipped table
+      the Face arrow lands on the glowing faces' borrowed copies: why the exe
+      filter exists
+  patched exe, shipped table (painted normal faces + borrowed glowing ones,
+  what the installer writes)
       Skin arrows reach every Death Knight skin from every face and never
-      change the face; Face arrows never land on a copy, and show exactly
-      what the stock exe shows on the stock table, press by press
+      change the face; Face arrows never land on a borrowed copy; on a Death
+      Knight skin they step through the normal faces without leaving it, and
+      every normal face shows up there
 
 Exits non-zero on any failure. The real client is never written.
 """
@@ -35,7 +38,7 @@ import tempfile
 HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, HERE)
 
-from lib import clientfs, dbc, exepatch  # noqa: E402
+from lib import clientfs, dbc, dkfaces, exepatch  # noqa: E402
 
 try:
     import pefile
@@ -164,19 +167,25 @@ def survey(exe, table, stock_rows, max_race):
     count, _f, size, _s = dbc.parse_header(table)
     rows = [struct.unpack_from("<10I", table, 20 + i * size) for i in range(count)]
     face_row = {(r[1], r[2], r[8], r[9]): r for r in rows if r[3] == 1}
-    dk, faces = {}, {}
+    dk, faces, normal = {}, {}, {}
     for r in stock_rows:
         if r[3] == 0 and r[7] & 0x4:
             dk.setdefault((r[1], r[2]), set()).add(r[9])
         if r[3] == 1 and r[9] == 0:
             faces.setdefault((r[1], r[2]), set()).add(r[8])
+            if not r[7] & 0x4:
+                normal.setdefault((r[1], r[2]), set()).add(r[8])
     out = {}
     for klass in (PALADIN, DEATH_KNIGHT):
         s = dict(skin_runs=0, skin_reached=0, skin_never=0, face_changed=0,
-                 face_runs=0, on_copy=0, face_shown={})
+                 face_runs=0, on_copy=0, dk_runs=0, dk_dropped=0, dk_missing=0,
+                 all_missing=0)
         for (race, sex), colours in sorted(dk.items()):
             every = faces[(race, sex)]
-            for face in sorted(every):
+            # a Death Knight only ever has a glowing face (stock: the gate
+            # hides normal faces from class 6), so it starts from those
+            starts = every if klass == PALADIN else every - normal[(race, sex)]
+            for face in sorted(starts):
                 for arrow in (SKIN_NEXT, SKIN_PREV):
                     shown = client.press(arrow, klass, race, sex, face, 0)
                     seen = {colour for _f, colour in shown}
@@ -186,6 +195,7 @@ def survey(exe, table, stock_rows, max_race):
                     s["face_changed"] += any(f != face for f, _c in shown)
             # from every face, on a normal skin and on each Death Knight skin
             for colour in [0] + sorted(colours):
+                on_dk = set()
                 for start in sorted(every):
                     for arrow in (FACE_NEXT, FACE_PREV):
                         shown = client.press(arrow, klass, race, sex, start, colour)
@@ -193,7 +203,22 @@ def survey(exe, table, stock_rows, max_race):
                         s["on_copy"] += any(
                             face_row.get((race, sex, f, c), (0,))[0]
                             >= dbc.CHARSECTIONS_FILL_FIRST_ID for f, c in shown)
-                        s["face_shown"][(race, sex, colour, start, arrow)] = shown
+                        on_dk |= {f for f, c in shown if c == colour}
+                        if colour in colours and start in normal[(race, sex)]:
+                            # until a glowing face comes up, a normal face
+                            # must keep the Death Knight skin on screen
+                            s["dk_runs"] += 1
+                            for f, c in shown:
+                                if f not in normal[(race, sex)]:
+                                    break
+                                if c != colour:
+                                    s["dk_dropped"] += 1
+                                    break
+                if colour in colours:
+                    s["dk_missing"] += len(normal[(race, sex)] - on_dk)
+                else:
+                    # on a normal skin, every face this class can see
+                    s["all_missing"] += len(starts - on_dk)
         out[klass] = s
     return out
 
@@ -216,13 +241,17 @@ def main(argv):
     with clientfs.ClientFiles(data_dir, locale, exclude=own) as files:
         stock = files.find(CHARSECTIONS)[0]
         races = files.find(CHRRACES)[0]
+        # what the installer writes: normal faces painted from this client's
+        # own textures, glowing faces borrowing the drawn art
+        _textures, painted = dkfaces.generate(files, stock)
     count, _f, size, _s = dbc.parse_header(stock)
     stock_rows = [struct.unpack_from("<10I", stock, 20 + i * size) for i in range(count)]
     rcount, _rf, rsize, _rs = dbc.parse_header(races)
     max_race = max(struct.unpack_from("<I", races, 20 + i * rsize)[0] for i in range(rcount))
     opened_only = dbc.open_death_knight_appearance(stock)[0]
+    borrowed = dbc.fill_death_knight_skin_faces(stock, normal_faces=False)[0]
     shipped = dbc.open_death_knight_appearance(
-        dbc.fill_death_knight_skin_faces(stock)[0])[0]
+        dbc.add_generated_faces(borrowed, painted)[0])[0]
 
     with tempfile.TemporaryDirectory() as tmp:
         copy = os.path.join(tmp, "Wow.exe")
@@ -230,21 +259,18 @@ def main(argv):
         with open(copy, "rb") as handle:
             before = exepatch._group_state(handle.read(), exepatch.FACE_ARROW)
         print("source  : %s (Face arrow sites: %s)" % (source, before))
-        stock_faces = {}
         if before == "apply":
             print("\n== stock exe, stock table")
-            baseline = survey(copy, opened_only, stock_rows, max_race)
-            stock_faces = {k: v["face_shown"] for k, v in baseline.items()}
-            s = baseline[PALADIN]
+            s = survey(copy, opened_only, stock_rows, max_race)[PALADIN]
             check("the gap is reproduced: most faces never reach a Death Knight skin",
                   s["skin_never"] > s["skin_runs"] // 2,
                   "%d of %d runs never reach one" % (s["skin_never"], s["skin_runs"]))
-            print("\n== stock exe, filled table")
+            print("\n== stock exe, shipped table")
             s = survey(copy, shipped, stock_rows, max_race)[PALADIN]
-            check("without the exe filter the Face arrow lands on copies",
+            check("without the exe filter the Face arrow lands on borrowed copies",
                   s["on_copy"] > 0, "%d of %d runs" % (s["on_copy"], s["face_runs"]))
 
-        print("\n== patched exe, filled table (what the installer ships)")
+        print("\n== patched exe, shipped table (what the installer writes)")
         print("  " + exepatch.apply(copy))
         with open(copy, "rb") as handle:
             after = exepatch._group_state(handle.read(), exepatch.FACE_ARROW)
@@ -257,14 +283,21 @@ def main(argv):
                   "%d of %d runs" % (s["skin_reached"], s["skin_runs"]))
             check("%s: Skin arrows never change the face" % name,
                   s["face_changed"] == 0, "%d runs changed it" % s["face_changed"])
-            check("%s: Face arrows never land on a filled-in copy" % name,
+            check("%s: Face arrows never land on a borrowed copy" % name,
                   s["on_copy"] == 0, "%d of %d runs did" % (s["on_copy"], s["face_runs"]))
-            if before == "apply":
-                # the copies are invisible to the Face arrows: the same face
-                # AND skin as the stock exe on the stock table, every press
-                differ = [k for k, v in s["face_shown"].items() if stock_faces[klass][k] != v]
-                check("%s: Face arrows show exactly what stock shows, press by press" % name,
-                      not differ, "%d of %d runs differ" % (len(differ), len(s["face_shown"])))
+        # a Death Knight never sees normal faces (stock rule), so these two
+        # are the Hero's
+        s = stats[PALADIN]
+        check("Hero: on a Death Knight skin, normal faces never knock it off",
+              s["dk_runs"] and s["dk_dropped"] == 0,
+              "%d of %d runs dropped the skin" % (s["dk_dropped"], s["dk_runs"]))
+        check("Hero: every normal face shows up on every Death Knight skin",
+              s["dk_missing"] == 0, "%d missing" % s["dk_missing"])
+        # what went missing in game once: the glowing faces, when the
+        # appended rows were in two blocks and the client's index cut them
+        for klass, name in ((PALADIN, "Hero"), (DEATH_KNIGHT, "Death Knight")):
+            check("%s: on a normal skin the Face arrow shows every face, glowing ones included" % name,
+                  stats[klass]["all_missing"] == 0, "%d missing" % stats[klass]["all_missing"])
 
     print()
     if FAILURES:
