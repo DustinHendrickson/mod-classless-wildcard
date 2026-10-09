@@ -713,6 +713,13 @@ def main(argv):
                     rb = bytes.fromhex(replace.replace(" ", ""))
                     if original.count(sb) == 1:
                         expected += sum(a != b for a, b in zip(sb, rb))
+                if exepatch._skin_face_state(original) == "apply":
+                    for offset, search, replace in exepatch.SKIN_FACE:
+                        expected += sum(a != b for a, b in zip(
+                            exepatch._bytes(search), exepatch._bytes(replace)))
+                check("skin arrow face fallback in place",
+                      exepatch._skin_face_state(patched_exe) == "done",
+                      exepatch._skin_face_state(patched_exe))
                 # an exe a previous install fully patched changes nothing
                 glow_pending = original.count(glow_old) == 1
                 check("only the known sites changed",
@@ -725,15 +732,9 @@ def main(argv):
                 exepatch.restore(copy)
                 with open(copy, "rb") as handle:
                     restored = handle.read()
-                backup = exepatch.backup_path(exe)
-                if os.path.isfile(backup):
-                    with open(backup, "rb") as handle:
-                        pristine = handle.read()
-                else:
-                    pristine = original
-                check("restore puts the eye glow test back",
-                      restored.count(glow_old) == 1
-                      and (restored == original or restored == pristine))
+                # the copy's own backup holds the bytes apply started from
+                check("restore gives back the exe apply started from",
+                      restored == original)
 
     print()
     if FAILURES:

@@ -112,12 +112,15 @@ the same flags the stock rows carry). Clearing `0x4` alone would hide the rows
 from real Death Knights, who need `0x4` or `0x10`. The server never reads this
 table, so nothing changes there.
 
-**The Death Knight skins pair with three faces, on purpose.** Blizzard drew
-each Death Knight skin colour for only three faces per race and sex (Human
-male: faces 0, 2, 11) and the client holds no other art. The skin arrow
-(`0x4eb150`) offers colour `c` only when the skin row, the *current face's*
+**The Death Knight skins pair with three faces.** Blizzard drew each Death
+Knight skin colour for only three faces per race and sex (Human male: faces 0,
+2, 11) and the client holds no other art. The skin arrows (`0x4eb150` next,
+`0x4eb290` prev) offer colour `c` only when the skin row, the *current face's*
 row and the underwear row at `c` all pass the gate, so from any other face the
-new colours are skipped. Pick one of those faces first.
+new colours were skipped: 520 of 628 face/arrow runs never reached one. The
+fix is in Wow.exe, not the data: when the current face has no art at `c`, the
+arrow switches to a face that does (see "Death Knight skins from any face"
+under `Wow.exe`). `test_skin_arrows.py` runs the real arrows to prove it.
 
 Filling in the missing (face, colour) rows with copies of the nearest drawn
 face was tried and reverted (2026-10-09). The Face arrow (`0x4eb710`) keeps the
@@ -311,7 +314,39 @@ waiting, and `apply` no longer stops once the interface sites are done). A
 stock exe now changes 13 bytes; the existing backup is never overwritten, so
 `--uninstall` still restores the original.
 
+#### Death Knight skins from any face
+
+Both skin arrows load the current face's row at the candidate colour with
+`mov eax,[ebp-8]; test eax,eax` (`0x4eb21a`, `0x4eb35b`; file `0xEA61A`,
+`0xEA75B`). Each becomes a `call` to a 76-byte routine placed in `.text`'s
+file slack (VA `0x9de3b3`, file `0x5DD7B3`; 77 zero bytes before the raw data
+ends). When the face has art it returns the row untouched. When it has none, it
+walks faces 63 down to 0, takes the first whose row at that colour passes the
+same flag rule (`0x4f3ba0`, `0x4f39a0`), stores it as the current face
+(`[esi+0x2c]`) and returns that row, so the arrow lands on the colour and the
+client's own SetSkin (`0x4ea6b0` → `0x4ea490`) redraws the face. `.text`'s
+VirtualSize (header, file `0x210`) goes from `0x5DD3B3` to `0x5DD400` so the
+loader maps the routine. The source assembly is in `lib/exepatch.py`.
+
+The four edits are one group (`SKIN_FACE`): each must sit at its 12340 file
+offset, because the calls are relative, and they are applied, detected and
+reverted all together or not at all. A stock exe now changes 99 bytes.
+
+`test_skin_arrows.py` maps a patched copy of the exe in `unicorn`, lets the
+game's own index builder (`0x4f3dd0`) load the shipped CharSections, and
+presses both arrows 30 times from every face of every race as a Paladin and as
+a Death Knight. Stock: 520 of 628 runs never reach a Death Knight skin.
+Patched: all 628 reach all three, never on a face without art. NOP-ing the
+face switch makes 520 runs land on faces with no art, so the check bites.
+
 ## Testing
+
+`test_skin_arrows.py` needs `pip install unicorn` and a client; it never writes
+to the client:
+
+```bash
+python3 test_skin_arrows.py "B:/World.of.Warcraft.3.3.5a"
+```
 
 `test_elemental.py` checks the elemental-variant step against a DBC extract, no
 client needed: it appends every variant in `elemental_manifest.json` to real

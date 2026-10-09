@@ -62,6 +62,75 @@ _PATCHES = [
     (GLOW_SEARCH,                        GLOW_REPLACE,                       False),
 ]
 
+# Death Knight skins from any face. The creation screen's skin arrows (next
+# 0x4eb150, prev 0x4eb290) offer a colour only when the CURRENT face was drawn
+# at it, and Blizzard drew the three Death Knight skins for three faces per race
+# and sex, so from every other face they were skipped. Both arrows load that
+# face row with `mov eax,[ebp-8]; test eax,eax`; a call to the routine below
+# replaces those 5 bytes. When the current face has art, it hands the row back
+# untouched (stock behaviour). When it has none, it looks for a face that does
+# and passes the same flag rule ([ebp-4], gate 0x4f39a0), switches to it
+# ([esi+0x2c]) and returns its row, so the arrow lands on the colour and the
+# client's own SetSkin (0x4ea6b0 -> 0x4ea490) redraws that face.
+#
+#   mov eax,[ebp-8] / test eax,eax / jne done      the face already fits
+#   push ebx / push 0x3f / pop ebx                 search faces 63 .. 0
+# look:
+#   push 0 / push edi / push ebx / push 1 / push [esi+0x1c] / push [esi+0x18]
+#   push [0xb6b864] / call 0x4f3ba0                row(race, sex, face, colour)
+#   mov [ebp-8],eax / test eax,eax / je reset
+#   push [ebp-4] / push [eax+0x1c] / call 0x4f39a0 / test al,al
+# reset:
+#   lea esp,[ebp-0x24] / jne found                 both arrows' frames match
+#   dec ebx / jns look
+#   xor eax,eax / pop ebx / ret                    no face fits: ZF set, rejected
+# found:
+#   mov [esi+0x2c],ebx / mov eax,[ebp-8] / pop ebx
+# done:
+#   test eax,eax / ret
+#
+# The routine (76 bytes) sits in .text's file slack, the 77 zero bytes between
+# the last instruction (VA 0x9de3b3) and the end of the section's raw data,
+# and .text's VirtualSize is raised to its raw size so the loader maps them.
+# The calls are relative, so every part is checked at its build 12340 file
+# offset and the four are applied all together or not at all.
+_SKIN_FACE_TAIL = "6A 00 6A FE 68 50 EB B2 00 50 E8 EE 01 D9 FF C3"
+_SKIN_FACE_CAVE = (
+    "8B 45 F8 85 C0 75 42 53 6A 3F 5B 6A 00 57 53 6A 01 FF 76 1C FF 76 18 "
+    "FF 35 64 B8 B6 00 E8 CB 57 B1 FF 89 45 F8 85 C0 74 0D FF 75 FC FF 70 1C "
+    "E8 B9 55 B1 FF 84 C0 8D 65 DC 75 07 4B 79 CD 31 C0 5B C3 89 5E 2C 8B 45 "
+    "F8 5B 85 C0 C3")
+_SKIN_FACE_ARROW = "74 35 8B 55 FC 8B 40 1C 52 50 E8 %s 00 00 83 C4 08 84 C0 74 21 83 7D 08 02 74 %s"
+SKIN_FACE = [
+    # (file offset, stock bytes, patched bytes)
+    (0x208, "2E 74 65 78 74 00 00 00 B3 D3 5D 00",
+            "2E 74 65 78 74 00 00 00 00 D4 5D 00"),
+    (0x5DD7A3, _SKIN_FACE_TAIL + " 00" * 77,
+               _SKIN_FACE_TAIL + " " + _SKIN_FACE_CAVE + " 00"),
+    (0xEA61A, "8B 45 F8 85 C0 " + _SKIN_FACE_ARROW % ("72 87", "39"),
+              "E8 94 31 4F 00 " + _SKIN_FACE_ARROW % ("72 87", "39")),
+    (0xEA75B, "8B 45 F8 85 C0 " + _SKIN_FACE_ARROW % ("31 86", "3A"),
+              "E8 53 30 4F 00 " + _SKIN_FACE_ARROW % ("31 86", "3A")),
+]
+
+
+def _skin_face_state(data):
+    """'apply' when every part is stock at its offset, 'done' when every part
+    is patched, otherwise 'absent' (another build, or a mix): left alone."""
+    states = set()
+    for offset, search, replace in SKIN_FACE:
+        sb, rb = _bytes(search), _bytes(replace)
+        here = bytes(data[offset:offset + len(sb)])
+        states.add("apply" if here == sb else "done" if here == rb else "absent")
+    return states.pop() if len(states) == 1 and "absent" not in states else "absent"
+
+
+def _skin_face_write(data, patched):
+    for offset, search, replace in SKIN_FACE:
+        new = _bytes(replace if patched else search)
+        data[offset:offset + len(new)] = new
+
+
 UNPATCHED = "unpatched"
 PATCHED = "patched"
 UNKNOWN = "unknown"
@@ -126,7 +195,8 @@ def inspect(exe):
     if core and all(st in ("apply", "done") for st, *_ in core):
         # any site still waiting, core or not (a client patched before the eye
         # glow site existed), means apply() has work to do
-        if any(st == "apply" for st, *_ in states):
+        if any(st == "apply" for st, *_ in states) \
+                or _skin_face_state(data) == "apply":
             return UNPATCHED, None, digest, label
         return PATCHED, None, digest, label
     return UNKNOWN, None, digest, label
@@ -161,7 +231,13 @@ def apply(exe):
                  "done": "; Death Knight eye glow already follows the face",
                  }.get(glow_state, "; eye glow site not found, left alone")
 
-    if not any(st == "apply" for (st, sb, rb, core) in states):
+    skin_state = _skin_face_state(data)
+    glow_note += {"apply": "; Death Knight skins reachable from any face",
+                  "done": "; Death Knight skins already reachable from any face",
+                  }.get(skin_state, "; skin arrow site not found, left alone")
+
+    if not any(st == "apply" for (st, sb, rb, core) in states) \
+            and skin_state != "apply":
         return "already accepts custom interface files%s; left alone" % glow_note
 
     backup = backup_path(exe)
@@ -177,6 +253,8 @@ def apply(exe):
     if glow_state == "apply":
         i = data.find(glow)
         data[i:i + len(glow)] = _bytes(GLOW_REPLACE)
+    if skin_state == "apply":
+        _skin_face_write(data, patched=True)
 
     with open(exe, "wb") as handle:
         handle.write(bytes(data))
@@ -202,9 +280,10 @@ def has_changes(exe) -> bool:
         return True
     with open(exe, "rb") as handle:
         data = handle.read()
-    return any(_count(data, _bytes(replace)) == 1
-               and _count(data, _bytes(search)) == 0
-               for search, replace, _core in _PATCHES)
+    return _skin_face_state(data) == "done" or \
+        any(_count(data, _bytes(replace)) == 1
+            and _count(data, _bytes(search)) == 0
+            for search, replace, _core in _PATCHES)
 
 
 def restore(exe):
@@ -227,6 +306,9 @@ def restore(exe):
             i = data.find(rb)
             data[i:i + len(rb)] = sb
             reverted += 1
+    if _skin_face_state(data) == "done":
+        _skin_face_write(data, patched=False)
+        reverted += len(SKIN_FACE)
     if not reverted:
         return "was not patched; left alone"
     with open(exe, "wb") as handle:
