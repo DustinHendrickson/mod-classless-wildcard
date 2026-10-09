@@ -164,7 +164,7 @@ Install to this client? [Y/n] y
   ChrClasses.dbc   10 classes renamed to Hero
   ChrClasses.dbc   ranged slot restored on 4 relic classes (bows, guns and wands now show)
   CharBaseInfo.dbc all 10 races, one cosmetic class (shown as Hero)
-  CharSections.dbc 2829 Death Knight skin, face and hair rows offered to every class
+  CharSections.dbc 2829 Death Knight skin, face and hair rows offered to every class, 780 faces filled in for the Death Knight skins
   SkillRaceClassInfo.dbc  86 class skill lines opened to every class
   SkillLineAbility.dbc  3143 class spells now belong to every class (spellbook tabs for cross-class spells)
   TalentTab.dbc     30 talent trees opened to every class (the client accepts cross-class talents)

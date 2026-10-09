@@ -198,6 +198,63 @@ def main(argv):
                   not lost, "%s" % lost[:5])
             check("re-running the open changes nothing",
                   dbc.open_death_knight_appearance(looks)[1] == [])
+            # The skin arrow, Wow.exe 0x4eb150: colour c is offered only when
+            # the skin row, the CURRENT FACE's row and the underwear row at c
+            # all pass the gate. Blizzard drew the Death Knight skins for three
+            # faces per race, so from any other face (the glowing-eye ones
+            # included) the arrow skipped them. Model the arrow, show the gap
+            # on the opened-only table, and show the fill closes it.
+            def skins_offered(table_bytes, race, sex, face):
+                count, _f, size, _s = dbc.parse_header(table_bytes)
+                index = {}
+                for i in range(count):
+                    r = struct.unpack_from("<10I", table_bytes, 20 + i * size)
+                    if r[1] == race and r[2] == sex:
+                        index[(r[3], r[8], r[9])] = r[7]
+                colours = {c for (sec, v, c) in index if sec == 0 and v == 0}
+                return {c for c in colours
+                        if all((sec, v, c) in index
+                               and shown(index[(sec, v, c)], False, False)
+                               for sec, v in ((0, 0), (1, face), (4, 0)))}
+
+            filled, skin_faces = dbc.fill_death_knight_skin_faces(raw)
+            full, _opened = dbc.open_death_knight_appearance(filled)
+            dk_colours = {}
+            stock_faces = {}
+            for r in before:
+                if r[3] == 0 and r[7] & 0x4:
+                    dk_colours.setdefault((r[1], r[2]), set()).add(r[9])
+                if r[3] == 1 and r[9] == 0:
+                    stock_faces.setdefault((r[1], r[2]), set()).add(r[8])
+            blocked_before, blocked_after = [], []
+            for (race, sex), colours in sorted(dk_colours.items()):
+                for face in sorted(stock_faces[(race, sex)]):
+                    if not colours <= skins_offered(looks, race, sex, face):
+                        blocked_before.append((race, sex, face))
+                    if not colours <= skins_offered(full, race, sex, face):
+                        blocked_after.append((race, sex, face))
+            check("without the fill, most faces never reach the Death Knight skins",
+                  len(blocked_before) > 100, "%d faces blocked" % len(blocked_before))
+            check("with the fill, every face reaches every Death Knight skin",
+                  not blocked_after, "%d blocked: %s"
+                  % (len(blocked_after), blocked_after[:4]))
+            fc, _ff, fs, fss = dbc.parse_header(filled)
+            copies = [struct.unpack_from("<10I", filled, 20 + i * fs)
+                      for i in range(cs_count, fc)]
+            by_id = {r[0]: r for r in before}
+            drawn_art = {(r[1], r[2], r[9], r[4], r[5], r[6])
+                         for r in before if r[3] == 1}
+            check("filled faces reuse Blizzard's own art and flags",
+                  copies and fss == dbc.parse_header(raw)[3]
+                  and all(c[3] == 1 and c[7] & 0x4 for c in copies)
+                  and all((c[1], c[2], c[9], c[4], c[5], c[6]) in drawn_art
+                          for c in copies)
+                  and len({c[0] for c in copies}) == len(copies)
+                  and not {c[0] for c in copies} & set(by_id),
+                  "%d rows" % len(copies))
+            check("filling twice adds nothing",
+                  dbc.fill_death_knight_skin_faces(filled)[1] == []
+                  and dbc.fill_death_knight_skin_faces(full)[1] == [])
             # Wow.exe's eye glow tests the FACE row; the exe patch widens that
             # test from 0x4 to 0x14. It must light exactly the faces that
             # glowed before: no stock face may already carry 0x10.
@@ -713,8 +770,11 @@ def main(argv):
                     rb = bytes.fromhex(replace.replace(" ", ""))
                     if original.count(sb) == 1:
                         expected += sum(a != b for a, b in zip(sb, rb))
+                # an exe a previous install fully patched changes nothing
+                glow_pending = original.count(glow_old) == 1
                 check("only the known sites changed",
-                      changed is not None and glow_byte in changed
+                      changed is not None
+                      and (glow_byte in changed) == glow_pending
                       and len(changed) == expected,
                       "%s byte(s), %d expected"
                       % (len(changed) if changed is not None

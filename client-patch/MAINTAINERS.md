@@ -112,6 +112,19 @@ the same flags the stock rows carry). Clearing `0x4` alone would hide the rows
 from real Death Knights, who need `0x4` or `0x10`. The server never reads this
 table, so nothing changes there.
 
+**Faces for the Death Knight skins.** Blizzard drew each Death Knight skin
+colour for only three faces per race and sex (Human male: faces 0, 2, 11), and
+no other art exists in the client. The skin arrow (`0x4eb150`) offers colour
+`c` only when the skin row, the *current face's* row and the underwear row at
+`c` all pass the gate, so from any other face, the glowing-eye ones included,
+the new colours were silently skipped (260 of the 314 faces on races with
+Death Knight skins). Before the swap,
+`fill_death_knight_skin_faces` appends a row for every missing (face, Death
+Knight colour), copying the nearest drawn face's textures and flags; a
+glowing-eye face is matched through its normal counterpart (Blizzard lists them
+in the same order after the normal faces). 780 rows. On a Death Knight skin
+the Face arrow therefore steps through repeats of those three looks.
+
 The blue Death Knight eye glow (geoset 1703) is drawn by Wow.exe `0x4ed900`
 for class 6, or when the character's **face** row (section 1, the face at that
 skin colour) has `0x4`. The swap alone would leave a Hero with ordinary eyes,
