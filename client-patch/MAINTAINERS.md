@@ -117,19 +117,27 @@ Knight skin colour for only three faces per race and sex (Human male: faces 0,
 2, 11) and the client holds no other art. The skin arrows (`0x4eb150` next,
 `0x4eb290` prev) offer colour `c` only when the skin row, the *current face's*
 row and the underwear row at `c` all pass the gate, so from any other face the
-new colours were skipped: 520 of 628 face/arrow runs never reached one. The
-fix is in Wow.exe, not the data: when the current face has no art at `c`, the
-arrow switches to a face that does (see "Death Knight skins from any face"
-under `Wow.exe`). `test_skin_arrows.py` runs the real arrows to prove it.
+new colours were skipped: 520 of 628 face/arrow runs never reached one.
 
-Filling in the missing (face, colour) rows with copies of the nearest drawn
-face was tried and reverted (2026-10-09). The Face arrow (`0x4eb710`) keeps the
-current skin colour when the next face has a row at it, and only moves to
-another colour when it does not. With every face filled in, a Death Knight skin
-kept its colour through the whole Face cycle and showed the same three looks
-over and over, all glowing (Blizzard flags those faces 0x4). Without the fill,
-the arrow drops back to a normal skin for faces that were never drawn pale, so
-every face looks like itself. Don't re-add the fill without new face art.
+The fix has two halves that only work together:
+
+- **Data:** `fill_death_knight_skin_faces` gives every face a row at each
+  Death Knight colour, a copy of the nearest drawn face (a glowing-eye face
+  through its normal counterpart), ids from `CHARSECTIONS_FILL_FIRST_ID`
+  (30000). 780 rows. The skin arrows then reach those colours from any face
+  and **never change which face is picked**: on a Death Knight skin the face
+  shows the nearest drawn look, and back on a normal skin it is the player's
+  own face again.
+- **Wow.exe:** the Face arrows must not see the copies (see "Death Knight
+  skins from any face" under `Wow.exe`). Without that, they stay on a Death
+  Knight skin and show the same three looks over and over.
+
+Two approaches failed in game on 2026-10-09, and the reasons matter. The fill
+alone: the Face arrow (`0x4eb710`) keeps the current skin when the next face
+has a row at it, so it never left a Death Knight skin. A skin-arrow routine
+that switched to a drawn face instead: the switch was one-way, so a player who
+picked a glowing face lost it after one pass through the skins.
+`test_skin_arrows.py` runs the real arrows to prove the current design.
 
 The blue Death Knight eye glow (geoset 1703) is drawn by Wow.exe `0x4ed900`
 for class 6, or when the character's **face** row (section 1, the face at that
@@ -316,28 +324,50 @@ stock exe now changes 13 bytes; the existing backup is never overwritten, so
 
 #### Death Knight skins from any face
 
-Both skin arrows load the current face's row at the candidate colour with
-`mov eax,[ebp-8]; test eax,eax` (`0x4eb21a`, `0x4eb35b`; file `0xEA61A`,
-`0xEA75B`). Each becomes a `call` to a 76-byte routine placed in `.text`'s
-file slack (VA `0x9de3b3`, file `0x5DD7B3`; 77 zero bytes before the raw data
-ends). When the face has art it returns the row untouched. When it has none, it
-walks faces 63 down to 0, takes the first whose row at that colour passes the
-same flag rule (`0x4f3ba0`, `0x4f39a0`), stores it as the current face
-(`[esi+0x2c]`) and returns that row, so the arrow lands on the colour and the
-client's own SetSkin (`0x4ea6b0` → `0x4ea490`) redraws the face. `.text`'s
-VirtualSize (header, file `0x210`) goes from `0x5DD3B3` to `0x5DD400` so the
-loader maps the routine. The source assembly is in `lib/exepatch.py`.
+The skin arrows are stock; the filled-in faces do their work. The Face arrows
+(next `0x4eb710`, prev `0x4eb990`) are made blind to those copies in two places:
 
-The four edits are one group (`SKIN_FACE`): each must sit at its 12340 file
+- **Their colour count.** For each face they ask `0x4f3b10` how many colours
+  it has and try `(counter + last chosen skin) % count`, writing the result
+  back into the counter (a Blizzard quirk that adds the offset twice). The
+  copies raise an undrawn face's count from 10 to 15, which changes every
+  colour that formula picks and can skip faces altogether: at the last Death
+  Knight skin the arrow cycled only the three drawn faces. Both count calls
+  (`0x4eb781`, `0x4eba01`; file `0xEAB81`, `0xEAE01`) go to a 76-byte
+  replacement that returns the same count minus trailing copies and empty
+  slots, i.e. the stock count. It sits in `.text`'s file slack (VA
+  `0x9de3b3`, file `0x5DD7B3`; 77 zero bytes before the raw data ends), and
+  `.text`'s VirtualSize (header, file `0x210`) goes from `0x5DD3B3` to
+  `0x5DD400` so the loader maps it.
+- **"Does the face it found fit the skin on screen."** That reads one face
+  row directly (`mov ecx,[ebp-8]; mov edx,[ebx+0x1c]` at `0x4eb8fb` /
+  `0x4ebb79`; file `0xEACFB`, `0xEAF79`). Each becomes a call to a 17-byte
+  routine that loads the same registers and zeroes the flags of a copy, so
+  the gate refuses it. It sits in the int3 padding between a `ret` at
+  `0x9296a1` and the function at `0x9296c0` (file `0x528AA2`), which nothing
+  jumps into.
+
+Both routines compare the row id with 30000, which must equal
+`dbc.CHARSECTIONS_FILL_FIRST_ID` (`exepatch.FILL_FIRST_ID`; selftest checks).
+The eight edits are one group (`FACE_ARROW`): each must sit at its 12340 file
 offset, because the calls are relative, and they are applied, detected and
-reverted all together or not at all. A stock exe now changes 99 bytes.
+reverted all together or not at all. The source assembly is in
+`lib/exepatch.py`.
 
-`test_skin_arrows.py` maps a patched copy of the exe in `unicorn`, lets the
-game's own index builder (`0x4f3dd0`) load the shipped CharSections, and
-presses both arrows 30 times from every face of every race as a Paladin and as
-a Death Knight. Stock: 520 of 628 runs never reach a Death Knight skin.
-Patched: all 628 reach all three, never on a face without art. NOP-ing the
-face switch makes 520 runs land on faces with no art, so the check bites.
+`LEGACY_SKIN_FACE` is the routine that shipped in `b685c7a` and was replaced:
+it switched faces from inside the skin arrows and never switched back.
+`apply()` takes it out of an exe that has it before adding `FACE_ARROW`, and
+`restore()` reverts either.
+
+`test_skin_arrows.py` maps a copy of the exe in `unicorn`, lets the game's own
+index builder (`0x4f3dd0`) load a CharSections table, and presses the real
+arrows 30 times from every face of every race as a Paladin and as a Death
+Knight. Stock exe, stock table: 520 of 628 skin runs never reach a Death
+Knight skin. Stock exe, filled table: the Face arrows land on copies (1884 of
+2512 runs). Patched exe, filled table: the skin arrows reach all three from
+every face without changing it, and all 2512 Face arrow runs show exactly
+what the stock exe shows on the stock table, face and skin, press by press.
+Leaving out either routine fails those last two checks.
 
 ## Testing
 

@@ -62,73 +62,120 @@ _PATCHES = [
     (GLOW_SEARCH,                        GLOW_REPLACE,                       False),
 ]
 
-# Death Knight skins from any face. The creation screen's skin arrows (next
-# 0x4eb150, prev 0x4eb290) offer a colour only when the CURRENT face was drawn
-# at it, and Blizzard drew the three Death Knight skins for three faces per race
-# and sex, so from every other face they were skipped. Both arrows load that
-# face row with `mov eax,[ebp-8]; test eax,eax`; a call to the routine below
-# replaces those 5 bytes. When the current face has art, it hands the row back
-# untouched (stock behaviour). When it has none, it looks for a face that does
-# and passes the same flag rule ([ebp-4], gate 0x4f39a0), switches to it
-# ([esi+0x2c]) and returns its row, so the arrow lands on the colour and the
-# client's own SetSkin (0x4ea6b0 -> 0x4ea490) redraws that face.
+# Death Knight skins from any face (with lib/dbc.py's filled-in faces).
+# Blizzard drew the three Death Knight skins for three faces per race and sex,
+# and the skin arrows only offer a colour the current face has a row for. The
+# client patch gives every face a row at those colours (ids from
+# CHARSECTIONS_FILL_FIRST_ID, copies of the nearest drawn face), so the skin
+# arrows reach them from any face and never change which face is picked.
 #
-#   mov eax,[ebp-8] / test eax,eax / jne done      the face already fits
-#   push ebx / push 0x3f / pop ebx                 search faces 63 .. 0
-# look:
-#   push 0 / push edi / push ebx / push 1 / push [esi+0x1c] / push [esi+0x18]
-#   push [0xb6b864] / call 0x4f3ba0                row(race, sex, face, colour)
-#   mov [ebp-8],eax / test eax,eax / je reset
-#   push [ebp-4] / push [eax+0x1c] / call 0x4f39a0 / test al,al
-# reset:
-#   lea esp,[ebp-0x24] / jne found                 both arrows' frames match
-#   dec ebx / jns look
-#   xor eax,eax / pop ebx / ret                    no face fits: ZF set, rejected
-# found:
-#   mov [esi+0x2c],ebx / mov eax,[ebp-8] / pop ebx
-# done:
-#   test eax,eax / ret
+# The Face arrows (next 0x4eb710, prev 0x4eb990) must behave exactly as stock
+# with those copies present, which takes two things:
 #
-# The routine (76 bytes) sits in .text's file slack, the 77 zero bytes between
-# the last instruction (VA 0x9de3b3) and the end of the section's raw data,
-# and .text's VirtualSize is raised to its raw size so the loader maps them.
-# The calls are relative, so every part is checked at its build 12340 file
-# offset and the four are applied all together or not at all.
-_SKIN_FACE_TAIL = "6A 00 6A FE 68 50 EB B2 00 50 E8 EE 01 D9 FF C3"
-_SKIN_FACE_CAVE = (
+# 1. Their colour count. For each face they ask 0x4f3b10 how many colours the
+#    face has and try colour (counter + last chosen skin) % count, storing the
+#    result back into the counter (a Blizzard quirk that adds the offset
+#    twice). The copies raise an undrawn face's count from 10 to 15, which
+#    changes every colour that formula picks and can skip a face outright. A
+#    replacement for 0x4f3b10 at those two calls (C) returns the same count but
+#    drops trailing copies and empty slots, so each face gets its stock count
+#    and the copies, all at the top, are never tried.
+#
+#       C: slot = table + ((sex + race*2)*5 + section)*8
+#          eax = 0; if var >= [slot] return
+#          entry = [slot+4] + var*8; eax = [entry]; list = [entry+4]
+#          if !list return 0
+#          while eax > 0: row = list[eax-1]
+#                         if row && [row] < 30000 return eax
+#                         eax--
+#
+# 2. "Does the face it found also fit the skin on screen", which reads that
+#    one face row directly (`mov ecx,[ebp-8]; mov edx,[ebx+0x1c]`, then the
+#    gate 0x4f39a0). A call to B loads the same two registers and zeroes the
+#    flags when the row is a copy, so the gate refuses it and the arrow moves to
+#    a skin the face was drawn for, as stock does.
+#
+#       B: mov ecx,[ebp-8] / mov edx,[ebx+0x1c] / cmp dword [ebx],30000 /
+#          jb +2 / xor edx,edx / ret
+#
+# C (76 bytes) sits in .text's file slack, the 77 zero bytes between the last
+# instruction (VA 0x9de3b3) and the end of the section's raw data, and .text's
+# VirtualSize is raised to its raw size so the loader maps it. B (17 bytes)
+# sits in the int3 padding between a `ret` at 0x9296a1 and the function at
+# 0x9296c0, which nothing jumps into. The calls are relative, so every part is
+# checked at its build 12340 file offset and the eight are applied, detected
+# and reverted together or not at all.
+FILL_FIRST_ID = 30000      # must equal dbc.CHARSECTIONS_FILL_FIRST_ID
+_TEXT_TAIL = "6A 00 6A FE 68 50 EB B2 00 50 E8 EE 01 D9 FF C3"
+_TEXT_HEADER = (0x208, "2E 74 65 78 74 00 00 00 B3 D3 5D 00",
+                       "2E 74 65 78 74 00 00 00 00 D4 5D 00")
+_FACE_COUNT = ("8B 44 24 0C 8B 4C 24 08 8D 04 48 8D 04 80 03 44 24 10 8B 4C 24 04 "
+               "8D 0C C1 8B 54 24 14 31 C0 3B 11 73 28 8B 49 04 8D 0C D1 8B 01 8B "
+               "49 04 85 C9 74 17 85 C0 7E 15 8B 54 81 FC 85 D2 74 08 81 3A 30 75 "
+               "00 00 72 05 48 EB E9 31 C0 C3")
+_FACE_FITS = "8B 4D F8 8B 53 1C 81 3B 30 75 00 00 72 02 31 D2 C3"
+FACE_ARROW = [
+    # (file offset, stock bytes, patched bytes)
+    _TEXT_HEADER,
+    (0x5DD7A3, _TEXT_TAIL + " 00" * 77,
+               _TEXT_TAIL + " " + _FACE_COUNT + " 00"),
+    (0x528AA2, "CC" + " CC" * 29,
+               "CC CC " + _FACE_FITS + " CC" * 11),
+    # Face next / prev: the colour count for a face -> C
+    (0xEAB81, "E8 8A 83 00 00 8B C8 83 C4 14 33 FF 85 C9 89 4D F4 0F 8E D0",
+              "E8 2D 2C 4F 00 8B C8 83 C4 14 33 FF 85 C9 89 4D F4 0F 8E D0"),
+    (0xEAE01, "E8 0A 81 00 00 8B C8 83 C4 14 33 FF 85 C9 89 4D F4 0F 8E D0",
+              "E8 AD 29 4F 00 8B C8 83 C4 14 33 FF 85 C9 89 4D F4 0F 8E D0"),
+    # Face next / prev: "does it fit the skin on screen" -> B
+    (0xEACFB, "8B 4D F8 8B 53 1C 51 52 E8 98 80 00 00 83 C4 08 84 C0 74 53",
+              "E8 A4 DD 43 00 90 51 52 E8 98 80 00 00 83 C4 08 84 C0 74 53"),
+    (0xEAF79, "8B 4D F8 8B 53 1C 51 52 E8 1A 7E 00 00 83 C4 08 84 C0 74 53",
+              "E8 26 DB 43 00 90 51 52 E8 1A 7E 00 00 83 C4 08 84 C0 74 53"),
+]
+
+# Shipped briefly (b685c7a) and replaced: the skin arrows switched to a drawn
+# face when the current one had no art, and never switched back. Kept so an
+# exe that has it is put back to stock before FACE_ARROW goes on.
+_LEGACY_SKIN_FACE_CAVE = (
     "8B 45 F8 85 C0 75 42 53 6A 3F 5B 6A 00 57 53 6A 01 FF 76 1C FF 76 18 "
     "FF 35 64 B8 B6 00 E8 CB 57 B1 FF 89 45 F8 85 C0 74 0D FF 75 FC FF 70 1C "
     "E8 B9 55 B1 FF 84 C0 8D 65 DC 75 07 4B 79 CD 31 C0 5B C3 89 5E 2C 8B 45 "
     "F8 5B 85 C0 C3")
-_SKIN_FACE_ARROW = "74 35 8B 55 FC 8B 40 1C 52 50 E8 %s 00 00 83 C4 08 84 C0 74 21 83 7D 08 02 74 %s"
-SKIN_FACE = [
-    # (file offset, stock bytes, patched bytes)
-    (0x208, "2E 74 65 78 74 00 00 00 B3 D3 5D 00",
-            "2E 74 65 78 74 00 00 00 00 D4 5D 00"),
-    (0x5DD7A3, _SKIN_FACE_TAIL + " 00" * 77,
-               _SKIN_FACE_TAIL + " " + _SKIN_FACE_CAVE + " 00"),
-    (0xEA61A, "8B 45 F8 85 C0 " + _SKIN_FACE_ARROW % ("72 87", "39"),
-              "E8 94 31 4F 00 " + _SKIN_FACE_ARROW % ("72 87", "39")),
-    (0xEA75B, "8B 45 F8 85 C0 " + _SKIN_FACE_ARROW % ("31 86", "3A"),
-              "E8 53 30 4F 00 " + _SKIN_FACE_ARROW % ("31 86", "3A")),
+_LEGACY_ARROW = "74 35 8B 55 FC 8B 40 1C 52 50 E8 %s 00 00 83 C4 08 84 C0 74 21 83 7D 08 02 74 %s"
+LEGACY_SKIN_FACE = [
+    _TEXT_HEADER,
+    (0x5DD7A3, _TEXT_TAIL + " 00" * 77,
+               _TEXT_TAIL + " " + _LEGACY_SKIN_FACE_CAVE + " 00"),
+    (0xEA61A, "8B 45 F8 85 C0 " + _LEGACY_ARROW % ("72 87", "39"),
+              "E8 94 31 4F 00 " + _LEGACY_ARROW % ("72 87", "39")),
+    (0xEA75B, "8B 45 F8 85 C0 " + _LEGACY_ARROW % ("31 86", "3A"),
+              "E8 53 30 4F 00 " + _LEGACY_ARROW % ("31 86", "3A")),
 ]
 
 
-def _skin_face_state(data):
+def _group_state(data, group):
     """'apply' when every part is stock at its offset, 'done' when every part
     is patched, otherwise 'absent' (another build, or a mix): left alone."""
     states = set()
-    for offset, search, replace in SKIN_FACE:
+    for offset, search, replace in group:
         sb, rb = _bytes(search), _bytes(replace)
         here = bytes(data[offset:offset + len(sb)])
         states.add("apply" if here == sb else "done" if here == rb else "absent")
     return states.pop() if len(states) == 1 and "absent" not in states else "absent"
 
 
-def _skin_face_write(data, patched):
-    for offset, search, replace in SKIN_FACE:
+def _group_write(data, group, patched):
+    for offset, search, replace in group:
         new = _bytes(replace if patched else search)
         data[offset:offset + len(new)] = new
+
+
+def _face_arrow_state(data):
+    """FACE_ARROW's state, reading an exe that still has the legacy skin-arrow
+    routine as one it can be applied to (apply() takes that out first)."""
+    if _group_state(data, LEGACY_SKIN_FACE) == "done":
+        return "apply"
+    return _group_state(data, FACE_ARROW)
 
 
 UNPATCHED = "unpatched"
@@ -196,7 +243,7 @@ def inspect(exe):
         # any site still waiting, core or not (a client patched before the eye
         # glow site existed), means apply() has work to do
         if any(st == "apply" for st, *_ in states) \
-                or _skin_face_state(data) == "apply":
+                or _face_arrow_state(data) == "apply":
             return UNPATCHED, None, digest, label
         return PATCHED, None, digest, label
     return UNKNOWN, None, digest, label
@@ -231,10 +278,10 @@ def apply(exe):
                  "done": "; Death Knight eye glow already follows the face",
                  }.get(glow_state, "; eye glow site not found, left alone")
 
-    skin_state = _skin_face_state(data)
+    skin_state = _face_arrow_state(data)
     glow_note += {"apply": "; Death Knight skins reachable from any face",
                   "done": "; Death Knight skins already reachable from any face",
-                  }.get(skin_state, "; skin arrow site not found, left alone")
+                  }.get(skin_state, "; face arrow sites not found, left alone")
 
     if not any(st == "apply" for (st, sb, rb, core) in states) \
             and skin_state != "apply":
@@ -254,7 +301,9 @@ def apply(exe):
         i = data.find(glow)
         data[i:i + len(glow)] = _bytes(GLOW_REPLACE)
     if skin_state == "apply":
-        _skin_face_write(data, patched=True)
+        if _group_state(data, LEGACY_SKIN_FACE) == "done":
+            _group_write(data, LEGACY_SKIN_FACE, patched=False)
+        _group_write(data, FACE_ARROW, patched=True)
 
     with open(exe, "wb") as handle:
         handle.write(bytes(data))
@@ -280,7 +329,8 @@ def has_changes(exe) -> bool:
         return True
     with open(exe, "rb") as handle:
         data = handle.read()
-    return _skin_face_state(data) == "done" or \
+    return _group_state(data, FACE_ARROW) == "done" or \
+        _group_state(data, LEGACY_SKIN_FACE) == "done" or \
         any(_count(data, _bytes(replace)) == 1
             and _count(data, _bytes(search)) == 0
             for search, replace, _core in _PATCHES)
@@ -306,9 +356,10 @@ def restore(exe):
             i = data.find(rb)
             data[i:i + len(rb)] = sb
             reverted += 1
-    if _skin_face_state(data) == "done":
-        _skin_face_write(data, patched=False)
-        reverted += len(SKIN_FACE)
+    for group in (FACE_ARROW, LEGACY_SKIN_FACE):
+        if _group_state(data, group) == "done":
+            _group_write(data, group, patched=False)
+            reverted += len(group)
     if not reverted:
         return "was not patched; left alone"
     with open(exe, "wb") as handle:

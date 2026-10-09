@@ -231,6 +231,102 @@ CHARSECTION_DEATH_KNIGHT_ONLY = 0x04
 CHARSECTION_DEATH_KNIGHT_TOO = 0x10
 
 
+CHARSECTION_SKIN = 0
+CHARSECTION_FACE = 1
+# The filled-in faces get ids from here up. Wow.exe tells them apart by id:
+# lib/exepatch.py's FACE_ARROW routines compare the row id with this number,
+# so the two must stay equal (selftest checks). Stock ids end near 14100.
+CHARSECTIONS_FILL_FIRST_ID = 30000
+
+
+def fill_death_knight_skin_faces(data: bytes):
+    """Give every face a version at each Death Knight skin colour.
+
+    Run on the STOCK table, before open_death_knight_appearance: the Death
+    Knight skins are found by their 0x4 bit, and the copies inherit it so the
+    open that follows treats them like Blizzard's own rows.
+
+    Returns (new_dbc_bytes, [(new_id, race, sex, face, colour, source_face)]).
+
+    Blizzard drew the three Death Knight skin colours for only three faces per
+    race and sex, and the skin arrows (Wow.exe 0x4eb150 / 0x4eb290) skip a
+    colour that has no row for the face currently selected. With a row for
+    every face, the skin arrows reach them from any face and never change
+    which face is picked: on a Death Knight skin the face shows the nearest
+    drawn look, and back on a normal skin it is the player's own face again.
+    A glowing-eye face is matched through its normal counterpart (Blizzard
+    lists them in the same order after the normal ones). The copies carry the
+    source row's flags, so the eye glow stays.
+
+    The Face arrows must not offer these copies, or a Death Knight skin shows
+    the same three looks over and over: lib/exepatch.py's FACE_ARROW patch
+    makes them skip any face row with an id from CHARSECTIONS_FILL_FIRST_ID up.
+    """
+    record_count, field_count, record_size, string_size = parse_header(data)
+    if field_count != CHARSECTIONS_FIELDS:
+        raise DbcError(
+            "CharSections.dbc has %d fields, expected %d. This client build is "
+            "not the 3.3.5a layout this patch understands."
+            % (field_count, CHARSECTIONS_FIELDS))
+
+    records_off = 20
+    strings_off = records_off + record_count * record_size
+    rows = [struct.unpack_from("<10I", data, records_off + i * record_size)
+            for i in range(record_count)]
+    if max(row[0] for row in rows) >= CHARSECTIONS_FILL_FIRST_ID:
+        raise DbcError(
+            "CharSections.dbc already has ids from %d up, where the filled-in "
+            "faces go; this is not the stock table."
+            % CHARSECTIONS_FILL_FIRST_ID)
+
+    dk_colours = {}   # (race, sex) -> colours of the Death Knight-only skins
+    faces = {}        # (race, sex) -> {(face, colour): row}
+    for row in rows:
+        key = (row[1], row[2])
+        if row[3] == CHARSECTION_SKIN and row[7] & CHARSECTION_DEATH_KNIGHT_ONLY:
+            dk_colours.setdefault(key, set()).add(row[9])
+        if row[3] == CHARSECTION_FACE:
+            faces.setdefault(key, {})[(row[8], row[9])] = row
+
+    next_id = CHARSECTIONS_FILL_FIRST_ID
+    added = []
+    new_rows = []
+    for key in sorted(dk_colours):
+        table = faces.get(key, {})
+        # every face the race offers, read at colour 0
+        normal = sorted(f for (f, c), r in table.items()
+                        if c == 0 and not r[7] & CHARSECTION_DEATH_KNIGHT_ONLY)
+        glowing = sorted(f for (f, c), r in table.items()
+                         if c == 0 and r[7] & CHARSECTION_DEATH_KNIGHT_ONLY)
+        counterpart = {f: f for f in normal}
+        for position, f in enumerate(glowing):
+            if normal:
+                counterpart[f] = normal[min(position, len(normal) - 1)]
+        for colour in sorted(dk_colours[key]):
+            drawn = sorted(f for (f, c) in table if c == colour)
+            if not drawn:
+                continue
+            for face in normal + glowing:
+                if (face, colour) in table:
+                    continue
+                base = counterpart[face]
+                source = min(drawn, key=lambda d: (abs(d - base), d))
+                src = table[(source, colour)]
+                row = list(src)
+                row[0] = next_id
+                row[8] = face
+                new_rows.append(row)
+                added.append((next_id, key[0], key[1], face, colour, source))
+                next_id += 1
+
+    body = bytearray(data[records_off:strings_off])
+    for row in new_rows:
+        body += struct.pack("<10I", *row)
+    header = WDBC_MAGIC + struct.pack("<4I", record_count + len(new_rows),
+                                      field_count, record_size, string_size)
+    return header + bytes(body) + data[strings_off:strings_off + string_size], added
+
+
 def open_death_knight_appearance(data: bytes):
     """Offer the Death Knight's skin colours, faces and hair colours to all.
 
