@@ -112,18 +112,21 @@ the same flags the stock rows carry). Clearing `0x4` alone would hide the rows
 from real Death Knights, who need `0x4` or `0x10`. The server never reads this
 table, so nothing changes there.
 
-**Faces for the Death Knight skins.** Blizzard drew each Death Knight skin
-colour for only three faces per race and sex (Human male: faces 0, 2, 11), and
-no other art exists in the client. The skin arrow (`0x4eb150`) offers colour
-`c` only when the skin row, the *current face's* row and the underwear row at
-`c` all pass the gate, so from any other face, the glowing-eye ones included,
-the new colours were silently skipped (260 of the 314 faces on races with
-Death Knight skins). Before the swap,
-`fill_death_knight_skin_faces` appends a row for every missing (face, Death
-Knight colour), copying the nearest drawn face's textures and flags; a
-glowing-eye face is matched through its normal counterpart (Blizzard lists them
-in the same order after the normal faces). 780 rows. On a Death Knight skin
-the Face arrow therefore steps through repeats of those three looks.
+**The Death Knight skins pair with three faces, on purpose.** Blizzard drew
+each Death Knight skin colour for only three faces per race and sex (Human
+male: faces 0, 2, 11) and the client holds no other art. The skin arrow
+(`0x4eb150`) offers colour `c` only when the skin row, the *current face's*
+row and the underwear row at `c` all pass the gate, so from any other face the
+new colours are skipped. Pick one of those faces first.
+
+Filling in the missing (face, colour) rows with copies of the nearest drawn
+face was tried and reverted (2026-10-09). The Face arrow (`0x4eb710`) keeps the
+current skin colour when the next face has a row at it, and only moves to
+another colour when it does not. With every face filled in, a Death Knight skin
+kept its colour through the whole Face cycle and showed the same three looks
+over and over, all glowing (Blizzard flags those faces 0x4). Without the fill,
+the arrow drops back to a normal skin for faces that were never drawn pale, so
+every face looks like itself. Don't re-add the fill without new face art.
 
 The blue Death Knight eye glow (geoset 1703) is drawn by Wow.exe `0x4ed900`
 for class 6, or when the character's **face** row (section 1, the face at that

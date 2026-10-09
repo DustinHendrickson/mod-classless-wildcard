@@ -211,18 +211,12 @@ def build_data_patch(files, name, report, theme=False):
     # the three extra skin colours, the second set of faces and the extra hair
     # colours that Blizzard reserved for Death Knights. The server never checks
     # appearance against this table, so only the client needs telling.
-    # Those skins were drawn for three faces per race, and the skin arrow skips
-    # a colour the current face has no row for, so first give every face a
-    # version at each of them.
     raw, source = files.find(CHARSECTIONS)
-    filled, skin_faces = dbc.fill_death_knight_skin_faces(raw)
-    patched, opened_looks = dbc.open_death_knight_appearance(filled)
+    patched, opened_looks = dbc.open_death_knight_appearance(raw)
     payload[CHARSECTIONS] = patched
     report.append("  CharSections.dbc %d Death Knight skin, face and hair rows "
-                  "offered to every class, %d faces filled in for the Death "
-                  "Knight skins (from %s)"
-                  % (len(opened_looks) - len(skin_faces), len(skin_faces),
-                     os.path.basename(source)))
+                  "offered to every class (from %s)"
+                  % (len(opened_looks), os.path.basename(source)))
 
     # The client decides spellbook tabs from its OWN copy of this table, so
     # the server opening every class skill line to every class was invisible
