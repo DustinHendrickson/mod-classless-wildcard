@@ -164,6 +164,7 @@ Install to this client? [Y/n] y
   ChrClasses.dbc   10 classes renamed to Hero
   ChrClasses.dbc   ranged slot restored on 4 relic classes (bows, guns and wands now show)
   CharBaseInfo.dbc all 10 races, one cosmetic class (shown as Hero)
+  CharSections.dbc 2829 Death Knight skin, face and hair rows offered to every class
   SkillRaceClassInfo.dbc  86 class skill lines opened to every class
   SkillLineAbility.dbc  3143 class spells now belong to every class (spellbook tabs for cross-class spells)
   TalentTab.dbc     30 talent trees opened to every class (the client accepts cross-class talents)
@@ -176,7 +177,7 @@ Install to this client? [Y/n] y
   CharacterCreate.lua  class selector hidden
   Hero class icon      emblem on the Hero cell, other class icons kept
   -> Data/enUS/patch-enUS-Z.MPQ  (DBCs here outrank the client's own locale patches)
-  Wow.exe          patched 6 site(s) to accept custom interface files
+  Wow.exe          patched 6 site(s) to accept custom interface files; Death Knight eye glow follows the face
   addon            16 files -> Interface/AddOns/ClasslessWildcard
   cache            cleared (the client rebuilds it on next login)
 
@@ -220,6 +221,7 @@ The full Hero client installs by default. These turn pieces off.
 
 The `Wow.exe` patch is the well-known "allow custom interface" patch (the same one the
 Project Reforged patcher uses), confirmed working on a stock 3.3.5a build 12340 client.
+One more byte lets the Death Knight faces keep their glowing eyes on every class.
 It is backed up to `Wow.exe.classless-bak` and restored by `--uninstall`.
 
 ---

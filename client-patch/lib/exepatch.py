@@ -15,6 +15,14 @@ puts the original back.
 
 Each replacement is the same length as what it replaces (in-place byte edits:
 je/jz/jg -> jmp, and `mov eax,1` -> `mov eax,3`), so offsets never move.
+
+One more site rides along: the Death Knight eye glow. 0x4ed900 in build 12340
+draws it for class 6, or when the character's face row in CharSections.dbc
+carries 0x4 (Death Knight only). The client patch turns that bit into 0x10 so
+every class can pick those faces (lib/dbc.py, open_death_knight_appearance),
+which would leave a Hero wearing one with ordinary eyes. The test byte becomes
+0x14, so either bit lights the eyes. No stock face row has 0x10, so this draws
+exactly the faces it drew before.
 """
 
 from __future__ import annotations
@@ -30,6 +38,12 @@ KNOWN_SHA256 = {
         "3.3.5a build 12340 (Wow.exe)",
 }
 
+# Death Knight eye glow, Wow.exe 12340 at 0x4ed93b: the face row lookup
+# returned non-null, then the Death Knight-only flag test, then the jump past
+# "glow = 1". Only the flag byte changes.
+GLOW_SEARCH = "85 C0 74 0A F6 40 1C 04 74 04 C6 45 FF 01"
+GLOW_REPLACE = "85 C0 74 0A F6 40 1C 14 74 04 C6 45 FF 01"
+
 # (search, replace). `core` patterns must each be present exactly once (or
 # already applied) or the exe is refused. Non-core patterns are applied when
 # present and skipped when absent -- they cover client revisions this one is not.
@@ -44,6 +58,8 @@ _PATCHES = [
     ("C0 5F 83 C0 03 5E 8B E5 5D C3 CC", "C0 5F B8 03 00 00 00 EB ED C3 CC", True),
     # present only on some client revisions; absent on stock 12340.
     ("00 A1 26",                         "00 16 4E",                         False),
+    # eye glow: `test byte ptr [eax+0x1c], 4` -> `..., 0x14` on the face row.
+    (GLOW_SEARCH,                        GLOW_REPLACE,                       False),
 ]
 
 UNPATCHED = "unpatched"
@@ -107,11 +123,10 @@ def inspect(exe):
     core = [s for s in states if s[3]]
     if any(st == "ambiguous" for st, *_ in core):
         return UNKNOWN, None, digest, label
-    if core and all(st == "done" for st, *_ in core):
-        return PATCHED, None, digest, label
     if core and all(st in ("apply", "done") for st, *_ in core):
-        # at least one core still needs applying -> treat as unpatched/ready
-        if any(st == "apply" for st, *_ in core):
+        # any site still waiting, core or not (a client patched before the eye
+        # glow site existed), means apply() has work to do
+        if any(st == "apply" for st, *_ in states):
             return UNPATCHED, None, digest, label
         return PATCHED, None, digest, label
     return UNKNOWN, None, digest, label
@@ -140,8 +155,14 @@ def apply(exe):
             "written. If your client already loads custom interface files, you "
             "do not need this." % digest[:16])
 
-    if all(st == "done" for st in core_states):
-        return "already accepts custom interface files; left alone"
+    glow = _bytes(GLOW_SEARCH)
+    glow_state = next(st for (st, sb, rb, core) in states if sb == glow)
+    glow_note = {"apply": "; Death Knight eye glow follows the face",
+                 "done": "; Death Knight eye glow already follows the face",
+                 }.get(glow_state, "; eye glow site not found, left alone")
+
+    if not any(st == "apply" for (st, sb, rb, core) in states):
+        return "already accepts custom interface files%s; left alone" % glow_note
 
     backup = backup_path(exe)
     if not os.path.exists(backup):
@@ -149,18 +170,41 @@ def apply(exe):
 
     applied = 0
     for (st, sb, rb, core) in states:
-        if st == "apply":
+        if st == "apply" and sb != glow:
             i = data.find(sb)
             data[i:i + len(sb)] = rb
             applied += 1
+    if glow_state == "apply":
+        i = data.find(glow)
+        data[i:i + len(glow)] = _bytes(GLOW_REPLACE)
 
     with open(exe, "wb") as handle:
         handle.write(bytes(data))
 
-    note = "" if KNOWN_SHA256.get(digest) else \
+    # a client an earlier install already patched has a hash of its own, so
+    # only call the build unrecognised when the interface sites were found here
+    note = "" if KNOWN_SHA256.get(digest) or not applied else \
         " (unrecognised build, but the patch sites matched exactly)"
-    return "patched %d site(s) to accept custom interface files%s (backup: %s)" \
-        % (applied, note, os.path.basename(backup))
+    head = ("patched %d site(s) to accept custom interface files" % applied
+            if applied else "already accepts custom interface files")
+    return "%s%s%s (backup: %s)" \
+        % (head, glow_note, note, os.path.basename(backup))
+
+
+def has_changes(exe) -> bool:
+    """Would restore() undo anything? A backup, or any patched pattern in place.
+
+    Not the same as inspect() != UNPATCHED: an exe with the interface sites
+    done and the eye glow site still waiting reads as UNPATCHED, yet restoring
+    it reverts the interface sites.
+    """
+    if os.path.isfile(backup_path(exe)):
+        return True
+    with open(exe, "rb") as handle:
+        data = handle.read()
+    return any(_count(data, _bytes(replace)) == 1
+               and _count(data, _bytes(search)) == 0
+               for search, replace, _core in _PATCHES)
 
 
 def restore(exe):

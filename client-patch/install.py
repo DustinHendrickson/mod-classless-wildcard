@@ -40,6 +40,7 @@ ADDON_NAME = "ClasslessWildcard"
 CHRCLASSES = "DBFilesClient\\ChrClasses.dbc"
 CHARBASEINFO = "DBFilesClient\\CharBaseInfo.dbc"
 CHARSTARTOUTFIT = "DBFilesClient\\CharStartOutfit.dbc"
+CHARSECTIONS = "DBFilesClient\\CharSections.dbc"
 SKILLRACECLASSINFO = "DBFilesClient\\SkillRaceClassInfo.dbc"
 SKILLLINEABILITY = "DBFilesClient\\SkillLineAbility.dbc"
 SKILLLINE = "DBFilesClient\\SkillLine.dbc"
@@ -205,6 +206,17 @@ def build_data_patch(files, name, report, theme=False):
     payload[CHARBASEINFO] = patched
     report.append("  CharBaseInfo.dbc all %d races, one cosmetic class "
                   "(shown as %s)" % (races, name))
+
+    # Every Hero is created on the Paladin chassis, so the creation screen hid
+    # the three extra skin colours, the second set of faces and the extra hair
+    # colours that Blizzard reserved for Death Knights. The server never checks
+    # appearance against this table, so only the client needs telling.
+    raw, source = files.find(CHARSECTIONS)
+    patched, opened_looks = dbc.open_death_knight_appearance(raw)
+    payload[CHARSECTIONS] = patched
+    report.append("  CharSections.dbc %d Death Knight skin, face and hair rows "
+                  "offered to every class (from %s)"
+                  % (len(opened_looks), os.path.basename(source)))
 
     # The client decides spellbook tabs from its OWN copy of this table, so
     # the server opening every class skill line to every class was invisible
@@ -774,6 +786,7 @@ def do_install(args, wow_dir):
 # has something else in it, so it can never be matched by luck of the letter.
 _OUR_FILES = frozenset(x.lower() for x in (
     CHRCLASSES, CHARBASEINFO, CHARSTARTOUTFIT, SKILLRACECLASSINFO, SKILLLINEABILITY,
+    CHARSECTIONS,
     ITEM,
     TALENTTAB,
     GLUESTRINGS, CHARCREATE_LUA,
@@ -876,9 +889,8 @@ def do_uninstall(args, wow_dir):
     exe = find_wow_exe(wow_dir)
     if exe:
         if args.dry_run:
-            state, _o, _d, _l = exepatch.inspect(exe)
-            if state != "unpatched":
-                report.append("  Wow.exe is %s (would restore)" % state)
+            if exepatch.has_changes(exe):
+                report.append("  Wow.exe          would restore the original")
         else:
             try:
                 result = exepatch.restore(exe)

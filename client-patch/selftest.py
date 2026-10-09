@@ -31,6 +31,7 @@ TALENT = "DBFilesClient\\Talent.dbc"
 ITEM = "DBFilesClient\\Item.dbc"
 SPELL = elemental.SPELL
 CHARSTARTOUTFIT = "DBFilesClient\\CharStartOutfit.dbc"
+CHARSECTIONS = "DBFilesClient\\CharSections.dbc"
 GLUESTRINGS = "Interface\\GlueXML\\GlueStrings.lua"
 CHARCREATE_LUA = "Interface\\GlueXML\\CharacterCreate.lua"
 
@@ -140,6 +141,71 @@ def main(argv):
                   "%d rows" % races)
             check("only the Paladin shell is offered",
                   {klass for _race, klass in pairs} == {2})
+
+            # --- CharSections -----------------------------------------------
+            # The flag rule below is Wow.exe 0x4f39a0, the one gate every
+            # creation and barbershop lookup goes through. Model it here and
+            # prove the opened rows pass it for a Paladin AND still pass it for
+            # a Death Knight, on both screens.
+            def shown(flags, barber, death_knight):
+                if not flags & (0x3 if barber else 0x1):
+                    return False
+                if flags & 0x8:
+                    return False
+                if death_knight:
+                    return bool(flags & 0x14)
+                return not flags & 0x4
+
+            raw, source = files.find(CHARSECTIONS)
+            looks, opened_looks = dbc.open_death_knight_appearance(raw)
+            check("CharSections resolved", bool(raw), os.path.basename(source))
+            cs_count, cs_fields, cs_size, _cs = dbc.parse_header(raw)
+            before = [struct.unpack_from("<10I", raw, 20 + i * cs_size)
+                      for i in range(cs_count)]
+            after = [struct.unpack_from("<10I", looks, 20 + i * cs_size)
+                     for i in range(cs_count)]
+            dk_rows = [i for i, r in enumerate(before) if r[7] & 0x4]
+            # every race has the three skin colours except Undead, who get faces
+            dk_skin_races = {(r[1], r[2]) for r in before
+                             if r[7] & 0x4 and r[3] == 0}
+            check("Death Knight rows found, three skins per race except Undead",
+                  len(dk_rows) > 0 and len(dk_skin_races) == 18
+                  and not {race for race, _sex in dk_skin_races} & {5},
+                  "%d rows, skins on %d race/sex pairs"
+                  % (len(dk_rows), len(dk_skin_races)))
+            check("every Death Knight row changed, nothing else",
+                  len(opened_looks) == len(dk_rows)
+                  and all(before[i] == after[i] for i in range(cs_count)
+                          if i not in set(dk_rows))
+                  and all(before[i][:7] == after[i][:7]
+                          and before[i][8:] == after[i][8:] for i in dk_rows),
+                  "%d of %d" % (len(opened_looks), len(dk_rows)))
+            lost = []
+            for i in range(cs_count):
+                for barber in (False, True):
+                    if shown(before[i][7], barber, True) and \
+                            not shown(after[i][7], barber, True):
+                        lost.append(before[i][0])
+                    if shown(before[i][7], barber, False) and \
+                            not shown(after[i][7], barber, False):
+                        lost.append(before[i][0])
+            gained = [i for i in dk_rows
+                      if shown(before[i][7], False, True)
+                      and not shown(after[i][7], False, False)]
+            check("Death Knight looks now show for a Paladin at creation",
+                  not gained, "%d rows still hidden" % len(gained))
+            check("no row lost by anyone, Death Knights included",
+                  not lost, "%s" % lost[:5])
+            check("re-running the open changes nothing",
+                  dbc.open_death_knight_appearance(looks)[1] == [])
+            # Wow.exe's eye glow tests the FACE row; the exe patch widens that
+            # test from 0x4 to 0x14. It must light exactly the faces that
+            # glowed before: no stock face may already carry 0x10.
+            glow_before = {r[0] for r in before if r[3] == 1 and r[7] & 0x4}
+            glow_after = {r[0] for r in after if r[3] == 1 and r[7] & 0x14}
+            check("eye glow lands on the same faces as before",
+                  glow_before and glow_before == glow_after,
+                  "%d faces before, %d after" % (len(glow_before), len(glow_after)))
             # --- SkillRaceClassInfo ------------------------------------------
             # The client draws a spellbook tab only for a class skill line its
             # own table allows the character's class. Open them all, as the
@@ -531,6 +597,7 @@ def main(argv):
                 installer.SKILLRACECLASSINFO: dbc.SKILLRACECLASSINFO_FIELDS,
                 installer.SKILLLINEABILITY: dbc.SKILLLINEABILITY_FIELDS,
                 installer.SPELL: dbc.SPELL_FIELDS,
+                installer.CHARSECTIONS: dbc.CHARSECTIONS_FIELDS,
             }
             missing = [k for k in expect if k not in built]
             check("every table the installer patches is in the payload",
@@ -615,9 +682,55 @@ def main(argv):
         check("interface patch applies or is applied", state != exepatch.UNKNOWN,
               "state=%s%s" % (state, "" if label is None
                               else " (%s)" % label))
-        if state == exepatch.UNPATCHED:
-            check("patch site located", offset is not None,
-                  "offset=%s" % (offset and hex(offset)))
+        # Patch a COPY, never the client: the eye glow site must end up as
+        # 0x14 exactly once, and a restore must hand back the bytes we started
+        # from. A copy already patched by an older install (interface sites
+        # done, glow site not) has to pick the glow site up too.
+        if state != exepatch.UNKNOWN:
+            with open(exe, "rb") as handle:
+                original = handle.read()
+            glow_old = bytes.fromhex(exepatch.GLOW_SEARCH.replace(" ", ""))
+            glow_new = bytes.fromhex(exepatch.GLOW_REPLACE.replace(" ", ""))
+            with tempfile.TemporaryDirectory() as tmp:
+                copy = os.path.join(tmp, "Wow.exe")
+                with open(copy, "wb") as handle:
+                    handle.write(original)
+                summary = exepatch.apply(copy)
+                with open(copy, "rb") as handle:
+                    patched_exe = handle.read()
+                check("eye glow site patched once",
+                      patched_exe.count(glow_new) == 1
+                      and patched_exe.count(glow_old) == 0, summary)
+                check("patched copy reads as patched",
+                      exepatch.inspect(copy)[0] == exepatch.PATCHED)
+                changed = [i for i in range(len(original))
+                           if original[i] != patched_exe[i]] \
+                    if len(original) == len(patched_exe) else None
+                glow_byte = patched_exe.find(glow_new) + 7
+                expected = 0
+                for search, replace, _core in exepatch._PATCHES:
+                    sb = bytes.fromhex(search.replace(" ", ""))
+                    rb = bytes.fromhex(replace.replace(" ", ""))
+                    if original.count(sb) == 1:
+                        expected += sum(a != b for a, b in zip(sb, rb))
+                check("only the known sites changed",
+                      changed is not None and glow_byte in changed
+                      and len(changed) == expected,
+                      "%s byte(s), %d expected"
+                      % (len(changed) if changed is not None
+                         else "length changed", expected))
+                exepatch.restore(copy)
+                with open(copy, "rb") as handle:
+                    restored = handle.read()
+                backup = exepatch.backup_path(exe)
+                if os.path.isfile(backup):
+                    with open(backup, "rb") as handle:
+                        pristine = handle.read()
+                else:
+                    pristine = original
+                check("restore puts the eye glow test back",
+                      restored.count(glow_old) == 1
+                      and (restored == original or restored == pristine))
 
     print()
     if FAILURES:

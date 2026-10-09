@@ -9,6 +9,8 @@ SkillLineAbility.dbc   - which class each class spell belongs to, which is
                          what actually decides the spellbook's tab set.
 Spell.dbc              - the class tool a spell demands before it may be cast,
                          and the icon of a stock spell a Hero holds differently.
+CharSections.dbc       - the Death Knight skin colours, faces and hair colours,
+                         opened to every class at creation and the barbershop.
 
 Both are rewritten from the copy already winning in the client's archive stack,
 so a community patch's version is preserved rather than reverted.
@@ -205,6 +207,62 @@ def clear_relic_slot(data: bytes):
         new_flags = flags & ~CHRCLASSES_FLAG_RELIC_SLOT
         struct.pack_into("<I", records, offset, new_flags)
         changed.append((class_id, flags, new_flags))
+
+    header = WDBC_MAGIC + struct.pack("<4I", record_count, field_count,
+                                      record_size, string_size)
+    return header + bytes(records) + data[strings_off:], changed
+
+
+# CharSections.dbc, 3.3.5a: 10 uint32 fields per record.
+#   0 ID  1 Race  2 Sex  3 BaseSection (0 skin, 1 face, 2 facial hair, 3 hair,
+#   4 underwear)  4-6 Texture names  7 Flags  8 VariationIndex  9 ColorIndex
+# Flags, read out of Wow.exe 12340: 0x4f3a40 picks a rule from the screen and
+# whether the class is 6, and 0x4f39a0 applies it to the row's flags.
+#   creation,   any other class   0x1 set, none of 0x4 / 0x8
+#   creation,   Death Knight      0x1 set, 0x4 or 0x10 set, no 0x8
+#   barbershop, any other class   0x1 or 0x2 set, none of 0x4 / 0x8
+#   barbershop, Death Knight      0x1 or 0x2 set, 0x4 or 0x10 set, no 0x8
+# So 0x4 is "Death Knight only" and 0x10 is "Death Knight too". Swapping one for
+# the other opens a row to every class without taking it from a Death Knight;
+# clearing 0x4 alone would. 0x8 is NPC-only and stays shut.
+CHARSECTIONS_FIELDS = 10
+CHARSECTIONS_FLAGS_FIELD = 7
+CHARSECTION_DEATH_KNIGHT_ONLY = 0x04
+CHARSECTION_DEATH_KNIGHT_TOO = 0x10
+
+
+def open_death_knight_appearance(data: bytes):
+    """Offer the Death Knight's skin colours, faces and hair colours to all.
+
+    Returns (new_dbc_bytes, [(id, race, sex, section, old_flags, new_flags)]).
+
+    Wow.exe 0x4ed900 gives the blue Death Knight eye glow to class 6, or to
+    anyone whose face row carries 0x4. Once the bit is gone that test misses,
+    so lib/exepatch.py widens it to 0x14.
+    """
+    record_count, field_count, record_size, string_size = parse_header(data)
+    if field_count != CHARSECTIONS_FIELDS:
+        raise DbcError(
+            "CharSections.dbc has %d fields, expected %d. This client build is "
+            "not the 3.3.5a layout this patch understands."
+            % (field_count, CHARSECTIONS_FIELDS))
+
+    records_off = 20
+    strings_off = records_off + record_count * record_size
+    records = bytearray(data[records_off:strings_off])
+
+    changed = []
+    for index in range(record_count):
+        base = index * record_size
+        row = struct.unpack_from("<10I", records, base)
+        flags = row[CHARSECTIONS_FLAGS_FIELD]
+        if not (flags & CHARSECTION_DEATH_KNIGHT_ONLY):
+            continue
+        new_flags = ((flags & ~CHARSECTION_DEATH_KNIGHT_ONLY)
+                     | CHARSECTION_DEATH_KNIGHT_TOO)
+        struct.pack_into("<I", records, base + CHARSECTIONS_FLAGS_FIELD * 4,
+                         new_flags)
+        changed.append((row[0], row[1], row[2], row[3], flags, new_flags))
 
     header = WDBC_MAGIC + struct.pack("<4I", record_count, field_count,
                                       record_size, string_size)

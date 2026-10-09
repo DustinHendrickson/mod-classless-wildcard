@@ -88,6 +88,37 @@ the module's auto-applied `cw_world_hero_races.sql` adds the missing
 Troll); stats derive from `player_race_stats` x `player_class_stats`, so only the
 start position and action bar need adding.
 
+### `CharSections.dbc` — the Death Knight looks
+
+10 `uint32` per record: `ID, Race, Sex, BaseSection, Texture×3, Flags,
+VariationIndex, ColorIndex`. Blizzard reserved 2829 rows for Death Knights:
+three extra skin colours per race and sex (not Undead), each with its own face
+and underwear textures; a second set of faces for every stock skin colour; and
+three extra hair and facial hair colours. A Hero is created as a Paladin, so
+the creation screen hid all of them.
+
+Who sees a row is decided in Wow.exe 12340 by one gate, `0x4f39a0`, with the
+rule picked by `0x4f3a40` from the screen and `class == 6`:
+
+```
+creation,   other class    0x1 set, none of 0x4 / 0x8
+creation,   Death Knight   0x1 set, 0x4 or 0x10 set, no 0x8
+barbershop, other class    0x1 or 0x2 set, none of 0x4 / 0x8
+barbershop, Death Knight   0x1 or 0x2 set, 0x4 or 0x10 set, no 0x8
+```
+
+The patch swaps `0x4` for `0x10` on those rows (`0x5`→`0x11`, `0x6`→`0x12`,
+the same flags the stock rows carry). Clearing `0x4` alone would hide the rows
+from real Death Knights, who need `0x4` or `0x10`. The server never reads this
+table, so nothing changes there.
+
+The blue Death Knight eye glow (geoset 1703) is drawn by Wow.exe `0x4ed900`
+for class 6, or when the character's **face** row (section 1, the face at that
+skin colour) has `0x4`. The swap alone would leave a Hero with ordinary eyes,
+so the exe patch widens that test to `0x14` (see the `Wow.exe` section). No
+stock face row carries `0x10`, so the same 1791 faces glow as before, now for
+every class. The selftest checks both halves.
+
 ### `Spell.dbc` — the class tool requirement
 
 234 `uint32` per record. Four columns are cleared, and only for spells that
@@ -252,6 +283,17 @@ restore` round-trips byte-identical, **and confirmed at the login/character
 screen** — with the patch applied, the custom `GlueStrings.lua` loads and the
 creation screen shows the Hero description instead of the corrupt-interface
 error.
+
+#### The Death Knight eye glow
+
+One more site, not part of the interface bypass: `0x4ed93b` (file offset
+`0xECD3B`), `test byte ptr [eax+0x1c], 4` → `..., 0x14`, one byte. See the
+CharSections section for why. It is non-core, so an exe it does not fit still
+gets the interface bypass. An exe an older install already patched picks up
+this site on the next install (`inspect` reports `unpatched` while any site is
+waiting, and `apply` no longer stops once the interface sites are done). A
+stock exe now changes 13 bytes; the existing backup is never overwritten, so
+`--uninstall` still restores the original.
 
 ## Testing
 
