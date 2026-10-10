@@ -133,7 +133,9 @@ namespace
         // Fields 6 to 29 are the realm's numbers the Help guide quotes, so
         // its text follows the config rather than the shipped defaults.
         // Field 30 is the path a Hero is given when the choice runs out.
-        SendAddon(player, Acore::StringFormat("CFG|{}|{}|{}|{}|{}|{}|{}|{}|{}|{}|{}|{}|{}|{}|{}|{}|{}|{}|{}|{}|{}|{}|{}|{}|{}|{}|{}|{}|{}",
+        // Fields 31-32 are Rebirth's quest, exploration and battleground XP
+        // per rank and its cap, for the Reborn aura's hover text.
+        SendAddon(player, Acore::StringFormat("CFG|{}|{}|{}|{}|{}|{}|{}|{}|{}|{}|{}|{}|{}|{}|{}|{}|{}|{}|{}|{}|{}|{}|{}|{}|{}|{}|{}|{}|{}|{}|{}",
             cfg.talentCostPerRank, cfg.talentFlatCost ? 1 : 0,
             cfg.includeDeathKnight ? 1 : 0, cfg.forgedEnable ? 1 : 0,
             cfg.startingAbilityEssence, uint32(cfg.essenceStartLevel), cfg.abilityEssencePerLevel,
@@ -145,7 +147,8 @@ namespace
             cfg.wcRarityWeights[0], cfg.wcRarityWeights[4],
             cfg.rebirthKillXpFirst, cfg.rebirthKillXpPerRank, cfg.rebirthKillXpMax,
             cfg.rebirthStatPctPerRank, cfg.rebirthStatPctMax,
-            sWorld->getIntConfig(CONFIG_MAX_PLAYER_LEVEL), uint32(cfg.defaultMode)));
+            sWorld->getIntConfig(CONFIG_MAX_PLAYER_LEVEL), uint32(cfg.defaultMode),
+            cfg.rebirthOtherXpPerRank, cfg.rebirthOtherXpMax));
     }
 
     void SendErr(Player* player, std::string const& text)
@@ -879,14 +882,20 @@ namespace
             sClasslessMgr->ApplyArchetype(player, argNum(1), &err) ? SendOk(player, "ARCH") : SendErr(player, err);
         else if (cmd == "REBIRTH")
         {
-            // "REBIRTH [heirloom ability id ...]": New Game Plus on the
-            // character's own path. The ids are the owned lines carried
-            // through, as many as the rank allows; the server refuses the rest.
+            // "REBIRTH [KEEPQ] [heirloom ability id ...]": New Game Plus on
+            // the character's own path. KEEPQ keeps the quest log; the ids
+            // are the owned lines carried through, as many as the rank
+            // allows; the server refuses the rest.
             std::vector<uint32> heirlooms;
+            bool keepQuests = false;
             for (size_t i = 1; i < args.size(); ++i)
-                if (uint32 id = argNum(i))
+            {
+                if (args[i] == "KEEPQ")
+                    keepQuests = true;
+                else if (uint32 id = argNum(i))
                     heirlooms.push_back(id);
-            sClasslessMgr->Rebirth(player, heirlooms, &err)
+            }
+            sClasslessMgr->Rebirth(player, heirlooms, keepQuests, &err)
                 ? SendOk(player, "REBIRTH") : SendErr(player, err);
         }
         else if (cmd == "CHL")

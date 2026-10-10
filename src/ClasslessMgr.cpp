@@ -31,6 +31,7 @@
 #include "Random.h"
 #include "World.h"
 #include "SharedDefines.h"
+#include "SpellAuras.h"
 #include "SpellInfo.h"
 #include "SpellMgr.h"
 #include "StringConvert.h"
@@ -2074,8 +2075,8 @@ std::vector<std::pair<uint32, uint8>> ClasslessMgr::ArchetypeQueue(Player* playe
 // Rebirth: New Game Plus.
 //
 // A Hero at the cap starts over at level 1. The build is wiped except the
-// heirlooms they name, the quest log is forgotten so every zone is new again,
-// worn gear goes into the bags, and the character keeps what they EARNED:
+// heirlooms they name, the quest log is forgotten so every zone is new again
+// (unless they choose to keep it), worn gear goes into the bags, and the character keeps what they EARNED:
 // gold, bags, bank, reputation, riding and every flight path. Each Rebirth
 // raises a rank that stacks for good -- XP rate, a stat percent, legacy
 // essence, one more heirloom next time, and a title per rank.
@@ -2123,7 +2124,8 @@ namespace
     // The quest log forgotten: everything in progress dropped, everything
     // ever turned in unmarked, the map unexplored. This is what gives a
     // second run its XP -- a Hero who has done every quest once has no
-    // quests left, and kills alone would make 1 to 80 a grind.
+    // quests left, and kills alone would make 1 to 80 a grind. A player who
+    // would rather not redo them keeps the lot, and the map with it.
     void ForgetQuests(Player* player)
     {
         for (uint16 slot = 0; slot < MAX_QUEST_LOG_SIZE; ++slot)
@@ -2175,12 +2177,36 @@ uint32 ClasslessMgr::RebirthXpPct(Player* player, bool kill) const
     return std::min(cfg.rebirthOtherXpPerRank * st.rebirths, cfg.rebirthOtherXpMax);
 }
 
+// The rank on the buff bar: "Reborn", gen_forged_spells.py's REBIRTH_AURA_ID,
+// with the rank as its stack count. A display only -- the bonuses below and
+// in RebirthXpPct do the work, so a lost aura costs nothing but the icon --
+// and the addon writes its hover text from the rank and the realm's numbers.
+// test_forged.py refuses a build where this id and the generator's disagree.
+static constexpr uint32 REBIRTH_AURA = 962047;
+
+void ClasslessMgr::SyncRebirthAura(Player* player, uint32 rank)
+{
+    if (!rank)
+    {
+        player->RemoveAurasDueToSpell(REBIRTH_AURA);
+        return;
+    }
+    if (!sSpellMgr->GetSpellInfo(REBIRTH_AURA))
+        return;
+    Aura* aura = player->GetAura(REBIRTH_AURA);
+    if (!aura)
+        aura = player->AddAura(REBIRTH_AURA, player);
+    if (aura && aura->GetStackAmount() != rank)
+        aura->SetStackAmount(uint8(std::min<uint32>(rank, 255)));
+}
+
 // The rank's stat percent, as a modifier on the five primary stats -- not an
 // aura, which a player could right-click off and which a cinematic or a
 // death could drop. Reapplied at login and after every Rebirth.
 void ClasslessMgr::ApplyRebirthMods(Player* player)
 {
     CharState& st = GetState(player);
+    SyncRebirthAura(player, st.exempt ? 0 : st.rebirths);
     int32 const want = st.exempt ? 0
         : int32(std::min(cfg.rebirthStatPctPerRank * st.rebirths, cfg.rebirthStatPctMax));
     if (want == st.appliedRebirthPct)
@@ -2221,7 +2247,7 @@ void ClasslessMgr::GrantRebirthTitles(Player* player)
                 player->SetTitle(title);
 }
 
-bool ClasslessMgr::Rebirth(Player* player, std::vector<uint32> const& heirlooms, std::string* err)
+bool ClasslessMgr::Rebirth(Player* player, std::vector<uint32> const& heirlooms, bool keepQuests, std::string* err)
 {
     CharState& st = GetState(player);
     if (!cfg.rebirthEnable)
@@ -2331,7 +2357,8 @@ bool ClasslessMgr::Rebirth(Player* player, std::vector<uint32> const& heirlooms,
     st.statAlloc = { 0, 0, 0, 0, 0 };
     ApplyStatMods(player);
 
-    ForgetQuests(player);
+    if (!keepQuests)
+        ForgetQuests(player);
 
     // Level 1. GiveLevel downward reaches HandleLevelUp, which refuses to pay
     // for a level below the one already settled, so nothing is handed out
@@ -2368,9 +2395,10 @@ bool ClasslessMgr::Rebirth(Player* player, std::vector<uint32> const& heirlooms,
 
     Msg(player, Acore::StringFormat(
         "|cffff8800Rebirth {}.|r You wake at the beginning with {} heirloom{}, +{}% kill XP and +{}% to every stat. "
-        "Your quests are forgotten; your gold, reputation, riding and flight paths are not.",
+        "{}; your gold, reputation, riding and flight paths are kept.",
         st.rebirths, keep.size(), keep.size() == 1 ? "" : "s",
-        RebirthXpPct(player, true), std::min(cfg.rebirthStatPctPerRank * st.rebirths, cfg.rebirthStatPctMax)));
+        RebirthXpPct(player, true), std::min(cfg.rebirthStatPctPerRank * st.rebirths, cfg.rebirthStatPctMax),
+        keepQuests ? "Your quests are kept" : "Your quests are wiped"));
 
     // Where this character first stood.
     player->TeleportTo(player->GetStartPosition());

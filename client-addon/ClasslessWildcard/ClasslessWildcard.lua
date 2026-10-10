@@ -71,7 +71,8 @@ local CW = {
               abilityCost = { 1, 2, 3, 5, 8 }, wcStart = 4, wcRollStart = 10,
               rerollsPerLevel = 3, synBase = 10, synInc = 10, banRolls = 25,
               weightCommon = 100, weightLegendary = 25, xpFirst = 100, xpPerRank = 50,
-              xpMax = 300, statPct = 3, statMax = 15, maxLevel = 80, defaultMode = 0 },
+              xpMax = 300, statPct = 3, statMax = 15, maxLevel = 80, defaultMode = 0,
+              otherXpPerRank = 25, otherXpMax = 100 },
     abilPage = 0, abilTotal = 1, abilRows = {},
     tabs = {}, tabIndex = 1,
     talPage = 0, talTotal = 1, talRows = {},
@@ -1009,7 +1010,19 @@ StaticPopupDialogs["CW_CLASSLESS_REBIRTH"] = {
     OnAccept = function() if CW.rebirthFly and CW.rebirthFly.Confirm then CW.rebirthFly.Confirm() end end,
     timeout = 0, whileDead = 1, hideOnEscape = 1, preferredIndex = 3,
 }
-local rebirthBtn = CreateFrame("Button", nil, frame, "UIPanelButtonTemplate")
+-- Asked before the last word: whether the new life forgets the quests done.
+-- Either answer goes on to the confirm above, which is where Cancel lives, so
+-- Escape is off here: it would count as Keep quests without being chosen.
+StaticPopupDialogs["CW_CLASSLESS_REBIRTH_QUESTS"] = {
+    text = "Wipe all quest progress?\n\nWipe: every quest can be done again for its XP and rewards. "
+        .. "Keep: quests you have done stay done.",
+    button1 = "Wipe quests",
+    button2 = "Keep quests",
+    OnAccept = function() if CW.rebirthFly and CW.rebirthFly.ChooseQuests then CW.rebirthFly.ChooseQuests(false) end end,
+    OnCancel = function() if CW.rebirthFly and CW.rebirthFly.ChooseQuests then CW.rebirthFly.ChooseQuests(true) end end,
+    timeout = 0, whileDead = 1, hideOnEscape = 0, preferredIndex = 3,
+}
+local rebirthBtn =CreateFrame("Button", nil, frame, "UIPanelButtonTemplate")
 rebirthBtn:SetWidth(90); rebirthBtn:SetHeight(22)
 rebirthBtn:SetPoint("BOTTOMRIGHT", -116, 26)
 rebirthBtn:SetText("Rebirth")
@@ -1094,7 +1107,7 @@ do
     fly.intro:SetPoint("TOPLEFT", 14, -30)
     fly.intro:SetWidth(432)
     fly.intro:SetJustifyH("LEFT")
-    fly.intro:SetText("A new life. Back to level 1, your quests forgotten so every zone is new again. "
+    fly.intro:SetText("A new life. Back to level 1; you choose whether your quests are wiped or kept. "
         .. "Gold, bags, bank, reputation, riding and flight paths stay; worn gear goes into your bags. "
         .. "Each Rebirth adds a permanent rank: more kill XP, a bonus to every stat, legacy essence on the Classless path, "
         .. "one more heirloom next time, and a title. "
@@ -1239,10 +1252,17 @@ do
         fly:Show()
     end
 
-    -- The last word before it is sent: which heirlooms, and what it costs.
-    -- The popup's OK calls fly.Confirm, which sends exactly this.
+    -- Be reborn asks about the quests first; the answer leads to the last word.
     function CW.AskRebirth()
+        fly.keepQuests = nil
+        StaticPopup_Show("CW_CLASSLESS_REBIRTH_QUESTS")
+    end
+
+    -- The last word before it is sent: which heirlooms, the quests, and what
+    -- it costs. The popup's OK calls fly.Confirm, which sends exactly this.
+    function fly.ChooseQuests(keep)
         local s = CW.state
+        fly.keepQuests = keep and true or false
         local ids = {}
         for id in pairs(fly.picked) do tinsert(ids, id) end
         table.sort(ids)
@@ -1253,11 +1273,13 @@ do
         StaticPopup_Show("CW_CLASSLESS_REBIRTH",
             "Rebirth " .. ((s.rebirths or 0) + 1) .. " on your " .. path .. " path for |cffffd100"
             .. (s.rebirthPrice or 0) .. " gold|r.\n\nBack to level 1. Heirlooms: "
-            .. (#names > 0 and table.concat(names, ", ") or "none") .. ".")
+            .. (#names > 0 and table.concat(names, ", ") or "none") .. ".\n"
+            .. (fly.keepQuests and "Quests: kept." or "Quests: wiped."))
     end
 
     function fly.Confirm()
         local parts = { "REBIRTH" }
+        if fly.keepQuests then tinsert(parts, "KEEPQ") end
         for _, id in ipairs(fly.pendingIds or {}) do tinsert(parts, tostring(id)) end
         Send(table.concat(parts, " "))
     end
@@ -2366,7 +2388,7 @@ local function BuildHelpText()
 "   |cffffd100No class tools:|r spells that ask for a class item, such as Stoneskin Totem asking for an Earth Totem, cast without it. Reagents still apply.",
 "",
 "|cffff8800==  REBIRTH: a new life at level " .. cap .. "  ==|r",
-"At level " .. cap .. " the |cffffd100Rebirth|r button starts you over at level 1. Your quests are forgotten, so every zone pays XP again; worn gear goes into your bags; your gold, bank, reputation, riding and flight paths stay. You start at your race's starting area, on the same path.",
+"At level " .. cap .. " the |cffffd100Rebirth|r button starts you over at level 1. You choose whether your quest progress is wiped, so every quest pays XP again, or kept; worn gear goes into your bags; your gold, bank, reputation, riding and flight paths stay. You start at your race's starting area, on the same path.",
 "Each Rebirth raises a |cffffd100rank|r that is yours for good:",
 "   |cff00ff00+" .. r.xpFirst .. "% kill and dungeon XP|r for the first, +" .. r.xpPerRank .. "% more for each after, up to +" .. r.xpMax .. "%. Quest XP rises more gently.",
 "   |cff00ff00+" .. r.statPct .. "% to every primary stat|r per rank, up to +" .. r.statMax .. "%.",
@@ -6314,6 +6336,7 @@ local function HandleMessage(msg)
         num(22, "weightCommon"); num(23, "weightLegendary")
         num(24, "xpFirst"); num(25, "xpPerRank"); num(26, "xpMax")
         num(27, "statPct"); num(28, "statMax"); num(29, "maxLevel"); num(30, "defaultMode")
+        num(31, "otherXpPerRank"); num(32, "otherXpMax")
         if CW.RefreshHelpText then CW.RefreshHelpText() end
         RenderList()
 
@@ -6691,7 +6714,41 @@ do
             if not name then return end
             T.decorate(self, CW.spellFixByName[name .. "|" .. (rank or "")])
         end)
+        -- The Reborn aura's hover text. Its row holds no numbers, since they
+        -- depend on the rank and the realm's config, so the text is written
+        -- here from the aura's stack count (the rank, on any unit) and the
+        -- same formulas as RebirthXpPct and ApplyRebirthMods.
+        local function rebornTip(self, unit, index, filter)
+            local _, _, _, count, _, _, _, _, _, _, id = UnitAura(unit, index, filter)
+            if id ~= CW.REBIRTH_AURA then return end
+            local lines = CW.RebirthAuraTip(math.max(1, tonumber(count) or 1))
+            self:ClearLines()
+            self:AddLine(lines[1], 1, 1, 1)
+            for i = 2, #lines do self:AddLine(lines[i], 1, 0.82, 0, true) end
+            self:Show()
+        end
+        hooksecurefunc(GameTooltip, "SetUnitAura", rebornTip)
+        hooksecurefunc(GameTooltip, "SetUnitBuff", function(self, unit, index, filter)
+            rebornTip(self, unit, index, filter and ("HELPFUL " .. filter) or "HELPFUL")
+        end)
     end
+end
+
+-- The Reborn aura (gen_forged_spells.py's REBIRTH_AURA_ID) and its hover text
+-- for a rank: the title line, then what the rank gives on this realm.
+CW.REBIRTH_AURA = 962047
+function CW.RebirthAuraTip(rank)
+    local r = CW.rules
+    local kill = math.min(r.xpFirst + r.xpPerRank * (rank - 1), r.xpMax)
+    local other = math.min(r.otherXpPerRank * rank, r.otherXpMax)
+    local stat = math.min(r.statPct * rank, r.statMax)
+    return {
+        "Reborn",
+        "Rebirth " .. rank .. ".",
+        "+" .. kill .. "% experience from kills and dungeons.",
+        "+" .. other .. "% experience from quests, exploration and battlegrounds.",
+        "+" .. stat .. "% to every primary stat.",
+    }
 end
 
 -- ---------------------------------------------------------------------------

@@ -137,14 +137,15 @@ public:
     // What the build still has to buy, in order, with each unlock level.
     std::vector<std::pair<uint32, uint8>> ArchetypeQueue(Player* player);
     static uint32 LevelsEarned(uint8 level, uint8 startLevel);
-    // Rebirth: New Game Plus. Level cap only. Back to level 1 with the quest
-    // log forgotten and the build wiped, except the heirlooms named here
-    // (owned ability line ids, at most MaxHeirlooms of them). Gold, bags,
+    // Rebirth: New Game Plus. Level cap only. Back to level 1 with the build
+    // wiped, except the heirlooms named here (owned ability line ids, at most
+    // MaxHeirlooms of them), and the quest log and map forgotten unless the
+    // player chose keepQuests. Gold, bags,
     // reputation, riding and flight paths stay. The Hero's Rebirth rank goes
     // up by one and pays out from then on: XP rate, stat bonus, legacy
     // essence, one more heirloom next time, a title. The new life is on the
     // path the character already walks: a path is chosen once, for good.
-    bool Rebirth(Player* player, std::vector<uint32> const& heirlooms, std::string* err);
+    bool Rebirth(Player* player, std::vector<uint32> const& heirlooms, bool keepQuests, std::string* err);
     uint32 RebirthCost(ClasslessWildcard::CharState const& st) const;  // gold
     uint32 MaxHeirlooms(ClasslessWildcard::CharState const& st) const;
     bool   RebirthEligible(Player* player) const;                      // at the cap
@@ -153,6 +154,7 @@ public:
     uint32 RebirthXpPct(Player* player, bool kill) const;
     // The rank's stat percent and titles, applied at login and after a Rebirth.
     void ApplyRebirthMods(Player* player);
+    void SyncRebirthAura(Player* player, uint32 rank);
     void GrantRebirthTitles(Player* player);
 
     // ------- challenge runs -------

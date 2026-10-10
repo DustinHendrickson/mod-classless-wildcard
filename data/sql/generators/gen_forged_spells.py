@@ -1981,6 +1981,47 @@ def build_talents(spell):
     return rows, meta
 
 
+# The Rebirth rank on the buff bar. A display only: the XP and stat bonuses are
+# applied by C++ (RebirthXpPct, ApplyRebirthMods), so nothing breaks if the
+# aura goes missing, and ApplyRebirthMods puts it back at login and after every
+# Rebirth with its stack count set to the rank. The numbers depend on the rank
+# and the realm's config, which a DBC row cannot hold, so the addon writes the
+# hover text (CW.RebirthAuraTip); the row's own text is what a client without
+# the addon shows. The last id of the forged block, clear of the talent ranks
+# that grow upward from TALENT_SPELL_BASE. ClasslessMgr.cpp names the same id.
+REBIRTH_AURA_ID = BLOCK_END
+REBIRTH_AURA_ICON = 24                # Spell_Nature_Reincarnation, the druid's Rebirth
+ATTR0_DO_NOT_DISPLAY = 0x00000080
+ATTR0_CANT_CANCEL = 0x80000000
+ATTR3_DEATH_PERSISTENT = 0x00100000
+
+
+REBIRTH_AURA_RECIPE = dict(
+    key="aura_rebirth", name="Reborn", ranks=1, donor=TALENT_DONOR, school=1,
+    icon=REBIRTH_AURA_ICON, visual=0, power=("mana", 0),
+    range_idx=RANGE_SELF, cast_idx=CAST_INSTANT, cooldown_ms=0,
+    duration_idx=DUR_PERMANENT, stack=255,     # the stack count is the rank
+    effects=[dict(eff=E_APPLY_AURA, aura=A_DUMMY, base=0, tgt=T_SELF)],
+    desc="Your Rebirth rank. Raises the experience you earn and all of your primary stats.",
+)
+
+
+def build_rebirth_aura(spell):
+    assert TALENT_SPELL_BASE + len(TALENTS) * TALENT_SPELL_STRIDE <= REBIRTH_AURA_ID, \
+        "the talent ranks have grown into the Rebirth aura's id"
+    rec = REBIRTH_AURA_RECIPE
+    row, donor = build_row(spell, rec, 0, 1, REBIRTH_AURA_ID, None, None)
+    # Shown, never clicked off, and kept through death: the rank is for good.
+    # The talent donor is hidden (0x80, DO_NOT_DISPLAY), which on an aura
+    # means no icon at all; build_row only clears its passive bit.
+    row[4] &= ~ATTR0_DO_NOT_DISPLAY
+    row[4] |= ATTR0_CANT_CANCEL
+    row[7] |= ATTR3_DEATH_PERSISTENT
+    return dict(id=REBIRTH_AURA_ID, first=REBIRTH_AURA_ID, rank=1, level=1,
+                key=rec["key"], values=row, base=TALENT_DONOR,
+                fields=overrides_of(row, donor), visual=0, icon=REBIRTH_AURA_ICON, sla=None)
+
+
 TEXT_TOKEN = re.compile(r"\$(?:/\d+;)?(\d*)([sSoOtTaAdDuU])(\d?)")
 
 
@@ -2411,6 +2452,7 @@ def build(spell, only=None):
     if not only:
         trows, tmeta = build_talents(spell)
         spells.extend(trows)
+        spells.append(build_rebirth_aura(spell))
     else:
         tmeta = []
     return spells, lines, meta, visuals, tmeta

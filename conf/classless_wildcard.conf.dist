@@ -839,8 +839,8 @@ ClasslessWildcard.WorldDrops.HeirloomChance = 2.0
 #
 #        REBIRTH is New Game Plus. At the level cap a Hero starts over at
 #        level 1: the build is wiped except the heirloom abilities they choose
-#        to carry, the quest log is forgotten so every zone is new again, worn
-#        gear goes into the bags, and gold, bags, bank, reputation, riding and
+#        to carry, the quest log is forgotten so every zone is new again (the
+#        player is asked and may keep it instead), worn gear goes into the bags, and gold, bags, bank, reputation, riding and
 #        flight paths all stay. Each Rebirth raises a permanent rank that
 #        stacks: more kill XP, a percent on every stat, legacy essence on the
 #        Classless path, one more heirloom next time, and a title per rank.

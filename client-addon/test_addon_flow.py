@@ -364,6 +364,23 @@ function GameTooltip:SetHyperlink(link)
     TIP.shown = true
 end
 function GameTooltip:IsShown() return TIP.shown == true end
+-- Auras on a unit, each { name, count, spellId }, and the buff tooltip drawn
+-- the way the client does: the row's own name and text, which the addon may
+-- then replace. UnitAura returns the 3.3.5 shape, spellId eleventh.
+UNIT_AURAS = {}
+function UnitAura(unit, i, filter)
+    local a = (UNIT_AURAS[unit] or {})[i]
+    if not a then return nil end
+    return a[1], "", "icon", a[2], nil, 0, 0, "player", nil, nil, a[3]
+end
+function GameTooltip:ClearLines() TIP = {} end
+function GameTooltip:SetUnitAura(unit, i, filter)
+    TIP = {}
+    local a = (UNIT_AURAS[unit] or {})[i]
+    if a then TIP[1] = a[1]; TIP[2] = "the row's own text" end
+    TIP.shown = true
+end
+function GameTooltip:SetUnitBuff(unit, i, filter) GameTooltip:SetUnitAura(unit, i, filter) end
 SPELL_RECAST_TIME_SEC = "%.3g sec cooldown"
 SPELL_RECAST_TIME_MIN = "%.3g min cooldown"
 SPELL_CAST_TIME_SEC = "%.3g sec cast"
@@ -1474,15 +1491,54 @@ def test_rebirth(h):
     h.check(fly["reborn"] is not None and fly["classless"] is None and fly["wildcard"] is None,
             "one Be reborn button, no path buttons")
     h.clear_sent()
+    # Be reborn asks about the quests first. Keep quests leads to the last
+    # word, which says so and sends KEEPQ with the heirlooms.
     CW.AskRebirth()
+    h.check(g.LAST_POPUP == "CW_CLASSLESS_REBIRTH_QUESTS", "Be reborn asks about quests first: %r" % g.LAST_POPUP)
+    qp = popups["CW_CLASSLESS_REBIRTH_QUESTS"]
+    h.check(qp["button1"] == "Wipe quests" and qp["button2"] == "Keep quests" and not qp["hideOnEscape"],
+            "the quest popup offers Wipe and Keep, and Escape does not answer it")
+    h.check(h.sent() == [], "nothing is sent on the quest question")
+    qp["OnCancel"]()
+    h.check(g.LAST_POPUP == "CW_CLASSLESS_REBIRTH", "Keep quests leads to the last word: %r" % g.LAST_POPUP)
+    h.check("Quests: kept" in str(g.LAST_POPUP_ARG), "the last word says quests are kept: %r" % str(g.LAST_POPUP_ARG))
+    popups["CW_CLASSLESS_REBIRTH"]["OnAccept"]()
+    h.check(h.sent() == ["REBIRTH KEEPQ 133 686"], "keeping sends KEEPQ and the heirlooms: %r" % h.sent())
+    h.clear_sent()
+
+    # Wipe quests: the old message exactly, which a server without KEEPQ reads too.
+    CW.AskRebirth()
+    popups["CW_CLASSLESS_REBIRTH_QUESTS"]["OnAccept"]()
     h.check(g.LAST_POPUP == "CW_CLASSLESS_REBIRTH", "the last word is a popup: %r" % g.LAST_POPUP)
     h.check("your" in str(g.LAST_POPUP_ARG) and "Wildcard" in str(g.LAST_POPUP_ARG),
             "it names the path the character already walks: %r" % str(g.LAST_POPUP_ARG)[:60])
+    h.check("Quests: wiped" in str(g.LAST_POPUP_ARG), "and says quests are wiped: %r" % str(g.LAST_POPUP_ARG))
     h.check(h.sent() == [], "nothing is sent before the popup is accepted")
     popups["CW_CLASSLESS_REBIRTH"]["OnAccept"]()
-    h.check(h.sent() == ["REBIRTH 133 686"], "accepting sends only the heirlooms: %r" % h.sent())
+    h.check(h.sent() == ["REBIRTH 133 686"], "wiping sends only the heirlooms: %r" % h.sent())
     h.recv("OK|REBIRTH")
     h.check(fly["__shown"] is False, "the picker closes once the new life has begun")
+
+    # The Reborn aura's hover text: the rank from its stack count, the numbers
+    # from the realm's CFG (kill 150 +60 per rank up to 400, other 30 per rank
+    # up to 100, stats 4 per rank up to 20), never the shipped defaults.
+    h.recv("CFG|2|0|1|1|5|3|2|12|1|2|3|4|6|9|3|12|4|15|5|30|100|20|150|60|400|4|20|70|0|30|100")
+    h.rt.execute('UNIT_AURAS.player = { { "Mark of the Wild", 1, 1126 }, { "Reborn", 2, %d } }' % CW.REBIRTH_AURA)
+    h.rt.execute('GameTooltip:SetUnitAura("player", 2, "HELPFUL")')
+    tip = str(h.rt.eval("TipText()"))
+    h.check(tip.startswith("Reborn | Rebirth 2.") and "the row's own text" not in tip,
+            "the Reborn tooltip is rewritten with the rank: %r" % tip)
+    h.check("+210% experience from kills and dungeons" in tip and "+60% experience from quests" in tip
+            and "+8% to every primary stat" in tip, "with this realm's numbers for rank 2: %r" % tip)
+    h.rt.execute('GameTooltip:SetUnitAura("player", 1, "HELPFUL")')
+    tip = str(h.rt.eval("TipText()"))
+    h.check(tip == "Mark of the Wild | the row's own text", "any other aura is left alone: %r" % tip)
+    # someone else's, on the target frame, past every cap
+    h.rt.execute('UNIT_AURAS.target = { { "Reborn", 9, %d } }' % CW.REBIRTH_AURA)
+    h.rt.execute('GameTooltip:SetUnitBuff("target", 1)')
+    tip = str(h.rt.eval("TipText()"))
+    h.check("Rebirth 9." in tip and "+400% experience from kills" in tip and "+100% experience from quests" in tip
+            and "+20% to every primary stat" in tip, "a target's rank is read off its aura, capped: %r" % tip)
 
     # My Build shows the heirloom for what it is, with nothing to lock or reroll.
     h.recv(rebirth_state(1, 1, 2, 0, 300, 3))

@@ -51,6 +51,9 @@ def recipe_key(key):
 
 
 _RECIPE_BY_KEY = {r["key"]: r for r in RECIPES}
+# not a line, but its row is built from a recipe all the same
+from gen_forged_spells import REBIRTH_AURA_RECIPE
+_RECIPE_BY_KEY[REBIRTH_AURA_RECIPE["key"]] = REBIRTH_AURA_RECIPE
 
 
 def recipe_asks(sp, field):
@@ -69,8 +72,9 @@ def recipe_asks(sp, field):
 def is_line(key):
     """A forged ability line, as opposed to a Hero talent rank. Talents live in
     the same spell list and the same manifest, but they are not lines: they
-    have no recipe, no rank chain and no skill-line row."""
-    return not key.startswith("talent_")
+    have no recipe, no rank chain and no skill-line row. The Reborn aura is
+    the same: a display row with no line behind it."""
+    return not key.startswith("talent_") and not key.startswith("aura_")
 
 
 
@@ -564,8 +568,8 @@ def main():
     import collections as _cl
     linebit = _cl.defaultdict(set)
     for s in spells:
-        if s["key"].startswith("talent_"):
-            continue          # a talent is not a line and owns no line bit
+        if not is_line(s["key"]):
+            continue          # a talent or the Reborn aura is not a line and owns no line bit
         base = s["key"].split("_pet")[0]
         if base.endswith("_companion"):
             base = base[:-len("_companion")]
@@ -1641,6 +1645,46 @@ def main():
     check("every title the C++ grants is a manifest row with a server row and a free bit",
           titles and not title_bad,
           "%d title(s), %d named in C++, stock bits end at %d; %s" % (len(titles), len(named), stock_max_bit, title_bad))
+
+    # ---- the Reborn aura -------------------------------------------------------
+    # The C++ puts it on a reborn Hero by id and the addon writes its hover
+    # text by id, so both have to name the row the generator built. And it has
+    # to show: on the buff bar, not hidden, not passive, not cancellable,
+    # kept through death, permanent, and able to stack to the rank.
+    aura_rows = [s for s in spells if s["key"] == "aura_rebirth"]
+    aura_bad = []
+    if len(aura_rows) != 1:
+        aura_bad.append("%d aura_rebirth rows" % len(aura_rows))
+    else:
+        av = aura_rows[0]["values"]
+        aid = aura_rows[0]["id"]
+        m = re.search(r"REBIRTH_AURA = (\d+);", mgr_cpp)
+        if not m or int(m.group(1)) != aid:
+            aura_bad.append("ClasslessMgr.cpp names %s, the generator built %d" % (m and m.group(1), aid))
+        lua = io.open(os.path.join(os.path.dirname(os.path.abspath(__file__)), os.pardir, "client-addon",
+                                   "ClasslessWildcard", "ClasslessWildcard.lua"), encoding="utf-8").read()
+        m = re.search(r"CW\.REBIRTH_AURA = (\d+)", lua)
+        if not m or int(m.group(1)) != aid:
+            aura_bad.append("the addon names %s, the generator built %d" % (m and m.group(1), aid))
+        a0 = av[4] & 0xFFFFFFFF
+        if a0 & 0x40:
+            aura_bad.append("passive, so never sent to the client")
+        if a0 & 0x80:
+            aura_bad.append("DO_NOT_DISPLAY, so no icon")
+        if not a0 & 0x80000000:
+            aura_bad.append("can be clicked off")
+        if not (av[7] & 0xFFFFFFFF) & 0x00100000:
+            aura_bad.append("lost on death")
+        if av[F["DurationIndex"]] != 21:
+            aura_bad.append("duration index %d, not permanent" % av[F["DurationIndex"]])
+        if av[49] < 2:
+            aura_bad.append("StackAmount %d cannot carry a rank" % av[49])
+        if not av[F["SpellIconID"]]:
+            aura_bad.append("no icon")
+        if not av[F["ToolTip"]]:
+            aura_bad.append("no hover text for a client without the addon")
+    check("the Reborn aura is shown, permanent, kept, and named by the same id in C++ and the addon",
+          not aura_bad, "; ".join(aura_bad))
 
     # ---- the columns a write names must be the core's ----------------------
     # The chartitles_dbc INSERT names its columns, and the core's own dump of

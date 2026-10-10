@@ -326,18 +326,21 @@ public:
         return out;
     }
 
-    static void DescribeRebirth(ChatHandler* handler, Player* player, std::string const& command)
+    static void DescribeRebirth(ChatHandler* handler, Player* player, std::string const& command, bool keepQuests)
     {
-        handler->PSendSysMessage("This sends you back to level 1 for {} gold. Your build and quest log are wiped and your worn "
+        handler->PSendSysMessage("This sends you back to level 1 for {} gold. Your build is wiped{} and your worn "
             "gear goes into your bags; gold, bank, reputation, riding, flight paths and the heirlooms you list stay.",
-            sClasslessMgr->RebirthCost(sClasslessMgr->GetState(player)));
-        handler->PSendSysMessage("Type {} confirm to go ahead.", command);
+            sClasslessMgr->RebirthCost(sClasslessMgr->GetState(player)),
+            keepQuests ? ", your quests are kept," : " along with your quest progress,");
+        if (!keepQuests)
+            handler->PSendSysMessage("To keep your quests, add keepquests: {} keepquests confirm", command);
+        handler->PSendSysMessage("Type {}{} confirm to go ahead.", command, keepQuests ? " keepquests" : "");
     }
 
-    // ".classless rebirth [heirloom ability id ...] [confirm]": New Game Plus,
-    // at the level cap, on the character's own path. The ids are owned
-    // ability lines carried through; the panel is the friendlier way to
-    // choose them.
+    // ".classless rebirth [heirloom ability id ...] [keepquests] [confirm]":
+    // New Game Plus, at the level cap, on the character's own path. The ids
+    // are owned ability lines carried through; keepquests keeps the quest
+    // log. The panel is the friendlier way to choose them.
     static bool HandleRebirth(ChatHandler* handler, Tail heirloomArgs)
     {
         if (!CheckEnabled(handler))
@@ -345,13 +348,17 @@ public:
         std::string err;
         bool confirmed;
         std::vector<uint32> heirlooms = ParseIdsAndConfirm(heirloomArgs, confirmed);
+        bool keepQuests = false;
+        for (std::string_view token : Acore::Tokenize(heirloomArgs, ' ', false))
+            if (token == "keepquests")
+                keepQuests = true;
         Player* player = handler->GetSession()->GetPlayer();
         if (!confirmed && sClasslessMgr->RebirthEligible(player))
         {
-            DescribeRebirth(handler, player, ".classless rebirth" + IdList(heirlooms));
+            DescribeRebirth(handler, player, ".classless rebirth" + IdList(heirlooms), keepQuests);
             return true;
         }
-        if (!sClasslessMgr->Rebirth(player, heirlooms, &err) && !err.empty())
+        if (!sClasslessMgr->Rebirth(player, heirlooms, keepQuests, &err) && !err.empty())
             handler->SendSysMessage(err);
         return true;
     }
