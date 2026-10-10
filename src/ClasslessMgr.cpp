@@ -61,6 +61,24 @@ namespace
         ChatHandler(player->GetSession()).SendSysMessage(std::string(MSG_PREFIX) + text);
     }
 
+    // A title as it reads on this character's name ("Arthas the Reborn"),
+    // in the client's own language where the row has one. Empty if the
+    // title is not loaded.
+    std::string TitleText(Player* player, uint32 titleId)
+    {
+        CharTitlesEntry const* title = titleId ? sCharTitlesStore.LookupEntry(titleId) : nullptr;
+        if (!title)
+            return "";
+        char const* fmt = title->nameMale[player->GetSession()->GetSessionDbcLocale()];
+        if (!fmt || !*fmt)
+            fmt = title->nameMale[LOCALE_enUS];
+        std::string text = fmt ? fmt : "";
+        std::size_t const at = text.find("%s");
+        if (at != std::string::npos)
+            text.replace(at, 2, player->GetName());
+        return text;
+    }
+
     std::vector<uint32> ParseUintList(std::string const& value)
     {
         std::vector<uint32> out;
@@ -2087,9 +2105,12 @@ namespace
     // the run a formality, and CanUseItem only runs at equip time, so the
     // core would have left it on. What the bags cannot hold goes by mail, the
     // same way the core returns a piece a character could no longer wear at
-    // login.
-    void UnequipToBags(Player* player, std::vector<uint8> const& slots)
+    // login, under the caller's subject and text. Returns how many pieces went
+    // by mail, so the caller can say so.
+    uint32 UnequipToBags(Player* player, std::vector<uint8> const& slots,
+                         std::string const& subject, std::string const& body)
     {
+        uint32 mailed = 0;
         for (uint8 slot : slots)
         {
             Item* item = player->GetItemByPos(INVENTORY_SLOT_BAG_0, slot);
@@ -2106,19 +2127,31 @@ namespace
             CharacterDatabaseTransaction trans = CharacterDatabase.BeginTransaction();
             item->DeleteFromInventoryDB(trans);
             item->SaveToDB(trans);
-            MailDraft("Rebirth", "Your bags were full when you were reborn. This was on your back.")
+            MailDraft(subject, body)
                 .AddItem(item)
                 .SendMailTo(trans, player, MailSender(player, MAIL_STATIONERY_GM), MAIL_CHECK_MASK_COPIED);
             CharacterDatabase.CommitTransaction(trans);
+            ++mailed;
         }
+        return mailed;
     }
 
-    void UnequipAllToBags(Player* player)
+    uint32 UnequipAllToBags(Player* player)
     {
         std::vector<uint8> slots;
         for (uint8 slot = EQUIPMENT_SLOT_START; slot < EQUIPMENT_SLOT_END; ++slot)
             slots.push_back(slot);
-        UnequipToBags(player, slots);
+        return UnequipToBags(player, slots, "Rebirth",
+            "Your bags were full when you were reborn. This was on your back.");
+    }
+
+    // What a caller adds to its own message when gear did not fit.
+    std::string MailedNotice(uint32 mailed)
+    {
+        if (!mailed)
+            return "";
+        return Acore::StringFormat(" Your bags were full, so {} piece{} of gear {} mailed to you.",
+                                   mailed, mailed == 1 ? "" : "s", mailed == 1 ? "was" : "were");
     }
 
     // The quest log forgotten: everything in progress dropped, everything
@@ -2228,8 +2261,9 @@ void ClasslessMgr::ApplyRebirthMods(Player* player)
 // One title per rank, in order. The module's own: gen_forged_spells.py's
 // TITLES, which the forged SQL writes to chartitles_dbc for this server and
 // the client patch appends to CharTitles.dbc. The ids here are that list's,
-// and test_forged.py refuses a build where the two disagree.
-void ClasslessMgr::GrantRebirthTitles(Player* player)
+// and test_forged.py refuses a build where the two disagree. Returns the
+// last title granted just now, 0 if none was new.
+uint32 ClasslessMgr::GrantRebirthTitles(Player* player)
 {
     static constexpr uint32 TITLES[] = {
         180,    // the Reborn
@@ -2240,11 +2274,16 @@ void ClasslessMgr::GrantRebirthTitles(Player* player)
     };
     CharState& st = GetState(player);
     if (st.exempt)
-        return;
+        return 0;
+    uint32 granted = 0;
     for (uint32 i = 0; i < st.rebirths && i < std::size(TITLES); ++i)
         if (CharTitlesEntry const* title = sCharTitlesStore.LookupEntry(TITLES[i]))
             if (!player->HasTitle(title))
+            {
                 player->SetTitle(title);
+                granted = TITLES[i];
+            }
+    return granted;
 }
 
 bool ClasslessMgr::Rebirth(Player* player, std::vector<uint32> const& heirlooms, bool keepQuests, std::string* err)
@@ -2317,7 +2356,7 @@ bool ClasslessMgr::Rebirth(Player* player, std::vector<uint32> const& heirlooms,
     uint32 const guid = player->GetGUID().GetCounter();
     GrantGuard bulk(_bulkCorrections);   // one push at the end, not one per spell
 
-    UnequipAllToBags(player);
+    uint32 const mailed = UnequipAllToBags(player);
 
     // The build: everything but the heirlooms.
     std::vector<uint32> ownedAbilities;
@@ -2391,14 +2430,43 @@ bool ClasslessMgr::Rebirth(Player* player, std::vector<uint32> const& heirlooms,
     UpdateAbilityRanks(player);
     SyncSpellbookTabs(player, true);
     ApplyRebirthMods(player);
-    GrantRebirthTitles(player);
+    uint32 const newTitle = GrantRebirthTitles(player);
 
-    Msg(player, Acore::StringFormat(
-        "|cffff8800Rebirth {}.|r You wake at the beginning with {} heirloom{}, +{}% kill XP and +{}% to every stat. "
-        "{}; your gold, reputation, riding and flight paths are kept.",
-        st.rebirths, keep.size(), keep.size() == 1 ? "" : "s",
-        RebirthXpPct(player, true), std::min(cfg.rebirthStatPctPerRank * st.rebirths, cfg.rebirthStatPctMax),
-        keepQuests ? "Your quests are kept" : "Your quests are wiped"));
+    // What the new life holds, in chat and as the addon's summary popup.
+    uint32 const killPct = RebirthXpPct(player, true);
+    uint32 const otherPct = RebirthXpPct(player, false);
+    uint32 const statPct = std::min(cfg.rebirthStatPctPerRank * st.rebirths, cfg.rebirthStatPctMax);
+    std::vector<std::string> carried;
+    std::string carriedIds;
+    for (uint32 id : keep)
+    {
+        carried.push_back(Acore::StringFormat("|cffff8800{}|r", SpellName(id)));
+        carriedIds += Acore::StringFormat("{}{}", carriedIds.empty() ? "" : ",", id);
+    }
+    std::string const titleText = TitleText(player, newTitle);
+
+    Msg(player, Acore::StringFormat("|cffff8800Rebirth {}.|r You begin a new life at level 1{}.",
+        st.rebirths, carried.empty() ? "" : ", carrying " + JoinNames(carried)));
+    Msg(player, Acore::StringFormat("Your rank grants |cff00ff00+{}%|r experience from kills and dungeons, "
+        "|cff00ff00+{}%|r from quests, exploration and battlegrounds, and |cff00ff00+{}%|r to every primary stat.",
+        killPct, otherPct, statPct));
+    if (st.mode == Mode::Classless)
+        Msg(player, Acore::StringFormat("You start with |cff00ff00{}|r Ability Essence and |cff00ff00{}|r Talent Essence.",
+            st.abilityEssence, st.talentEssence));
+    else
+        Msg(player, "A new starting hand has been dealt.");
+    if (!titleText.empty())
+        Msg(player, Acore::StringFormat("New title: |cffffd100{}|r.", titleText));
+    Msg(player, Acore::StringFormat("Your gold, bank, reputation, riding and flight paths are kept. {}{}",
+        keepQuests ? "Your quest history is kept." : "Your quest history is cleared, so every quest pays again.",
+        MailedNotice(mailed)));
+
+    // "RB|rank|kill%|other%|stat%|questsKept|mailed|abilityEssence|talentEssence|
+    //  heirlooms next time|new title|carried ids"
+    PushAddon(player, Acore::StringFormat("RB|{}|{}|{}|{}|{}|{}|{}|{}|{}|{}|{}",
+        st.rebirths, killPct, otherPct, statPct, keepQuests ? 1 : 0, mailed,
+        st.mode == Mode::Classless ? st.abilityEssence : 0, st.mode == Mode::Classless ? st.talentEssence : 0,
+        MaxHeirlooms(st), titleText, carriedIds));
 
     // Where this character first stood.
     player->TeleportTo(player->GetStartPosition());
@@ -2469,10 +2537,11 @@ namespace
           "Know your escape abilities and when to use them, avoid fights you are not sure of, and rest to full before every pull. Duels, battlegrounds and arenas cost nothing, so they are safe places to practice." },
     };
 
-    void GrantTitle(Player* player, uint32 titleId)
+    // true when the title is new to this character
+    bool GrantTitle(Player* player, uint32 titleId)
     {
         if (!titleId)
-            return;
+            return false;
         CharTitlesEntry const* title = sCharTitlesStore.LookupEntry(titleId);
         if (!title)
         {
@@ -2482,10 +2551,12 @@ namespace
             LOG_WARN("module.classless",
                      "mod-classless-wildcard: title {} is not loaded; apply cw_spells_forged.sql and restart",
                      titleId);
-            return;
+            return false;
         }
-        if (!player->HasTitle(title))
-            player->SetTitle(title);
+        if (player->HasTitle(title))
+            return false;
+        player->SetTitle(title);
+        return true;
     }
 }
 
@@ -2551,6 +2622,7 @@ bool ClasslessMgr::StartRun(Player* player, uint8 challengeId, std::string* err)
     SaveNemeses(player->GetGUID(), st);
     st.hunterTimerMs = 0;
 
+    uint32 mailed = 0;
     switch (ChallengeId(st.run))
     {
         case ChallengeId::Glass:
@@ -2565,7 +2637,8 @@ bool ClasslessMgr::StartRun(Player* player, uint8 challengeId, std::string* err)
                 if (Item* item = player->GetItemByPos(INVENTORY_SLOT_BAG_0, slot))
                     if (item->GetTemplate()->Quality > ITEM_QUALITY_NORMAL)
                         slots.push_back(slot);
-            UnequipToBags(player, slots);
+            mailed = UnequipToBags(player, slots, "Ironman",
+                "Your bags were full when your Ironman run began. This was on your back.");
             break;
         }
         default:
@@ -2573,8 +2646,8 @@ bool ClasslessMgr::StartRun(Player* player, uint8 challengeId, std::string* err)
     }
 
     SaveState(player);
-    Msg(player, Acore::StringFormat("|cffffd100{}|r begins. {} You have {} {}.",
-        ch->name, ch->rule, uint32(st.lives), st.lives == 1 ? "life" : "lives"));
+    Msg(player, Acore::StringFormat("|cffffd100{}|r begins. {} You have {} {}.{}",
+        ch->name, ch->rule, uint32(st.lives), st.lives == 1 ? "life" : "lives", MailedNotice(mailed)));
     PushRunTracker(player);
     return true;
 }
@@ -2642,29 +2715,35 @@ void ClasslessMgr::EndRun(Player* player, bool finished)
     st.shards += shards;
 
     uint32 gold = 0;
-    std::string rewardName;
+    bool repeat = false;
+    uint32 rewardSpell = 0;              // the reward ability, when it is new to this character
+    std::string titleText, unbrokenText; // titles new to this character
+    uint8 const livesLeft = st.lives, livesMax = st.livesMax;
     if (finished)
     {
         // Gold for the first finish only; a repeat pays shards.
         auto const prior = st.runBest.find(ch->id);
-        if (prior == st.runBest.end() || !prior->second.second)
+        repeat = prior != st.runBest.end() && prior->second.second;
+        if (!repeat)
         {
             gold = ch->rewardGold;
             player->ModifyMoney(int32(gold) * GOLD);
         }
-        GrantTitle(player, ch->titleId);
-        if (!used)
-            GrantTitle(player, UNBROKEN_TITLE);
+        if (GrantTitle(player, ch->titleId))
+            titleText = TitleText(player, ch->titleId);
+        if (!used && GrantTitle(player, UNBROKEN_TITLE))
+            unbrokenText = TitleText(player, UNBROKEN_TITLE);
         // The reward line, as an heirloom: it exists nowhere else and it
         // comes along through every Rebirth after this one.
         if (ch->rewardRecipe && *ch->rewardRecipe)
             if (uint32 const first = ForgedLine(ch->rewardRecipe))
                 if (AbilityEntry const* e = GetAbility(first))
-                {
-                    rewardName = SpellName(first);
                     if (!st.abilities.count(first))
-                        GrantAbilityInternal(player, *e, GrantSource::Heirloom, true, true);
-                }
+                    {
+                        // announced below, with the rest of the rewards
+                        GrantAbilityInternal(player, *e, GrantSource::Heirloom, true, false);
+                        rewardSpell = first;
+                    }
     }
 
     CharacterDatabase.Execute(
@@ -2694,16 +2773,35 @@ void ClasslessMgr::EndRun(Player* player, bool finished)
     }
 
     SaveState(player);
-    PushAddon(player, Acore::StringFormat("RE|{}|{}|{}|{}|{}", finished ? 1 : 0, uint32(level), shards, gold, ch->name));
+    // "RE|finished|level|shards|gold|name|challenge|lives left|lives max|
+    //  reward spell (new only)|title (new only)|Unbroken title (new only)|repeat"
+    PushAddon(player, Acore::StringFormat("RE|{}|{}|{}|{}|{}|{}|{}|{}|{}|{}|{}|{}",
+        finished ? 1 : 0, uint32(level), shards, gold, ch->name, uint32(ch->id),
+        uint32(livesLeft), uint32(livesMax), rewardSpell, titleText, unbrokenText, repeat ? 1 : 0));
     PushRunTracker(player);   // run 0: the tracker goes away
+
+    std::string const earned = Acore::StringFormat("|cffffffff{}|r shard{}{}", shards, shards == 1 ? "" : "s",
+        gold ? Acore::StringFormat(" and |cffffffff{}|r gold", gold) : std::string());
     if (finished)
-        Msg(player, Acore::StringFormat("|cff00ff00{} complete!|r You earn {} shard{}{}{}. The rule lifts.",
-            ch->name, shards, shards == 1 ? "" : "s",
-            gold ? Acore::StringFormat(" and {} gold", gold) : std::string(),
-            rewardName.empty() ? "" : Acore::StringFormat(", and |cffa335ee{}|r is yours to keep", rewardName)));
+    {
+        Msg(player, Acore::StringFormat("|cff00ff00Challenge complete: {}.|r You reached level {} with {} of {} {} left. "
+            "The rule lifts.", ch->name, uint32(level), uint32(livesLeft), uint32(livesMax),
+            livesMax == 1 ? "life" : "lives"));
+        Msg(player, Acore::StringFormat("You earn {}.{}", earned,
+            repeat ? " Gold is paid for the first finish only." : ""));
+        if (rewardSpell)
+            Msg(player, Acore::StringFormat("|cffa335ee{}|r is yours as an heirloom: usable from level 1 and kept "
+                "through every Rebirth.", SpellName(rewardSpell)));
+        if (!titleText.empty())
+            Msg(player, Acore::StringFormat("New title: |cffffd100{}|r.", titleText));
+        if (!used)
+            Msg(player, Acore::StringFormat("Not a life lost: a third more shards{}.", unbrokenText.empty() ? ""
+                : Acore::StringFormat(", and the title |cffffd100{}|r", unbrokenText)));
+    }
     else
-        Msg(player, Acore::StringFormat("|cffff4444{} is over.|r You reached level {} and earned {} shard{}. The rule lifts.",
-            ch->name, uint32(level), shards, shards == 1 ? "" : "s"));
+        Msg(player, Acore::StringFormat("|cffff4444Challenge over: {}.|r Your last life was lost at level {}. "
+            "You earn {}. The rule lifts; your level, gear and build stay.",
+            ch->name, uint32(level), earned));
 }
 
 bool ClasslessMgr::BuyExtraLife(Player* player, std::string* err)

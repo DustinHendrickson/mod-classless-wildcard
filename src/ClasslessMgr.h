@@ -155,7 +155,7 @@ public:
     // The rank's stat percent and titles, applied at login and after a Rebirth.
     void ApplyRebirthMods(Player* player);
     void SyncRebirthAura(Player* player, uint32 rank);
-    void GrantRebirthTitles(Player* player);
+    uint32 GrantRebirthTitles(Player* player);   // the title granted just now, 0 if none
 
     // ------- challenge runs -------
     // The list is code (ClasslessMgr.cpp), in id order; the addon is sent it.

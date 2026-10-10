@@ -329,7 +329,7 @@ public:
     static void DescribeRebirth(ChatHandler* handler, Player* player, std::string const& command, bool keepQuests)
     {
         handler->PSendSysMessage("This sends you back to level 1 for {} gold. Your build is wiped{} and your worn "
-            "gear goes into your bags; gold, bank, reputation, riding, flight paths and the heirlooms you list stay.",
+            "gear goes into your bags (by mail if they are full); gold, bank, reputation, riding, flight paths and the heirlooms you list stay.",
             sClasslessMgr->RebirthCost(sClasslessMgr->GetState(player)),
             keepQuests ? ", your quests are kept," : " along with your quest progress,");
         if (!keepQuests)

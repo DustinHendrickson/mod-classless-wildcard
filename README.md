@@ -113,7 +113,8 @@ with your build on the right. Lock or reroll anything you own from the same wind
 - **Rebirth.** At the level cap, start over at level 1 with a permanent rank that stacks.
   - **Kept:** your path, gold, bags, bank, reputation, riding, flight paths, and the **heirloom**
     abilities you choose to carry (usable from level 1, one more per rank).
-  - **Reset:** your build and stat allocation. Worn gear goes into your bags.
+  - **Reset:** your build and stat allocation. Worn gear goes into your bags, and anything that
+    does not fit is mailed to you.
   - **Your choice:** before confirming you are asked whether to wipe your quest progress (quest
     log, completed quests and explored map) so every quest pays XP again, or keep it.
   - **Per rank:** +100% kill and dungeon XP for the first, +50% per rank after (max +300%); +3%

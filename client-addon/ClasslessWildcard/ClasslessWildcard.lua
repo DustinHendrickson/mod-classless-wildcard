@@ -1108,7 +1108,7 @@ do
     fly.intro:SetWidth(432)
     fly.intro:SetJustifyH("LEFT")
     fly.intro:SetText("A new life. Back to level 1; you choose whether your quests are wiped or kept. "
-        .. "Gold, bags, bank, reputation, riding and flight paths stay; worn gear goes into your bags. "
+        .. "Gold, bags, bank, reputation, riding and flight paths stay; worn gear goes into your bags, or by mail if they are full. "
         .. "Each Rebirth adds a permanent rank: more kill XP, a bonus to every stat, legacy essence on the Classless path, "
         .. "one more heirloom next time, and a title. "
         .. "You stay on your path. "
@@ -1307,6 +1307,92 @@ StaticPopupDialogs["CW_RUN_END"] = {
     text = "%s", button1 = OKAY,
     timeout = 0, whileDead = 1, hideOnEscape = 1, preferredIndex = 3,
 }
+StaticPopupDialogs["CW_REBIRTH_DONE"] = {
+    text = "%s", button1 = "Begin",
+    timeout = 0, whileDead = 1, hideOnEscape = 1, preferredIndex = 3,
+}
+
+-- The end of a run, as its popup reads.
+-- "RE|finished|level|shards|gold|name|challenge|lives left|lives max|
+--  reward spell|title|Unbroken title|repeat"; the fields past name are absent
+-- from older servers and read as nothing new.
+function CW.RunEndText(p)
+    local finished, level = tonumber(p[2]) == 1, tonumber(p[3]) or 1
+    local shards, gold, name = tonumber(p[4]) or 0, tonumber(p[5]) or 0, p[6] or "The run"
+    local left, max = tonumber(p[8]) or 0, tonumber(p[9]) or 0
+    local reward, title, unbroken = tonumber(p[10]) or 0, p[11] or "", p[12] or ""
+    local repeatRun = tonumber(p[13]) == 1
+    local earned = shards .. (shards == 1 and " shard" or " shards") .. (gold > 0 and (" and " .. gold .. " gold") or "")
+    local t = {}
+    if finished then
+        tinsert(t, "|cff00ff00Challenge complete|r")
+        tinsert(t, "|cffffd100" .. name .. "|r")
+        tinsert(t, "")
+        tinsert(t, max > 0 and ("Level " .. level .. ", " .. left .. " of " .. max
+            .. (max == 1 and " life" or " lives") .. " left.") or ("Level " .. level .. "."))
+        tinsert(t, "")
+        tinsert(t, "You earn " .. earned .. "." .. (repeatRun and " Gold is paid for the first finish only." or ""))
+        if reward > 0 then
+            tinsert(t, "|cffa335ee" .. ((GetSpellInfo(reward)) or "The reward ability") .. "|r is yours as an heirloom.")
+        end
+        if title ~= "" then tinsert(t, "New title: |cffffd100" .. title .. "|r") end
+        if max > 0 and left == max then
+            tinsert(t, "Not a life lost: a third more shards"
+                .. (unbroken ~= "" and (", and |cffffd100" .. unbroken .. "|r") or "") .. ".")
+        end
+    else
+        tinsert(t, "|cffff4444Challenge over|r")
+        tinsert(t, "|cffffd100" .. name .. "|r")
+        tinsert(t, "")
+        tinsert(t, "Your last life was lost at level " .. level .. ".")
+        tinsert(t, "You earn " .. earned .. ".")
+    end
+    tinsert(t, "")
+    tinsert(t, finished and "The rule lifts." or "The rule lifts. Your level, gear and build stay.")
+    return table.concat(t, "\n")
+end
+
+-- A new life, as its popup reads.
+-- "RB|rank|kill%|other%|stat%|questsKept|mailed|abilityEssence|talentEssence|
+--  heirlooms next time|new title|carried ids"
+function CW.RebirthDoneText(p)
+    local rank = tonumber(p[2]) or 1
+    local kill, other, stat = tonumber(p[3]) or 0, tonumber(p[4]) or 0, tonumber(p[5]) or 0
+    local kept, mailed = tonumber(p[6]) == 1, tonumber(p[7]) or 0
+    local ae, te, nextMax = tonumber(p[8]) or 0, tonumber(p[9]) or 0, tonumber(p[10]) or 0
+    local title, ids = p[11] or "", p[12] or ""
+    local names = {}
+    for id in string.gmatch(ids, "%d+") do
+        tinsert(names, "|cffff8800" .. ((GetSpellInfo(tonumber(id))) or ("#" .. id)) .. "|r")
+    end
+    local t = {
+        "|cffff8800Rebirth " .. rank .. "|r",
+        "A new life begins at level 1.",
+        "",
+        "|cff00ff00+" .. kill .. "%|r experience from kills and dungeons",
+        "|cff00ff00+" .. other .. "%|r from quests, exploration and battlegrounds",
+        "|cff00ff00+" .. stat .. "%|r to every primary stat",
+        "",
+    }
+    tinsert(t, #names > 0 and ("Heirlooms: " .. table.concat(names, ", ") .. ".")
+        or "No heirlooms carried.")
+    if ae > 0 or te > 0 then
+        tinsert(t, "You start with |cff00ff00" .. ae .. "|r Ability Essence and |cff00ff00" .. te .. "|r Talent Essence.")
+    else
+        tinsert(t, "A new starting hand has been dealt.")
+    end
+    if title ~= "" then tinsert(t, "New title: |cffffd100" .. title .. "|r") end
+    tinsert(t, "")
+    tinsert(t, kept and "Your quest history is kept." or "Your quest history is cleared, so every quest pays again.")
+    if mailed > 0 then
+        tinsert(t, mailed .. (mailed == 1 and " piece of gear did" or " pieces of gear did")
+            .. " not fit in your bags and " .. (mailed == 1 and "was" or "were") .. " mailed to you.")
+    end
+    if nextMax > 0 then
+        tinsert(t, "Your next Rebirth carries up to " .. nextMax .. (nextMax == 1 and " heirloom." or " heirlooms."))
+    end
+    return table.concat(t, "\n")
+end
 do
     -- The whole panel, edge to edge, so the challenges get its full size.
     -- Two panes. On the left every challenge, all twelve at
@@ -2388,7 +2474,7 @@ local function BuildHelpText()
 "   |cffffd100No class tools:|r spells that ask for a class item, such as Stoneskin Totem asking for an Earth Totem, cast without it. Reagents still apply.",
 "",
 "|cffff8800==  REBIRTH: a new life at level " .. cap .. "  ==|r",
-"At level " .. cap .. " the |cffffd100Rebirth|r button starts you over at level 1. You choose whether your quest progress is wiped, so every quest pays XP again, or kept; worn gear goes into your bags; your gold, bank, reputation, riding and flight paths stay. You start at your race's starting area, on the same path.",
+"At level " .. cap .. " the |cffffd100Rebirth|r button starts you over at level 1. You choose whether your quest progress is wiped, so every quest pays XP again, or kept; worn gear goes into your bags, or to your mailbox if they are full; your gold, bank, reputation, riding and flight paths stay. You start at your race's starting area, on the same path.",
 "Each Rebirth raises a |cffffd100rank|r that is yours for good:",
 "   |cff00ff00+" .. r.xpFirst .. "% kill and dungeon XP|r for the first, +" .. r.xpPerRank .. "% more for each after, up to +" .. r.xpMax .. "%. Quest XP rises more gently.",
 "   |cff00ff00+" .. r.statPct .. "% to every primary stat|r per rank, up to +" .. r.statMax .. "%.",
@@ -6405,16 +6491,15 @@ local function HandleMessage(msg)
             .. (lives == 1 and " life" or " lives") .. " left." .. (what ~= "" and ("\n\n" .. what) or ""))
         Send("STATE")
     elseif kind == "RE" then
-        -- the run is over: finished or not, level, shards, gold, name
-        local finished, level, shards, gold, name = tonumber(p[2]) or 0, tonumber(p[3]) or 1,
-            tonumber(p[4]) or 0, tonumber(p[5]) or 0, p[6] or "the run"
-        local shardText = shards .. (shards == 1 and " shard" or " shards")
-        StaticPopup_Show("CW_RUN_END", finished == 1
-            and ("|cff00ff00" .. name .. " complete.|r\n\n" .. shardText
-                .. (gold > 0 and (" and " .. gold .. " gold") or "") .. ". The rule lifts.")
-            or ("|cffff4444" .. name .. " is over.|r\n\nYou reached level " .. level .. " and earned " .. shardText .. ". The rule lifts."))
+        -- the run is over: what it paid, and what is new
+        StaticPopup_Show("CW_RUN_END", CW.RunEndText(p))
+        if PlaySound then pcall(PlaySound, tonumber(p[2]) == 1 and "LEVELUPSOUND" or "igQuestFailed") end
         Send("STATE")
         Send("OWN")
+    elseif kind == "RB" then
+        -- a Rebirth went through: the new life, summed up
+        StaticPopup_Show("CW_REBIRTH_DONE", CW.RebirthDoneText(p))
+        if PlaySound then pcall(PlaySound, "LEVELUPSOUND") end
 
     elseif kind == "OK" then
         if p[2] == "MODE" then

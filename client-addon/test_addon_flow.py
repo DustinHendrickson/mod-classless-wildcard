@@ -1837,6 +1837,42 @@ def test_challenge_runs(h):
     h.recv("RE|1|80|107|400|Glass")
     h.check("107 shards and 400 gold." in str(g.LAST_POPUP_ARG),
             "a first finish names its gold: %r" % str(g.LAST_POPUP_ARG))
+    # The full message: lives, the reward ability, both titles, all named.
+    h.recv("RE|1|80|142|400|Glass|5|3|3|133|Tester the Unshattered|Tester the Unbroken|0")
+    t = str(g.LAST_POPUP_ARG)
+    h.check(t.startswith("|cff00ff00Challenge complete|r\n|cffffd100Glass|r") and "Level 80, 3 of 3 lives left." in t,
+            "a finish leads with the challenge and how it went: %r" % t[:90])
+    h.check("is yours as an heirloom." in t and "New title: |cffffd100Tester the Unshattered|r" in t
+            and "Not a life lost: a third more shards, and |cffffd100Tester the Unbroken|r." in t,
+            "and names the ability and both new titles: %r" % t)
+    h.recv("RE|1|80|80|0|Glass|5|1|3|0||Tester the Unbroken|1")
+    t = str(g.LAST_POPUP_ARG)
+    h.check("Gold is paid for the first finish only." in t and "New title" not in t and "heirloom" not in t
+            and "Not a life lost" not in t,
+            "a repeat says why there is no gold and claims nothing it did not give: %r" % t)
+    h.recv("RE|0|34|34|0|Nemesis|1|0|5|0|||0")
+    t = str(g.LAST_POPUP_ARG)
+    h.check(t.startswith("|cffff4444Challenge over|r") and "Your last life was lost at level 34." in t
+            and "You earn 34 shards." in t and "Your level, gear and build stay." in t,
+            "a run lost says where it ended and what stays: %r" % t)
+    # A Rebirth's summary
+    h.recv("RB|2|150|50|6|0|2|6|4|3|Tester the Twice Reborn|133,686")
+    t = str(g.LAST_POPUP_ARG)
+    h.check(g.LAST_POPUP == "CW_REBIRTH_DONE" and t.startswith("|cffff8800Rebirth 2|r\nA new life begins at level 1."),
+            "a Rebirth gets its own summary: %r" % t[:70])
+    h.check("+150%|r experience from kills and dungeons" in t and "+50%|r from quests" in t
+            and "+6%|r to every primary stat" in t, "with the rank's three bonuses: %r" % t)
+    h.check("Heirlooms: " in t and "6|r Ability Essence and |cff00ff004|r Talent Essence" in t
+            and "New title: |cffffd100Tester the Twice Reborn|r" in t,
+            "the heirlooms, the starting essence and the title: %r" % t)
+    h.check("Your quest history is cleared" in t and "2 pieces of gear did not fit in your bags and were mailed to you." in t
+            and "Your next Rebirth carries up to 3 heirlooms." in t,
+            "the quests, the mailed gear and the next allowance: %r" % t)
+    h.recv("RB|1|100|25|3|1|0|0|0|2||")
+    t = str(g.LAST_POPUP_ARG)
+    h.check("No heirlooms carried." in t and "A new starting hand has been dealt." in t
+            and "Your quest history is kept." in t and "mailed" not in t and "New title" not in t,
+            "a Wildcard Rebirth with nothing carried says only what is true: %r" % t)
     h.recv(run_state(1, 17, shards=19))
     h.check(CW.runBadge["__shown"] is False and not CW.lifeIcons[1]["__shown"], "no run, no badge, no lives shown")
 
