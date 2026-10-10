@@ -2398,7 +2398,7 @@ local function BuildHelpText()
 "",
 "|cffff4444==  CHALLENGE RUNS: one rule, counted lives  ==|r",
 "A run is a life under one rule, on your own path. Challenge runs start before level " .. (s.deadline or 2) .. ". Pick a challenge, read its rule, go.",
-"   |cffffd100Lives:|r the hearts on the run badge at the top-right of this panel. Hover the badge for your challenge's rule and rewards, and on Hourglass the time left on the level; click it for the challenge page. Each challenge shows how many lives it gives. A death costs one; battlegrounds, arenas and duels are free.",
+"   |cffffd100Lives:|r the hearts on the run badge at the top-right of this panel, and on the challenge tracker at the top of your screen. Hover either for your challenge's rule and rewards. The tracker also shows what your challenge is counting: the time left on the level on Hourglass, whether the hunter is on you on Pursued, your nemeses on Nemesis, and your health band on Berserker. Drag it to move it, click it for the challenge page, and type /cw tracker to hide or show it. Each challenge shows how many lives it gives. A death costs one; battlegrounds, arenas and duels are free.",
 "   |cffffd100Running out|r ends the run: the rule lifts and you keep everything. |cffffd100Reaching " .. cap .. "|r with a life left finishes it. Your first finish of a challenge pays its gold, its title, and an ability no roll or shop can give, kept as an heirloom. Finish with no life lost for |cffffd100the Unbroken|r.",
 "   |cffffd100Shards:|r every run pays them when it ends, finished or not: one per level reached, two per level past 60, and a third more for a run with no life lost. They buy an |cffffd100extra life|r for your next run, on the challenge page.",
 "",
@@ -6395,6 +6395,9 @@ local function HandleMessage(msg)
         CW._collectingCh = false
         if CW.runFly and CW.runFly:IsShown() then CW.RenderRuns(true) end
         CW.UpdateLives()   -- the live run's name comes from this list
+        if CW.UpdateTracker then CW.UpdateTracker() end
+    elseif kind == "RT" then
+        CW.ReadTracker(p)
     elseif kind == "RD" then
         -- a life lost: lives left, lives at the start, what the rule did
         local lives, max, what = tonumber(p[2]) or 0, tonumber(p[3]) or 0, p[4] or ""
@@ -6854,6 +6857,234 @@ do
 end
 
 -- ---------------------------------------------------------------------------
+-- Challenge tracker
+--
+-- A run's live numbers on screen while playing, not only in the panel: the
+-- challenge, its lives, and whatever its rule is counting. Hourglass's level
+-- clock drains as a bar, Pursued says whether the hunter is out, Nemesis
+-- counts the marked kinds (named on hover), and Berserker says which health
+-- band you are in. The server sends "RT" with every state, on run events and
+-- every 30 seconds while a clock runs; between those the bar counts down here.
+-- Drag to move, click for the challenge page, /cw tracker to hide or show.
+-- ---------------------------------------------------------------------------
+do
+    local RT = { run = 0, lives = 0, livesMax = 0, a = 0, b = 0, c = 0, d = 0, list = {}, at = 0 }
+    CW.rt = RT
+    local HOURGLASS, PURSUED, BERSERKER, NEMESIS = 15, 4, 18, 1
+
+    local f = CreateFrame("Button", "ClasslessWildcardTracker", UIParent)
+    f:SetWidth(220); f:SetHeight(48)
+    f:SetFrameStrata("MEDIUM")
+    f:SetPoint("TOP", UIParent, "TOP", 0, -40)
+    f:SetBackdrop({
+        bgFile = "Interface\\DialogFrame\\UI-DialogBox-Background",
+        edgeFile = "Interface\\Tooltips\\UI-Tooltip-Border",
+        tile = true, tileSize = 16, edgeSize = 12,
+        insets = { left = 3, right = 3, top = 3, bottom = 3 },
+    })
+    f:SetMovable(true); f:EnableMouse(true); f:SetClampedToScreen(true)
+    f:RegisterForDrag("LeftButton")
+    f:Hide()
+    CW.tracker = f
+
+    f.icon = f:CreateTexture(nil, "ARTWORK")
+    f.icon:SetWidth(18); f.icon:SetHeight(18)
+    f.icon:SetPoint("TOPLEFT", 8, -7)
+    f.icon:SetTexCoord(0.07, 0.93, 0.07, 0.93)
+    f.name = f:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+    f.name:SetPoint("LEFT", f.icon, "RIGHT", 6, 0)
+    f.name:SetJustifyH("LEFT")
+    f.pips = {}
+    for i = 1, 6 do
+        local t = CW.MakePip(f, 12)
+        t:SetPoint("TOPRIGHT", f, "TOPRIGHT", -8 - (6 - i) * 13, -10)
+        f.pips[i] = t
+    end
+
+    -- the line under the name: a bar for a clock, text for everything else
+    f.bar = CreateFrame("StatusBar", nil, f)
+    f.bar:SetPoint("BOTTOMLEFT", 9, 8); f.bar:SetPoint("BOTTOMRIGHT", -9, 8)
+    f.bar:SetHeight(12)
+    f.bar:SetStatusBarTexture("Interface\\TargetingFrame\\UI-StatusBar")
+    f.bar:SetMinMaxValues(0, 1)
+    f.bar.bg = f.bar:CreateTexture(nil, "BACKGROUND")
+    f.bar.bg:SetAllPoints(f.bar)
+    f.bar.bg:SetTexture(0, 0, 0, 0.5)
+    f.bar.text = f.bar:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+    f.bar.text:SetPoint("CENTER", f.bar, "CENTER", 0, 0)
+    f.line = f:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+    f.line:SetPoint("BOTTOMLEFT", 10, 9); f.line:SetPoint("BOTTOMRIGHT", -10, 9)
+    f.line:SetJustifyH("LEFT")
+
+    function CW.TrackerClock(sec)
+        sec = math.max(0, math.floor(sec))
+        return string.format("%d:%02d", math.floor(sec / 60), sec % 60)
+    end
+
+    -- Hourglass: seconds left now, and whether the sand is holding still
+    function CW.HourglassNow()
+        local paused = RT.c == 1 or (UnitIsDeadOrGhost and UnitIsDeadOrGhost("player")) and true or false
+        if paused then return RT.a, true end
+        return math.max(0, RT.a - (GetTime() - RT.at)), false
+    end
+
+    -- Berserker: which band the player's health is in
+    function CW.BerserkerBand()
+        local max = UnitHealthMax("player") or 0
+        local pct = max > 0 and (UnitHealth("player") or 0) * 100 / max or 100
+        if pct < RT.a then return "low" end
+        if pct > RT.b then return "high" end
+        return "mid"
+    end
+
+    function CW.RenderTracker()
+        local c = CW.challengesById and CW.challengesById[RT.run]
+        f.name:SetText("|cffff5544" .. (c and c.name or ("Challenge " .. RT.run)) .. "|r")
+        f.icon:SetTexture(c and (c.reward or 0) > 0 and SpellIcon(c.reward) or "Interface\\Icons\\INV_Misc_Bone_HumanSkull_01")
+        local n = math.min(#f.pips, RT.livesMax)
+        for i = 1, #f.pips do
+            -- right-aligned: the last n slots are this run's lives
+            local slot = i - (#f.pips - n)
+            CW.SetPip(f.pips[i], slot >= 1, slot >= 1 and slot <= RT.lives)
+        end
+        f.bar:Hide(); f.line:Hide()
+        f:SetHeight(48)
+        if RT.run == HOURGLASS and RT.b > 0 then
+            local left, paused = CW.HourglassNow()
+            f.bar:SetValue(left / RT.b)
+            if paused then
+                f.bar:SetStatusBarColor(0.5, 0.5, 0.5)
+                f.bar.text:SetText(CW.TrackerClock(left) .. "  paused")
+            else
+                if left <= 60 then f.bar:SetStatusBarColor(0.9, 0.15, 0.1)
+                elseif left <= RT.d then f.bar:SetStatusBarColor(1, 0.55, 0)
+                else f.bar:SetStatusBarColor(0.85, 0.7, 0.2) end
+                f.bar.text:SetText(CW.TrackerClock(left) .. " left on this level")
+            end
+            f.bar:Show()
+        elseif RT.run == PURSUED then
+            f.line:SetText(RT.a == 1 and ("|cffff4444The hunter is on you|r (level " .. RT.b .. ")")
+                or "|cffaaaaaaNo hunter on you. One is coming.|r")
+            f.line:Show()
+        elseif RT.run == NEMESIS then
+            f.line:SetText(RT.a == 0 and "|cffaaaaaaNo nemesis yet.|r"
+                or ("|cffff8800" .. RT.a .. (RT.a == 1 and " nemesis" or " nemeses") .. "|r  (hover for names)"))
+            f.line:Show()
+        elseif RT.run == BERSERKER then
+            local band = CW.BerserkerBand()
+            if band == "low" then
+                f.line:SetText("|cffff4444Below " .. RT.a .. "%: double damage, slows break|r")
+            elseif band == "high" then
+                f.line:SetText("|cffaaaaaaAbove " .. RT.b .. "%: " .. RT.c .. "% less damage|r")
+            else
+                f.line:SetText("Normal damage")
+            end
+            f.line:Show()
+        else
+            f:SetHeight(32)
+        end
+        if GameTooltip:IsOwned(f) then CW.TrackerTooltip(f) end
+    end
+
+    function CW.TrackerTooltip(self)
+        CW.RunTooltip(self)
+        if RT.run == NEMESIS and #RT.list > 0 then
+            GameTooltip:AddLine(" ")
+            GameTooltip:AddLine("Your nemeses", 1, 0.53, 0)
+            for _, e in ipairs(RT.list) do
+                GameTooltip:AddDoubleLine(e.name, "+" .. e.levels .. " levels", 1, 1, 1, 1, 0.53, 0)
+            end
+            if RT.a > #RT.list then
+                GameTooltip:AddLine("and " .. (RT.a - #RT.list) .. " more", 0.7, 0.7, 0.7)
+            end
+            GameTooltip:Show()
+        end
+    end
+
+    function CW.UpdateTracker()
+        ClasslessWildcardCharDB = ClasslessWildcardCharDB or {}
+        if RT.run == 0 or RT.livesMax == 0 or ClasslessWildcardCharDB.trackerOff then
+            f:Hide()
+            if GameTooltip:IsOwned(f) then GameTooltip:Hide() end
+            return
+        end
+        CW.RenderTracker()
+        f:Show()
+    end
+
+    -- "RT|run|lives|livesMax|a|b|c|d|name:levels;..."
+    function CW.ReadTracker(p)
+        RT.run = tonumber(p[2]) or 0
+        RT.lives = tonumber(p[3]) or 0
+        RT.livesMax = tonumber(p[4]) or 0
+        RT.a, RT.b = tonumber(p[5]) or 0, tonumber(p[6]) or 0
+        RT.c, RT.d = tonumber(p[7]) or 0, tonumber(p[8]) or 0
+        RT.at = GetTime()
+        RT.list = {}
+        for name, levels in string.gmatch(p[9] or "", "([^:;]+):(%d+);") do
+            tinsert(RT.list, { name = name, levels = tonumber(levels) })
+        end
+        -- the run is named from the challenge list; a fresh login asks once
+        if RT.run > 0 and #CW.challenges == 0 and not CW._askedChallenges then
+            CW._askedChallenges = true
+            Send("CHL")
+        end
+        -- the freshest word on the run: the panel's badge and the hover card
+        -- read these
+        local s = CW.state
+        s.run, s.lives, s.livesMax = RT.run, RT.lives, RT.livesMax
+        s.hourglassLeft = RT.run == HOURGLASS and RT.a or 0
+        CW.hourglassAt = RT.at
+        CW.UpdateLives()
+        CW.UpdateTracker()
+    end
+
+    -- the clock between server updates; a twice-a-second redraw is plenty
+    local since = 0
+    f:SetScript("OnUpdate", function(_, elapsed)
+        since = since + elapsed
+        if since < 0.5 then return end
+        since = 0
+        if RT.run == HOURGLASS or RT.run == BERSERKER then CW.RenderTracker() end
+    end)
+
+    f:SetScript("OnDragStart", function(self) self:StartMoving() end)
+    f:SetScript("OnDragStop", function(self)
+        self:StopMovingOrSizing()
+        ClasslessWildcardCharDB = ClasslessWildcardCharDB or {}
+        local point, _rel, relPoint, x, y = self:GetPoint()
+        if point then
+            ClasslessWildcardCharDB.trackerPos = { point = point, relPoint = relPoint, x = x, y = y }
+        end
+    end)
+    f:SetScript("OnEnter", function(self) CW.TrackerTooltip(self) end)
+    f:SetScript("OnLeave", function() GameTooltip:Hide() end)
+    f:SetScript("OnClick", function()
+        GameTooltip:Hide()
+        if CW.runFly and CW.OpenRuns then
+            CW.runFly.selected = RT.run
+            CW.OpenRuns()
+        end
+    end)
+
+    function CW.RestoreTrackerPosition()
+        ClasslessWildcardCharDB = ClasslessWildcardCharDB or {}
+        local pos = ClasslessWildcardCharDB.trackerPos
+        if not pos or not pos.point then return end
+        f:ClearAllPoints()
+        f:SetPoint(pos.point, UIParent, pos.relPoint or pos.point, pos.x or 0, pos.y or 0)
+    end
+
+    function CW.ToggleTracker()
+        ClasslessWildcardCharDB = ClasslessWildcardCharDB or {}
+        ClasslessWildcardCharDB.trackerOff = not ClasslessWildcardCharDB.trackerOff or nil
+        CW.UpdateTracker()
+        Print(ClasslessWildcardCharDB.trackerOff and "Challenge tracker hidden. /cw tracker shows it again."
+            or "Challenge tracker shown.")
+    end
+end
+
+-- ---------------------------------------------------------------------------
 -- events & slash
 -- ---------------------------------------------------------------------------
 local events = CreateFrame("Frame")
@@ -6874,6 +7105,7 @@ events:SetScript("OnEvent", function(self, event, arg1, arg2, arg3, arg4)
         CW.RefreshPanelArt()
         CW.LoadBrowseChoices()
         CW.RestoreBarsPosition()
+        CW.RestoreTrackerPosition()
         Send("HELLO")
         -- The stat RATES, now rather than the first time the Stats panel is
         -- opened. The character sheet quotes them, and a sheet opened before
@@ -6920,6 +7152,9 @@ SlashCmdList["CLASSLESSWILDCARD"] = function(msg)
             Print("The Starting Hand is only available to Wildcard Heroes below level " .. (CW.state.freeReroll or 10)
                 .. ". Reroll from |cffffff00My Build|r instead.")
         end
+        return
+    elseif msg == "tracker" then
+        CW.ToggleTracker()
         return
     elseif msg == "testroll" and ClasslessWildcardDB and ClasslessWildcardDB.dev then
         -- preview the reveal without a real roll (Fireball, random rarity).

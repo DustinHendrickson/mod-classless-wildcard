@@ -272,6 +272,10 @@ A run is one life under one rule, on the character's own path. Challenge runs st
 - **Flawless.** Finish without losing a life for the title *the Unbroken* and a third more shards.
 - **Shards.** Paid whenever a run ends: one per level, two per level past 60. 30 shards buy an
   extra life for your next run. You can hold one at a time.
+- **Tracker.** While a run is live, a small frame at the top of the screen shows the challenge,
+  your lives, and what the rule is counting: Hourglass's level clock as a draining bar, whether
+  Pursued's hunter is on you, your nemeses (named on hover), and Berserker's health band. Drag it
+  to move it, click it for the challenge page, `/cw tracker` to hide or show it.
 
 | Challenge       | Lives | Rule                                                                                       | Gold | Title              | Reward           |
 | --------------- | ----- | ------------------------------------------------------------------------------------------ | ---- | ------------------ | ---------------- |

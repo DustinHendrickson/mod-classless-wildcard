@@ -31,10 +31,12 @@
 #include "Item.h"
 #include "ItemTemplate.h"
 #include "Map.h"
+#include "ObjectAccessor.h"
 #include "ObjectMgr.h"
 #include "Player.h"
 #include "ScriptMgr.h"
 #include "SpellInfo.h"
+#include "StringFormat.h"
 #include "TemporarySummon.h"
 #include "World.h"
 
@@ -148,6 +150,82 @@ uint32 ClasslessMgr::HourglassSecondsLeft(Player* player)
     return st->runData < limit ? limit - st->runData : 0;
 }
 
+namespace
+{
+    // the Hourglass sand holds still while the Hero is dead or where deaths are free
+    bool HourglassPaused(Player* player)
+    {
+        return !player->IsAlive() || player->InBattleground() || player->InArena();
+    }
+
+    // free text inside one RT field: the list separators are its own
+    std::string TrackerText(std::string s)
+    {
+        for (char& c : s)
+            if (c == '|' || c == ':' || c == ';' || c == '\t' || c == '\n')
+                c = ' ';
+        return s;
+    }
+}
+
+// "RT|run|lives|livesMax|a|b|c|d|list". What a to d and the list mean depends
+// on the run:
+//   Hourglass  seconds left, seconds this level allows, 1 while paused, and
+//              the seconds left when the warning comes
+//   Pursued    1 while a hunter is out, its level
+//   Berserker  the low and high health percents, the damage given up above
+//   Nemesis    how many kinds are marked; list "name:levels;..." (the first few)
+// Every other run sends zeros: its rule has nothing that changes.
+void ClasslessMgr::PushRunTracker(Player* player)
+{
+    CharState* st = player ? FindState(player) : nullptr;
+    if (!st)
+        return;
+    uint32 a = 0, b = 0, c = 0, d = 0;
+    std::string list;
+    switch (ChallengeId(st->run))
+    {
+        case ChallengeId::Hourglass:
+            b = HourglassLimit(player->GetLevel());
+            a = HourglassSecondsLeft(player);
+            c = HourglassPaused(player) ? 1 : 0;
+            d = HOURGLASS_WARNING;
+            break;
+        case ChallengeId::Pursued:
+            if (st->hunterGuid)
+                if (Creature* hunter = ObjectAccessor::GetCreature(*player, st->hunterGuid))
+                    if (hunter->IsAlive())
+                    {
+                        a = 1;
+                        b = hunter->GetLevel();
+                    }
+            break;
+        case ChallengeId::Berserker:
+            a = uint32(BERSERKER_LOW);
+            b = uint32(BERSERKER_HIGH);
+            c = BERSERKER_HIGH_PENALTY;
+            break;
+        case ChallengeId::Nemesis:
+            a = uint32(st->nemeses.size());
+            for (auto const& [entry, mark] : st->nemeses)
+            {
+                CreatureTemplate const* tmpl = sObjectMgr->GetCreatureTemplate(entry);
+                std::string item = Acore::StringFormat("{}:{};", TrackerText(tmpl ? tmpl->Name : "Unknown"),
+                                                       uint32(mark.levels));
+                if (list.size() + item.size() > 140)   // the message's own budget
+                    break;
+                list += item;
+            }
+            break;
+        default:
+            break;
+    }
+    st->trackerTicks = 0;
+    st->trackerPaused = c != 0 && st->run == uint8(ChallengeId::Hourglass);
+    PushAddon(player, Acore::StringFormat("RT|{}|{}|{}|{}|{}|{}|{}|{}", uint32(st->run), uint32(st->lives),
+                                          uint32(st->livesMax), a, b, c, d, list));
+}
+
 class cw_challenge_rules : public PlayerScript
 {
 public:
@@ -218,6 +296,7 @@ public:
         {
             st->runData = 0;
             sClasslessMgr->SaveState(player);
+            sClasslessMgr->PushRunTracker(player);
         }
     }
 
@@ -272,6 +351,15 @@ public:
                 Say(player, "|cffff4444Hourglass|r: the sand ran out.");
                 sClasslessMgr->LoseLife(player, nullptr);   // resets the clock
             }
+        }
+
+        // The tracker counts down on its own between these; this keeps it
+        // honest, and tells it at once when the sand stops or starts again.
+        if (st->run == uint8(ChallengeId::Hourglass) || st->run == uint8(ChallengeId::Pursued))
+        {
+            bool const pausedNow = st->run == uint8(ChallengeId::Hourglass) && HourglassPaused(player);
+            if (++st->trackerTicks >= 6 || pausedNow != st->trackerPaused)
+                sClasslessMgr->PushRunTracker(player);
         }
     }
 };

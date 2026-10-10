@@ -94,7 +94,8 @@ StubMT.__index = function(self, k)
     if k == "GetChecked" then return function(s) return rawget(s, "__checked") and 1 or nil end end
     if k == "ClearAllPoints" then return function(s) rawset(s, "__point", nil) end end
     if k == "SetTexture" then return function(s, ...) rawset(s, "__tex", {...}) return true end end
-    if k == "SetVertexColor" then return function(s, r, g, b) rawset(s, "__rgb", {r, g, b}) end end
+    if k == "SetVertexColor" or k == "SetStatusBarColor" then return function(s, r, g, b) rawset(s, "__rgb", {r, g, b}) end end
+    if k == "SetValue" then return function(s, v) rawset(s, "__value", v) end end
     if k == "SetShadowColor" or k == "SetShadowOffset" then return function() end end
     if k == "GetFont" then return function() return "Fonts\\FRIZQT__.TTF", 12, "" end end
     if k == "GetCenter" then return function() return 0, 0 end end
@@ -249,6 +250,7 @@ function GetItemCount() return 0 end
 function GetComboPoints() return 0 end
 function UnitHealth() return 100 end
 function UnitHealthMax() return 100 end
+function UnitIsDeadOrGhost() return nil end
 function GetNumShapeshiftForms() return 0 end
 function IsAddOnLoaded() return nil end
 MAX_SKILLLINE_TABS = 8
@@ -3304,6 +3306,88 @@ def test_tree_header(h):
     h.recv("TBE|")
 
 
+def test_challenge_tracker(h):
+    print("--- Challenge tracker: what a run is counting, on screen while playing")
+    CW, g = h.CW, h.g
+    f = CW.tracker
+    h.recv("CH|15|Hourglass|3|500|A level clock.|0|0|0|%s the Unhurried")
+    h.recv("CH|4|Pursued|3|600|A hunter finds you.|0|0|0|")
+    h.recv("CH|18|Berserker|3|450|Fight hurt.|0|0|0|")
+    h.recv("CH|1|Nemesis|5|500|Whatever kills you grows.|0|0|0|")
+    h.recv("CH|5|Glass|3|400|Half health.|0|0|0|")
+    h.recv("CHE|")
+
+    h.recv("RT|0|0|0|0|0|0|0|")
+    h.check(f["__shown"] is False, "no run, no tracker")
+
+    # Hourglass: a draining bar that counts down between server updates
+    h.recv("RT|15|2|3|1500|1800|0|300|")
+    h.check(f["__shown"] is True and "Hourglass" in str(f["name"]["__text"]),
+            "a Hourglass run shows the tracker: %r" % str(f["name"]["__text"]))
+    h.check([bool(f["pips"][k]["gem"]["__shown"]) for k in range(1, 7)] == [False, False, False, True, True, False]
+            and [bool(f["pips"][k]["__shown"]) for k in range(1, 7)] == [False, False, False, True, True, True],
+            "three lives, two left, drawn as hearts")
+    h.check(f["bar"]["__shown"] is True and "25:00 left" in str(f["bar"]["text"]["__text"]),
+            "the clock reads 25:00: %r" % str(f["bar"]["text"]["__text"]))
+    h.check(abs(float(f["bar"]["__value"]) - 1500 / 1800.0) < 1e-6, "the bar is the share of the level's time left")
+    h.rt.execute("NOW = NOW + 61")
+    f["__scripts"]["OnUpdate"](f, 1.0)
+    h.check("23:59 left" in str(f["bar"]["text"]["__text"]),
+            "it counts down on its own: %r" % str(f["bar"]["text"]["__text"]))
+    h.recv("RT|15|2|3|250|1800|0|300|")
+    h.check(list(f["bar"]["__rgb"].values()) == [1, 0.55, 0], "orange once the warning time is reached")
+    h.recv("RT|15|2|3|40|1800|0|300|")
+    h.check(list(f["bar"]["__rgb"].values()) == [0.9, 0.15, 0.1], "red in the last minute")
+    h.recv("RT|15|2|3|40|1800|1|300|")
+    h.rt.execute("NOW = NOW + 30")
+    f["__scripts"]["OnUpdate"](f, 1.0)
+    h.check("0:40" in str(f["bar"]["text"]["__text"]) and "paused" in str(f["bar"]["text"]["__text"]),
+            "paused, the clock holds still and says so: %r" % str(f["bar"]["text"]["__text"]))
+
+    # Pursued: whether the hunter is out
+    h.recv("RT|4|3|3|0|0|0|0|")
+    h.check(f["bar"]["__shown"] is False and "No hunter" in str(f["line"]["__text"]),
+            "Pursued with no hunter out: %r" % str(f["line"]["__text"]))
+    h.recv("RT|4|3|3|1|42|0|0|")
+    h.check("hunter is on you" in str(f["line"]["__text"]) and "42" in str(f["line"]["__text"]),
+            "and with one on you: %r" % str(f["line"]["__text"]))
+
+    # Berserker: the health band, from the server's thresholds
+    h.recv("RT|18|3|3|35|75|30|0|")
+    h.rt.execute("function UnitHealth() return 20 end")
+    f["__scripts"]["OnUpdate"](f, 1.0)
+    h.check("Below 35%" in str(f["line"]["__text"]), "below the low line: %r" % str(f["line"]["__text"]))
+    h.rt.execute("function UnitHealth() return 50 end")
+    f["__scripts"]["OnUpdate"](f, 1.0)
+    h.check(str(f["line"]["__text"]) == "Normal damage", "between the lines: %r" % str(f["line"]["__text"]))
+    h.rt.execute("function UnitHealth() return 90 end")
+    f["__scripts"]["OnUpdate"](f, 1.0)
+    h.check("Above 75%: 30% less damage" in str(f["line"]["__text"]), "above the high line: %r" % str(f["line"]["__text"]))
+    h.rt.execute("function UnitHealth() return 100 end")
+
+    # Nemesis: the count on screen, the names on hover
+    h.recv("RT|1|4|5|2|0|0|0|Defias Thug:10;Kobold Miner:5;")
+    h.check("2 nemeses" in str(f["line"]["__text"]), "the nemeses are counted: %r" % str(f["line"]["__text"]))
+    f["__scripts"]["OnEnter"](f)
+    tip = str(h.rt.eval("TipText()"))
+    h.check("Defias Thug +10 levels" in tip and "Kobold Miner +5 levels" in tip,
+            "and named on hover: %r" % tip[-120:])
+    f["__scripts"]["OnLeave"](f)
+
+    # A rule with nothing to count is just the name and the lives.
+    h.recv("RT|5|3|3|0|0|0|0|")
+    h.check(f["bar"]["__shown"] is False and f["line"]["__shown"] is False and f["__h"] == 32,
+            "Glass shows only its name and lives")
+
+    # /cw tracker hides it, and again shows it
+    h.rt.execute('SlashCmdList["CLASSLESSWILDCARD"]("tracker")')
+    h.check(f["__shown"] is False, "/cw tracker hides it")
+    h.rt.execute('SlashCmdList["CLASSLESSWILDCARD"]("tracker")')
+    h.check(f["__shown"] is True, "and shows it again")
+    h.recv("RT|0|0|0|0|0|0|0|")
+    h.check(f["__shown"] is False, "the run over, it goes away")
+
+
 def main():
     try:
         h = Harness()
@@ -3345,6 +3429,7 @@ def main():
     test_spellbook(h)
     test_talent_unlearn(h)
     test_tree_header(h)
+    test_challenge_tracker(h)
     if h.failures:
         print("\n%d check(s) FAILED" % h.failures)
         return 1

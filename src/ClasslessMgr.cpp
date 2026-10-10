@@ -2575,6 +2575,7 @@ bool ClasslessMgr::StartRun(Player* player, uint8 challengeId, std::string* err)
     SaveState(player);
     Msg(player, Acore::StringFormat("|cffffd100{}|r begins. {} You have {} {}.",
         ch->name, ch->rule, uint32(st.lives), st.lives == 1 ? "life" : "lives"));
+    PushRunTracker(player);
     return true;
 }
 
@@ -2617,6 +2618,7 @@ void ClasslessMgr::LoseLife(Player* player, Unit* killer)
 
     SaveState(player);
     PushAddon(player, Acore::StringFormat("RD|{}|{}|{}", uint32(st->lives), uint32(st->livesMax), what));
+    PushRunTracker(player);
     Msg(player, Acore::StringFormat("|cffff4444A life lost.|r {}: {} of {} {} left.{}{}",
         ch->name, uint32(st->lives), uint32(st->livesMax), st->livesMax == 1 ? "life" : "lives",
         what.empty() ? "" : " ", what));
@@ -2693,6 +2695,7 @@ void ClasslessMgr::EndRun(Player* player, bool finished)
 
     SaveState(player);
     PushAddon(player, Acore::StringFormat("RE|{}|{}|{}|{}|{}", finished ? 1 : 0, uint32(level), shards, gold, ch->name));
+    PushRunTracker(player);   // run 0: the tracker goes away
     if (finished)
         Msg(player, Acore::StringFormat("|cff00ff00{} complete!|r You earn {} shard{}{}{}. The rule lifts.",
             ch->name, shards, shards == 1 ? "" : "s",
@@ -2781,6 +2784,7 @@ void ClasslessMgr::NemesisSlain(Player* player, Creature* creature)
         player->GiveXP(xp, nullptr);
     Msg(player, Acore::StringFormat("|cff00ff00Your nemesis is dead.|r {} falls, and {} XP comes back to you.",
         creature->GetName(), xp));
+    PushRunTracker(player);
 }
 
 void ClasslessMgr::ForgetCreature(ObjectGuid guid)
@@ -2847,6 +2851,7 @@ void ClasslessMgr::SpawnHunter(Player* player)
         hunter->AI()->AttackStart(player);
     st.hunterGuid = hunter->GetGUID();
     Msg(player, "|cffff4444A hunter has found you.|r");
+    PushRunTracker(player);
 }
 
 void ClasslessMgr::DespawnHunter(Player* player)
@@ -2871,6 +2876,7 @@ void ClasslessMgr::HunterSlain(Player* player, Creature* creature)
     // Nothing on top of the kill itself: an elite two levels up pays its own
     // XP and loot, and anything more would be a thumb on one path's scale.
     Msg(player, "|cff00ff00The hunter is dead.|r Another will find you within 15 to 30 minutes.");
+    PushRunTracker(player);
 }
 
 // Price in COPPER so the cost reads as silver in the early game and only grows

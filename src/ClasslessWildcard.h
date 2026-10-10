@@ -271,6 +271,8 @@ namespace ClasslessWildcard
         std::unordered_map<uint8, std::pair<uint8, bool>> runBest;  // challenge -> (level reached, finished)
         uint32 hunterTimerMs = 0;        // runtime: Pursued's clock
         uint32 ruleTickMs = 0;           // runtime: the five-second rule tick
+        uint8  trackerTicks = 0;         // runtime: rule ticks since the tracker was last sent
+        bool   trackerPaused = false;    // runtime: whether the last tracker sent was paused
         ObjectGuid hunterGuid;           // runtime: the hunter out now, if any
 
         // which resource bar the default unit frame displays

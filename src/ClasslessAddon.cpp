@@ -119,6 +119,10 @@ namespace
             // any other run), for the run badge's tooltip
             sClasslessMgr->HourglassSecondsLeft(player)));
 
+        // the on-screen challenge tracker, which every state refresh keeps
+        // honest (a login, a /reload, the panel opening)
+        sClasslessMgr->PushRunTracker(player);
+
         // Talent pricing, so the browser can label what a talent actually
         // costs instead of assuming. Sent as its own message rather than more
         // positional fields on S -- an addon that predates it simply ignores
