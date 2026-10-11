@@ -2094,8 +2094,16 @@ ClasslessMgr::PlanBudget ClasslessMgr::BudgetOf(Archetype const& arch) const
         if (AbilityEntry const* e = GetAbility(firstSpell))
             if (!freeLines.count(firstSpell))
                 b.spentA += AbilityCost(*e);
+    // each entry pays for the ranks it adds to what the build already has
+    std::map<uint32, uint8> had;
     for (auto const& [talentId, rank] : arch.talents)
-        b.spentT += cfg.talentFlatCost ? cfg.talentCostPerRank : cfg.talentCostPerRank * rank;
+    {
+        uint8& before = had[talentId];
+        if (rank > before)
+            b.spentT += cfg.talentFlatCost ? (before ? 0 : cfg.talentCostPerRank)
+                                           : cfg.talentCostPerRank * uint32(rank - before);
+        before = std::max(before, rank);
+    }
     return b;
 }
 
@@ -2146,8 +2154,15 @@ bool ClasslessMgr::ValidateCustomArchetype(Archetype& arch, std::string* err)
         std::string const name = SpellName(t->rankSpells[0]);
         if (!rank || rank > t->maxRank)
             return fail(Acore::StringFormat("{} has {} ranks, not {}.", name, uint32(t->maxRank), uint32(rank)));
-        if (placed.count(talentId))
-            return fail(Acore::StringFormat("{} is in the build twice.", name));
+        // A talent comes back once for each rank bought at a level of its
+        // own: every time it appears, it is for a higher rank than before.
+        if (auto prev = placed.find(talentId); prev != placed.end())
+        {
+            if (rank <= prev->second)
+                return fail(Acore::StringFormat("{} rank {} is in the build twice.", name, uint32(rank)));
+            placed[talentId] = rank;
+            continue;
+        }
         if (t->dependsOn)
         {
             uint8 const need = uint8(t->dependsOnRank + 1);
@@ -2253,9 +2268,13 @@ std::vector<ClasslessMgr::RowProblem> ClasslessMgr::InspectCustomArchetype(Arche
             add('T', i, "gone");
             continue;
         }
-        if (placed.count(talentId))
+        if (auto prev = placed.find(talentId); prev != placed.end())
         {
-            add('T', i, "twice");
+            // a later rank of a talent already in the build is its own entry
+            if (rank <= prev->second)
+                add('T', i, "twice");
+            else
+                placed[talentId] = rank;
             continue;
         }
         if (!rank || rank > t->maxRank)
@@ -2495,7 +2514,9 @@ ClasslessMgr::ArchetypePlan ClasslessMgr::PlanArchetype(Archetype const& arch, u
                 plan.abilities.push_back(step);
             }
     std::vector<TalentPoolEntry const*> talents;
-    std::vector<uint8> want, owned;
+    std::vector<uint8> want;
+    std::map<uint32, uint8> ranksOf;   // talent -> ranks bought so far; one talent can be several entries
+    std::vector<bool> started;
     for (size_t i = 0; i < arch.talents.size(); ++i)
         if (TalentPoolEntry const* t = GetTalent(arch.talents[i].first))
             if (t->enabled)
@@ -2506,7 +2527,7 @@ ClasslessMgr::ArchetypePlan ClasslessMgr::PlanArchetype(Archetype const& arch, u
                 talents.push_back(t);
                 waitT.push_back(arch.TalentWait(i));
                 want.push_back(target);
-                owned.push_back(0);
+                started.push_back(false);
                 PlanStep step;
                 step.spell = t->rankSpells[target - 1];
                 step.rarity = uint8(t->rarity);
@@ -2600,19 +2621,24 @@ ClasslessMgr::ArchetypePlan ClasslessMgr::PlanArchetype(Archetype const& arch, u
         while (nextT < talents.size())
         {
             TalentPoolEntry const* t = talents[nextT];
-            if (owned[nextT] >= want[nextT])
+            uint8& owned = ranksOf[t->talentId];
+            if (owned >= want[nextT])
             {
                 ++nextT;
                 continue;
             }
-            uint32 const cost = (cfg.talentFlatCost && owned[nextT] > 0) ? 0 : cfg.talentCostPerRank;
+            uint32 const cost = (cfg.talentFlatCost && owned > 0) ? 0 : cfg.talentCostPerRank;
             if ((cfg.respectLevelReqs && level < 10 + t->row * 5) || waitT[nextT] > level
                 || earnedT < spentT + cost)
                 break;
             spentT += cost;
-            if (!owned[nextT])
+            if (!started[nextT])
             {
-                plan.talents[nextT].level = level;   // the level it is first taken
+                started[nextT] = true;
+                plan.talents[nextT].level = level;   // the level this entry's first rank is taken
+            }
+            if (!owned)
+            {
                 // what the first rank hands over, in GrantTalentRankInternal's
                 // order: its ability lines, its kit, the form it needs
                 for (uint32 first : t->abilityLines)
@@ -2625,7 +2651,7 @@ ClasslessMgr::ArchetypePlan ClasslessMgr::PlanArchetype(Archetype const& arch, u
                         ranks.push_back(t->rankSpells[r]);
                 bringAlong(ranks, t->rankSpells[0]);
             }
-            ++owned[nextT];
+            ++owned;
         }
     }
     return plan;

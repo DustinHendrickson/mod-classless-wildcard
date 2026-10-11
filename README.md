@@ -303,10 +303,13 @@ Talents lists show every level and become the picker:
   that level covers it and every entry set at or before it. An entry set sooner stops at the
   earliest level that is true. A new entry goes in at the earliest such level, and one the
   essence never reaches by the level cap is refused. A level later than the earliest
-  **holds it back** (shown in gold). A talent's ranks are all bought at its level, one Talent
-  Essence each.
+  **holds it back** (shown in gold).
+- Each **talent rank** is a row of its own with its own level: *Improved Heroic Strike 1/3* at
+  10, *2/3* at 12, *3/3* at 15. A rank comes no sooner than the rank before it and no later
+  than the rank after it. Click a talent in the list for the next rank; right-click takes the
+  highest rank out, and a row's minus button takes out that rank and the ones above it.
 - A build saved before entries had their own levels is set, the first time it is opened, to the
-  levels it was bought at.
+  levels it was bought at, with each talent split into a row per rank.
 - Rows marked **free** come with another entry in the build and cost no essence.
 - The minus button takes a row out. Rows with a problem are marked in red and say why in their
   tooltip. **Fix order** appears when order can fix it: abilities in unlock order, each talent

@@ -2681,7 +2681,7 @@ do
         for _, t in ipairs(build.talents) do
             putVarint(out, t[1])
             out[#out + 1] = t[2]
-            if held then out[#out + 1] = math.min(waitT[t[1]] or 0, 255) end
+            if held then out[#out + 1] = math.min(waitT[t[1] .. ":" .. t[2]] or waitT[t[1]] or 0, 255) end
         end
         local crc = crc16(out, #out)
         out[#out + 1] = math.floor(crc / 256)
@@ -2790,7 +2790,7 @@ do
                 b.talents[i] = { id, byte() }
                 if held then
                     local w = byte()
-                    if w > 0 then b.waitT[id] = w end
+                    if w > 0 then b.waitT[id .. ":" .. b.talents[i][2]] = w end
                 end
             end
             if pos <= last then error("trailing", 0) end
@@ -2821,7 +2821,8 @@ do
         end
         flush("A")
         for _, t in ipairs(build.talents) do
-            piece[#piece + 1] = t[1] .. ":" .. t[2] .. (waitT[t[1]] and ("@" .. waitT[t[1]]) or "")
+            local w = waitT[t[1] .. ":" .. t[2]] or waitT[t[1]]
+            piece[#piece + 1] = t[1] .. ":" .. t[2] .. (w and ("@" .. w) or "")
             if #piece >= 14 then flush("T") end
         end
         flush("T")
@@ -3448,7 +3449,28 @@ do
         b.waitT = b.waitT or {}
     end
     local function LevelA(b, id) return math.max(FloorA(id), (b.waitA or {})[id] or 0) end
-    local function LevelT(b, tid) return math.max(FloorT(tid), (b.waitT or {})[tid] or 0) end
+    -- A talent's ranks are entries of their own, one rank each, keyed
+    -- "talent:rank", each with its own level. A rank comes no sooner than
+    -- the rank before it.
+    local function TKey(t) return t[1] .. ":" .. t[2] end
+    local function TSplit(k)
+        local tid, rank = k:match("^(%d+):(%d+)$")
+        return tonumber(tid), tonumber(rank)
+    end
+    local function PrevRank(b, tid, rank)
+        if rank <= 1 then return nil end
+        for _, t in ipairs(b.talents) do
+            if t[1] == tid and t[2] == rank - 1 then return t end
+        end
+        return nil
+    end
+    local function LevelT(b, k)
+        local tid, rank = TSplit(k)
+        local lv = math.max(FloorT(tid), (b.waitT or {})[k] or 0)
+        local prev = PrevRank(b, tid, rank)
+        if prev then lv = math.max(lv, LevelT(b, TKey(prev))) end
+        return lv
+    end
     -- what an entry costs: an ability its own price, or nothing when another
     -- entry in the build brings it free; a talent its ranks
     local function CostA(id)
@@ -3459,7 +3481,8 @@ do
     end
     local function CostT(t)
         local c = CW.talentCost or 1
-        return CW.talentFlat and c or c * t[2]
+        if CW.talentFlat then return t[2] == 1 and c or 0 end
+        return c
     end
     -- What a Hero with no Rebirth bonus has earned by a level: the schedule
     -- the server holds a build to, so a build that fits here fits anyone.
@@ -3474,12 +3497,19 @@ do
     local function Kind(kind)
         local b = E.build
         Waits(b)
+        -- list, waits, key, level, the earliest level, cost, and the level
+        -- it becomes available at (below which no hold is stored)
         if kind == "A" then
             return b.abilities, b.waitA, function(x) return x end,
-                function(id) return LevelA(b, id) end, FloorA, function(x) return CostA(x) end
+                function(id) return LevelA(b, id) end, FloorA, function(x) return CostA(x) end, FloorA
         end
-        return b.talents, b.waitT, function(x) return x[1] end,
-            function(id) return LevelT(b, id) end, FloorT, CostT
+        return b.talents, b.waitT, TKey,
+            function(k) return LevelT(b, k) end,
+            function(k)
+                local tid, rank = TSplit(k)
+                local prev = PrevRank(b, tid, rank)
+                return math.max(FloorT(tid), prev and LevelT(b, TKey(prev)) or 0)
+            end, CostT, function(k) return FloorT((TSplit(k))) end
     end
     -- The first level at which the build runs short of essence, or nil when
     -- it never does. `id` can be tried at another level (`at`), or left out
@@ -3531,17 +3561,39 @@ do
     -- it is. Needs the costs, so it runs once the server has looked.
     local function Settle(kind)
         if not ShortAt(kind) then return false end
-        local list, waits, key, level, floor, cost = Kind(kind)
+        local list, waits, key, level, _, cost, base = Kind(kind)
         local sum, prev = 0, 1
         for _, x in ipairs(list) do
             local k = key(x)
             local lv = math.max(level(k), prev)
             sum = sum + cost(x)
             while lv < Cap() and sum > Earned(kind, lv) do lv = lv + 1 end
-            waits[k] = lv > floor(k) and lv or nil
+            waits[k] = lv > base(k) and lv or nil
             prev = lv
         end
         return true
+    end
+    -- One entry per rank. A build saved with one entry for several ranks (a
+    -- starter build, an older save or code, Save my build) is split into its
+    -- ranks; the level it held the talent back to goes to the first of them.
+    local function Expand(b)
+        Waits(b)
+        local out, top = {}, {}
+        for _, t in ipairs(b.talents) do
+            local tid, rank = t[1], t[2]
+            local from = (top[tid] or 0) + 1
+            local held = b.waitT[tid]
+            for r = from, rank do
+                out[#out + 1] = { tid, r }
+                local k = tid .. ":" .. r
+                if r == from and held and not b.waitT[k] then b.waitT[k] = held end
+            end
+            if rank > (top[tid] or 0) then top[tid] = rank end
+        end
+        for k in pairs(b.waitT) do
+            if type(k) == "number" then b.waitT[k] = nil end
+        end
+        b.talents = out
     end
     -- The build in the order it is bought, level by level: what the server is
     -- asked about, saved and shared, whatever order the rows are in while the
@@ -3559,7 +3611,7 @@ do
             for i, t in ipairs(tmp) do list[i] = t.x end
         end
         by(c.abilities, function(id) return LevelA(c, id) end)
-        by(c.talents, function(t) return LevelT(c, t[1]) end)
+        by(c.talents, function(t) return LevelT(c, TKey(t)) end)
         return c
     end
     -- Only once the server has said where everything unlocks: before that a
@@ -3699,58 +3751,66 @@ do
         E.build.waitA[id] = nil
         Changed()
     end
-    -- One rank more: a new talent at the earliest level the build can afford
-    -- it, a rank more on one already in the build at its own level, or the
-    -- first level after that the essence covers. Only that talent moves.
+    -- the highest rank of a talent the build takes
+    local function TopRank(tid)
+        local top = 0
+        for _, t in ipairs(E.build.talents) do
+            if t[1] == tid and t[2] > top then top = t[2] end
+        end
+        return top
+    end
+    -- One rank more is an entry of its own, at the earliest level the build
+    -- can afford it and no sooner than the rank before it. Nothing else moves.
     local function AddRank(tid, max)
         Waits(E.build)
-        local i = IndexOf(E.build.talents, tid)
-        local from
-        if not i then
-            tinsert(E.build.talents, { tid, 1 })
-            i = #E.build.talents
-            from = FloorT(tid)
-        elseif not max or E.build.talents[i][2] < max then
-            E.build.talents[i][2] = E.build.talents[i][2] + 1
-            from = LevelT(E.build, tid)
-        else
-            return
-        end
-        local lv = Fit("T", tid, from)
+        local top = TopRank(tid)
+        if max and top >= max then return end
+        local t = { tid, top + 1 }
+        tinsert(E.build.talents, t)
+        local k = TKey(t)
+        local _, _, _, _, floor = Kind("T")
+        local lv = Fit("T", k, floor(k))
         if not lv then
-            if E.build.talents[i][2] <= 1 then tremove(E.build.talents, i)
-            else E.build.talents[i][2] = E.build.talents[i][2] - 1 end
+            tremove(E.build.talents)
             Refuse("Not enough Talent Essence for that by level " .. Cap() .. ".")
             return
         end
-        E.build.waitT[tid] = lv > FloorT(tid) and lv or nil
+        E.build.waitT[k] = lv > FloorT(tid) and lv or nil
         Changed(true)
     end
-    local function RemoveTalent(tid)
-        local i = IndexOf(E.build.talents, tid)
-        if not i then return end
-        tremove(E.build.talents, i)
+    -- a rank out, and every higher rank of that talent with it
+    local function RemoveTalentFrom(tid, rank)
         Waits(E.build)
-        E.build.waitT[tid] = nil
+        for i = #E.build.talents, 1, -1 do
+            local t = E.build.talents[i]
+            if t[1] == tid and t[2] >= rank then
+                E.build.waitT[TKey(t)] = nil
+                tremove(E.build.talents, i)
+            end
+        end
         Changed()
     end
+    -- a right-click in the Talents list: the highest rank comes out
     local function RemoveRank(tid)
-        local i = IndexOf(E.build.talents, tid)
-        if not i then return end
-        local t = E.build.talents[i]
-        if t[2] <= 1 then RemoveTalent(tid); return end
-        t[2] = t[2] - 1
-        Changed()
+        local top = TopRank(tid)
+        if top > 0 then RemoveTalentFrom(tid, top) end
     end
 
     -- The level an entry is bought at, chosen: never before it is available,
     -- never before the build can afford it there, never past the cap. Its own
     -- floor clears the hold. No other entry moves.
     local function SetLevel(kind, id, lv, keepOrder)
-        local _, waits, _, level, floor = Kind(kind)
+        local _, waits, _, level, floor, _, base = Kind(kind)
         lv = math.max(floor(id), math.min(math.floor(tonumber(lv) or 0), Cap()))
+        if kind == "T" then
+            -- never past the rank after it: rank 2 is not bought before rank 1
+            local tid, rank = TSplit(id)
+            for _, t in ipairs(E.build.talents) do
+                if t[1] == tid and t[2] == rank + 1 then lv = math.min(lv, LevelT(E.build, TKey(t))) end
+            end
+        end
         if lv < level(id) then lv = Fit(kind, id, lv) or level(id) end
-        waits[id] = lv > floor(id) and lv or nil
+        waits[id] = lv > base(id) and lv or nil
         Changed(not keepOrder)
     end
 
@@ -3760,7 +3820,15 @@ do
         local list, _, key, level = Kind(kind)
         local me = key(list[i])
         local lv = level(me)
-        if d > 0 then return lv < Cap() end
+        if d > 0 then
+            if kind == "T" then
+                local tid, rank = TSplit(me)
+                for _, t in ipairs(E.build.talents) do
+                    if t[1] == tid and t[2] == rank + 1 and LevelT(E.build, TKey(t)) <= lv then return false end
+                end
+            end
+            return lv < Cap()
+        end
         local to = Fit(kind, me, lv - 1)
         return to ~= nil and to < lv
     end
@@ -4009,23 +4077,22 @@ do
         end
         if empty then y = y + 96 end
         y = y + 8
-        local ranks = 0
-        for _, t in ipairs(b.talents) do ranks = ranks + t[2] end
+        local ranks = #b.talents
         Section("Talents  |cffaaaaaa" .. ranks .. (ranks == 1 and " rank" or " ranks") .. "|r")
         for i, t in ipairs(b.talents) do
             nr = nr + 1
             local r = Row(nr)
             local info = CW.talentInfo[t[1]] or {}
             local step = pv.talents and pv.talents[t[1]]
-            local tid = t[1]
+            local tid, key = t[1], TKey(t)
             r.spellId, r.isTalent = info.spell, true
             Place(r, i, Warning(pv.warnT and pv.warnT[i]))
-            local lvT = LevelT(b, tid)
+            local lvT = LevelT(b, key)
             if not r.warning then r.warning = ShortWarning(lvT, shortT, "Talent Essence") end
             if r.warning then r.stripe:SetVertexColor(1, 0.2, 0.15, 0.18) end
             r.level:SetText((r.warning and not (shortT == lvT)) and "|cffff5544!|r"
-                or LevelText(b.waitT[tid], "T" .. tid, lvT, shortT))
-            WireLevel(r, "T", tid, step)
+                or LevelText(b.waitT[key], "T" .. key, lvT, shortT))
+            WireLevel(r, "T", key, step)
             Arrows(r, "T", i)
             r.icon:SetTexture(info.spell and SpellIcon(info.spell) or "Interface\\Icons\\INV_Misc_QuestionMark")
             r.name:SetText(info.spell and SpellLabel(info.spell, info.rarity or 0) or ("Talent " .. tid))
@@ -4033,7 +4100,8 @@ do
             r:SetScript("OnClick", function(_, button) if button == "RightButton" then RemoveRank(tid) end end)
             r.up:SetScript("OnClick", function() Move("T", i, -1) end)
             r.down:SetScript("OnClick", function() Move("T", i, 1) end)
-            r.del:SetScript("OnClick", function() RemoveTalent(tid) end)
+            local rank = t[2]
+            r.del:SetScript("OnClick", function() RemoveTalentFrom(tid, rank) end)
         end
         E.child:SetHeight(math.max(y, 1))
         E.scroll:UpdateScrollChildRect()
@@ -4118,13 +4186,12 @@ do
         end
         seen = {}
         for i, t in ipairs(b.talents) do
-            if not seen[t[1]] then
-                seen[t[1]] = true
-                local info = CW.talentInfo[t[1]]
-                local rank = t[2]
-                if info and info.max and rank > info.max then rank = info.max end
-                talents[#talents + 1] = { t[1], rank, at = i,
-                    lv = math.max(info and info.tier or 10, waitT[t[1]] or 0) }
+            local key = TKey(t)
+            local info = CW.talentInfo[t[1]]
+            -- a rank past the talent's last, or the same rank twice, goes
+            if not seen[key] and not (info and info.max and t[2] > info.max) then
+                seen[key] = true
+                talents[#talents + 1] = { t[1], t[2], at = i, lv = LevelT(b, key) }
                 inBuild[t[1]] = true
             end
         end
@@ -4179,6 +4246,7 @@ do
 
     local function Open(build, index)
         E.build = CW.CopyBuild(build)
+        Expand(E.build)
         E.index = index
         E.dirty = index == nil
         E.verdictOk = false
@@ -4309,8 +4377,7 @@ do
         else
             CW.talentInfo[e.talentId] = { spell = e.spell, rarity = e.rarity, max = e.max, tier = 10 + (e.row or 0) * 5 }
             local tid, max = e.talentId, e.max
-            local at = IndexOf(b.talents, tid)
-            local rank = at and b.talents[at][2] or 0
+            local rank = TopRank(tid)
             Shown(w.draftTint, rank > 0)
             if rank > 0 then w.check:Show() else w.check:Hide() end
             w.name:SetText(SpellLabel(e.spell, e.rarity) .. "  " .. (rank > 0 and "|cff40ff40" or "|cffaaaaaa")

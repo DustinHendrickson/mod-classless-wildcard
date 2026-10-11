@@ -3705,8 +3705,8 @@ def test_custom_builds(h):
     h.clear_sent()
     h.click(E["fix"])
     h.check(list(E["build"]["abilities"].values()) == [133, 47475]
-            and [list(t.values()) for t in E["build"]["talents"].values()] == [[1200, 1], [1300, 2]],
-            "Fix order sorts abilities by unlock, drops the repeat and puts the talent below what it needs: %r / %r"
+            and [list(t.values()) for t in E["build"]["talents"].values()] == [[1200, 1], [1300, 1], [1300, 2]],
+            "Fix order sorts abilities by unlock, drops the repeat and puts the talent's ranks below what it needs: %r / %r"
             % (list(E["build"]["abilities"].values()), [list(t.values()) for t in E["build"]["talents"].values()]))
     h.rt.execute("NOW = NOW + 1")
     E["__scripts"]["OnUpdate"](E, 0.5)
@@ -3733,8 +3733,8 @@ def test_custom_builds(h):
     h.click(CW.archPlan["copy"])
     h.check(E["__shown"] is True and str(E["name"]["__text"]) == "Battle Mage (copy)"
             and list(E["build"]["abilities"].values()) == [133, 1752]
-            and [list(t.values()) for t in E["build"]["talents"].values()] == [[1234, 3]],
-            "Copy opens the editor on the same build, ready to change and save")
+            and [list(t.values()) for t in E["build"]["talents"].values()] == [[1234, 1], [1234, 2], [1234, 3]],
+            "Copy opens the editor on the same build, each talent rank a row of its own")
     E["dirty"] = False
     E["__shown"] = False
 
@@ -3920,17 +3920,43 @@ def test_build_levels(h):
                  "{ talentId = 9001, spell = 12295, rarity = 1, max = 3, row = 2 })")
     h.click(tw)
     tal = [list(t.values()) for t in E["build"]["talents"].values()]
-    h.check([9001, 2] in tal and wait("T", 9001) is None and wait("T", 9000) is None,
-            "a rank more at level 20 fits there, nothing moves: %r" % tal)
+    h.check([9001, 1] in tal and [9001, 2] in tal and wait("T", "9001:2") is None and wait("T", "9000:1") is None,
+            "rank 2 is a row of its own, at level 20 where it fits, and nothing moves: %r" % tal)
     # each click redraws the lists, so the row is pointed at the talent again
     for _ in range(2):
         h.rt.execute("TW:Show(); ClasslessWildcard_API.BrowserRowHook(TW, 'T', "
                      "{ talentId = 9000, spell = 12294, rarity = 1, max = 5, row = 0 })")
         h.click(tw)
     tal = [list(t.values()) for t in E["build"]["talents"].values()]
-    h.check([9000, 3] in tal and wait("T", 9000) == 12 and wait("T", 9001) is None,
-            "three ranks at once need three Talent Essence, so that talent alone moves to 12: %r %r"
-            % (tal, wait("T", 9000)))
+    h.check([9000, 2] in tal and [9000, 3] in tal and wait("T", "9000:1") is None
+            and wait("T", "9000:2") == 11 and wait("T", "9000:3") == 12
+            and wait("T", "9001:1") is None and wait("T", "9001:2") is None,
+            "each rank is a row of its own, at the first level the Talent Essence covers it, 11 and 12; "
+            "nothing else moves: %r %r %r" % (tal, wait("T", "9000:2"), wait("T", "9000:3")))
+
+    # Each rank's level is its own. Holding rank 3 back moves rank 3 alone;
+    # rank 2 then cannot go past it, and rank 1 cannot go past rank 2.
+    def trow(tid, rank):
+        tl = [list(t.values()) for t in E["build"]["talents"].values()]
+        return rows[len(order()) + tl.index([tid, rank]) + 1]
+    def type_level(r, lv):
+        h.click(r["levelBtn"])
+        box["__text"] = str(lv)
+        box["__scripts"]["OnEnterPressed"](box)
+    type_level(trow(9000, 3), 30)
+    h.check(wait("T", "9000:3") == 30 and wait("T", "9000:2") == 11 and wait("T", "9000:1") is None,
+            "rank 3 held to 30 moves rank 3 alone: %r %r" % (wait("T", "9000:2"), wait("T", "9000:3")))
+    type_level(trow(9000, 2), 45)
+    h.check(wait("T", "9000:2") == 30 and wait("T", "9000:3") == 30,
+            "rank 2 cannot go past rank 3, so it stops at 30: %r" % wait("T", "9000:2"))
+    type_level(trow(9000, 1), 50)
+    h.check(wait("T", "9000:1") == 30 and trow(9000, 1)["down"]["__enabled"] is False,
+            "rank 1 cannot go past rank 2 either, and its later arrow is off: %r" % wait("T", "9000:1"))
+    type_level(trow(9000, 1), 1)
+    type_level(trow(9000, 2), 1)
+    h.check(wait("T", "9000:1") is None and wait("T", "9000:2") == 11 and wait("T", "9000:3") == 30,
+            "back down, each rank stops at the first level the essence covers: %r %r"
+            % (wait("T", "9000:1"), wait("T", "9000:2")))
 
     # what the server is sent
     h.clear_sent()
@@ -3939,6 +3965,8 @@ def test_build_levels(h):
     sent = h.sent()
     h.check(any(s.startswith("ARCHUP A ") and "100@11" in s and "5308@41" in s for s in sent),
             "the upload carries each held level: %r" % sent)
+    h.check(any(s.startswith("ARCHUP T ") and "9000:1," in s and "9000:2@11" in s and "9000:3@30" in s for s in sent),
+            "each talent rank goes to the server as its own entry with its own level: %r" % sent)
     plan((1, 1, 9))
     # the code carries it, and a build with nothing held keeps its old code
     h.rt.globals().B = E["build"]
@@ -4010,6 +4038,16 @@ def test_build_levels(h):
     h.check(wait("A", 100) is None and wait("A", 200) == 6 and wait("A", 300) == 15,
             "an old build that runs short gets the levels it was bought at: %r %r %r"
             % (wait("A", 100), wait("A", 200), wait("A", 300)))
+
+    # A build saved with one entry for a talent's ranks opens as one row per
+    # rank; the level it held the talent back to goes to the first
+    E["dirty"] = False
+    CW.FinishBuildEditor()
+    CW.OpenBuildEditor(h.rt.eval("{ name = 'Old ranks', desc = '', abilities = {}, talents = { {9000, 3} }, "
+                                 "waitA = {}, waitT = { [9000] = 15 } }"), None)
+    tl = [list(t.values()) for t in E["build"]["talents"].values()]
+    h.check(tl == [[9000, 1], [9000, 2], [9000, 3]] and wait("T", "9000:1") == 15 and wait("T", 9000) is None,
+            "an old one-entry talent opens as a row per rank, the first held where the talent was: %r" % tl)
 
     E["dirty"] = False
     CW.FinishBuildEditor()
