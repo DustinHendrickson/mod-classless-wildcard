@@ -2189,6 +2189,33 @@ bool ClasslessMgr::ValidateCustomArchetype(Archetype& arch, std::string* err)
         if (!s.level)
             return fail(Acore::StringFormat("{} would never be bought in this order by level {}.",
                         SpellName(s.spell), sWorld->getIntConfig(CONFIG_MAX_PLAYER_LEVEL)));
+    // Each entry has a level of its own: the level it becomes available at,
+    // or the later one the build holds it back to. The essence a Hero earns
+    // has to cover it there, with everything set at or before it; a build
+    // that only affords it later would buy it later than it says. Every
+    // entry was checked above, so the plan's steps line up with the build's.
+    for (size_t i = 0; i < plan.abilities.size() && i < arch.abilities.size(); ++i)
+    {
+        PlanStep const& s = plan.abilities[i];
+        AbilityEntry const* e = GetAbility(arch.abilities[i]);
+        uint8 const unlock = (cfg.respectLevelReqs && e && !e->rankLevels.empty()) ? e->rankLevels[0] : 1;
+        uint8 const at = std::max<uint8>(unlock, arch.AbilityWait(i));
+        if (!s.free && s.level > at)
+            return fail(Acore::StringFormat("{} is set for level {}, but a Hero has the essence for it only at "
+                        "level {}. Set it, or an entry before it, later.", SpellName(s.spell), uint32(at),
+                        uint32(s.level)));
+    }
+    for (size_t i = 0; i < plan.talents.size() && i < arch.talents.size(); ++i)
+    {
+        PlanStep const& s = plan.talents[i];
+        TalentPoolEntry const* t = GetTalent(arch.talents[i].first);
+        uint8 const tier = (cfg.respectLevelReqs && t) ? uint8(10 + t->row * 5) : 1;
+        uint8 const at = std::max<uint8>(tier, arch.TalentWait(i));
+        if (s.level > at)
+            return fail(Acore::StringFormat("{} is set for level {}, but a Hero has the essence for it only at "
+                        "level {}. Set it, or an entry before it, later.", SpellName(s.spell), uint32(at),
+                        uint32(s.level)));
+    }
     return true;
 }
 

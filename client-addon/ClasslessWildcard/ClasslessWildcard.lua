@@ -708,9 +708,10 @@ local function MakeEntry(x, y, width, index)
     e.slot:SetPoint("CENTER", e.icon, "CENTER", 0, -1)
     e.slot:SetTexture("Interface\\Buttons\\UI-Quickslot2")
 
-    e.check = e:CreateTexture(nil, "OVERLAY")
-    e.check:SetWidth(14); e.check:SetHeight(14)
-    e.check:SetPoint("BOTTOMRIGHT", e.icon, "BOTTOMRIGHT", 5, -4)
+    -- drawn above the slot frame: on the same layer the frame covered it
+    e.check = e:CreateTexture(nil, "OVERLAY", nil, 7)
+    e.check:SetWidth(18); e.check:SetHeight(18)
+    e.check:SetPoint("BOTTOMRIGHT", e.icon, "BOTTOMRIGHT", 4, -3)
     e.check:SetTexture("Interface\\RaidFrame\\ReadyCheck-Ready")
     e.check:Hide()
 
@@ -3088,7 +3089,7 @@ do
         if kind == "APW" then
             return   -- row warnings are the editor's business
         elseif kind == "APA" then
-            for spell, rarity, level in string.gmatch(p[3] or "", "(%d+):(%d+):(%d+):?%d*:?%d*;") do
+            for spell, rarity, level in string.gmatch(p[3] or "", "(%d+):(%d+):(%d+):?%d*:?%d*:?%d*;") do
                 tinsert(d.abilities, { spell = tonumber(spell), rarity = tonumber(rarity), level = tonumber(level) })
             end
         elseif kind == "APT" then
@@ -3383,8 +3384,8 @@ do
     E.empty:SetTextColor(0.75, 0.75, 0.75)
     E.empty:SetText("Click an ability or talent in the lists on the left to add it here. "
         .. "Right-click takes it back out, or one talent rank.\n\n"
-        .. "Each row shows the level it is bought at. Click the level to choose a later one, "
-        .. "or use the arrows: sooner and later.")
+        .. "Each row shows the level it is bought at. Click the level to type another, turn the "
+        .. "mouse wheel over it, or use the arrows. Only that row changes.")
 
     E.budget = E:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
     E.budget:SetPoint("BOTTOMLEFT", 2, 64)
@@ -3432,9 +3433,13 @@ do
     CW.abilityInfo = CW.abilityInfo or {}
 
     -- ---- levels -------------------------------------------------------------------
-    -- An entry is bought at the later of the level it can first be bought at
-    -- (an ability's unlock, a talent's tier) and the level the build holds it
-    -- back to. The lists are kept in that order, ties in the order chosen.
+    -- Every entry has a level of its own: the level it becomes available at
+    -- (an ability's unlock, a talent's tier), or a later one the build holds
+    -- it back to. Changing one entry's level never moves another. The build
+    -- has to afford each entry at its level: the essence a Hero has earned by
+    -- then covers it and every entry set at or before it. An entry cannot be
+    -- set earlier than that, so it stops at the earliest level it can be
+    -- bought. The lists are shown in level order, ties in the order added.
     local function Cap() return CW.rules.maxLevel or 80 end
     local function FloorA(id) local i = CW.abilityInfo[id]; return i and i.unlock or 1 end
     local function FloorT(tid) local i = CW.talentInfo[tid]; return i and i.tier or 10 end
@@ -3444,16 +3449,70 @@ do
     end
     local function LevelA(b, id) return math.max(FloorA(id), (b.waitA or {})[id] or 0) end
     local function LevelT(b, tid) return math.max(FloorT(tid), (b.waitT or {})[tid] or 0) end
+    -- what an entry costs: an ability its own price, or nothing when another
+    -- entry in the build brings it free; a talent its ranks
+    local function CostA(id)
+        local s = E.preview and E.preview.abilities and E.preview.abilities[id]
+        if s and s.free then return 0 end
+        local i = CW.abilityInfo[id]
+        return i and i.cost or 0
+    end
+    local function CostT(t)
+        local c = CW.talentCost or 1
+        return CW.talentFlat and c or c * t[2]
+    end
+    -- What a Hero with no Rebirth bonus has earned by a level: the schedule
+    -- the server holds a build to, so a build that fits here fits anyone.
+    local function Earned(kind, lv)
+        local r = CW.rules
+        if kind == "A" then
+            return (r.startAE or 3) + math.max(0, lv - (r.aeStart or 4) + 1) * (r.aePer or 1)
+        end
+        return math.max(0, lv - (r.teStart or 10) + 1) * (r.tePer or 1)
+    end
     -- one list's accessors, so the abilities and talents share the code
     local function Kind(kind)
         local b = E.build
         Waits(b)
         if kind == "A" then
             return b.abilities, b.waitA, function(x) return x end,
-                function(id) return LevelA(b, id) end, FloorA
+                function(id) return LevelA(b, id) end, FloorA, function(x) return CostA(x) end
         end
         return b.talents, b.waitT, function(x) return x[1] end,
-            function(id) return LevelT(b, id) end, FloorT
+            function(id) return LevelT(b, id) end, FloorT, CostT
+    end
+    -- The first level at which the build runs short of essence, or nil when
+    -- it never does. `id` can be tried at another level (`at`), or left out
+    -- altogether (`at` false).
+    local function ShortAt(kind, id, at)
+        local list, _, key, level, _, cost = Kind(kind)
+        local spend = {}
+        for _, x in ipairs(list) do
+            local k = key(x)
+            local lv = level(k)
+            if k == id and at ~= nil then lv = at end
+            if lv then spend[lv] = (spend[lv] or 0) + cost(x) end
+        end
+        local sum = 0
+        for lv = 1, Cap() do
+            if spend[lv] then
+                sum = sum + spend[lv]
+                if sum > Earned(kind, lv) then return lv end
+            end
+        end
+        return nil
+    end
+    -- The earliest level from `from` at which the build can afford `id`
+    -- there; nil when none by the cap. When the build is short without it,
+    -- nothing it does changes that, so the level asked for stands.
+    local function Fit(kind, id, from)
+        local _, _, _, _, floor = Kind(kind)
+        from = math.max(from, floor(id))
+        if ShortAt(kind, id, false) then return from end
+        for lv = from, Cap() do
+            if not ShortAt(kind, id, lv) then return lv end
+        end
+        return nil
     end
     local function SortByLevel(kind)
         local list, _, key, level = Kind(kind)
@@ -3464,6 +3523,25 @@ do
             return p.at < q.at
         end)
         for i, t in ipairs(tmp) do list[i] = t.x end
+    end
+    -- A build that runs short, saved before every entry had a level of its
+    -- own (a starter build, an old code): each entry, in order, gets the
+    -- level it was bought at then, which is no earlier than the one before it
+    -- and no earlier than the essence allows. A build that fits is left as
+    -- it is. Needs the costs, so it runs once the server has looked.
+    local function Settle(kind)
+        if not ShortAt(kind) then return false end
+        local list, waits, key, level, floor, cost = Kind(kind)
+        local sum, prev = 0, 1
+        for _, x in ipairs(list) do
+            local k = key(x)
+            local lv = math.max(level(k), prev)
+            sum = sum + cost(x)
+            while lv < Cap() and sum > Earned(kind, lv) do lv = lv + 1 end
+            waits[k] = lv > floor(k) and lv or nil
+            prev = lv
+        end
+        return true
     end
     -- Only once the server has said where everything unlocks: before that a
     -- loaded build's floors are unknown and a sort would scramble it.
@@ -3487,6 +3565,12 @@ do
     end
 
     function CW.BuildEditorChanged(sort) Changed(sort) end
+    function CW.SettleBuildLevels()
+        local a, t = Settle("A"), Settle("T")
+        return a or t
+    end
+    -- for the rows: the first level each list runs short at
+    function CW.BuildShortAt(kind) return ShortAt(kind) end
 
     -- the preview a moment after the last change, not one per keystroke
     E:SetScript("OnUpdate", function()
@@ -3511,11 +3595,17 @@ do
         local pv = E.preview
         if not pv then return end
         if kind == "APA" then
-            -- the fifth field is 1 when the ability comes free with another entry
-            for spell, rarity, level, unlock, free in string.gmatch(p[3] or "", "(%d+):(%d+):(%d+):?(%d*):?(%d*);") do
-                pv.abilities[tonumber(spell)] = { level = tonumber(level), rarity = tonumber(rarity),
-                                                  unlock = tonumber(unlock) or 1, free = free == "1" }
-                CW.abilityInfo[tonumber(spell)] = { unlock = tonumber(unlock) or 1 }
+            -- spell:rarity:level:unlock:free:cost; free is 1 when the ability
+            -- comes free with another entry
+            for spell, rarity, level, unlock, free, cost in
+                string.gmatch(p[3] or "", "(%d+):(%d+):(%d+):?(%d*):?(%d*):?(%d*);") do
+                spell = tonumber(spell)
+                pv.abilities[spell] = { level = tonumber(level), rarity = tonumber(rarity),
+                                        unlock = tonumber(unlock) or 1, free = free == "1" }
+                local info = CW.abilityInfo[spell] or {}
+                info.unlock = tonumber(unlock) or info.unlock or 1
+                info.cost = tonumber(cost) or info.cost
+                CW.abilityInfo[spell] = info
             end
         elseif kind == "APW" then
             -- kind:index:code:extra; the index is 0-based in its list
@@ -3540,6 +3630,15 @@ do
             pv.problem = p[7] or ""
             pv.done = true
             E.verdictOk = pv.problem == ""
+            -- the first look at a build that ran on the old rule pins its
+            -- levels; the server is asked again about the result
+            if E.settle then
+                E.settle = nil
+                if CW.SettleBuildLevels() then
+                    Changed(true)
+                    return
+                end
+            end
             CW.RenderBuildEditor()
         end
     end
@@ -3551,9 +3650,20 @@ do
         end
         return nil
     end
+    local function Refuse(text) UIErrorsFrame:AddMessage(text, 1.0, 0.1, 0.1) end
+    -- A new ability goes in at the earliest level the build can afford it,
+    -- and nothing else moves. One the essence never reaches is refused.
     local function AddAbility(id)
         if IndexOf(E.build.abilities, id) then return end
         tinsert(E.build.abilities, id)
+        local lv = Fit("A", id, FloorA(id))
+        if not lv then
+            tremove(E.build.abilities)
+            Refuse("Not enough Ability Essence for that by level " .. Cap() .. ".")
+            return
+        end
+        Waits(E.build)
+        E.build.waitA[id] = lv > FloorA(id) and lv or nil
         Changed(true)
     end
     local function RemoveAbility(id)
@@ -3564,15 +3674,31 @@ do
         E.build.waitA[id] = nil
         Changed()
     end
+    -- One rank more: a new talent at the earliest level the build can afford
+    -- it, a rank more on one already in the build at its own level, or the
+    -- first level after that the essence covers. Only that talent moves.
     local function AddRank(tid, max)
+        Waits(E.build)
         local i = IndexOf(E.build.talents, tid)
+        local from
         if not i then
             tinsert(E.build.talents, { tid, 1 })
+            i = #E.build.talents
+            from = FloorT(tid)
         elseif not max or E.build.talents[i][2] < max then
             E.build.talents[i][2] = E.build.talents[i][2] + 1
+            from = LevelT(E.build, tid)
         else
             return
         end
+        local lv = Fit("T", tid, from)
+        if not lv then
+            if E.build.talents[i][2] <= 1 then tremove(E.build.talents, i)
+            else E.build.talents[i][2] = E.build.talents[i][2] - 1 end
+            Refuse("Not enough Talent Essence for that by level " .. Cap() .. ".")
+            return
+        end
+        E.build.waitT[tid] = lv > FloorT(tid) and lv or nil
         Changed(true)
     end
     local function RemoveTalent(tid)
@@ -3592,53 +3718,31 @@ do
         Changed()
     end
 
-    -- The level an entry is bought at, chosen: never before it can be
-    -- bought, never past the cap. Its own floor clears the hold.
+    -- The level an entry is bought at, chosen: never before it is available,
+    -- never before the build can afford it there, never past the cap. Its own
+    -- floor clears the hold. No other entry moves.
     local function SetLevel(kind, id, lv, keepOrder)
-        local _, waits, _, _, floor = Kind(kind)
+        local _, waits, _, level, floor = Kind(kind)
         lv = math.max(floor(id), math.min(math.floor(tonumber(lv) or 0), Cap()))
+        if lv < level(id) then lv = Fit(kind, id, lv) or level(id) end
         waits[id] = lv > floor(id) and lv or nil
         Changed(not keepOrder)
     end
 
-    -- Sooner or later by one row. Next to a row of the same level the two
-    -- trade places, which decides which is bought first when essence is
-    -- short. Past a row of another level, the entry takes that level. Sooner
-    -- stops at the level it unlocks at.
+    -- The arrows: one level sooner or later for that row alone. Sooner stops
+    -- at the earliest level the row can be bought.
     local function CanMove(kind, i, d)
-        local list, _, key, level, floor = Kind(kind)
+        local list, _, key, level = Kind(kind)
         local me = key(list[i])
-        local j = i + d
-        if d > 0 then return j <= #list end
-        if level(me) > floor(me) then return true end
-        return j >= 1 and level(key(list[j])) == level(me)
+        local lv = level(me)
+        if d > 0 then return lv < Cap() end
+        local to = Fit(kind, me, lv - 1)
+        return to ~= nil and to < lv
     end
     local function Move(kind, i, d)
-        if not (E.preview and E.preview.done) then return end
-        local list, waits, key, level, floor = Kind(kind)
+        local list, _, key, level = Kind(kind)
         local me = key(list[i])
-        local j = i + d
-        local other = (j >= 1 and j <= #list) and key(list[j]) or nil
-        local mine = level(me)
-        if d > 0 then
-            if not other then return end
-            local theirs = level(other)
-            if theirs > mine then waits[me] = theirs end
-            list[i], list[j] = list[j], list[i]
-        else
-            local theirs = other and level(other)
-            if theirs and theirs == mine then
-                list[i], list[j] = list[j], list[i]
-            elseif mine > floor(me) then
-                -- to the level of the row before it, or as soon as it can
-                local to = math.max(theirs or 0, floor(me))
-                waits[me] = to > floor(me) and to or nil
-                if theirs and to == theirs then list[i], list[j] = list[j], list[i] end
-            else
-                return
-            end
-        end
-        Changed(true)
+        SetLevel(kind, me, level(me) + d)
     end
 
     -- ---- the rows ------------------------------------------------------------------
@@ -3684,10 +3788,10 @@ do
         r.icon:SetTexCoord(0.07, 0.93, 0.07, 0.93)
         r.del = IconButton(r, "Interface\\Buttons\\UI-MinusButton", CTRL, "Take it out")
         r.del:SetPoint("RIGHT", -1, 0)
-        r.down = IconButton(r, "Interface\\Buttons\\UI-ScrollBar-ScrollDownButton", CTRL + 4, "Buy later")
+        r.down = IconButton(r, "Interface\\Buttons\\UI-ScrollBar-ScrollDownButton", CTRL + 4, "One level later")
         r.down:SetPoint("RIGHT", r.del, "LEFT", 0, 0)
         r.down:SetDisabledTexture("Interface\\Buttons\\UI-ScrollBar-ScrollDownButton-Disabled")
-        r.up = IconButton(r, "Interface\\Buttons\\UI-ScrollBar-ScrollUpButton", CTRL + 4, "Buy sooner")
+        r.up = IconButton(r, "Interface\\Buttons\\UI-ScrollBar-ScrollUpButton", CTRL + 4, "One level sooner")
         r.up:SetPoint("RIGHT", r.down, "LEFT", 2, 0)
         r.up:SetDisabledTexture("Interface\\Buttons\\UI-ScrollBar-ScrollUpButton-Disabled")
         r.rank = r:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
@@ -3767,22 +3871,17 @@ do
         end)
         r.levelBtn:SetScript("OnEnter", function(self)
             GameTooltip:SetOwner(self, "ANCHOR_LEFT")
-            local at = step and step.level and step.level > 0 and step.level
-            GameTooltip:AddLine(at and ((step.free and "Comes free at level " or "Bought at level ") .. at)
-                or "Not bought by level " .. Cap())
-            if step and step.free then
+            local free = step and step.free
+            GameTooltip:AddLine((free and "Comes free at level " or "Bought at level ") .. level(id))
+            if free then
                 GameTooltip:AddLine("Another ability or talent in the build brings it, so it costs no essence.",
                     1, 1, 1, true)
             end
-            if held then
-                GameTooltip:AddLine("Held back to level " .. held .. ".", 1, 0.82, 0)
-                if at and at > held then
-                    GameTooltip:AddLine("Essence runs short until level " .. at .. ".", 1, 1, 1, true)
-                end
-            end
+            if held then GameTooltip:AddLine("Held back to this level.", 1, 0.82, 0) end
             GameTooltip:AddLine((kind == "A" and "Unlocks" or "Its tier opens") .. " at level " .. floor(id) .. ".",
                 0.75, 0.75, 0.75)
-            GameTooltip:AddLine("Click to choose the level. Mouse wheel: one level sooner or later.", 0.9, 0.8, 0.4, true)
+            GameTooltip:AddLine("Click to type a level. Mouse wheel: one level sooner or later. "
+                .. "It cannot come before the build has the essence for it. No other row moves.", 0.9, 0.8, 0.4, true)
             GameTooltip:Show()
         end)
         r.levelBtn:SetScript("OnLeave", function() GameTooltip:Hide() end)
@@ -3835,11 +3934,16 @@ do
             h.text:Show(); h.rule:Show()
             y = y + 19
         end
-        local function LevelText(step, held, key, chosen)
-            if E.wheeling == key then return "|cffffd100Lv " .. chosen .. "|r" end
-            if not pv.done or not step then return "" end
-            if step.level <= 0 then return "|cffff5544" .. cap .. "+|r" end
-            return held and ("|cffffd100Lv " .. step.level .. "|r") or ("Lv " .. step.level)
+        local shortA, shortT = CW.BuildShortAt("A"), CW.BuildShortAt("T")
+        local function LevelText(held, key, lv, short)
+            if short and lv == short then return "|cffff5544Lv " .. lv .. "|r" end
+            if held or E.wheeling == key then return "|cffffd100Lv " .. lv .. "|r" end
+            return "Lv " .. lv
+        end
+        local function ShortWarning(lv, short, what)
+            if not short or lv ~= short then return nil end
+            return "By level " .. lv .. " a Hero has not earned the " .. what .. " for everything set at or "
+                .. "before it. Set this or an earlier entry later."
         end
         local function Arrows(r, kind, i)
             if CanMove(kind, i, -1) then r.up:Enable() else r.up:Disable() end
@@ -3864,8 +3968,10 @@ do
             local r = Row(nr)
             local step = pv.abilities and pv.abilities[id]
             r.spellId, r.isTalent = id, false
-            Place(r, i, Warning(pv.warnA and pv.warnA[i]))
-            r.level:SetText(r.warning and "|cffff5544!|r" or LevelText(step, b.waitA[id], "A" .. id, LevelA(b, id)))
+            local lv = LevelA(b, id)
+            Place(r, i, Warning(pv.warnA and pv.warnA[i]) or ShortWarning(lv, shortA, "Ability Essence"))
+            r.level:SetText((r.warning and not (shortA == lv)) and "|cffff5544!|r"
+                or LevelText(b.waitA[id], "A" .. id, lv, shortA))
             WireLevel(r, "A", id, step)
             Arrows(r, "A", i)
             r.icon:SetTexture(SpellIcon(id))
@@ -3889,7 +3995,11 @@ do
             local tid = t[1]
             r.spellId, r.isTalent = info.spell, true
             Place(r, i, Warning(pv.warnT and pv.warnT[i]))
-            r.level:SetText(r.warning and "|cffff5544!|r" or LevelText(step, b.waitT[tid], "T" .. tid, LevelT(b, tid)))
+            local lvT = LevelT(b, tid)
+            if not r.warning then r.warning = ShortWarning(lvT, shortT, "Talent Essence") end
+            if r.warning then r.stripe:SetVertexColor(1, 0.2, 0.15, 0.18) end
+            r.level:SetText((r.warning and not (shortT == lvT)) and "|cffff5544!|r"
+                or LevelText(b.waitT[tid], "T" .. tid, lvT, shortT))
             WireLevel(r, "T", tid, step)
             Arrows(r, "T", i)
             r.icon:SetTexture(info.spell and SpellIcon(info.spell) or "Interface\\Icons\\INV_Misc_QuestionMark")
@@ -4046,6 +4156,7 @@ do
         E.dirty = index == nil
         E.verdictOk = false
         E.preview = nil
+        E.settle = true
         E.name:SetText(E.build.name or "")
         E.desc:SetText(E.build.desc or "")
         SyncHints()
@@ -4158,7 +4269,9 @@ do
         local b = E.build
         if kind == "A" then
             local id = e.id
-            CW.abilityInfo[id] = { unlock = e.lvl or 1 }
+            local info = CW.abilityInfo[id] or {}
+            info.unlock, info.cost = e.lvl or 1, tonumber(e.cost) or info.cost
+            CW.abilityInfo[id] = info
             local inBuild = IndexOf(b.abilities, id) ~= nil
             Shown(w.draftTint, inBuild)
             if inBuild then w.check:Show() else w.check:Hide() end

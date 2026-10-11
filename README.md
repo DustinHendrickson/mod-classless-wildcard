@@ -292,14 +292,21 @@ Talents lists show every level and become the picker:
 
 - **Click** an ability to add it, or a talent to add one rank. **Right-click** takes an ability
   out, or a talent down one rank. Nothing is bought. Rows in the build are tinted and ticked.
-- Each row in the editor shows the **level it is bought at**. Change it three ways:
+- Each row in the editor shows the **level it is bought at**, and that level belongs to the
+  row alone: changing one row never moves another. Change it three ways:
   - **Click the level** and type one. Enter or clicking away keeps it, Escape keeps the old one.
   - **Mouse wheel** over the level, one level a notch. The row stays put while the wheel turns
     and moves to its place in the list when the wheel stops.
-  - **Arrows** for sooner and later. Past a row of another level, the entry takes that level.
-- A level later than the entry's unlock **holds it back** to that level (shown in gold). An
-  entry never comes before its unlock or its talent tier, and never before the essence for it
-  has been earned. The level's tooltip shows when the entry unlocks.
+  - **Arrows**, one level sooner or later.
+- The earliest level for an entry is the level it becomes available at (an ability's unlock, a
+  talent's tier), and the build must have the essence for it there: what a Hero has earned by
+  that level covers it and every entry set at or before it. An entry set sooner stops at the
+  earliest level that is true. A new entry goes in at the earliest such level, and one the
+  essence never reaches by the level cap is refused. A level later than the earliest
+  **holds it back** (shown in gold). A talent's ranks are all bought at its level, one Talent
+  Essence each.
+- A build saved before entries had their own levels is set, the first time it is opened, to the
+  levels it was bought at.
 - Rows marked **free** come with another entry in the build and cost no essence.
 - The minus button takes a row out. Rows with a problem are marked in red and say why in their
   tooltip. **Fix order** appears when order can fix it: abilities in unlock order, each talent

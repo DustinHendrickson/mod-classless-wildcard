@@ -3592,24 +3592,27 @@ def test_custom_builds(h):
             and sent[-1] == "ARCHPLANX Tester's build",
             "the editor previews the build on the server: %r" % sent)
     h.check(E["save"]["__enabled"] is False, "Save waits for the server's verdict")
-    h.recv("APA|0|1752:0:1;772:1:4;")
+    h.recv("APA|0|1752:0:1:1:0:1;772:1:4:4:0:1;")
     h.recv("APT|0|12294:2:1:1:10:12294;")
     h.recv("APE|0|3|66|1|71|")
     rows = E["rows"]
     h.check(str(rows[1]["level"]["__text"]) == "Lv 1" and str(rows[2]["level"]["__text"]) == "Lv 4"
-            and str(rows[3]["rank"]["__text"]) == "1/1", "rows show their levels and the talent's rank")
+            and str(rows[3]["rank"]["__text"]) == "1/1", "rows show their levels and the talent's rank: %r %r %r"
+            % (str(rows[1]["level"]["__text"]), str(rows[2]["level"]["__text"]), str(rows[3]["rank"]["__text"])))
     h.check(E["save"]["__enabled"] is True and "Fits by level 80. Not saved yet." in str(E["verdict"]["__text"])
             and "3|r / 66" in str(E["budget"]["__text"]),
             "a clean verdict enables Save and shows the budget: %r" % str(E["budget"]["__text"]))
-    # reorder and remove
-    h.click(rows[2]["up"])
-    h.check(list(E["build"]["abilities"].values()) == [772, 1752] and E["save"]["__enabled"] is False,
-            "moving a row reorders the build and asks the server again")
+    # one level later moves that row alone, and asks the server again
+    h.check(rows[2]["up"]["__enabled"] is False, "a row at its unlock level cannot come sooner")
+    h.click(rows[1]["down"])
+    h.check(list(E["build"]["abilities"].values()) == [1752, 772] and E["build"]["waitA"][1752] == 2
+            and E["save"]["__enabled"] is False,
+            "one level later moves that row alone and asks the server again")
     h.recv("APE|0|3|66|1|71|")
     h.click(E["save"])
     saved = h.rt.eval("ClasslessWildcardDB.customBuilds")
     h.check(len(list(saved.values())) == 1 and str(saved[1].name) == "Tester's build"
-            and list(saved[1].abilities.values()) == [772, 1752], "Save keeps it in the addon")
+            and list(saved[1].abilities.values()) == [1752, 772], "Save keeps it in the addon")
     # over budget is refused
     E["__scripts"]["OnUpdate"](E, 0.5)
     h.recv("APE|0|90|66|1|71|The build costs 90 Ability Essence. A Hero earns 66 by level 80.")
@@ -3820,22 +3823,28 @@ def test_custom_builds(h):
 
 
 def test_build_levels(h):
-    print("--- Build editor: choosing the level each entry is bought at")
+    print("--- Build editor: each entry has a level of its own")
     CW, g = h.CW, h.g
     E = CW.buildEditor
     h.recv(state(0))
+    # the shipped schedule: 3 AE at level 1, 1 a level from 4; 1 TE a level from 10
+    h.rt.execute("local r = ClasslessWildcard_API.rules; r.startAE, r.aeStart, r.aePer, r.teStart, r.tePer, r.maxLevel "
+                 "= 3, 4, 1, 10, 1, 80; ClasslessWildcard_API.talentCost, ClasslessWildcard_API.talentFlat = 1, false; "
+                 "for _, id in ipairs({ 100, 200, 300, 5308, 6343 }) do ClasslessWildcard_API.abilityInfo[id] = nil end")
     CW.OpenBuildEditor(h.rt.eval("{ name = 'Levels', desc = '', abilities = { 100, 200, 300 }, "
                                  "talents = { {9000, 1}, {9001, 1} } }"), None)
     h.rt.execute("NOW = NOW + 1")
     E["__scripts"]["OnUpdate"](E, 0.5)
-    h.recv("APA|0|100:0:1:1;200:0:4:4;300:0:10:10;")
-    # the seventh field is the tier's level; the old six-field reading slid
-    # along an entry and took its second number for the spell
-    h.recv("APT|0|12294:1:1:3:10:9000:10;12295:1:1:2:20:9001:20;")
-    h.recv("APE|0|3|66|2|71|")
+
+    def plan(costs=(1, 1, 2)):
+        # spell:rarity:level:unlock:free:cost
+        h.recv("APA|0|100:0:1:1:0:%d;200:0:4:4:0:%d;300:0:10:10:0:%d;" % costs)
+        h.recv("APT|0|12294:1:1:3:10:9000:10;12295:1:1:2:20:9001:20;")
+        h.recv("APE|0|4|80|2|71|")
+    plan()
     h.check(h.rt.eval("(ClasslessWildcard_API.talentInfo[9001] or {}).tier") == 20
-            and h.rt.eval("(ClasslessWildcard_API.talentInfo[9000] or {}).spell") == 12294,
-            "a talent's tier level is read from the preview, and its spell is the right one")
+            and h.rt.eval("(ClasslessWildcard_API.abilityInfo[300] or {}).cost") == 2,
+            "the preview gives each talent's tier and each ability's price")
     rows = E["rows"]
 
     def order():
@@ -3845,59 +3854,93 @@ def test_build_levels(h):
         w = E["build"]["waitA" if kind == "A" else "waitT"]
         return w[i] if w is not None else None
 
-    h.check(rows[1]["up"]["__enabled"] is False and rows[1]["down"]["__enabled"] is True
-            and rows[3]["down"]["__enabled"] is False,
-            "Buy sooner is off at the level it unlocks, Buy later off on the last row")
-    # later, past a row of a higher level: it takes that level
+    def levels():
+        return [str(rows[i]["level"]["__text"]) for i in range(1, 6)]
+
+    h.check(levels() == ["Lv 1", "Lv 4", "Lv 10", "Lv 10", "Lv 20"],
+            "a build that fits keeps its levels, each the level it is available at: %r" % levels())
+    h.check(rows[1]["up"]["__enabled"] is False and rows[1]["down"]["__enabled"] is True,
+            "a row at the level it becomes available cannot come sooner, and can go later")
+
+    # one level later: that row alone
     h.click(rows[1]["down"])
-    h.check(order() == [200, 100, 300] and wait("A", 100) == 4,
-            "Buy later past a level-4 row holds it to level 4: %r, %r" % (order(), wait("A", 100)))
+    h.check(wait("A", 100) == 2 and wait("A", 200) is None and wait("A", 300) is None and order() == [100, 200, 300],
+            "one level later moves that row alone: %r %r" % (wait("A", 100), order()))
     # typing a level
-    h.click(rows[2]["levelBtn"])
+    h.click(rows[1]["levelBtn"])
     box = E["levelBox"]
-    h.check(box["__shown"] is True and str(box["__text"]) == "4", "clicking the level opens a box with it")
+    h.check(box["__shown"] is True and str(box["__text"]) == "2", "clicking the level opens a box with it")
     box["__text"] = "20"
     box["__scripts"]["OnEnterPressed"](box)
-    h.check(order() == [200, 300, 100] and wait("A", 100) == 20 and box["__shown"] is False,
-            "a typed level holds it there and the row moves to its place: %r" % order())
-    h.check(rows[3]["up"]["__enabled"] is True, "a held row can always come sooner")
-    # the mouse wheel: up is sooner
+    h.check(order() == [200, 300, 100] and wait("A", 100) == 20 and wait("A", 200) is None
+            and wait("A", 300) is None and box["__shown"] is False,
+            "a typed level moves that row to its place and leaves the others where they were: %r" % order())
+    h.check(levels()[:3] == ["Lv 4", "Lv 10", "|cffffd100Lv 20|r"],
+            "the others keep their levels, the held one reads gold: %r" % levels()[:3])
+    # the wheel: up is sooner, that row only
     rows[3]["levelBtn"]["__scripts"]["OnMouseWheel"](rows[3]["levelBtn"], 1)
-    h.check(wait("A", 100) == 19, "the wheel moves it a level: %r" % wait("A", 100))
-    # sooner, past a row of a lower level: to that row's level
-    h.click(rows[3]["up"])
-    h.check(order() == [200, 100, 300] and wait("A", 100) == 10,
-            "Buy sooner past a level-10 row takes level 10: %r, %r" % (order(), wait("A", 100)))
-    # a level at or below the unlock clears the hold
-    h.click(rows[2]["levelBtn"])
-    box["__text"] = "0"
+    h.check(wait("A", 100) == 19 and wait("A", 300) is None, "the wheel moves that row a level: %r" % wait("A", 100))
+    E["sortDue"] = None
+    E["wheeling"] = None
+
+    # The essence decides how soon. With the third ability costing 9 at level
+    # 10, level 10 is spent out, so the first cannot be set at 5: it stops at
+    # the earliest level the build has the essence for it, and nothing else
+    # moves.
+    h.rt.execute("ClasslessWildcard_API.abilityInfo[300].cost = 9")
+    h.click(rows[3]["levelBtn"])
+    box["__text"] = "5"
     box["__scripts"]["OnEnterPressed"](box)
-    h.check(order() == [100, 200, 300] and wait("A", 100) is None,
-            "a level below the unlock clears the hold: %r" % order())
-    # talents: a held talent moves behind a higher tier
-    h.click(rows[4]["levelBtn"])
-    box["__text"] = "25"
-    box["__scripts"]["OnEnterPressed"](box)
+    h.check(wait("A", 100) == 11 and wait("A", 300) is None and wait("A", 200) is None,
+            "an entry set too soon stops at the earliest level the essence covers, 11: %r" % wait("A", 100))
+    i100 = order().index(100) + 1
+    h.check(rows[i100]["up"]["__enabled"] is False, "and cannot come any sooner")
+
+    # A new ability goes in at the earliest level the build can afford it
+    h.recv("AB|1|0|1|5308:1:30:0:0:24:2;")
+    h.click(CW.abilEntries[1])
+    h.check(5308 in order() and wait("A", 5308) == 41 and wait("A", 100) == 11,
+            "a new ability goes in at the earliest level the build affords it, 41, and nothing else moves: %r"
+            % wait("A", 5308))
+    # and one the essence never reaches is refused
+    h.recv("AB|1|0|1|5308:1:30:0:0:24:2;6343:1:90:0:0:6:2;")
+    before = order()
+    h.click(CW.abilEntries[2])
+    h.check(order() == before and 6343 not in order(), "an ability the essence never reaches is refused")
+
+    # Talents: a rank more stays at that talent's level when the Talent
+    # Essence is there, or moves that talent alone to the first level it is.
+    # 9000 (tier 10) and 9001 (tier 20) hold one rank each.
+    tw = CW.talEntries[1]
+    h.rt.globals().TW = tw
+    h.rt.execute("TW:Show(); ClasslessWildcard_API.BrowserRowHook(TW, 'T', "
+                 "{ talentId = 9001, spell = 12295, rarity = 1, max = 3, row = 2 })")
+    h.click(tw)
     tal = [list(t.values()) for t in E["build"]["talents"].values()]
-    h.check(tal == [[9001, 1], [9000, 1]] and wait("T", 9000) == 25, "a held talent moves after a later tier: %r" % tal)
+    h.check([9001, 2] in tal and wait("T", 9001) is None and wait("T", 9000) is None,
+            "a rank more at level 20 fits there, nothing moves: %r" % tal)
+    # each click redraws the lists, so the row is pointed at the talent again
+    for _ in range(2):
+        h.rt.execute("TW:Show(); ClasslessWildcard_API.BrowserRowHook(TW, 'T', "
+                     "{ talentId = 9000, spell = 12294, rarity = 1, max = 5, row = 0 })")
+        h.click(tw)
+    tal = [list(t.values()) for t in E["build"]["talents"].values()]
+    h.check([9000, 3] in tal and wait("T", 9000) == 12 and wait("T", 9001) is None,
+            "three ranks at once need three Talent Essence, so that talent alone moves to 12: %r %r"
+            % (tal, wait("T", 9000)))
+
     # what the server is sent
     h.clear_sent()
     h.rt.execute("NOW = NOW + 1")
     E["__scripts"]["OnUpdate"](E, 0.5)
     sent = h.sent()
-    h.check("ARCHUP A 100,200,300" in sent and "ARCHUP T 9001:1,9000:1@25" in sent,
-            "the upload carries the held level: %r" % sent)
-    h.recv("APA|0|100:0:1:1;200:0:4:4;300:0:10:10;")
-    h.recv("APT|0|12295:1:1:2:20:9001:20;12294:1:1:3:25:9000:10;")
-    h.recv("APE|0|3|66|2|71|")
-    h.check(str(E["rows"][5]["level"]["__text"]) == "|cffffd100Lv 25|r" and str(E["rows"][4]["level"]["__text"]) == "Lv 20",
-            "a held row's level reads gold, the rest plain: %r / %r"
-            % (str(E["rows"][5]["level"]["__text"]), str(E["rows"][4]["level"]["__text"])))
+    h.check(any(s.startswith("ARCHUP A ") and "100@11" in s and "5308@41" in s for s in sent),
+            "the upload carries each held level: %r" % sent)
+    plan((1, 1, 9))
     # the code carries it, and a build with nothing held keeps its old code
     h.rt.globals().B = E["build"]
     h.rt.execute("C2 = ClasslessWildcard_API.EncodeBuild(B); D2 = ClasslessWildcard_API.DecodeBuild(C2)")
-    h.check(h.rt.eval("D2.waitT[9000]") == 25 and h.rt.eval("next(D2.waitA)") is None,
-            "a share code keeps the held levels")
+    h.check(h.rt.eval("D2.waitA[100]") == 11 and h.rt.eval("D2.waitA[5308]") == 41, "a share code keeps the held levels")
     plain = h.rt.eval("ClasslessWildcard_API.EncodeBuild({ name = 'P', desc = '', abilities = { 1, 2 }, talents = {} })")
     plain2 = h.rt.eval("ClasslessWildcard_API.EncodeBuild({ name = 'P', desc = '', abilities = { 1, 2 }, talents = {}, "
                        "waitA = {}, waitT = {} })")
@@ -3910,53 +3953,55 @@ def test_build_levels(h):
     h.rt.execute("ClasslessWildcardDB.customBuilds = {}")
     E["verdictOk"] = True
     h.click(E["save"])
-    h.check(h.rt.eval("ClasslessWildcardDB.customBuilds[1].waitT[9000]") == 25, "Save keeps the held levels")
+    h.check(h.rt.eval("ClasslessWildcardDB.customBuilds[1].waitA[100]") == 11, "Save keeps the held levels")
 
     # The level box sits over the label, which hides while it is open
-    h.check(order() == [100, 200, 300], "abilities back in unlock order: %r" % order())
-    h.click(rows[1]["levelBtn"])
-    h.check(box["__shown"] is True and rows[1]["level"]["__shown"] is False,
+    h.check(order()[0] == 200, "the level-4 ability leads: %r" % order())
+    r1 = rows[1]
+    h.click(r1["levelBtn"])
+    h.check(box["__shown"] is True and r1["level"]["__shown"] is False,
             "the level box takes the label's place while it is open")
     box["__scripts"]["OnEscapePressed"](box)
-    h.check(box["__shown"] is False and rows[1]["level"]["__shown"] is True and wait("A", 100) is None,
+    h.check(box["__shown"] is False and r1["level"]["__shown"] is True and wait("A", 200) is None,
             "Escape closes the box, puts the label back and keeps the old level")
-    # clicking away keeps what was typed, like Enter
-    h.click(rows[1]["levelBtn"])
-    box["__text"] = "6"
-    box.ClearFocus(box)
-    h.check(wait("A", 100) == 6 and order() == [200, 100, 300] and rows[2]["level"]["__shown"] is True,
-            "clicking away keeps the typed level: %r, %r" % (wait("A", 100), order()))
 
     # The wheel leaves the row under the cursor until it rests, then sorts
-    wheel = rows[2]["levelBtn"]["__scripts"]["OnMouseWheel"]
-    for _ in range(6):
-        wheel(rows[2]["levelBtn"], -1)
-    h.check(wait("A", 100) == 12 and order() == [200, 100, 300],
-            "turning the wheel past another row's level leaves the row where it is: %r, %r"
-            % (wait("A", 100), order()))
-    h.check(str(rows[2]["level"]["__text"]) == "|cffffd100Lv 12|r",
-            "and the row shows the level chosen as it turns: %r" % str(rows[2]["level"]["__text"]))
+    wheel = rows[1]["levelBtn"]["__scripts"]["OnMouseWheel"]
+    for _ in range(9):
+        wheel(rows[1]["levelBtn"], -1)
+    h.check(wait("A", 200) == 13 and order()[0] == 200,
+            "turning the wheel past other rows' levels leaves the row where it is: %r, %r" % (wait("A", 200), order()))
+    h.check(str(rows[1]["level"]["__text"]) == "|cffffd100Lv 13|r",
+            "and the row shows the level chosen as it turns: %r" % str(rows[1]["level"]["__text"]))
     h.rt.execute("NOW = NOW + 0.5")
     E["__scripts"]["OnUpdate"](E, 0.5)
-    h.check(order() == [200, 100, 300], "still in place half a second after the last notch: %r" % order())
-    h.recv("APA|0|200:0:4:4;100:0:12:1;300:0:10:10;")
-    h.recv("APT|0|12295:1:1:2:20:9001:20;12294:1:1:3:25:9000:10;")
-    h.recv("APE|0|3|66|2|71|")
+    h.check(order()[0] == 200, "still in place half a second after the last notch: %r" % order())
+    plan((1, 1, 9))
     h.rt.execute("NOW = NOW + 1")
     E["__scripts"]["OnUpdate"](E, 1)
-    h.check(order() == [200, 300, 100] and E["sortDue"] is None,
-            "once the wheel has rested the row takes its place: %r" % order())
+    h.check(order() == [300, 100, 200, 5308] and E["sortDue"] is None and wait("A", 100) == 11,
+            "once the wheel has rested the row takes its place, the others unmoved: %r" % order())
 
     # An ability that comes free with another entry: the fifth field says so
-    h.recv("APA|0|200:0:4:4:0;300:0:10:10:1;100:0:12:1:0;")
-    h.recv("APT|0|12295:1:1:2:20:9001:20;12294:1:1:3:25:9000:10;")
+    h.recv("APA|0|300:0:10:10:1:9;100:0:11:1:0:1;200:0:13:4:0:1;5308:1:41:24:0:30;")
+    h.recv("APT|0|12294:1:1:3:10:9000:10;12295:1:1:2:20:9001:20;")
     h.recv("APE|0|3|66|2|71|")
-    h.check(str(rows[2]["rank"]["__text"]) == "|cffaaaaaafree|r" and str(rows[2]["level"]["__text"]) == "Lv 10",
-            "a free ability reads free, at the level it arrives: %r / %r"
-            % (str(rows[2]["rank"]["__text"]), str(rows[2]["level"]["__text"])))
-    h.check(str(rows[1]["rank"]["__text"]) == "" and str(rows[3]["level"]["__text"]) == "|cffffd100Lv 12|r",
-            "the rows around it read as before: %r / %r"
-            % (str(rows[1]["rank"]["__text"]), str(rows[3]["level"]["__text"])))
+    h.check(str(rows[1]["rank"]["__text"]) == "|cffaaaaaafree|r" and str(rows[1]["level"]["__text"]) == "Lv 10",
+            "a free ability reads free, at its level: %r / %r"
+            % (str(rows[1]["rank"]["__text"]), str(rows[1]["level"]["__text"])))
+
+    # A build saved under the old rule, that runs short at its unlock levels,
+    # is pinned once to the levels it was bought at then
+    E["dirty"] = False
+    CW.FinishBuildEditor()
+    CW.OpenBuildEditor(h.rt.eval("{ name = 'Old', desc = '', abilities = { 100, 200, 300 }, talents = {} }"), None)
+    h.rt.execute("NOW = NOW + 1")
+    E["__scripts"]["OnUpdate"](E, 0.5)
+    h.recv("APA|0|100:0:1:1:0:3;200:0:4:4:0:3;300:0:10:10:0:9;")
+    h.recv("APE|0|15|80|0|71|")
+    h.check(wait("A", 100) is None and wait("A", 200) == 6 and wait("A", 300) == 15,
+            "an old build that runs short gets the levels it was bought at: %r %r %r"
+            % (wait("A", 100), wait("A", 200), wait("A", 300)))
 
     E["dirty"] = False
     CW.FinishBuildEditor()

@@ -784,11 +784,12 @@ namespace
         for (ClasslessMgr::PlanStep const& s : plan.abilities)
         {
             // the fourth field is the level the ability unlocks at, which the
-            // editor's Fix order sorts by; the fifth is 1 when it comes free
+            // editor's Fix order sorts by; the fifth is 1 when it comes free;
+            // the sixth its price, which the editor checks each level against
             AbilityEntry const* e = sClasslessMgr->GetAbility(s.spell);
             uint32 const unlock = (e && !e->rankLevels.empty()) ? e->rankLevels[0] : 1;
-            std::string item = Acore::StringFormat("{}:{}:{}:{}:{};", s.spell, uint32(s.rarity), uint32(s.level), unlock,
-                                                   s.free ? 1 : 0);
+            std::string item = Acore::StringFormat("{}:{}:{}:{}:{}:{};", s.spell, uint32(s.rarity), uint32(s.level), unlock,
+                                                   s.free ? 1 : 0, e ? sClasslessMgr->AbilityCost(*e) : 0u);
             if (buf.size() + item.size() > MAX_BODY - 16)
                 flush("APA");
             buf += item;
