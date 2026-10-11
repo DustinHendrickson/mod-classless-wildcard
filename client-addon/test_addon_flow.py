@@ -72,6 +72,13 @@ StubMT.__index = function(self, k)
         rawget(s, "__scripts")[n] = old and function(...) old(...); return f(...) end or f
     end end
     if k == "GetScript" then return function(s, n) return rawget(s, "__scripts")[n] end end
+    -- as in the client, setting the scroll runs the frame's OnVerticalScroll
+    if k == "SetVerticalScroll" then return function(s, v)
+        rawset(s, "__vscroll", v)
+        local f = rawget(s, "__scripts").OnVerticalScroll
+        if f then f(s, v) end
+    end end
+    if k == "GetVerticalScroll" then return function(s) return rawget(s, "__vscroll") or 0 end end
     if k == "RegisterEvent" then return function(s, e) rawget(s, "__events")[e] = true end end
     if k == "SetText" then return function(s, t) rawset(s, "__text", t) end end
     if k == "GetText" then return function(s) return rawget(s, "__text") end end
@@ -3772,6 +3779,24 @@ def test_custom_builds(h):
     h.check(w["draftTint"]["__shown"] is False and CW.buildRows[1] is not None, "with the editor closed the rows are plain again")
     h.click(w)
     h.check(E["build"] is None, "and a click no longer goes to a draft")
+
+    # A long list keeps its place when it is drawn again
+    h.rt.execute("ClasslessWildcardDB.customBuilds = {} for i = 1, 12 do "
+                 "ClasslessWildcardDB.customBuilds[i] = { name = 'B' .. i, desc = '', abilities = { 47475 }, talents = {} } end")
+    CW.archTab = "MINE"
+    CW.RenderArchFly()
+    sc = CW.archFly["list"]["scroll"]
+    h.check(sc["__vscroll"] == 0, "a long My Builds list opens at the top")
+    sc.SetVerticalScroll(sc, 300)
+    CW.RenderArchFly()
+    h.check(sc["__vscroll"] == 300, "drawn again, it keeps its place: %r" % sc["__vscroll"])
+    h.rt.execute("for i = 12, 7, -1 do table.remove(ClasslessWildcardDB.customBuilds, i) end")
+    CW.RenderArchFly()
+    h.check(0 < sc["__vscroll"] < 300, "a shorter list keeps as much of the place as it can: %r" % sc["__vscroll"])
+    CW.archTab = "STARTER"
+    CW.RenderArchFly()
+    h.check(sc["__vscroll"] == 0, "the other page starts at the top")
+    h.rt.execute("ClasslessWildcardDB.customBuilds = {}")
     fly["__shown"] = False
     CW.archTab = "STARTER"
 

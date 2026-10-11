@@ -2471,6 +2471,8 @@ local function MakeArchList(parent, name, width, buttonText)
     L.scroll = CreateFrame("ScrollFrame", name, parent, "UIPanelScrollFrameTemplate")
     L.scroll:SetWidth(L.width); L.scroll:SetHeight(ARCH_ROW_H)
     L.scroll.scrollBarHideable = 1   -- the bar shows only when there is something to scroll
+    -- where the list is scrolled to, kept for the next time it is drawn
+    L.scroll:HookScript("OnVerticalScroll", function(_, offset) L.at = offset end)
     L.scroll:Hide()
     L.child = CreateFrame("Frame", nil, L.scroll)
     L.child:SetWidth(L.width); L.child:SetHeight(1)
@@ -2486,7 +2488,10 @@ end
 -- demand when the realm has more than the list has seen; onChoose(arch) runs
 -- when a row's button is clicked. Returns how many rows are showing and the
 -- height the visible part takes, which is what the host sizes itself from.
-local function FillArchRows(L, list, onChoose, x, top)
+-- `key` names the list being shown: drawn again with the same key, the list
+-- keeps its place (a build deleted, or the editor closed); a new key starts
+-- at the top.
+local function FillArchRows(L, list, onChoose, x, top, key)
     local y = 0
     for i = 1, math.max(#list, #L.rows) do
         local r = L.rows[i]
@@ -2527,8 +2532,15 @@ local function FillArchRows(L, list, onChoose, x, top)
     L.scroll:ClearAllPoints()
     L.scroll:SetPoint("TOPLEFT", x, -top)
     L.scroll:SetHeight(math.max(visible, ARCH_ROW_H))
-    L.scroll:SetVerticalScroll(0)
     L.scroll:UpdateScrollChildRect()
+    -- the place it was at, short of the end of a list that may have shrunk;
+    -- the bar's range is set first, or it would clamp the place to the old one
+    local range = math.max(0, y - math.max(visible, ARCH_ROW_H))
+    local at = (key ~= nil and key == L.key) and math.min(L.at or 0, range) or 0
+    L.key = key
+    local bar = _G[(L.scroll:GetName() or "") .. "ScrollBar"]
+    if bar then bar:SetMinMaxValues(0, range) end
+    L.scroll:SetVerticalScroll(at)
     L.scroll:Show()
     return #list, visible
 end
@@ -2566,13 +2578,13 @@ local function RenderArchFly()
             local dlg = StaticPopup_Show("CW_CLASSLESS_ARCHETYPE", arch.name)
             if dlg then dlg.data = arch.id end
         end
-    end, 18, top)
+    end, 18, top, "STARTER")
     archFly:SetHeight(top + math.max(used, ARCH_ROW_H) + 14)
 end
 CW.RenderArchFly = RenderArchFly
 -- the flyout's own list, filled from any list of rows (My Builds uses it)
-function CW.FillArchRowsFor(list, onChoose, top)
-    return FillArchRows(archFly.list, list, onChoose, 18, top)
+function CW.FillArchRowsFor(list, onChoose, top, key)
+    return FillArchRows(archFly.list, list, onChoose, 18, top, key)
 end
 
 -- Share codes ---------------------------------------------------------------
@@ -3241,7 +3253,7 @@ do
             else
                 CW.FollowBuild(arch.build)
             end
-        end, top)
+        end, top, "MINE")
         fly:SetHeight(top + math.max(used, 46) + 14)
     end
 
