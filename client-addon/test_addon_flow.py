@@ -864,6 +864,18 @@ def test_browser(h):
     h.check(len(eff(1, 0)) == 2 and eff(3, 0) == ["+0 health"],
             "and a stat at zero still answers, rather than going blank")
 
+    # Each stat says how much of it the Rebirth bonus gives (fields 24-28)
+    h.recv("ST|10|4|1|0|0|0|0|0|1|1|1|1|0.5|2|0|1|0.0192|0.006|0.473|0.31|44.8|0|2|0|3|2|1")
+    CW.RenderStats()
+    labels = [str(CW.statRows[i]["label"]["__text"]) for i in range(1, 6)]
+    h.check("+2 Rebirth" in labels[0] and "Rebirth" not in labels[1] and "+3 Rebirth" in labels[2]
+            and "+1 Rebirth" in labels[4],
+            "each stat shows its Rebirth share, and none where there is none: %r" % labels)
+    h.recv("ST|10|4|1|0|0|0|0|0|1|1|1|1|0.5|2|0|1|0.0192|0.006|0.473|0.31")
+    CW.RenderStats()
+    h.check("Rebirth" not in str(CW.statRows[1]["label"]["__text"]),
+            "and nothing from a server that does not send it")
+
     # the universal layer off (an exempt character) drops only what it added
     h.recv("ST|10|4|1|0|0|0|0|0|1|0|1|1|0.5|2|0|1|0.0192|0.006|0.473|0.31")
     h.check(eff(2, 20) == ["+20 ranged attack power", "+0.38% critical strike",

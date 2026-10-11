@@ -5463,6 +5463,9 @@ local function RenderStats()
         -- the total is the number the player cares about; the points they put
         -- in are the smaller half of the story and read as such
         local head = "|cffffd100" .. STAT_NAMES[i] .. "|r  |cffffffff" .. total .. "|r"
+        -- the part of it the Rebirth bonus gives
+        local reborn = CW.stats.rebirth and CW.stats.rebirth[i] or 0
+        if reborn > 0 then head = head .. "  |cffff8800+" .. reborn .. " Rebirth|r" end
         if delta ~= 0 then
             head = head .. "  |cffffd100> " .. after .. "|r"
         end
@@ -8866,6 +8869,9 @@ local function HandleMessage(msg)
             s.alloc[i] = tonumber(p[4 + i]) or 0
         end
         s.enabled = tonumber(p[10]) or 1
+        -- fields 24-28: how much of each stat the Rebirth bonus gives
+        s.rebirth = {}
+        for i = 1, 5 do s.rebirth[i] = tonumber(p[23 + i]) or 0 end
         -- Rates for the "what is this stat doing for me" tooltips. Older
         -- servers do not send them; fall back to the shipped defaults so the
         -- tooltip still reads sensibly instead of showing zeroes.

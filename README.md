@@ -118,8 +118,9 @@ with your build on the right. Lock or reroll anything you own from the same wind
   - **Your choice:** before confirming you are asked whether to wipe your quest progress (quest
     log, completed quests and explored map) so every quest pays XP again, or keep it.
   - **Per rank:** +100% kill and dungeon XP for the first, +50% per rank after (max +300%); +3%
-    to every primary stat (max +15%); starting essence on the Classless path; a title (*the
-    Reborn*, *the Twice Reborn*, *the Thrice Reborn*, *the Many-Lived*, *the Eternal*).
+    to every primary stat (max +15%), which the Stats panel shows beside each stat; starting
+    essence on the Classless path; a title (*the Reborn*, *the Twice Reborn*, *the Thrice
+    Reborn*, *the Many-Lived*, *the Eternal*).
   - The gold price rises with rank. Start one from the panel's Rebirth button.
 - **Challenge runs.** A life under one rule with limited lives. See [Challenge runs](#challenge-runs).
 

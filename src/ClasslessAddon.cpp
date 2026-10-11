@@ -731,7 +731,19 @@ namespace
             UNIT_FIELD_POWER_REGEN_FLAT_MODIFIER + uint32(POWER_MANA)) * 5.0f;
         float const manaRegenCasting = player->GetFloatValue(
             UNIT_FIELD_POWER_REGEN_INTERRUPTED_FLAT_MODIFIER + uint32(POWER_MANA)) * 5.0f;
-        SendAddon(player, Acore::StringFormat("ST|{}|{}|{}|{}|{}|{}|{}|{}|{}|{}|{}|{}|{}|{}|{}|{}|{}|{}|{}|{}|{}|{}",
+        // Fields 24-28: how much of each primary stat the Rebirth bonus
+        // gives, so the panel can say so. The bonus multiplies the stat, and
+        // the core keeps the whole number of the product: the share is the
+        // stat as it stands less the stat without the bonus, rounded the same way.
+        std::array<int32, MAX_STATS> rebirth = {};
+        if (st.appliedRebirthPct > 0)
+            for (uint8 i = 0; i < MAX_STATS; ++i)
+            {
+                float const full = player->GetTotalStatValue(Stats(i));
+                float const without = full * 100.0f / (100.0f + float(st.appliedRebirthPct));
+                rebirth[i] = std::max(0, int32(full) - int32(without));
+            }
+        SendAddon(player, Acore::StringFormat("ST|{}|{}|{}|{}|{}|{}|{}|{}|{}|{}|{}|{}|{}|{}|{}|{}|{}|{}|{}|{}|{}|{}|{}|{}|{}|{}|{}",
             budget, budget > spent ? budget - spent : 0, cfg.statValuePerPoint,
             st.statAlloc[0], st.statAlloc[1], st.statAlloc[2], st.statAlloc[3], st.statAlloc[4],
             cfg.statsEnable ? 1 : 0,
@@ -739,7 +751,8 @@ namespace
             cfg.usMeleeAPPerAgi, cfg.usRangedAPPerAgi, cfg.usSpellPowerPerInt,
             strMeleeAP, agiMeleeAP, agiRangedAP,
             critPerAgi, spellCritPerInt, mp5PerSpi, hp5PerSpi,
-            manaRegen, manaRegenCasting));
+            manaRegen, manaRegenCasting,
+            rebirth[0], rebirth[1], rebirth[2], rebirth[3], rebirth[4]));
     }
 
     // AR|id|name|description|abilities|talent ranks|following
