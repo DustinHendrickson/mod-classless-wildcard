@@ -105,15 +105,11 @@ with your build on the right. Lock or reroll anything you own from the same wind
   abilities and talents. Anything you own can be rerolled from **My Build**. Reroll Scrolls add
   more. The NPC and the panel's Buy Scroll button sell them from level 10, at a price that rises
   with level.
-- **Archetypes.** Eighteen Classless build templates from 1 to 80. Following one replaces your
+- **Archetypes.** Twenty Classless build templates from 1 to 80. Following one replaces your
   build, then buys each ability and talent rank with your essence as it unlocks. Stop any time
-  and keep what was bought. Every archetype mixes at least two classes from the first levels,
-  takes three or more Hero line abilities, and spends its talents across more than one tree.
-  - Two classes: *Blade Dancer*, *Battle Mage*, *Ranger of the Light*, *Shadow Mender*, *Thornshade*, *Storm Warrior*
-  - Elemental: *Hellfire Knight* (fire), *Rime Reaver* (frost), *Stoneguard* (earth), *Venomstalker* (poison),
-    *Nightclaw* (shadow), *Dawnward* (holy), *Spellblade* (arcane)
-  - Hero line: *Vagabond*, *Field Marshal*, *Frostfire Adept*, *Grifter*, *Polymath*
-  - Make, save and share your own with **My Builds**. See [Archetypes and My Builds](#archetypes-and-my-builds).
+  and keep what was bought. Each fuses two classes around one or two elements, with three or
+  more Hero line abilities and talents from more than one tree. Make, save and share your own
+  with **My Builds**. See [Archetypes and My Builds](#archetypes-and-my-builds).
 - **Rebirth.** At the level cap, start over at level 1 with a permanent rank that stacks.
   - **Kept:** your path, gold, bags, bank, reputation, riding, flight paths, and the **heirloom**
     abilities you choose to carry (usable from level 1, one more per rank).
@@ -230,8 +226,37 @@ nothing for that part; items, XP, gold and reputation are paid as normal.
 ## Archetypes and My Builds
 
 An archetype is a build bought for you as you level. Classless only. Open it from the panel's
-**Archetypes** button, which has two pages: **Starter Builds** (the realm's eighteen) and
+**Archetypes** button, which has two pages: **Starter Builds** (the realm's twenty) and
 **My Builds** (your own). `/cw builds` opens My Builds.
+
+### Starter builds
+
+Each fuses two classes around one or two elements. The elemental strikes (*Fiery Heroic Strike*,
+*Shadow Claw*, *Holy Aimed Shot* and the rest) carry the element, and the second class brings
+spells of the same school.
+
+| Archetype | Classes | Elements | Plays as |
+| --------- | ------- | -------- | -------- |
+| *Cinderblade* | Warrior, Mage | Fire | Fiery strikes and cleaves with fireballs between swings |
+| *Frostfire Duelist* | Rogue, Mage | Fire, Frost | Burning and frozen blades, Antipode Blast for both at once |
+| *Ashen Reaver* | Warrior, Warlock | Fire, Shadow | Burning and shadowed strikes, curses, soul fire and a flame turret |
+| *Plaguebringer* | Rogue, Warlock | Poison, Shadow | Envenomed blades, corruption and agony, a venom beetle |
+| *Dawnstrider* | Hunter, Paladin | Holy, Arcane | Hallowed and arcane shots, seals and judgements up close |
+| *Voidclaw* | Druid, Priest | Shadow | A shadow cat with shadow words and a shadowfiend |
+| *Twilight Knight* | Warrior, Priest | Holy, Shadow | Holy and shadowed strikes behind a shield of faith |
+| *Spellbow* | Hunter, Mage | Arcane, Frost | Arcane and frozen shots, traps, blink and ice lances |
+| *Juggernaut* | Druid, Warrior | Earth | An earthen bear tank with warrior shouts and thunder |
+| *Thunder Crusader* | Paladin, Shaman | Holy, Earth | Seals on a windfury blade, shocks, consecration and totems |
+| *Wintertrap Ranger* | Hunter, Shaman | Frost | Frozen shots and traps, frost brand and earthbind |
+| *Venom Prowler* | Druid, Rogue | Poison, Earth | An envenomed cat with rogue poisons |
+| *Inquisitor* | Paladin, Rogue | Holy | Hallowed blades, seals and a divine shield |
+| *Starfire Sage* | Druid, Mage | Arcane, Fire | Moonfire, starfire, fireballs and Antipode Blast |
+| *Gravecaller* | Priest, Warlock | Shadow, Poison | Shields and heals for friends, plague and drains for foes |
+| *Menagerie* | Hunter, Warlock | Fire, Shadow | A beast, demons, an infernal, a beetle, snakes and a turret |
+| *Pyromaniac* | Mage, Warlock | Fire | Everything burns |
+| *Con Artist* | Rogue, Priest | Shadow | Pick pockets, soothe, control minds, and a shadowed blade if talk fails |
+| *Skinchanger* | Druid, Shaman | Earth, Frost | Wolf, bear, cat and flight form, healing between the changes |
+| *Polymath* | Every class | | A signature from every class, tied together by Jack of All Trades |
 
 ### Following a build
 
