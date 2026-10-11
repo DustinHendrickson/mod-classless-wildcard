@@ -3511,6 +3511,11 @@ def test_custom_builds(h):
     print("--- My Builds: save, edit, share, import and follow your own archetype")
     CW, g = h.CW, h.g
     fly, E, S = CW.archFly, CW.buildEditor, CW.shareWindow
+    # A selected code wraps mid-word and the client draws the selection at the
+    # unwrapped width; only a scroll frame clips it to the window
+    clip = S["box"]["__parent"]
+    h.check(clip is not None and clip["__kind"] == "ScrollFrame" and (S["box"]["__w"] or 0) > 0,
+            "the share code sits in a scroll frame that clips its selection, with a width to wrap to")
     h.recv(state(0))
     h.rt.execute("ClasslessWildcardDB = ClasslessWildcardDB or {}; ClasslessWildcardDB.customBuilds = {}")
 

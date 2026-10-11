@@ -4206,9 +4206,17 @@ do
         insets = { left = 3, right = 3, top = 3, bottom = 3 },
     })
     S.boxBg:SetBackdropColor(0, 0, 0, 0.6)
-    S.box = CreateFrame("EditBox", "ClasslessWildcardShareBox", S.boxBg)
-    S.box:SetPoint("TOPLEFT", 8, -8)
-    S.box:SetPoint("BOTTOMRIGHT", -8, 8)
+    -- The code has no spaces, so the client wraps it mid-word and draws the
+    -- selection at the unwrapped width, out of the window and across the
+    -- panel. A scroll frame clips what it holds, so the box lives in one,
+    -- with a width of its own to wrap to.
+    S.clip = CreateFrame("ScrollFrame", nil, S.boxBg)
+    S.clip:SetPoint("TOPLEFT", 8, -8)
+    S.clip:SetPoint("BOTTOMRIGHT", -8, 8)
+    S.box = CreateFrame("EditBox", "ClasslessWildcardShareBox", S.clip)
+    S.box:SetWidth(W - 2 * (PAD + 2) - 16)
+    S.box:SetHeight(90 - 16)
+    S.clip:SetScrollChild(S.box)
     S.box:SetMultiLine(true)
     S.box:SetAutoFocus(false)
     S.box:SetFontObject(ChatFontNormal)
