@@ -116,9 +116,12 @@ with your build on the right. Lock or reroll anything you own from the same wind
   - **Build** on any archetype lists every ability and talent it buys, in order, with the level
     each is bought at on your character.
   - **My Builds:** make your own archetypes. *Save my build* turns your current abilities and
-    talents into one; the editor reorders, removes, and adds with the **+** on the Abilities and
-    Talents rows. Rows with a problem are marked in red and say why, and **Fix order** sorts what
-    order can fix. A build must fit the Ability and Talent Essence a Hero earns by the level cap.
+    talents into one. A build is edited in the panel's My Build column: while it is open, a click
+    on an Abilities or Talents row adds it to the build (nothing is bought) and a right-click
+    takes it out, or one talent rank. Each row shows the level it is bought at; click the level
+    to choose a later one, turn the mouse wheel over it, or use the arrows for sooner and later.
+    Rows with a problem are marked in red and say why, and **Fix order** sorts what order can
+    fix. A build must fit the Ability and Talent Essence a Hero earns by the level cap.
     Builds are saved by the addon on your computer and travel as a code (`CWA1:...`): **Share**
     to copy it or send it to your party, **Import** to paste one. Follow one exactly like a
     starter archetype.

@@ -20,8 +20,11 @@
 
 #include "Define.h"
 #include "ObjectGuid.h"
+#include "StringConvert.h"
 #include "UnitDefines.h"
+#include <algorithm>
 #include <array>
+#include <string_view>
 #include <type_traits>
 #include <map>
 #include <set>
@@ -241,7 +244,67 @@ namespace ClasslessWildcard
         std::string description;
         std::vector<uint32> abilities;                    // first-rank spell ids
         std::vector<std::pair<uint32, uint8>> talents;    // talentId -> rank
+        // The level the build holds each entry back to, by index into the
+        // list beside it: 0 is "as soon as it unlocks and is affordable". A
+        // held entry waits the way one that has not unlocked does, so the
+        // entries behind it wait too; a build lists them in the order of the
+        // levels they are bought at. Shorter than its list (or empty) means
+        // nothing is held past the end.
+        std::vector<uint8> abilityWait;
+        std::vector<uint8> talentWait;
+
+        uint8 AbilityWait(size_t i) const { return i < abilityWait.size() ? abilityWait[i] : 0; }
+        uint8 TalentWait(size_t i) const { return i < talentWait.size() ? talentWait[i] : 0; }
+        void AddAbility(uint32 id, uint8 wait)
+        {
+            abilityWait.resize(abilities.size(), 0);
+            abilities.push_back(id);
+            abilityWait.push_back(wait);
+        }
+        void AddTalent(uint32 id, uint8 rank, uint8 wait)
+        {
+            talentWait.resize(talents.size(), 0);
+            talents.emplace_back(id, rank);
+            talentWait.push_back(wait);
+        }
     };
+
+    // A build entry as text, the way the addon uploads it and the characters
+    // database stores it: "id" or "id@level" for an ability, "id:rank" or
+    // "id:rank@level" for a talent. The level is the one it is held back to.
+    inline bool ParseAbilityEntry(std::string_view tok, uint32& id, uint8& wait)
+    {
+        wait = 0;
+        size_t const at = tok.find('@');
+        Optional<uint32> v = Acore::StringTo<uint32>(tok.substr(0, at));
+        if (!v)
+            return false;
+        id = *v;
+        if (at != std::string_view::npos)
+            if (Optional<uint32> w = Acore::StringTo<uint32>(tok.substr(at + 1)))
+                wait = uint8(std::min<uint32>(*w, 255));
+        return true;
+    }
+
+    inline bool ParseTalentEntry(std::string_view tok, uint32& id, uint32& rank, uint8& wait)
+    {
+        wait = 0;
+        size_t const at = tok.find('@');
+        std::string_view const head = tok.substr(0, at);
+        size_t const colon = head.find(':');
+        if (colon == std::string_view::npos)
+            return false;
+        Optional<uint32> v = Acore::StringTo<uint32>(head.substr(0, colon));
+        Optional<uint32> r = Acore::StringTo<uint32>(head.substr(colon + 1));
+        if (!v || !r)
+            return false;
+        id = *v;
+        rank = *r;
+        if (at != std::string_view::npos)
+            if (Optional<uint32> w = Acore::StringTo<uint32>(tok.substr(at + 1)))
+                wait = uint8(std::min<uint32>(*w, 255));
+        return true;
+    }
 
     // CharState::archetype when the character follows its own build, held in
     // CharState::custom and cw_char_custom_archetype rather than cw_archetypes.

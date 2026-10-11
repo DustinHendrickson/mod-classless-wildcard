@@ -759,7 +759,8 @@ namespace
     }
 
     // A plan as the build-order window reads it: APA (abilities)
-    // "spell:rarity:level;" and APT (talents) "spell:rarity:rank:maxRank:level:talentId;"
+    // "spell:rarity:level:unlock;" and APT (talents)
+    // "spell:rarity:rank:maxRank:level:talentId:tierLevel;"
     // pieces, as many to a message as fit, then
     // "APE|id|spentA|totalA|spentT|totalT|problem": what the build spends
     // against what a Hero with no Rebirth bonus earns by the cap, and the first
@@ -789,8 +790,12 @@ namespace
         flush("APA");
         for (ClasslessMgr::PlanStep const& s : plan.talents)
         {
-            std::string item = Acore::StringFormat("{}:{}:{}:{}:{}:{};", s.spell, uint32(s.rarity),
-                                                   uint32(s.rank), uint32(s.maxRank), uint32(s.level), s.talentId);
+            // the last field is the level the talent's tier opens at, which
+            // the editor keeps its talents in order by
+            TalentPoolEntry const* t = sClasslessMgr->GetTalent(s.talentId);
+            uint32 const tier = t ? 10 + t->row * 5 : 10;
+            std::string item = Acore::StringFormat("{}:{}:{}:{}:{}:{}:{};", s.spell, uint32(s.rarity),
+                                                   uint32(s.rank), uint32(s.maxRank), uint32(s.level), s.talentId, tier);
             if (buf.size() + item.size() > MAX_BODY - 16)
                 flush("APT");
             buf += item;
@@ -973,22 +978,23 @@ namespace
                 up = Archetype();
             else if (what == "A" && args.size() > 2)
             {
+                // "id" or "id@level": the level the build holds it back to
                 for (std::string_view tok : Acore::Tokenize(args[2], ',', false))
-                    if (Optional<uint32> id = Acore::StringTo<uint32>(tok))
-                        if (up.abilities.size() < CUSTOM_ARCHETYPE_MAX)
-                            up.abilities.push_back(*id);
+                {
+                    uint32 id = 0;
+                    uint8 wait = 0;
+                    if (ParseAbilityEntry(tok, id, wait) && up.abilities.size() < CUSTOM_ARCHETYPE_MAX)
+                        up.AddAbility(id, wait);
+                }
             }
             else if (what == "T" && args.size() > 2)
             {
                 for (std::string_view tok : Acore::Tokenize(args[2], ',', false))
                 {
-                    auto parts = Acore::Tokenize(tok, ':', false);
-                    if (parts.size() != 2)
-                        continue;
-                    Optional<uint32> id = Acore::StringTo<uint32>(parts[0]);
-                    Optional<uint32> rank = Acore::StringTo<uint32>(parts[1]);
-                    if (id && rank && up.talents.size() < CUSTOM_ARCHETYPE_MAX)
-                        up.talents.emplace_back(*id, uint8(std::min<uint32>(*rank, 255)));
+                    uint32 id = 0, rank = 0;
+                    uint8 wait = 0;
+                    if (ParseTalentEntry(tok, id, rank, wait) && up.talents.size() < CUSTOM_ARCHETYPE_MAX)
+                        up.AddTalent(id, uint8(std::min<uint32>(rank, 255)), wait);
                 }
             }
         }

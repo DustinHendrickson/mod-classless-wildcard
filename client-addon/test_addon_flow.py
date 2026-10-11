@@ -3560,7 +3560,7 @@ def test_custom_builds(h):
     rows = E["rows"]
     h.check(str(rows[1]["level"]["__text"]) == "Lv 1" and str(rows[2]["level"]["__text"]) == "Lv 4"
             and str(rows[3]["rank"]["__text"]) == "1/1", "rows show their levels and the talent's rank")
-    h.check(E["save"]["__enabled"] is True and "can be saved" in str(E["verdict"]["__text"])
+    h.check(E["save"]["__enabled"] is True and "Fits by level 80. Not saved yet." in str(E["verdict"]["__text"])
             and "3|r / 66" in str(E["budget"]["__text"]),
             "a clean verdict enables Save and shows the budget: %r" % str(E["budget"]["__text"]))
     # reorder and remove
@@ -3694,28 +3694,154 @@ def test_custom_builds(h):
     E["dirty"] = False
     E["__shown"] = False
 
-    # the browsers carry a + while the editor is open, and only then
+    # The editor lives in the My Build column, and the lists beside it are its
+    # picker: a click adds, a right-click takes out, nothing is bought.
+    fly["__shown"] = True
+    CW.archTab = "MINE"
+    CW.abilScope, CW.talScope = 1, 1
+    h.clear_sent()
     CW.OpenBuildEditor(h.rt.eval("CB"), None)
+    h.check(fly["__shown"] is False, "opening the editor clears My Builds off the lists")
+    h.check(CW.abilScope == 2 and CW.talScope == 2 and str(CW.abilScopeBtn["__text"]) == "Any level",
+            "the lists show every level while a build is drafted")
+    h.check(CW.buildRows[1]["__shown"] is False and E["__shown"] is True,
+            "the My Build column gives way to the editor")
     h.recv("AB|1|0|1|5308:1:2:0:0:24:2;")
     w = CW.abilEntries[1]
-    h.check(w["planAdd"] is not None and w["planAdd"]["__shown"] is True, "an ability row gets a + while editing")
-    h.click(w["planAdd"])
-    h.click(w["planAdd"])
+    h.clear_sent()
+    h.click(w)
+    h.click(w)
     h.check(list(E["build"]["abilities"].values())[-1] == 5308
             and list(E["build"]["abilities"].values()).count(5308) == 1,
-            "its + adds the ability to the end of the build, once")
+            "a click on an ability row adds it to the end of the build, once")
+    h.check(not any(m.startswith("BUY") for m in h.sent()), "and buys nothing: %r" % h.sent())
+    h.check(w["draftTint"]["__shown"] is True and w["check"]["__shown"] is True,
+            "the row is tinted and ticked as in the build")
+    w["__scripts"]["OnClick"](w, "RightButton")
+    h.check(5308 not in list(E["build"]["abilities"].values()) and w["draftTint"]["__shown"] is False,
+            "a right-click takes it back out")
     h.recv("TL|161|0|1|1234:12294:2:0:3:6:1;")
     tw = CW.talEntries[1]
-    h.click(tw["planAdd"])
-    h.click(tw["planAdd"])
+    h.click(tw)
+    h.click(tw)
     tal = [list(t.values()) for t in E["build"]["talents"].values()]
-    h.check([1234, 2] in tal, "a talent's + adds it, then a rank more: %r" % tal)
-    E["dirty"] = False
-    E["__shown"] = False
+    h.check([1234, 2] in tal, "a talent row adds it, then a rank more: %r" % tal)
+    h.check("2/3" in str(tw["name"]["__text"]), "and shows the build's rank: %r" % str(tw["name"]["__text"]))
+    tw["__scripts"]["OnClick"](tw, "RightButton")
+    tal = [list(t.values()) for t in E["build"]["talents"].values()]
+    h.check([1234, 1] in tal, "a right-click on a talent takes one rank off: %r" % tal)
+    # Close with changes asks; accepting leaves the editor and puts things back
+    h.click(E["cancel"])
+    h.check(g.LAST_POPUP == "CW_CLASSLESS_DISCARDBUILD" and E["__shown"] is True, "closing with changes asks first")
+    g.StaticPopupDialogs["CW_CLASSLESS_DISCARDBUILD"]["OnAccept"](g.LAST_POPUP_FRAME)
+    h.check(E["__shown"] is False and CW.abilScope == 1 and CW.talScope == 1,
+            "closing restores the lists' own level choice")
+    h.check(fly["__shown"] is True and str(fly["title"]["__text"]) == "My Builds",
+            "and goes back to My Builds, where it was opened from")
     h.recv("AB|1|0|1|5308:1:2:0:0:24:2;")
-    h.check(w["planAdd"]["__shown"] is False, "with the editor closed the + is gone")
+    h.check(w["draftTint"]["__shown"] is False and CW.buildRows[1] is not None, "with the editor closed the rows are plain again")
+    h.click(w)
+    h.check(E["build"] is None, "and a click no longer goes to a draft")
     fly["__shown"] = False
     CW.archTab = "STARTER"
+
+
+def test_build_levels(h):
+    print("--- Build editor: choosing the level each entry is bought at")
+    CW, g = h.CW, h.g
+    E = CW.buildEditor
+    h.recv(state(0))
+    CW.OpenBuildEditor(h.rt.eval("{ name = 'Levels', desc = '', abilities = { 100, 200, 300 }, "
+                                 "talents = { {9000, 1}, {9001, 1} } }"), None)
+    h.rt.execute("NOW = NOW + 1")
+    E["__scripts"]["OnUpdate"](E, 0.5)
+    h.recv("APA|0|100:0:1:1;200:0:4:4;300:0:10:10;")
+    # the seventh field is the tier's level; the old six-field reading slid
+    # along an entry and took its second number for the spell
+    h.recv("APT|0|12294:1:1:3:10:9000:10;12295:1:1:2:20:9001:20;")
+    h.recv("APE|0|3|66|2|71|")
+    h.check(h.rt.eval("(ClasslessWildcard_API.talentInfo[9001] or {}).tier") == 20
+            and h.rt.eval("(ClasslessWildcard_API.talentInfo[9000] or {}).spell") == 12294,
+            "a talent's tier level is read from the preview, and its spell is the right one")
+    rows = E["rows"]
+
+    def order():
+        return list(E["build"]["abilities"].values())
+
+    def wait(kind, i):
+        w = E["build"]["waitA" if kind == "A" else "waitT"]
+        return w[i] if w is not None else None
+
+    h.check(rows[1]["up"]["__enabled"] is False and rows[1]["down"]["__enabled"] is True
+            and rows[3]["down"]["__enabled"] is False,
+            "Buy sooner is off at the level it unlocks, Buy later off on the last row")
+    # later, past a row of a higher level: it takes that level
+    h.click(rows[1]["down"])
+    h.check(order() == [200, 100, 300] and wait("A", 100) == 4,
+            "Buy later past a level-4 row holds it to level 4: %r, %r" % (order(), wait("A", 100)))
+    # typing a level
+    h.click(rows[2]["levelBtn"])
+    box = E["levelBox"]
+    h.check(box["__shown"] is True and str(box["__text"]) == "4", "clicking the level opens a box with it")
+    box["__text"] = "20"
+    box["__scripts"]["OnEnterPressed"](box)
+    h.check(order() == [200, 300, 100] and wait("A", 100) == 20 and box["__shown"] is False,
+            "a typed level holds it there and the row moves to its place: %r" % order())
+    h.check(rows[3]["up"]["__enabled"] is True, "a held row can always come sooner")
+    # the mouse wheel: up is sooner
+    rows[3]["levelBtn"]["__scripts"]["OnMouseWheel"](rows[3]["levelBtn"], 1)
+    h.check(wait("A", 100) == 19, "the wheel moves it a level: %r" % wait("A", 100))
+    # sooner, past a row of a lower level: to that row's level
+    h.click(rows[3]["up"])
+    h.check(order() == [200, 100, 300] and wait("A", 100) == 10,
+            "Buy sooner past a level-10 row takes level 10: %r, %r" % (order(), wait("A", 100)))
+    # a level at or below the unlock clears the hold
+    h.click(rows[2]["levelBtn"])
+    box["__text"] = "0"
+    box["__scripts"]["OnEnterPressed"](box)
+    h.check(order() == [100, 200, 300] and wait("A", 100) is None,
+            "a level below the unlock clears the hold: %r" % order())
+    # talents: a held talent moves behind a higher tier
+    h.click(rows[4]["levelBtn"])
+    box["__text"] = "25"
+    box["__scripts"]["OnEnterPressed"](box)
+    tal = [list(t.values()) for t in E["build"]["talents"].values()]
+    h.check(tal == [[9001, 1], [9000, 1]] and wait("T", 9000) == 25, "a held talent moves after a later tier: %r" % tal)
+    # what the server is sent
+    h.clear_sent()
+    h.rt.execute("NOW = NOW + 1")
+    E["__scripts"]["OnUpdate"](E, 0.5)
+    sent = h.sent()
+    h.check("ARCHUP A 100,200,300" in sent and "ARCHUP T 9001:1,9000:1@25" in sent,
+            "the upload carries the held level: %r" % sent)
+    h.recv("APA|0|100:0:1:1;200:0:4:4;300:0:10:10;")
+    h.recv("APT|0|12295:1:1:2:20:9001:20;12294:1:1:3:25:9000:10;")
+    h.recv("APE|0|3|66|2|71|")
+    h.check(str(E["rows"][5]["level"]["__text"]) == "|cffffd100Lv 25|r" and str(E["rows"][4]["level"]["__text"]) == "Lv 20",
+            "a held row's level reads gold, the rest plain: %r / %r"
+            % (str(E["rows"][5]["level"]["__text"]), str(E["rows"][4]["level"]["__text"])))
+    # the code carries it, and a build with nothing held keeps its old code
+    h.rt.globals().B = E["build"]
+    h.rt.execute("C2 = ClasslessWildcard_API.EncodeBuild(B); D2 = ClasslessWildcard_API.DecodeBuild(C2)")
+    h.check(h.rt.eval("D2.waitT[9000]") == 25 and h.rt.eval("next(D2.waitA)") is None,
+            "a share code keeps the held levels")
+    plain = h.rt.eval("ClasslessWildcard_API.EncodeBuild({ name = 'P', desc = '', abilities = { 1, 2 }, talents = {} })")
+    plain2 = h.rt.eval("ClasslessWildcard_API.EncodeBuild({ name = 'P', desc = '', abilities = { 1, 2 }, talents = {}, "
+                       "waitA = {}, waitT = {} })")
+    held = h.rt.eval("ClasslessWildcard_API.EncodeBuild({ name = 'P', desc = '', abilities = { 1, 2 }, talents = {}, "
+                     "waitA = { [2] = 30 }, waitT = {} })")
+    h.check(str(plain) == str(plain2) and str(plain) != str(held)
+            and h.rt.eval("ClasslessWildcard_API.DecodeBuild('%s').waitA[2]" % held) == 30,
+            "nothing held writes the old code; a held level writes the new one and reads back")
+    # Save keeps them
+    h.rt.execute("ClasslessWildcardDB.customBuilds = {}")
+    E["verdictOk"] = True
+    h.click(E["save"])
+    h.check(h.rt.eval("ClasslessWildcardDB.customBuilds[1].waitT[9000]") == 25, "Save keeps the held levels")
+    E["dirty"] = False
+    CW.FinishBuildEditor()
+    if CW.archFly:
+        CW.archFly["__shown"] = False
 
 
 def test_challenge_tracker(h):
@@ -3865,6 +3991,7 @@ def main():
     test_challenge_tracker(h)
     test_dealt_hand(h)
     test_custom_builds(h)
+    test_build_levels(h)
     if h.failures:
         print("\n%d check(s) FAILED" % h.failures)
         return 1

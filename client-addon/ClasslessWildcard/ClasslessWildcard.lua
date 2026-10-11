@@ -2581,13 +2581,16 @@ end
 --   version (1) | name length, name | description length, description |
 --   ability count, ability ids as zigzag deltas | talent count,
 --   (talent id, rank) pairs | CRC-16 of all of it
+-- Version 2 is the same with one byte more after each ability id and each
+-- talent rank: the level the build holds it back to (0 = none). A build
+-- that holds nothing back still writes version 1, so its code is unchanged.
 -- with every count and id a varint. Plain arithmetic throughout: no bit
 -- library is needed, so it runs the same in any 5.1.
 do
     local B64 = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_"
     local B64INV = {}
     for i = 1, 64 do B64INV[B64:sub(i, i)] = i - 1 end
-    local PREFIX, VERSION, MAX_ENTRIES, NAME_MAX, DESC_MAX = "CWA1:", 1, 200, 32, 120
+    local PREFIX, VERSION, MAX_ENTRIES, NAME_MAX, DESC_MAX = "CWA1:", 2, 200, 32, 120
 
     local function xor(a, b)
         local r, p = 0, 1
@@ -2644,7 +2647,9 @@ do
     end
 
     function CW.EncodeBuild(build)
-        local out = { VERSION }
+        local waitA, waitT = build.waitA or {}, build.waitT or {}
+        local held = next(waitA) ~= nil or next(waitT) ~= nil
+        local out = { held and 2 or 1 }
         putText(out, CW.CleanBuildText(build.name, NAME_MAX), NAME_MAX)
         putText(out, CW.CleanBuildText(build.desc, DESC_MAX, true), DESC_MAX)
         putVarint(out, #build.abilities)
@@ -2652,12 +2657,14 @@ do
         for _, id in ipairs(build.abilities) do
             local d = id - prev
             putVarint(out, d >= 0 and d * 2 or -d * 2 - 1)
+            if held then out[#out + 1] = math.min(waitA[id] or 0, 255) end
             prev = id
         end
         putVarint(out, #build.talents)
         for _, t in ipairs(build.talents) do
             putVarint(out, t[1])
             out[#out + 1] = t[2]
+            if held then out[#out + 1] = math.min(waitT[t[1]] or 0, 255) end
         end
         local crc = crc16(out, #out)
         out[#out + 1] = math.floor(crc / 256)
@@ -2741,8 +2748,10 @@ do
             return table.concat(t)
         end
         local ok, build = pcall(function()
-            if byte() ~= VERSION then error("version", 0) end
-            local b = { abilities = {}, talents = {} }
+            local version = byte()
+            if version < 1 or version > VERSION then error("version", 0) end
+            local held = version >= 2
+            local b = { abilities = {}, talents = {}, waitA = {}, waitT = {} }
             b.name = text(NAME_MAX)
             b.desc = text(DESC_MAX)
             local na = varint()
@@ -2752,12 +2761,20 @@ do
                 local z = varint()
                 prev = prev + ((z % 2 == 0) and z / 2 or -(z + 1) / 2)
                 b.abilities[i] = prev
+                if held then
+                    local w = byte()
+                    if w > 0 then b.waitA[prev] = w end
+                end
             end
             local nt = varint()
             if nt > MAX_ENTRIES then error("count", 0) end
             for i = 1, nt do
                 local id = varint()
                 b.talents[i] = { id, byte() }
+                if held then
+                    local w = byte()
+                    if w > 0 then b.waitT[id] = w end
+                end
             end
             if pos <= last then error("trailing", 0) end
             return b
@@ -2779,14 +2796,16 @@ do
             if #piece > 0 then Send("ARCHUP " .. kind .. " " .. table.concat(piece, ",")) end
             piece = {}
         end
+        -- "id@level" when the build holds it back to a level
+        local waitA, waitT = build.waitA or {}, build.waitT or {}
         for _, id in ipairs(build.abilities) do
-            piece[#piece + 1] = tostring(id)
-            if #piece >= 20 then flush("A") end
+            piece[#piece + 1] = id .. (waitA[id] and ("@" .. waitA[id]) or "")
+            if #piece >= 16 then flush("A") end
         end
         flush("A")
         for _, t in ipairs(build.talents) do
-            piece[#piece + 1] = t[1] .. ":" .. t[2]
-            if #piece >= 16 then flush("T") end
+            piece[#piece + 1] = t[1] .. ":" .. t[2] .. (waitT[t[1]] and ("@" .. waitT[t[1]]) or "")
+            if #piece >= 14 then flush("T") end
         end
         flush("T")
     end
@@ -2799,9 +2818,11 @@ do
     end
 
     function CW.CopyBuild(b)
-        local c = { name = b.name, desc = b.desc or "", abilities = {}, talents = {} }
+        local c = { name = b.name, desc = b.desc or "", abilities = {}, talents = {}, waitA = {}, waitT = {} }
         for i, id in ipairs(b.abilities or {}) do c.abilities[i] = id end
         for i, t in ipairs(b.talents or {}) do c.talents[i] = { t[1], t[2] } end
+        for id, lv in pairs(b.waitA or {}) do c.waitA[id] = lv end
+        for id, lv in pairs(b.waitT or {}) do c.waitT[id] = lv end
         return c
     end
 end
@@ -3054,7 +3075,7 @@ do
                 tinsert(d.abilities, { spell = tonumber(spell), rarity = tonumber(rarity), level = tonumber(level) })
             end
         elseif kind == "APT" then
-            for spell, rarity, rank, max, level, tid in string.gmatch(p[3] or "", "(%d+):(%d+):(%d+):(%d+):(%d+):?(%d*);") do
+            for spell, rarity, rank, max, level, tid in string.gmatch(p[3] or "", "(%d+):(%d+):(%d+):(%d+):(%d+):?(%d*):?(%d*);") do
                 tinsert(d.talents, { spell = tonumber(spell), rarity = tonumber(rarity), rank = tonumber(rank),
                                      maxRank = tonumber(max), level = tonumber(level), talentId = tonumber(tid) })
             end
@@ -3091,7 +3112,7 @@ StaticPopupDialogs["CW_CLASSLESS_DISCARDBUILD"] = {
     text = "Close the editor? Your changes to %s are not saved.",
     button1 = "Close",
     button2 = "Keep editing",
-    OnAccept = function() if CW.buildEditor then CW.buildEditor.dirty = false; CW.buildEditor:Hide() end end,
+    OnAccept = function(self) if CW.FinishBuildEditor then CW.FinishBuildEditor(self.data) end end,
     timeout = 0, whileDead = 1, hideOnEscape = 1, preferredIndex = 3,
 }
 StaticPopupDialogs["CW_CLASSLESS_SHAREDBUILD"] = {
@@ -3162,7 +3183,7 @@ do
     end, "Your current abilities and talents as a new build, abilities in the order they unlock.")
     fly.bar.new = BarButton("New", 80, 136, function()
         CW.OpenBuildEditor({ name = "New build", desc = "", abilities = {}, talents = {} }, nil)
-    end, "An empty build. Add to it with the + on the rows of the Abilities and Talents tabs.")
+    end, "An empty build, opened in the My Build column. Click abilities and talents to add them.")
     fly.bar.import = BarButton("Import", 80, 222, function()
         CW.OpenShareWindow("import")
     end, "Paste a build code someone shared with you.")
@@ -3268,107 +3289,103 @@ do
 end
 
 -- Build editor ----------------------------------------------------------------
--- One build, edited in place: name and description, the ordered list with
--- up, down and remove on every row (talents also - and + on their rank), the
--- budget against what a Hero earns by the cap, and the server's verdict. Every
--- change is previewed on the server (ARCHPLANX) a moment later, which is where
--- the levels, the budget and any reason to refuse come from; Save waits for a
--- clean verdict. Rows are added from the Abilities and Talents tabs, whose rows
--- carry a + while the editor is open.
+-- A build is edited in the main panel itself, not in a window beside it. The
+-- My Build column turns into the build being drafted, and the Abilities and
+-- Talents lists next to it become the picker: while a build is open a click on
+-- a row adds it to the build instead of buying it, and a right-click takes it
+-- (or one talent rank) back out. Rows already in the build are tinted and
+-- ticked, so the lists show at a glance what the build holds.
+--
+-- The draft is kept in the order things are bought, which is the order of
+-- the levels they are bought at. Each row's level can be chosen (click it,
+-- or turn the mouse wheel over it): a later level holds the entry back to
+-- it, and the row moves to its place. The arrows mean sooner and later: past
+-- a row of another level they take that row's level. Every change is
+-- previewed on the server (ARCHPLANX) a moment later; the levels, the budget
+-- and any reason to refuse come from there, and Save waits for a clean verdict.
 do
-    local W, H, PAD, ROW_H = 480, 560, 18, 24
+    local W = BUILD_W
+    local function Shown(x, on) if on then x:Show() else x:Hide() end end
+    local ROW_H, CTRL = 20, 14
     local E = CreateFrame("Frame", "ClasslessWildcardBuildEditor", frame)
-    E:SetWidth(W); E:SetHeight(H)
-    E:SetPoint("TOPLEFT", frame, "TOPRIGHT", 8, 0)
-    E:SetFrameStrata("DIALOG")
-    E:SetToplevel(true)
-    E:SetBackdrop({
-        bgFile = "Interface\\Buttons\\WHITE8X8",
-        edgeFile = "Interface\\Tooltips\\UI-Tooltip-Border",
-        tile = false, edgeSize = 14,
-        insets = { left = 4, right = 4, top = 4, bottom = 4 },
-    })
-    E:SetBackdropColor(0.03, 0.03, 0.05, 0.98)
+    E:SetPoint("TOPLEFT", frame, "TOPLEFT", BUILD_X, PANE_TOP - 30)
+    E:SetPoint("BOTTOMRIGHT", frame, "BOTTOMLEFT", BUILD_X + W, 64)
+    E:SetFrameLevel(frame:GetFrameLevel() + 20)
     E:EnableMouse(true)
-    E:SetMovable(true); E:SetClampedToScreen(true)
-    E:RegisterForDrag("LeftButton")
-    E:SetScript("OnDragStart", E.StartMoving)
-    E:SetScript("OnDragStop", E.StopMovingOrSizing)
     E:Hide()
     CW.buildEditor = E
 
-    E.close = CreateFrame("Button", nil, E, "UIPanelCloseButton")
-    E.close:SetPoint("TOPRIGHT", -2, -2)
-    E.close:SetScript("OnClick", function() CW.CloseBuildEditor() end)
-    E.title = E:CreateFontString(nil, "OVERLAY", "GameFontNormalLarge")
-    E.title:SetPoint("TOPLEFT", PAD, -16)
-    E.title:SetText("Build editor")
-
-    local function Label(text, y)
-        local l = E:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
-        l:SetPoint("TOPLEFT", PAD, y)
-        l:SetText(text)
-        return l
-    end
-    local function Box(name, w, y, max)
+    -- name and description, each with its label shown inside while empty
+    local function Box(name, y, max, placeholder)
         local b = CreateFrame("EditBox", name, E, "InputBoxTemplate")
-        b:SetWidth(w); b:SetHeight(20)
-        b:SetPoint("TOPLEFT", PAD + 6, y)
+        b:SetHeight(20)
+        b:SetPoint("TOPLEFT", 6, y)
+        b:SetPoint("TOPRIGHT", -2, y)
         b:SetAutoFocus(false)
         b:SetMaxLetters(max)
         b:SetScript("OnEscapePressed", function(self) self:ClearFocus() end)
         b:SetScript("OnEnterPressed", function(self) self:ClearFocus() end)
+        b.hint = b:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")
+        b.hint:SetPoint("LEFT", 2, 0)
+        b.hint:SetText(placeholder)
+        b:SetScript("OnEditFocusGained", function(self) self.hint:Hide() end)
+        b:SetScript("OnEditFocusLost", function(self)
+            if (self:GetText() or "") == "" then self.hint:Show() end
+        end)
         return b
     end
-    Label("Name", -46)
-    E.name = Box("ClasslessWildcardBuildName", 260, -60, 32)
-    Label("Description", -86)
-    E.desc = Box("ClasslessWildcardBuildDesc", W - 2 * PAD - 12, -100, 120)
+    E.name = Box("ClasslessWildcardBuildName", 0, 32, "Build name")
+    E.desc = Box("ClasslessWildcardBuildDesc", -24, 120, "Description (optional)")
+    local function SyncHints()
+        Shown(E.name.hint, (E.name:GetText() or "") == "")
+        Shown(E.desc.hint, (E.desc:GetText() or "") == "")
+    end
 
-    E.hint = E:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
-    E.hint:SetPoint("TOPLEFT", PAD, -128)
-    E.hint:SetWidth(W - 2 * PAD)
-    E.hint:SetJustifyH("LEFT")
-    E.hint:SetTextColor(0.75, 0.75, 0.75)
-    E.hint:SetText("Add with the + on the rows of the Abilities and Talents tabs. Order is when each is bought: "
-        .. "move a row up to buy it sooner.")
-
+    -- the draft, scrolling
     E.scroll = CreateFrame("ScrollFrame", "ClasslessWildcardBuildEditorScroll", E, "UIPanelScrollFrameTemplate")
-    E.scroll:SetPoint("TOPLEFT", PAD, -158)
-    E.scroll:SetPoint("BOTTOMRIGHT", -PAD - 22, 104)
-    E.scroll.scrollBarHideable = 1
+    E.scroll:SetPoint("TOPLEFT", 0, -52)
+    E.scroll:SetPoint("BOTTOMRIGHT", -20, 80)
+    E.scrollBar = _G["ClasslessWildcardBuildEditorScrollScrollBar"]
+    local CHILD_W = W - 20
     E.child = CreateFrame("Frame", nil, E.scroll)
-    local CHILD_W = W - 2 * PAD - 22
     E.child:SetWidth(CHILD_W); E.child:SetHeight(1)
     E.scroll:SetScrollChild(E.child)
 
+    E.empty = E.child:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+    E.empty:SetPoint("TOPLEFT", 6, -30)
+    E.empty:SetWidth(CHILD_W - 12)
+    E.empty:SetJustifyH("LEFT")
+    E.empty:SetTextColor(0.75, 0.75, 0.75)
+    E.empty:SetText("Click an ability or talent in the lists on the left to add it here. "
+        .. "Right-click takes it back out, or one talent rank.\n\n"
+        .. "Each row shows the level it is bought at. Click the level to choose a later one, "
+        .. "or use the arrows: sooner and later.")
+
     E.budget = E:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
-    E.budget:SetPoint("BOTTOMLEFT", PAD, 80)
-    E.budget:SetWidth(W - 2 * PAD)
+    E.budget:SetPoint("BOTTOMLEFT", 2, 64)
+    E.budget:SetWidth(W - 4)
     E.budget:SetJustifyH("LEFT")
     E.verdict = E:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
-    E.verdict:SetPoint("BOTTOMLEFT", PAD, 50)
-    E.verdict:SetWidth(W - 2 * PAD)
+    E.verdict:SetPoint("BOTTOMLEFT", 2, 30)
+    E.verdict:SetWidth(W - 4)
+    E.verdict:SetHeight(30)
     E.verdict:SetJustifyH("LEFT")
+    E.verdict:SetJustifyV("TOP")
 
-    E.save = CreateFrame("Button", nil, E, "UIPanelButtonTemplate")
-    E.save:SetWidth(104); E.save:SetHeight(24)
-    E.save:SetPoint("BOTTOMLEFT", PAD, 14)
-    E.save:SetText("Save")
-    E.shareBtn = CreateFrame("Button", nil, E, "UIPanelButtonTemplate")
-    E.shareBtn:SetWidth(104); E.shareBtn:SetHeight(24)
-    E.shareBtn:SetPoint("LEFT", E.save, "RIGHT", 8, 0)
-    E.shareBtn:SetText("Share")
-    E.cancel = CreateFrame("Button", nil, E, "UIPanelButtonTemplate")
-    E.cancel:SetWidth(100); E.cancel:SetHeight(24)
-    E.cancel:SetPoint("BOTTOMRIGHT", -PAD, 14)
-    E.cancel:SetText("Close")
-    E.cancel:SetScript("OnClick", function() CW.CloseBuildEditor() end)
-    E.fix = CreateFrame("Button", nil, E, "UIPanelButtonTemplate")
-    E.fix:SetWidth(104); E.fix:SetHeight(24)
-    E.fix:SetPoint("LEFT", E.shareBtn, "RIGHT", 8, 0)
-    E.fix:SetText("Fix order")
+    local BTN_W = math.floor((W - 12) / 3)
+    local function Button(text, x)
+        local b = CreateFrame("Button", nil, E, "UIPanelButtonTemplate")
+        b:SetWidth(BTN_W); b:SetHeight(22)
+        b:SetPoint("BOTTOMLEFT", x, 2)
+        b:SetText(text)
+        return b
+    end
+    E.save = Button("Save", 0)
+    E.shareBtn = Button("Share", BTN_W + 6)
+    E.fix = Button("Fix order", BTN_W + 6)
     E.fix:Hide()
+    E.cancel = Button("Close", 2 * (BTN_W + 6))
+    E.cancel:SetScript("OnClick", function() CW.CloseBuildEditor() end)
     E.fix:SetScript("OnClick", function()
         if not E.preview or not E.preview.done then return end
         CW.FixBuildOrder(E.build, E.preview)
@@ -3383,18 +3400,65 @@ do
     end)
     E.fix:SetScript("OnLeave", function() GameTooltip:Hide() end)
 
-    -- talent names, icons and ranks the editor has seen, from the browser
-    -- rows and from previews: a build stores only the talent id
+    -- talent names, icons, ranks and tier levels, and the level each ability
+    -- unlocks at, as the editor has seen them in the lists and the previews:
+    -- a build stores only the ids
     CW.talentInfo = CW.talentInfo or {}
+    CW.abilityInfo = CW.abilityInfo or {}
 
-    local function Changed()
+    -- ---- levels -------------------------------------------------------------------
+    -- An entry is bought at the later of the level it can first be bought at
+    -- (an ability's unlock, a talent's tier) and the level the build holds it
+    -- back to. The lists are kept in that order, ties in the order chosen.
+    local function Cap() return CW.rules.maxLevel or 80 end
+    local function FloorA(id) local i = CW.abilityInfo[id]; return i and i.unlock or 1 end
+    local function FloorT(tid) local i = CW.talentInfo[tid]; return i and i.tier or 10 end
+    local function Waits(b)
+        b.waitA = b.waitA or {}
+        b.waitT = b.waitT or {}
+    end
+    local function LevelA(b, id) return math.max(FloorA(id), (b.waitA or {})[id] or 0) end
+    local function LevelT(b, tid) return math.max(FloorT(tid), (b.waitT or {})[tid] or 0) end
+    -- one list's accessors, so the abilities and talents share the code
+    local function Kind(kind)
+        local b = E.build
+        Waits(b)
+        if kind == "A" then
+            return b.abilities, b.waitA, function(x) return x end,
+                function(id) return LevelA(b, id) end, FloorA
+        end
+        return b.talents, b.waitT, function(x) return x[1] end,
+            function(id) return LevelT(b, id) end, FloorT
+    end
+    local function SortByLevel(kind)
+        local list, _, key, level = Kind(kind)
+        local tmp = {}
+        for i, x in ipairs(list) do tmp[i] = { x = x, at = i, lv = level(key(x)) } end
+        table.sort(tmp, function(p, q)
+            if p.lv ~= q.lv then return p.lv < q.lv end
+            return p.at < q.at
+        end)
+        for i, t in ipairs(tmp) do list[i] = t.x end
+    end
+    -- Only once the server has said where everything unlocks: before that a
+    -- loaded build's floors are unknown and a sort would scramble it.
+    local function Normalize()
+        if not (E.preview and E.preview.done) then return end
+        SortByLevel("A")
+        SortByLevel("T")
+    end
+
+    local function Changed(sort)
+        if sort then Normalize() end
         E.dirty = true
         E.verdictOk = false
         E.previewDue = GetTime() + 0.4
         CW.RenderBuildEditor()
+        -- the lists' ticks and ranks follow the draft
+        if CW.RenderBrowsers then CW.RenderBrowsers() end
     end
 
-    function CW.BuildEditorChanged() Changed() end
+    function CW.BuildEditorChanged(sort) Changed(sort) end
 
     -- the preview a moment after the last change, not one per keystroke
     E:SetScript("OnUpdate", function()
@@ -3419,6 +3483,7 @@ do
             for spell, rarity, level, unlock in string.gmatch(p[3] or "", "(%d+):(%d+):(%d+):?(%d*);") do
                 pv.abilities[tonumber(spell)] = { level = tonumber(level), rarity = tonumber(rarity),
                                                   unlock = tonumber(unlock) or 1 }
+                CW.abilityInfo[tonumber(spell)] = { unlock = tonumber(unlock) or 1 }
             end
         elseif kind == "APW" then
             -- kind:index:code:extra; the index is 0-based in its list
@@ -3427,12 +3492,13 @@ do
                 list[tonumber(i) + 1] = { code = code, extra = tonumber(extra) }
             end
         elseif kind == "APT" then
-            for spell, rarity, rank, max, level, tid in string.gmatch(p[3] or "", "(%d+):(%d+):(%d+):(%d+):(%d+):?(%d*);") do
+            for spell, rarity, rank, max, level, tid, tier in string.gmatch(p[3] or "", "(%d+):(%d+):(%d+):(%d+):(%d+):?(%d*):?(%d*);") do
                 tid = tonumber(tid)
                 if tid then
                     pv.talents[tid] = { level = tonumber(level) }
                     local info = CW.talentInfo[tid] or {}
                     info.spell, info.rarity, info.max = info.spell or tonumber(spell), tonumber(rarity), tonumber(max)
+                    info.tier = tonumber(tier) or info.tier
                     CW.talentInfo[tid] = info
                 end
             end
@@ -3444,6 +3510,103 @@ do
             E.verdictOk = pv.problem == ""
             CW.RenderBuildEditor()
         end
+    end
+
+    -- ---- editing the draft ------------------------------------------------------------
+    local function IndexOf(list, id)
+        for i, x in ipairs(list) do
+            if (type(x) == "table" and x[1] or x) == id then return i end
+        end
+        return nil
+    end
+    local function AddAbility(id)
+        if IndexOf(E.build.abilities, id) then return end
+        tinsert(E.build.abilities, id)
+        Changed(true)
+    end
+    local function RemoveAbility(id)
+        local i = IndexOf(E.build.abilities, id)
+        if not i then return end
+        tremove(E.build.abilities, i)
+        Waits(E.build)
+        E.build.waitA[id] = nil
+        Changed()
+    end
+    local function AddRank(tid, max)
+        local i = IndexOf(E.build.talents, tid)
+        if not i then
+            tinsert(E.build.talents, { tid, 1 })
+        elseif not max or E.build.talents[i][2] < max then
+            E.build.talents[i][2] = E.build.talents[i][2] + 1
+        else
+            return
+        end
+        Changed(true)
+    end
+    local function RemoveTalent(tid)
+        local i = IndexOf(E.build.talents, tid)
+        if not i then return end
+        tremove(E.build.talents, i)
+        Waits(E.build)
+        E.build.waitT[tid] = nil
+        Changed()
+    end
+    local function RemoveRank(tid)
+        local i = IndexOf(E.build.talents, tid)
+        if not i then return end
+        local t = E.build.talents[i]
+        if t[2] <= 1 then RemoveTalent(tid); return end
+        t[2] = t[2] - 1
+        Changed()
+    end
+
+    -- The level an entry is bought at, chosen: never before it can be
+    -- bought, never past the cap. Its own floor clears the hold.
+    local function SetLevel(kind, id, lv)
+        local _, waits, _, _, floor = Kind(kind)
+        lv = math.max(floor(id), math.min(math.floor(tonumber(lv) or 0), Cap()))
+        waits[id] = lv > floor(id) and lv or nil
+        Changed(true)
+    end
+
+    -- Sooner or later by one row. Next to a row of the same level the two
+    -- trade places, which decides which is bought first when essence is
+    -- short. Past a row of another level, the entry takes that level. Sooner
+    -- stops at the level it unlocks at.
+    local function CanMove(kind, i, d)
+        local list, _, key, level, floor = Kind(kind)
+        local me = key(list[i])
+        local j = i + d
+        if d > 0 then return j <= #list end
+        if level(me) > floor(me) then return true end
+        return j >= 1 and level(key(list[j])) == level(me)
+    end
+    local function Move(kind, i, d)
+        if not (E.preview and E.preview.done) then return end
+        local list, waits, key, level, floor = Kind(kind)
+        local me = key(list[i])
+        local j = i + d
+        local other = (j >= 1 and j <= #list) and key(list[j]) or nil
+        local mine = level(me)
+        if d > 0 then
+            if not other then return end
+            local theirs = level(other)
+            if theirs > mine then waits[me] = theirs end
+            list[i], list[j] = list[j], list[i]
+        else
+            local theirs = other and level(other)
+            if theirs and theirs == mine then
+                list[i], list[j] = list[j], list[i]
+            elseif mine > floor(me) then
+                -- to the level of the row before it, or as soon as it can
+                local to = math.max(theirs or 0, floor(me))
+                waits[me] = to > floor(me) and to or nil
+                if theirs and to == theirs then list[i], list[j] = list[j], list[i] end
+            else
+                return
+            end
+        end
+        Changed(true)
     end
 
     -- ---- the rows ------------------------------------------------------------------
@@ -3469,37 +3632,44 @@ do
         if r then return r end
         r = CreateFrame("Button", nil, E.child)
         r:SetWidth(CHILD_W); r:SetHeight(ROW_H)
+        r:RegisterForClicks("LeftButtonUp", "RightButtonUp")
         r.stripe = r:CreateTexture(nil, "BACKGROUND")
         r.stripe:SetAllPoints(r)
         r.stripe:SetTexture("Interface\\Buttons\\WHITE8X8")
-        r.level = r:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
-        r.level:SetPoint("LEFT", 4, 0)
-        r.level:SetWidth(40)
+        -- the level: click to choose it, mouse wheel for one level either way
+        r.levelBtn = CreateFrame("Button", nil, r)
+        r.levelBtn:SetWidth(32); r.levelBtn:SetHeight(ROW_H)
+        r.levelBtn:SetPoint("LEFT", 0, 0)
+        r.levelBtn:SetHighlightTexture("Interface\\Buttons\\UI-Common-MouseHilight", "ADD")
+        r.levelBtn:EnableMouseWheel(true)
+        r.level = r.levelBtn:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+        r.level:SetPoint("LEFT", 2, 0)
+        r.level:SetWidth(30)
         r.level:SetJustifyH("LEFT")
         r.icon = r:CreateTexture(nil, "ARTWORK")
-        r.icon:SetWidth(18); r.icon:SetHeight(18)
-        r.icon:SetPoint("LEFT", 46, 0)
+        r.icon:SetWidth(16); r.icon:SetHeight(16)
+        r.icon:SetPoint("LEFT", 32, 0)
         r.icon:SetTexCoord(0.07, 0.93, 0.07, 0.93)
-        r.name = r:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
-        r.name:SetPoint("LEFT", r.icon, "RIGHT", 6, 0)
-        r.name:SetPoint("RIGHT", -122, 0)
-        r.name:SetJustifyH("LEFT")
-        r.del = IconButton(r, "Interface\\Buttons\\UI-MinusButton", 16, "Remove")
-        r.del:SetPoint("RIGHT", -2, 0)
-        r.down = IconButton(r, "Interface\\Buttons\\UI-ScrollBar-ScrollDownButton", 20, "Buy later")
-        r.down:SetPoint("RIGHT", r.del, "LEFT", -2, 0)
-        r.up = IconButton(r, "Interface\\Buttons\\UI-ScrollBar-ScrollUpButton", 20, "Buy sooner")
-        r.up:SetPoint("RIGHT", r.down, "LEFT", 0, 0)
+        r.del = IconButton(r, "Interface\\Buttons\\UI-MinusButton", CTRL, "Take it out")
+        r.del:SetPoint("RIGHT", -1, 0)
+        r.down = IconButton(r, "Interface\\Buttons\\UI-ScrollBar-ScrollDownButton", CTRL + 4, "Buy later")
+        r.down:SetPoint("RIGHT", r.del, "LEFT", 0, 0)
+        r.down:SetDisabledTexture("Interface\\Buttons\\UI-ScrollBar-ScrollDownButton-Disabled")
+        r.up = IconButton(r, "Interface\\Buttons\\UI-ScrollBar-ScrollUpButton", CTRL + 4, "Buy sooner")
+        r.up:SetPoint("RIGHT", r.down, "LEFT", 2, 0)
+        r.up:SetDisabledTexture("Interface\\Buttons\\UI-ScrollBar-ScrollUpButton-Disabled")
         r.rank = r:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
-        r.rank:SetPoint("RIGHT", r.up, "LEFT", -20, 0)
-        r.rank:SetJustifyH("CENTER")
-        r.minus = IconButton(r, "Interface\\Buttons\\UI-SpellbookIcon-PrevPage", 18, "One rank fewer")
-        r.minus:SetPoint("RIGHT", r.rank, "LEFT", -2, 0)
-        r.plus = IconButton(r, "Interface\\Buttons\\UI-SpellbookIcon-NextPage", 18, "One rank more")
-        r.plus:SetPoint("LEFT", r.rank, "RIGHT", 2, 0)
+        r.rank:SetPoint("RIGHT", r.up, "LEFT", -2, 0)
+        r.rank:SetWidth(24)
+        r.rank:SetJustifyH("RIGHT")
+        r.name = r:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+        r.name:SetPoint("LEFT", r.icon, "RIGHT", 4, 0)
+        r.name:SetPoint("RIGHT", r.rank, "LEFT", -2, 0)
+        r.name:SetHeight(12)
+        r.name:SetJustifyH("LEFT")
         r:SetHighlightTexture("Interface\\QuestFrame\\UI-QuestTitleHighlight", "ADD")
         r:SetScript("OnEnter", function(self)
-            GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
+            GameTooltip:SetOwner(self, "ANCHOR_LEFT")
             if self.spellId then
                 GameTooltip:SetHyperlink("spell:" .. self.spellId)
             else
@@ -3507,12 +3677,65 @@ do
             end
             -- what the server found wrong with this row, under the spell
             if self.warning then GameTooltip:AddLine(self.warning, 1, 0.33, 0.27, true) end
+            GameTooltip:AddLine(self.isTalent and "Right-click: one rank fewer." or "Right-click: take it out.",
+                0.9, 0.8, 0.4)
             GameTooltip:Show()
         end)
         r:SetScript("OnLeave", function() GameTooltip:Hide() end)
         E.rows[i] = r
         return r
     end
+    E.levelBox = CreateFrame("EditBox", "ClasslessWildcardBuildLevel", E.child, "InputBoxTemplate")
+    E.levelBox:SetWidth(26); E.levelBox:SetHeight(18)
+    E.levelBox:SetAutoFocus(false)
+    E.levelBox:SetNumeric(true)
+    E.levelBox:SetMaxLetters(2)
+    E.levelBox:Hide()
+    E.levelBox:SetScript("OnEnterPressed", function(self)
+        local t = self.target
+        self.target = nil
+        self:ClearFocus()
+        self:Hide()
+        if t then SetLevel(t.kind, t.id, self:GetText()) end
+    end)
+    E.levelBox:SetScript("OnEscapePressed", function(self) self.target = nil; self:ClearFocus(); self:Hide() end)
+    E.levelBox:SetScript("OnEditFocusLost", function(self) self.target = nil; self:Hide() end)
+
+    -- what a row's level button says and does
+    local function WireLevel(r, kind, id, step)
+        local _, waits, _, level, floor = Kind(kind)
+        local held = waits[id]
+        r.levelBtn:SetScript("OnClick", function(self)
+            local box = E.levelBox
+            box:ClearAllPoints()
+            box:SetPoint("LEFT", self, "LEFT", 6, 0)
+            box.target = { kind = kind, id = id }
+            box:SetText(tostring(level(id)))
+            box:Show()
+            box:SetFocus()
+            box:HighlightText()
+        end)
+        r.levelBtn:SetScript("OnMouseWheel", function(_, delta)
+            SetLevel(kind, id, level(id) + (delta > 0 and -1 or 1))
+        end)
+        r.levelBtn:SetScript("OnEnter", function(self)
+            GameTooltip:SetOwner(self, "ANCHOR_LEFT")
+            local at = step and step.level and step.level > 0 and step.level
+            GameTooltip:AddLine(at and ("Bought at level " .. at) or "Not bought by level " .. Cap())
+            if held then
+                GameTooltip:AddLine("Held back to level " .. held .. ".", 1, 0.82, 0)
+                if at and at > held then
+                    GameTooltip:AddLine("Essence runs short until level " .. at .. ".", 1, 1, 1, true)
+                end
+            end
+            GameTooltip:AddLine((kind == "A" and "Unlocks" or "Its tier opens") .. " at level " .. floor(id) .. ".",
+                0.75, 0.75, 0.75)
+            GameTooltip:AddLine("Click to choose the level. Mouse wheel: one level sooner or later.", 0.9, 0.8, 0.4, true)
+            GameTooltip:Show()
+        end)
+        r.levelBtn:SetScript("OnLeave", function() GameTooltip:Hide() end)
+    end
+
     local function Header(i)
         local h = E.headers[i]
         if h then return h end
@@ -3541,12 +3764,6 @@ do
         return nil
     end
 
-    local function Move(list, i, d)
-        local j = i + d
-        if j < 1 or j > #list then return end
-        list[i], list[j] = list[j], list[i]
-        Changed()
-    end
 
     function CW.RenderBuildEditor()
         local b, pv = E.build, E.preview or {}
@@ -3558,87 +3775,105 @@ do
         local function Section(label)
             nh = nh + 1
             local h = Header(nh)
-            h.text:ClearAllPoints(); h.text:SetPoint("TOPLEFT", E.child, "TOPLEFT", 0, -y)
+            h.text:ClearAllPoints(); h.text:SetPoint("TOPLEFT", E.child, "TOPLEFT", 2, -y)
             h.text:SetText(label)
             h.rule:ClearAllPoints()
-            h.rule:SetPoint("TOPLEFT", E.child, "TOPLEFT", 0, -y - 16)
-            h.rule:SetPoint("TOPRIGHT", E.child, "TOPRIGHT", 0, -y - 16)
+            h.rule:SetPoint("TOPLEFT", E.child, "TOPLEFT", 0, -y - 15)
+            h.rule:SetPoint("TOPRIGHT", E.child, "TOPRIGHT", 0, -y - 15)
             h.text:Show(); h.rule:Show()
-            y = y + 22
+            y = y + 19
         end
-        local function LevelText(step)
+        local function LevelText(step, held)
             if not pv.done or not step then return "" end
-            return step.level > 0 and ("Lv " .. step.level) or ("|cffff5544" .. cap .. "+|r")
+            if step.level <= 0 then return "|cffff5544" .. cap .. "+|r" end
+            return held and ("|cffffd100Lv " .. step.level .. "|r") or ("Lv " .. step.level)
         end
+        local function Arrows(r, kind, i)
+            if CanMove(kind, i, -1) then r.up:Enable() else r.up:Disable() end
+            if CanMove(kind, i, 1) then r.down:Enable() else r.down:Disable() end
+        end
+        Waits(b)
+        local function Place(r, i, warning)
+            r:ClearAllPoints(); r:SetPoint("TOPLEFT", E.child, "TOPLEFT", 0, -y)
+            r.warning = warning
+            if warning then r.stripe:SetVertexColor(1, 0.2, 0.15, 0.18)
+            else r.stripe:SetVertexColor(1, 1, 1, i % 2 == 0 and 0.03 or 0.07) end
+            r:Show()
+            y = y + ROW_H
+        end
+
+        local empty = #b.abilities + #b.talents == 0
+        if empty then E.empty:Show() else E.empty:Hide() end
 
         Section("Abilities  |cffaaaaaa" .. #b.abilities .. "|r")
         for i, id in ipairs(b.abilities) do
             nr = nr + 1
             local r = Row(nr)
             local step = pv.abilities and pv.abilities[id]
-            r.spellId = id
-            r:ClearAllPoints(); r:SetPoint("TOPLEFT", E.child, "TOPLEFT", 0, -y)
-            r.warning = Warning(pv.warnA and pv.warnA[i])
-            if r.warning then r.stripe:SetVertexColor(1, 0.2, 0.15, 0.18)
-            else r.stripe:SetVertexColor(1, 1, 1, i % 2 == 0 and 0.03 or 0.06) end
-            r.level:SetText(r.warning and "|cffff5544!|r" or LevelText(step))
+            r.spellId, r.isTalent = id, false
+            Place(r, i, Warning(pv.warnA and pv.warnA[i]))
+            r.level:SetText(r.warning and "|cffff5544!|r" or LevelText(step, b.waitA[id]))
+            WireLevel(r, "A", id, step)
+            Arrows(r, "A", i)
             r.icon:SetTexture(SpellIcon(id))
             r.name:SetText(SpellLabel(id, step and step.rarity or 0))
-            r.rank:SetText(""); r.minus:Hide(); r.plus:Hide()
-            r.up:SetScript("OnClick", function() Move(b.abilities, i, -1) end)
-            r.down:SetScript("OnClick", function() Move(b.abilities, i, 1) end)
-            r.del:SetScript("OnClick", function() tremove(b.abilities, i); Changed() end)
-            r:Show()
-            y = y + ROW_H
+            r.rank:SetText("")
+            r:SetScript("OnClick", function(_, button) if button == "RightButton" then RemoveAbility(id) end end)
+            r.up:SetScript("OnClick", function() Move("A", i, -1) end)
+            r.down:SetScript("OnClick", function() Move("A", i, 1) end)
+            r.del:SetScript("OnClick", function() RemoveAbility(id) end)
         end
-        y = y + 10
+        if empty then y = y + 96 end
+        y = y + 8
         local ranks = 0
         for _, t in ipairs(b.talents) do ranks = ranks + t[2] end
-        Section("Talents  |cffaaaaaa" .. ranks .. " ranks|r")
+        Section("Talents  |cffaaaaaa" .. ranks .. (ranks == 1 and " rank" or " ranks") .. "|r")
         for i, t in ipairs(b.talents) do
             nr = nr + 1
             local r = Row(nr)
             local info = CW.talentInfo[t[1]] or {}
             local step = pv.talents and pv.talents[t[1]]
-            r.spellId = info.spell
-            r:ClearAllPoints(); r:SetPoint("TOPLEFT", E.child, "TOPLEFT", 0, -y)
-            r.warning = Warning(pv.warnT and pv.warnT[i])
-            if r.warning then r.stripe:SetVertexColor(1, 0.2, 0.15, 0.18)
-            else r.stripe:SetVertexColor(1, 1, 1, i % 2 == 0 and 0.03 or 0.06) end
-            r.level:SetText(r.warning and "|cffff5544!|r" or LevelText(step))
+            local tid = t[1]
+            r.spellId, r.isTalent = info.spell, true
+            Place(r, i, Warning(pv.warnT and pv.warnT[i]))
+            r.level:SetText(r.warning and "|cffff5544!|r" or LevelText(step, b.waitT[tid]))
+            WireLevel(r, "T", tid, step)
+            Arrows(r, "T", i)
             r.icon:SetTexture(info.spell and SpellIcon(info.spell) or "Interface\\Icons\\INV_Misc_QuestionMark")
-            r.name:SetText(info.spell and SpellLabel(info.spell, info.rarity or 0) or ("Talent " .. t[1]))
+            r.name:SetText(info.spell and SpellLabel(info.spell, info.rarity or 0) or ("Talent " .. tid))
             r.rank:SetText(t[2] .. "/" .. (info.max or "?"))
-            r.minus:Show(); r.plus:Show()
-            r.minus:SetScript("OnClick", function()
-                t[2] = t[2] - 1
-                if t[2] < 1 then tremove(b.talents, i) end
-                Changed()
-            end)
-            r.plus:SetScript("OnClick", function()
-                if not info.max or t[2] < info.max then t[2] = t[2] + 1; Changed() end
-            end)
-            r.up:SetScript("OnClick", function() Move(b.talents, i, -1) end)
-            r.down:SetScript("OnClick", function() Move(b.talents, i, 1) end)
-            r.del:SetScript("OnClick", function() tremove(b.talents, i); Changed() end)
-            r:Show()
-            y = y + ROW_H
+            r:SetScript("OnClick", function(_, button) if button == "RightButton" then RemoveRank(tid) end end)
+            r.up:SetScript("OnClick", function() Move("T", i, -1) end)
+            r.down:SetScript("OnClick", function() Move("T", i, 1) end)
+            r.del:SetScript("OnClick", function() RemoveTalent(tid) end)
         end
         E.child:SetHeight(math.max(y, 1))
         E.scroll:UpdateScrollChildRect()
+        -- the bar only when there is something to scroll
+        local view = E.scroll:GetHeight() or 0
+        if E.scrollBar then
+            if y > view and view > 0 then
+                E.scrollBar:Show()
+            else
+                E.scrollBar:Hide()
+                E.scroll:SetVerticalScroll(0)
+            end
+        end
 
         -- the budget and the verdict, once the server has looked
         if pv.done then
             local function Part(label, spent, total)
                 local c = spent > total and "|cffff5544" or "|cff00ff00"
-                return label .. "  " .. c .. spent .. "|r / " .. total
+                return label .. " " .. c .. spent .. "|r / " .. total
             end
-            E.budget:SetText(Part("Ability Essence", pv.spentA, pv.totalA) .. "      "
-                .. Part("Talent Essence", pv.spentT, pv.totalT) .. "      |cffaaaaaaby level " .. cap .. "|r")
+            E.budget:SetText(Part("Ability Essence", pv.spentA, pv.totalA) .. "    "
+                .. Part("Talent", pv.spentT, pv.totalT))
             if pv.problem ~= "" then
                 E.verdict:SetText("|cffff5544" .. pv.problem .. "|r")
+            elseif E.dirty then
+                E.verdict:SetText("|cff00ff00Fits by level " .. cap .. ". Not saved yet.|r")
             else
-                E.verdict:SetText("|cff00ff00This build can be saved and followed.|r")
+                E.verdict:SetText("|cff00ff00Fits by level " .. cap .. ". Saved.|r")
             end
         else
             E.budget:SetText("|cffaaaaaaChecking the build...|r")
@@ -3646,7 +3881,8 @@ do
         end
         if E.verdictOk then E.save:Enable() else E.save:Disable() end
         if E.verdictOk then E.shareBtn:Enable() else E.shareBtn:Disable() end
-        if CW.BuildNeedsFix(pv) then E.fix:Show() else E.fix:Hide() end
+        -- Fix order takes Share's place while there is something it can fix
+        if CW.BuildNeedsFix(pv) then E.fix:Show(); E.shareBtn:Hide() else E.fix:Hide(); E.shareBtn:Show() end
     end
 
     -- Whether Fix order has anything it can do: a repeat, a rank past the
@@ -3670,11 +3906,12 @@ do
     -- a talent needs) is left for the player, still marked.
     function CW.FixBuildOrder(b, pv)
         local seen, abilities = {}, {}
+        local waitA, waitT = b.waitA or {}, b.waitT or {}
         for i, id in ipairs(b.abilities) do
             if not seen[id] then
                 seen[id] = true
                 abilities[#abilities + 1] = { id = id, at = i,
-                    unlock = (pv.abilities[id] and pv.abilities[id].unlock) or 1 }
+                    unlock = math.max((pv.abilities[id] and pv.abilities[id].unlock) or 1, waitA[id] or 0) }
             end
         end
         table.sort(abilities, function(x, y)
@@ -3690,16 +3927,24 @@ do
             if w and w.code == "needs" and (w.extra or 0) > 0 then needs[t[1]] = w.extra end
         end
         seen = {}
-        for _, t in ipairs(b.talents) do
+        for i, t in ipairs(b.talents) do
             if not seen[t[1]] then
                 seen[t[1]] = true
                 local info = CW.talentInfo[t[1]]
                 local rank = t[2]
                 if info and info.max and rank > info.max then rank = info.max end
-                talents[#talents + 1] = { t[1], rank }
+                talents[#talents + 1] = { t[1], rank, at = i,
+                    lv = math.max(info and info.tier or 10, waitT[t[1]] or 0) }
                 inBuild[t[1]] = true
             end
         end
+        -- by the level each is bought at first; the pass below then moves
+        -- anything above what it needs
+        table.sort(talents, function(x, y)
+            if x.lv ~= y.lv then return x.lv < y.lv end
+            return x.at < y.at
+        end)
+        for _, t in ipairs(talents) do t.at, t.lv = nil, nil end
         local placed, out, left = {}, {}, talents
         while #left > 0 do
             local rest, moved = {}, false
@@ -3722,7 +3967,27 @@ do
         b.talents = out
     end
 
-    function CW.OpenBuildEditor(build, index)
+    -- ---- opening and closing -----------------------------------------------------------
+    -- The lists show every level while a build is drafted: a build is planned
+    -- to 80 whatever level the character is now. The player's own choice
+    -- comes back when the editor closes.
+    local function WidenScopes()
+        E.scopes = E.scopes or { abil = CW.abilScope, tal = CW.talScope }
+        CW.abilScope, CW.talScope = 2, 2
+    end
+    local function RestoreScopes()
+        if not E.scopes then return end
+        if CW.abilScope == 2 then CW.abilScope = E.scopes.abil end
+        if CW.talScope == 2 then CW.talScope = E.scopes.tal end
+        E.scopes = nil
+    end
+    local function ScopeLabels()
+        local S = CW.BROWSE.SCOPES
+        if CW.abilScopeBtn and S[CW.abilScope] then CW.abilScopeBtn:SetText(S[CW.abilScope][1]) end
+        if CW.talScopeBtn and S[CW.talScope] then CW.talScopeBtn:SetText(S[CW.talScope][1]) end
+    end
+
+    local function Open(build, index)
         E.build = CW.CopyBuild(build)
         E.index = index
         E.dirty = index == nil
@@ -3730,12 +3995,53 @@ do
         E.preview = nil
         E.name:SetText(E.build.name or "")
         E.desc:SetText(E.build.desc or "")
-        E:SetFrameLevel((CW.archFly and CW.archFly:GetFrameLevel() or 0) + 30)
+        SyncHints()
+        -- nothing may sit over the lists the build is picked from
+        if not E:IsShown() then
+            E.fromFly = CW.archFly and CW.archFly:IsShown() and CW.archTab == "MINE"
+        end
+        if CW.archFly then CW.archFly:Hide() end
+        if CW.archPlan then CW.archPlan:Hide() end
+        WidenScopes()
+        ScopeLabels()
+        E.scroll:SetVerticalScroll(0)
         E:Show()
+        if not frame:IsShown() then frame:Show() end
         E.previewDue = GetTime()
         CW.RenderBuildEditor()
-        -- the browsers' + buttons appear while this is open
-        if frame:IsShown() and CW.SetTab and (CW.tab == "ABIL" or CW.tab == "TAL") then CW.SetTab(CW.tab) end
+        if CW.SetTab then CW.SetTab(CW.tab) end
+    end
+
+    -- Opening another build over unsaved changes asks first.
+    function CW.OpenBuildEditor(build, index)
+        if E:IsShown() and E.dirty and E.build and #E.build.abilities + #E.build.talents > 0 then
+            local dlg = StaticPopup_Show("CW_CLASSLESS_DISCARDBUILD", CW.CleanBuildText(E.name:GetText(), 32))
+            if dlg then dlg.data = { build = build, index = index } end
+            return
+        end
+        Open(build, index)
+    end
+
+    -- Leaves the editor for good: the panel's My Build column, the lists'
+    -- own clicks and level choice come back, and My Builds reopens if that is
+    -- where the editor was opened from.
+    function CW.FinishBuildEditor(nextBuild)
+        E.dirty = false
+        if nextBuild then
+            Open(nextBuild.build, nextBuild.index)
+            return
+        end
+        E:Hide()
+        E.build = nil
+        RestoreScopes()
+        ScopeLabels()
+        if CW.SetTab then CW.SetTab(CW.tab) end
+        if E.fromFly and CW.archFly then
+            CW.archTab = "MINE"
+            CW.archFly:Show()
+            CW.RenderArchFly()
+        end
+        E.fromFly = nil
     end
 
     function CW.CloseBuildEditor()
@@ -3743,11 +4049,8 @@ do
             StaticPopup_Show("CW_CLASSLESS_DISCARDBUILD", CW.CleanBuildText(E.name:GetText(), 32))
             return
         end
-        E:Hide()
+        CW.FinishBuildEditor()
     end
-    E:SetScript("OnHide", function()
-        if frame:IsShown() and CW.SetTab and (CW.tab == "ABIL" or CW.tab == "TAL") then CW.SetTab(CW.tab) end
-    end)
 
     E.save:SetScript("OnClick", function()
         if not E.verdictOk then return end
@@ -3757,8 +4060,9 @@ do
         local saved = CW.SavedBuilds()
         if E.index and saved[E.index] then saved[E.index] = b else tinsert(saved, b); E.index = #saved end
         E.dirty = false
+        E.fromFly = true      -- closing goes back to My Builds, where it now is
         UIErrorsFrame:AddMessage(b.name .. " saved.", 1.0, 0.82, 0.0)
-        if CW.archFly and CW.archFly:IsShown() then CW.RenderArchFly() end
+        CW.RenderBuildEditor()
     end)
     E.shareBtn:SetScript("OnClick", function()
         local b = CW.CopyBuild(E.build)
@@ -3766,41 +4070,48 @@ do
         CW.OpenShareWindow("share", b)
     end)
 
-    -- The browsers' rows get a + while the editor is open. A talent's + adds
-    -- one rank, or the talent at rank 1; an ability's adds it once.
+    -- While a build is open the lists are its picker: a click adds, a
+    -- right-click takes out, and nothing is bought. Rows in the build are
+    -- tinted and ticked; a talent shows the rank the build takes.
     function CW.BrowserRowHook(w, kind, e)
-        if not kind or not E:IsShown() or CW.state.mode ~= 0 then
-            if w.planAdd then w.planAdd:Hide() end
+        if not w.draftTint then
+            w.draftTint = w:CreateTexture(nil, "BORDER")
+            w.draftTint:SetAllPoints(w)
+            w.draftTint:SetTexture("Interface\\Buttons\\WHITE8X8")
+            w.draftTint:SetVertexColor(0.25, 1, 0.35, 0.12)
+            w.draftTint:Hide()
+        end
+        if not kind or not E:IsShown() or not E.build then
+            w.draftTint:Hide()
+            w:RegisterForClicks("LeftButtonUp")
             return
         end
-        if not w.planAdd then
-            w.planAdd = IconButton(w, "Interface\\Buttons\\UI-PlusButton", 18, "Add to the build")
-            w.planAdd:SetPoint("RIGHT", w, "RIGHT", -24, 0)
-            w.planAdd:SetFrameLevel(w:GetFrameLevel() + 5)
-        end
+        w:RegisterForClicks("LeftButtonUp", "RightButtonUp")
         local b = E.build
         if kind == "A" then
             local id = e.id
-            w.planAdd:SetScript("OnClick", function()
-                for _, x in ipairs(b.abilities) do if x == id then return end end
-                tinsert(b.abilities, id)
-                Changed()
+            CW.abilityInfo[id] = { unlock = e.lvl or 1 }
+            local inBuild = IndexOf(b.abilities, id) ~= nil
+            Shown(w.draftTint, inBuild)
+            if inBuild then w.check:Show() else w.check:Hide() end
+            w.tipLine = inBuild and "In the build. Right-click to take it out." or "Click to add it to the build."
+            w:SetScript("OnClick", function(_, button)
+                if button == "RightButton" then RemoveAbility(id) else AddAbility(id) end
             end)
         else
-            CW.talentInfo[e.talentId] = { spell = e.spell, rarity = e.rarity, max = e.max }
+            CW.talentInfo[e.talentId] = { spell = e.spell, rarity = e.rarity, max = e.max, tier = 10 + (e.row or 0) * 5 }
             local tid, max = e.talentId, e.max
-            w.planAdd:SetScript("OnClick", function()
-                for _, t in ipairs(b.talents) do
-                    if t[1] == tid then
-                        if t[2] < max then t[2] = t[2] + 1; Changed() end
-                        return
-                    end
-                end
-                tinsert(b.talents, { tid, 1 })
-                Changed()
+            local at = IndexOf(b.talents, tid)
+            local rank = at and b.talents[at][2] or 0
+            Shown(w.draftTint, rank > 0)
+            if rank > 0 then w.check:Show() else w.check:Hide() end
+            w.name:SetText(SpellLabel(e.spell, e.rarity) .. "  " .. (rank > 0 and "|cff40ff40" or "|cffaaaaaa")
+                .. rank .. "/" .. max .. "|r")
+            w.tipLine = "Click: one rank more in the build. Right-click: one rank fewer."
+            w:SetScript("OnClick", function(_, button)
+                if button == "RightButton" then RemoveRank(tid) else AddRank(tid, max) end
             end)
         end
-        w.planAdd:Show()
     end
 end
 
@@ -4572,6 +4883,14 @@ CW.buildRows = buildRows
 
 local function RenderBuild()
     local s = CW.state
+    -- while a build is being edited, the column is the editor's
+    if CW.buildEditor and CW.buildEditor:IsShown() then
+        buildHeader:SetText("|cffffd100Build editor|r")
+        for i = 1, BUILD_ROWS do buildRows[i]:Hide() end
+        buildPrev:Hide(); buildNext:Hide(); buildPage:Hide()
+        return
+    end
+    buildPrev:Show(); buildNext:Show(); buildPage:Show()
     local list = BuildList()
     buildHeader:SetText("|cffffd100My Build|r  |cffaaaaaa(" .. #CW.owned .. (#CW.owned == 1 and " ability, " or " abilities, ")
         .. #CW.ownedT .. (#CW.ownedT == 1 and " talent)|r" or " talents)|r"))
@@ -4852,6 +5171,13 @@ local function RenderList()
     RenderBuild()
     if statFly:IsShown() then RenderStats() end
     UpdateStatus()
+end
+-- the lists and the My Build column from what is cached, no request: the
+-- build editor redraws them as its draft changes
+function CW.RenderBrowsers()
+    RenderAbilPane()
+    RenderTalPane()
+    RenderBuild()
 end
 CW.RenderStats = RenderStats
 

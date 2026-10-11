@@ -1862,24 +1862,30 @@ void ClasslessMgr::LoadArchetypes()
         std::string abilitiesCsv = f[3].Get<std::string>();
         std::string talentsCsv = f[4].Get<std::string>();
 
+        // "id" or "id@level", see ParseAbilityEntry
         for (auto const& tok : Acore::Tokenize(abilitiesCsv, ',', false))
-            if (Optional<uint32> id = Acore::StringTo<uint32>(tok))
-                if (_abilities.count(*id))
-                    arch.abilities.push_back(*id);
+        {
+            uint32 id = 0;
+            uint8 wait = 0;
+            if (ParseAbilityEntry(tok, id, wait) && _abilities.count(id))
+                arch.AddAbility(id, wait);
+        }
 
-        // talents CSV: "talentId:rank,talentId:rank"
+        // talents CSV: "talentId:rank,talentId:rank", each maybe "@level";
+        // a bare "talentId" is rank 1
         for (auto const& tok : Acore::Tokenize(talentsCsv, ',', false))
         {
-            auto parts = Acore::Tokenize(tok, ':', false);
-            if (parts.empty())
-                continue;
-            Optional<uint32> tid = Acore::StringTo<uint32>(parts[0]);
-            uint8 rank = 1;
-            if (parts.size() > 1)
-                if (Optional<uint32> r = Acore::StringTo<uint32>(parts[1]))
-                    rank = uint8(std::min<uint32>(*r, MAX_TALENT_RANK));
-            if (tid && _talents.count(*tid))
-                arch.talents.emplace_back(*tid, rank);
+            uint32 tid = 0, rank = 1;
+            uint8 wait = 0;
+            if (!ParseTalentEntry(tok, tid, rank, wait))
+            {
+                Optional<uint32> bare = Acore::StringTo<uint32>(tok);
+                if (!bare)
+                    continue;
+                tid = *bare;
+            }
+            if (_talents.count(tid))
+                arch.AddTalent(tid, uint8(std::min<uint32>(rank, MAX_TALENT_RANK)), wait);
         }
 
         _archetypes[arch.id] = arch;
@@ -2085,6 +2091,18 @@ bool ClasslessMgr::ValidateCustomArchetype(Archetype& arch, std::string* err)
             return fail(Acore::StringFormat("{} is in the build twice.", SpellName(firstSpell)));
     }
 
+    // A level an entry is held back to has to be one a Hero can reach.
+    uint32 const cap = sWorld->getIntConfig(CONFIG_MAX_PLAYER_LEVEL);
+    for (size_t i = 0; i < arch.abilities.size(); ++i)
+        if (arch.AbilityWait(i) > cap)
+            return fail(Acore::StringFormat("{} is set for level {}, past the level cap of {}.",
+                        SpellName(arch.abilities[i]), uint32(arch.AbilityWait(i)), cap));
+    for (size_t i = 0; i < arch.talents.size(); ++i)
+        if (arch.TalentWait(i) > cap)
+            if (TalentPoolEntry const* t = GetTalent(arch.talents[i].first))
+                return fail(Acore::StringFormat("{} is set for level {}, past the level cap of {}.",
+                            SpellName(t->rankSpells[0]), uint32(arch.TalentWait(i)), cap));
+
     // Talents: each once, within its ranks, after whatever it needs.
     std::map<uint32, uint8> placed;   // talent -> rank, as the plan has it so far
     for (auto const& [talentId, rank] : arch.talents)
@@ -2221,11 +2239,21 @@ std::vector<ClasslessMgr::RowProblem> ClasslessMgr::InspectCustomArchetype(Arche
 
 void ClasslessMgr::SaveCustomArchetype(Player* player, Archetype const& arch)
 {
+    // see ParseAbilityEntry / ParseTalentEntry for the format
     std::string abilities, talents;
-    for (uint32 id : arch.abilities)
-        abilities += Acore::StringFormat("{}{}", abilities.empty() ? "" : ",", id);
-    for (auto const& [id, rank] : arch.talents)
-        talents += Acore::StringFormat("{}{}:{}", talents.empty() ? "" : ",", id, uint32(rank));
+    for (size_t i = 0; i < arch.abilities.size(); ++i)
+    {
+        abilities += Acore::StringFormat("{}{}", abilities.empty() ? "" : ",", arch.abilities[i]);
+        if (uint8 const wait = arch.AbilityWait(i))
+            abilities += Acore::StringFormat("@{}", uint32(wait));
+    }
+    for (size_t i = 0; i < arch.talents.size(); ++i)
+    {
+        talents += Acore::StringFormat("{}{}:{}", talents.empty() ? "" : ",",
+                                       arch.talents[i].first, uint32(arch.talents[i].second));
+        if (uint8 const wait = arch.TalentWait(i))
+            talents += Acore::StringFormat("@{}", uint32(wait));
+    }
     std::string name = arch.name;
     CharacterDatabase.EscapeString(name);
     CharacterDatabase.Execute("REPLACE INTO cw_char_custom_archetype (guid, name, abilities, talents) VALUES ({}, '{}', '{}', '{}')",
@@ -2333,6 +2361,8 @@ ClasslessMgr::FollowResult ClasslessMgr::FollowArchetype(Player* player)
         uint8 unlock = e->rankLevels.empty() ? 1 : e->rankLevels[0];
         if (cfg.respectLevelReqs && unlock > level)
             break;                                  // waits for the level
+        if (arch.AbilityWait(i) > level)
+            break;                                  // the build holds it for later
         if (!BuyAbility(player, firstSpell, nullptr))
         {
             out.stalled.push_back(SpellName(firstSpell));
@@ -2345,11 +2375,14 @@ ClasslessMgr::FollowResult ClasslessMgr::FollowArchetype(Player* player)
     // Talents strictly in plan order. The plan is written tier by tier, so
     // stopping at the first rank that cannot be bought yet keeps the tree
     // rules honest, and the next level-up carries on from that point.
-    for (auto const& [talentId, rank] : arch.talents)
+    for (size_t i = 0; i < arch.talents.size(); ++i)
     {
+        auto const& [talentId, rank] = arch.talents[i];
         uint8 owned = 0;
         if (auto o = st.talents.find(talentId); o != st.talents.end())
             owned = o->second;
+        if (owned < rank && arch.TalentWait(i) > level)
+            break;                                  // the build holds it for later
         bool blocked = false;
         while (owned < rank)
         {
@@ -2387,11 +2420,14 @@ ClasslessMgr::ArchetypePlan ClasslessMgr::PlanArchetype(Archetype const& arch, u
 
     // every entry the follow would act on, in its order, level unknown yet
     std::vector<AbilityEntry const*> abilities;
-    for (uint32 firstSpell : arch.abilities)
-        if (AbilityEntry const* e = GetAbility(firstSpell))
+    std::vector<uint8> waitA, waitT;      // the level each is held back to
+    for (size_t i = 0; i < arch.abilities.size(); ++i)
+        if (AbilityEntry const* e = GetAbility(arch.abilities[i]))
             if (e->enabled)
             {
+                uint32 const firstSpell = arch.abilities[i];
                 abilities.push_back(e);
+                waitA.push_back(arch.AbilityWait(i));
                 PlanStep step;
                 step.spell = firstSpell;
                 step.rarity = uint8(e->rarity);
@@ -2399,14 +2435,15 @@ ClasslessMgr::ArchetypePlan ClasslessMgr::PlanArchetype(Archetype const& arch, u
             }
     std::vector<TalentPoolEntry const*> talents;
     std::vector<uint8> want, owned;
-    for (auto const& [talentId, rank] : arch.talents)
-        if (TalentPoolEntry const* t = GetTalent(talentId))
+    for (size_t i = 0; i < arch.talents.size(); ++i)
+        if (TalentPoolEntry const* t = GetTalent(arch.talents[i].first))
             if (t->enabled)
             {
-                uint8 const target = std::min<uint8>(rank, t->maxRank);
+                uint8 const target = std::min<uint8>(arch.talents[i].second, t->maxRank);
                 if (!target)
                     continue;
                 talents.push_back(t);
+                waitT.push_back(arch.TalentWait(i));
                 want.push_back(target);
                 owned.push_back(0);
                 PlanStep step;
@@ -2436,7 +2473,7 @@ ClasslessMgr::ArchetypePlan ClasslessMgr::PlanArchetype(Archetype const& arch, u
             AbilityEntry const* e = abilities[nextA];
             uint8 const unlock = e->rankLevels.empty() ? 1 : e->rankLevels[0];
             uint32 const cost = AbilityCost(*e);
-            if ((cfg.respectLevelReqs && unlock > level) || earnedA < spentA + cost)
+            if ((cfg.respectLevelReqs && unlock > level) || waitA[nextA] > level || earnedA < spentA + cost)
                 break;
             spentA += cost;
             plan.abilities[nextA++].level = level;
@@ -2453,7 +2490,8 @@ ClasslessMgr::ArchetypePlan ClasslessMgr::PlanArchetype(Archetype const& arch, u
                 continue;
             }
             uint32 const cost = (cfg.talentFlatCost && owned[nextT] > 0) ? 0 : cfg.talentCostPerRank;
-            if ((cfg.respectLevelReqs && level < 10 + t->row * 5) || earnedT < spentT + cost)
+            if ((cfg.respectLevelReqs && level < 10 + t->row * 5) || waitT[nextT] > level
+                || earnedT < spentT + cost)
                 break;
             spentT += cost;
             if (!owned[nextT])
@@ -2478,7 +2516,8 @@ std::vector<std::pair<uint32, uint8>> ClasslessMgr::ArchetypeQueue(Player* playe
         if (st.abilities.count(firstSpell))
             continue;
         if (AbilityEntry const* e = GetAbility(firstSpell))
-            out.emplace_back(firstSpell, e->rankLevels.empty() ? uint8(1) : e->rankLevels[0]);
+            out.emplace_back(firstSpell, std::max<uint8>(e->rankLevels.empty() ? uint8(1) : e->rankLevels[0],
+                                                         arch.AbilityWait(i)));
     }
     return out;
 }
@@ -3692,19 +3731,20 @@ void ClasslessMgr::LoadCharacter(Player* player, CharState& st)
         std::string const abilitiesCsv = f[1].Get<std::string>();
         std::string const talentsCsv = f[2].Get<std::string>();
         for (auto const& tok : Acore::Tokenize(abilitiesCsv, ',', false))
-            if (Optional<uint32> id = Acore::StringTo<uint32>(tok))
-                if (AbilityEntry const* e = GetAbility(*id); e && e->enabled)
-                    arch.abilities.push_back(*id);
+        {
+            uint32 id = 0;
+            uint8 wait = 0;
+            if (ParseAbilityEntry(tok, id, wait))
+                if (AbilityEntry const* e = GetAbility(id); e && e->enabled)
+                    arch.AddAbility(id, wait);
+        }
         for (auto const& tok : Acore::Tokenize(talentsCsv, ',', false))
         {
-            auto parts = Acore::Tokenize(tok, ':', false);
-            if (parts.size() != 2)
-                continue;
-            Optional<uint32> id = Acore::StringTo<uint32>(parts[0]);
-            Optional<uint32> rank = Acore::StringTo<uint32>(parts[1]);
-            if (id && rank && *rank)
-                if (TalentPoolEntry const* t = GetTalent(*id); t && t->enabled)
-                    arch.talents.emplace_back(*id, uint8(std::min<uint32>(*rank, t->maxRank)));
+            uint32 id = 0, rank = 0;
+            uint8 wait = 0;
+            if (ParseTalentEntry(tok, id, rank, wait) && rank)
+                if (TalentPoolEntry const* t = GetTalent(id); t && t->enabled)
+                    arch.AddTalent(id, uint8(std::min<uint32>(rank, t->maxRank)), wait);
         }
     }
     if (st.archetype == CUSTOM_ARCHETYPE && st.custom.id != CUSTOM_ARCHETYPE)
