@@ -3756,6 +3756,7 @@ do
         end
         Waits(E.build)
         E.build.waitA[id] = lv > FloorA(id) and lv or nil
+        E.reveal = "A" .. id
         Changed(true)
     end
     local function RemoveAbility(id)
@@ -3791,6 +3792,7 @@ do
             return
         end
         E.build.waitT[k] = lv > FloorT(tid) and lv or nil
+        E.reveal = "T" .. k
         Changed(true)
     end
     -- a rank out, and every higher rank of that talent with it
@@ -3881,36 +3883,42 @@ do
         r.stripe:SetAllPoints(r)
         r.stripe:SetTexture("Interface\\Buttons\\WHITE8X8")
         -- the level: click to choose it, mouse wheel for one level either way
+        -- wide enough for "Lv 80" on one line
         r.levelBtn = CreateFrame("Button", nil, r)
-        r.levelBtn:SetWidth(32); r.levelBtn:SetHeight(ROW_H)
+        r.levelBtn:SetWidth(38); r.levelBtn:SetHeight(ROW_H)
         r.levelBtn:SetPoint("LEFT", 0, 0)
         r.levelBtn:SetHighlightTexture("Interface\\Buttons\\UI-Common-MouseHilight", "ADD")
         r.levelBtn:EnableMouseWheel(true)
         r.level = r.levelBtn:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
-        r.level:SetPoint("LEFT", 2, 0)
-        r.level:SetWidth(30)
+        r.level:SetPoint("LEFT", 3, 0)
+        r.level:SetWidth(36); r.level:SetHeight(ROW_H)
         r.level:SetJustifyH("LEFT")
         r.icon = r:CreateTexture(nil, "ARTWORK")
         r.icon:SetWidth(16); r.icon:SetHeight(16)
-        r.icon:SetPoint("LEFT", 32, 0)
+        r.icon:SetPoint("LEFT", 40, 0)
         r.icon:SetTexCoord(0.07, 0.93, 0.07, 0.93)
         r.del = IconButton(r, "Interface\\Buttons\\UI-MinusButton", CTRL, "Take it out")
         r.del:SetPoint("RIGHT", -1, 0)
-        r.down = IconButton(r, "Interface\\Buttons\\UI-ScrollBar-ScrollDownButton", CTRL + 4, "One level later")
-        r.down:SetPoint("RIGHT", r.del, "LEFT", 0, 0)
+        r.down = IconButton(r, "Interface\\Buttons\\UI-ScrollBar-ScrollDownButton", CTRL + 2, "One level later")
+        r.down:SetPoint("RIGHT", r.del, "LEFT", 1, 0)
         r.down:SetDisabledTexture("Interface\\Buttons\\UI-ScrollBar-ScrollDownButton-Disabled")
-        r.up = IconButton(r, "Interface\\Buttons\\UI-ScrollBar-ScrollUpButton", CTRL + 4, "One level sooner")
-        r.up:SetPoint("RIGHT", r.down, "LEFT", 2, 0)
+        r.up = IconButton(r, "Interface\\Buttons\\UI-ScrollBar-ScrollUpButton", CTRL + 2, "One level sooner")
+        r.up:SetPoint("RIGHT", r.down, "LEFT", 3, 0)
         r.up:SetDisabledTexture("Interface\\Buttons\\UI-ScrollBar-ScrollUpButton-Disabled")
         r.rank = r:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
         r.rank:SetPoint("RIGHT", r.up, "LEFT", -2, 0)
-        r.rank:SetWidth(24)
+        r.rank:SetWidth(26)
         r.rank:SetJustifyH("RIGHT")
         r.name = r:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
         r.name:SetPoint("LEFT", r.icon, "RIGHT", 4, 0)
-        r.name:SetPoint("RIGHT", r.rank, "LEFT", -2, 0)
         r.name:SetHeight(12)
         r.name:SetJustifyH("LEFT")
+        -- The rank column only when the row has something in it (a talent's
+        -- rank, "free"): otherwise the name has the room.
+        function r.SetRank(text)
+            r.rank:SetText(text or "")
+            r.name:SetPoint("RIGHT", (text and text ~= "") and r.rank or r.up, "LEFT", -3, 0)
+        end
         r:SetHighlightTexture("Interface\\QuestFrame\\UI-QuestTitleHighlight", "ADD")
         r:SetScript("OnEnter", function(self)
             GameTooltip:Hide()   -- the same link on a shown tooltip toggles it off
@@ -4059,7 +4067,10 @@ do
         end
         Waits(b)
         local function Place(r, i, warning)
-            r:ClearAllPoints(); r:SetPoint("TOPLEFT", E.child, "TOPLEFT", 0, -y)
+            r.top = y
+            r:ClearAllPoints()
+            r:SetPoint("TOPLEFT", E.child, "TOPLEFT", 0, -y)
+            r:SetPoint("TOPRIGHT", E.child, "TOPRIGHT", 0, -y)
             r.warning = warning
             if warning then r.stripe:SetVertexColor(1, 0.2, 0.15, 0.18)
             else r.stripe:SetVertexColor(1, 1, 1, i % 2 == 0 and 0.03 or 0.07) end
@@ -4076,6 +4087,7 @@ do
             local r = Row(nr)
             local step = pv.abilities and pv.abilities[id]
             r.spellId, r.isTalent = id, false
+            r.revealKey = "A" .. id
             local lv = LevelA(b, id)
             Place(r, i, Warning(pv.warnA and pv.warnA[i]) or ShortWarning(lv, shortA, "Ability Essence"))
             r.level:SetText((r.warning and not (shortA == lv)) and "|cffff5544!|r"
@@ -4084,7 +4096,7 @@ do
             Arrows(r, "A", i)
             r.icon:SetTexture(SpellIcon(id))
             r.name:SetText(SpellLabel(id, step and step.rarity or 0))
-            r.rank:SetText(step and step.free and "|cffaaaaaafree|r" or "")
+            r.SetRank(step and step.free and "|cffaaaaaafree|r" or "")
             r:SetScript("OnClick", function(_, button) if button == "RightButton" then RemoveAbility(id) end end)
             r.up:SetScript("OnClick", function() Move("A", i, -1) end)
             r.down:SetScript("OnClick", function() Move("A", i, 1) end)
@@ -4100,6 +4112,7 @@ do
             local info = CW.talentInfo[t[1]] or {}
             local step = pv.talents and pv.talents[t[1]]
             local tid, key = t[1], TKey(t)
+            r.revealKey = "T" .. key
             r.spellId, r.isTalent = info.spell, true
             Place(r, i, Warning(pv.warnT and pv.warnT[i]))
             local lvT = LevelT(b, key)
@@ -4111,7 +4124,7 @@ do
             Arrows(r, "T", i)
             r.icon:SetTexture(info.spell and SpellIcon(info.spell) or "Interface\\Icons\\INV_Misc_QuestionMark")
             r.name:SetText(info.spell and SpellLabel(info.spell, info.rarity or 0) or ("Talent " .. tid))
-            r.rank:SetText(t[2] .. "/" .. (info.max or "?"))
+            r.SetRank(t[2] .. "/" .. (info.max or "?"))
             r:SetScript("OnClick", function(_, button) if button == "RightButton" then RemoveRank(tid) end end)
             r.up:SetScript("OnClick", function() Move("T", i, -1) end)
             r.down:SetScript("OnClick", function() Move("T", i, 1) end)
@@ -4120,14 +4133,39 @@ do
         end
         E.child:SetHeight(math.max(y, 1))
         E.scroll:UpdateScrollChildRect()
-        -- the bar only when there is something to scroll
+        -- the bar only when there is something to scroll, and the rows take
+        -- its room when there is not
         local view = E.scroll:GetHeight() or 0
+        local bar = y > view and view > 0
+        E.scroll:SetPoint("BOTTOMRIGHT", bar and -20 or -2, 96)
+        E.child:SetWidth(W - (bar and 20 or 2))
         if E.scrollBar then
-            if y > view and view > 0 then
+            if bar then
                 E.scrollBar:Show()
             else
                 E.scrollBar:Hide()
                 E.scroll:SetVerticalScroll(0)
+            end
+        end
+        -- Something just added: scroll just far enough that its row shows.
+        -- The bar's range is set first, or it would hold the list to the old one.
+        if E.reveal then
+            local want
+            for _, r in ipairs(E.rows) do
+                if r:IsShown() and r.revealKey == E.reveal then want = r.top end
+            end
+            E.reveal = nil
+            if want and bar then
+                local range = math.max(0, y - view)
+                local at = E.scroll:GetVerticalScroll() or 0
+                if want < at then
+                    at = want
+                elseif want + ROW_H > at + view then
+                    at = want + ROW_H - view
+                end
+                at = math.max(0, math.min(at, range))
+                if E.scrollBar then E.scrollBar:SetMinMaxValues(0, range) end
+                E.scroll:SetVerticalScroll(at)
             end
         end
 

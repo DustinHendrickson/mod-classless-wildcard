@@ -4046,6 +4046,22 @@ def test_build_levels(h):
             "an old build that runs short gets the levels it was bought at: %r %r %r"
             % (wait("A", 100), wait("A", 200), wait("A", 300)))
 
+    # Adding to a long draft scrolls the list to the new row
+    E["dirty"] = False
+    CW.FinishBuildEditor()
+    h.rt.execute("for i = 1, 14 do ClasslessWildcard_API.abilityInfo[70000 + i] = { unlock = 1, cost = 0 } end")
+    CW.OpenBuildEditor(h.rt.eval("{ name = 'Long', desc = '', abilities = { 70001, 70002, 70003, 70004, 70005, "
+                                 "70006, 70007, 70008, 70009, 70010, 70011, 70012, 70013, 70014 }, talents = {} }"), None)
+    E["scroll"]["__h"] = 100
+    E["scroll"].SetVerticalScroll(E["scroll"], 0)
+    h.recv("AB|1|0|1|70099:0:1:0:0:60:2;")
+    h.click(CW.abilEntries[1])
+    vs = E["scroll"]["__vscroll"] or 0
+    new = [r for r in E["rows"].values() if r["revealKey"] == "A70099"][0]
+    h.check(vs > 0 and new["top"] >= vs and new["top"] + 20 <= vs + 100,
+            "adding to a long build scrolls the list so the new row shows: row at %r, view %r to %r"
+            % (new["top"], vs, vs + 100))
+
     # A build saved with one entry for a talent's ranks opens as one row per
     # rank; the level it held the talent back to goes to the first
     E["dirty"] = False
