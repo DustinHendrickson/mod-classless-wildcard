@@ -3071,7 +3071,7 @@ do
         if kind == "APW" then
             return   -- row warnings are the editor's business
         elseif kind == "APA" then
-            for spell, rarity, level in string.gmatch(p[3] or "", "(%d+):(%d+):(%d+):?%d*;") do
+            for spell, rarity, level in string.gmatch(p[3] or "", "(%d+):(%d+):(%d+):?%d*:?%d*;") do
                 tinsert(d.abilities, { spell = tonumber(spell), rarity = tonumber(rarity), level = tonumber(level) })
             end
         elseif kind == "APT" then
@@ -3494,9 +3494,10 @@ do
         local pv = E.preview
         if not pv then return end
         if kind == "APA" then
-            for spell, rarity, level, unlock in string.gmatch(p[3] or "", "(%d+):(%d+):(%d+):?(%d*);") do
+            -- the fifth field is 1 when the ability comes free with another entry
+            for spell, rarity, level, unlock, free in string.gmatch(p[3] or "", "(%d+):(%d+):(%d+):?(%d*):?(%d*);") do
                 pv.abilities[tonumber(spell)] = { level = tonumber(level), rarity = tonumber(rarity),
-                                                  unlock = tonumber(unlock) or 1 }
+                                                  unlock = tonumber(unlock) or 1, free = free == "1" }
                 CW.abilityInfo[tonumber(spell)] = { unlock = tonumber(unlock) or 1 }
             end
         elseif kind == "APW" then
@@ -3749,7 +3750,12 @@ do
         r.levelBtn:SetScript("OnEnter", function(self)
             GameTooltip:SetOwner(self, "ANCHOR_LEFT")
             local at = step and step.level and step.level > 0 and step.level
-            GameTooltip:AddLine(at and ("Bought at level " .. at) or "Not bought by level " .. Cap())
+            GameTooltip:AddLine(at and ((step.free and "Comes free at level " or "Bought at level ") .. at)
+                or "Not bought by level " .. Cap())
+            if step and step.free then
+                GameTooltip:AddLine("Another ability or talent in the build brings it, so it costs no essence.",
+                    1, 1, 1, true)
+            end
             if held then
                 GameTooltip:AddLine("Held back to level " .. held .. ".", 1, 0.82, 0)
                 if at and at > held then
@@ -3846,7 +3852,7 @@ do
             Arrows(r, "A", i)
             r.icon:SetTexture(SpellIcon(id))
             r.name:SetText(SpellLabel(id, step and step.rarity or 0))
-            r.rank:SetText("")
+            r.rank:SetText(step and step.free and "|cffaaaaaafree|r" or "")
             r:SetScript("OnClick", function(_, button) if button == "RightButton" then RemoveAbility(id) end end)
             r.up:SetScript("OnClick", function() Move("A", i, -1) end)
             r.down:SetScript("OnClick", function() Move("A", i, 1) end)

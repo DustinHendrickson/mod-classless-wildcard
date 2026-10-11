@@ -3899,6 +3899,17 @@ def test_build_levels(h):
     h.check(order() == [200, 300, 100] and E["sortDue"] is None,
             "once the wheel has rested the row takes its place: %r" % order())
 
+    # An ability that comes free with another entry: the fifth field says so
+    h.recv("APA|0|200:0:4:4:0;300:0:10:10:1;100:0:12:1:0;")
+    h.recv("APT|0|12295:1:1:2:20:9001:20;12294:1:1:3:25:9000:10;")
+    h.recv("APE|0|3|66|2|71|")
+    h.check(str(rows[2]["rank"]["__text"]) == "|cffaaaaaafree|r" and str(rows[2]["level"]["__text"]) == "Lv 10",
+            "a free ability reads free, at the level it arrives: %r / %r"
+            % (str(rows[2]["rank"]["__text"]), str(rows[2]["level"]["__text"])))
+    h.check(str(rows[1]["rank"]["__text"]) == "" and str(rows[3]["level"]["__text"]) == "|cffffd100Lv 12|r",
+            "the rows around it read as before: %r / %r"
+            % (str(rows[1]["rank"]["__text"]), str(rows[3]["level"]["__text"])))
+
     E["dirty"] = False
     CW.FinishBuildEditor()
     if CW.archFly:

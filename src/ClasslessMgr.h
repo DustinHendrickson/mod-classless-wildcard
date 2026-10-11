@@ -17,6 +17,7 @@
 #define MOD_CW_CLASSLESS_MGR_H
 
 #include "ClasslessWildcard.h"
+#include <functional>
 #include <mutex>
 
 class Player;
@@ -148,7 +149,8 @@ public:
     // unlock level, talents by tier. What "Save my build" starts from.
     ClasslessWildcard::Archetype CurrentBuildAsArchetype(Player* player);
     // What a plan spends against what a Hero with no Rebirth bonus earns by
-    // the cap: Ability and Talent Essence, spent and available.
+    // the cap: Ability and Talent Essence, spent and available. An ability
+    // that comes free with another entry costs nothing.
     struct PlanBudget { uint32 spentA = 0, totalA = 0, spentT = 0, totalT = 0; };
     PlanBudget BudgetOf(ClasslessWildcard::Archetype const& arch) const;
     std::string SpellNameOf(uint32 spellId) const;   // rank-1 spell name, for chat lines
@@ -167,10 +169,15 @@ public:
     // 1 to the cap with the realm's essence schedule and the character's
     // Rebirth bonus, in the order and by the rules FollowArchetype uses.
     // A level of 0 means the schedule never reaches it.
-    struct PlanStep { uint32 spell = 0; uint8 rarity = 0; uint8 rank = 0; uint8 maxRank = 0; uint8 level = 0; uint32 talentId = 0; };
+    // An ability the plan reaches already owned (a form kit, the form an
+    // ability needs, a talent's line, an heirloom) costs nothing and is
+    // marked free, with the level it arrived at.
+    struct PlanStep { uint32 spell = 0; uint8 rarity = 0; uint8 rank = 0; uint8 maxRank = 0; uint8 level = 0; uint32 talentId = 0; bool free = false; };
     struct ArchetypePlan { bool found = false; std::vector<PlanStep> abilities; std::vector<PlanStep> talents; };
     ArchetypePlan PlanArchetype(Player* player, uint32 archetypeId);
-    ArchetypePlan PlanArchetype(ClasslessWildcard::Archetype const& arch, uint32 rebirths) const;
+    // `heirlooms` are lines the character carries from level 1.
+    ArchetypePlan PlanArchetype(ClasslessWildcard::Archetype const& arch, uint32 rebirths,
+                                std::vector<uint32> const* heirlooms = nullptr) const;
     // What the build still has to buy, in order, with each unlock level.
     std::vector<std::pair<uint32, uint8>> ArchetypeQueue(Player* player);
     static uint32 LevelsEarned(uint8 level, uint8 startLevel);
@@ -331,6 +338,13 @@ private:
     // Strikes needs a warrior stance and Premeditation needs Stealth, and a
     // talent has no ability line to carry the rule for it.
     void GrantRequiredForm(Player* player, uint32 spellId, bool announce = true);
+    // The rule both of those and the plan use: the rank spell that puts the
+    // caster in the form `spellId` needs, or 0 when it needs none, one the
+    // caster already knows does, or no ability grants one (then *noAbility).
+    uint32 MissingFormSpell(uint32 spellId, std::function<bool(uint32)> const& knows,
+                            bool* noAbility = nullptr) const;
+    // The library lines a kit hands over when any of `spells` lands.
+    void KitLines(std::vector<uint32> const& spells, std::vector<uint32>& out) const;
     void GrantTalentRequiredForm(Player* player, ClasslessWildcard::TalentPoolEntry const& t,
                                  bool announce = true);
     // Hand over the basic spells that make a freshly gained form or stance

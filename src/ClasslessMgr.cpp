@@ -1330,38 +1330,11 @@ void ClasslessMgr::GrantRequiredForm(Player* player, uint32 spellId, bool announ
     if (!cfg.formKitsEnable || _grantingKit)
         return;
 
+    bool noAbility = false;
+    uint32 const best = MissingFormSpell(spellId, [player](uint32 s) { return player->HasSpell(s); }, &noAbility);
+    if (!best && !noAbility)
+        return;
     SpellInfo const* info = sSpellMgr->GetSpellInfo(spellId);
-    if (!info || !info->Stances)
-        return;
-
-    // A non-empty Stances mask does NOT mean the spell needs a form. Half the
-    // priest and druid book lists one -- Shadow Word: Pain names Shadowform,
-    // Nature's Grasp names Cat, Bear and Moonkin -- and carries
-    // SPELL_ATTR2_ALLOW_WHILE_NOT_SHAPESHIFTED, which is exactly what
-    // SpellInfo::CheckShapeshift reads to allow the cast outside any form. The
-    // mask is there to permit the form, not to require it, so handing one over
-    // would be a free ability for an entry that needs nothing.
-    if (info->HasAttribute(SPELL_ATTR2_ALLOW_WHILE_NOT_SHAPESHIFTED))
-        return;
-
-    // Stances is a 64-bit mask, so the bit has to be built as one: a 32-bit
-    // shift is undefined past form 32 and quietly matches nothing.
-    //
-    // Already able to use it? Any one of the allowed forms is enough, so a
-    // Hero who owns Berserker Stance is not handed Battle Stance as well.
-    for (auto const& [form, formSpell] : _formSpells)
-        if ((info->Stances & (uint64(1) << (form - 1))) && player->HasSpell(formSpell))
-            return;
-
-    // Otherwise hand over the lowest-numbered form that would unlock it, which
-    // keeps the choice stable rather than depending on map order.
-    uint32 best = 0, bestForm = 0;
-    for (auto const& [form, formSpell] : _formSpells)
-        if ((info->Stances & (uint64(1) << (form - 1))) && (!bestForm || form < bestForm))
-        {
-            bestForm = form;
-            best = formSpell;
-        }
     if (!best)
     {
         // No ability grants any form this needs. Moonkin Aura is the one case
@@ -1403,6 +1376,60 @@ void ClasslessMgr::GrantRequiredForm(Player* player, uint32 spellId, bool announ
     if (!_revealSuppress)
         Msg(player, Acore::StringFormat("{} can only be used in {}, so that comes with it.",
             SpellName(spellId), SpellName(best)));
+}
+
+uint32 ClasslessMgr::MissingFormSpell(uint32 spellId, std::function<bool(uint32)> const& knows,
+                                      bool* noAbility) const
+{
+    if (noAbility)
+        *noAbility = false;
+    SpellInfo const* info = sSpellMgr->GetSpellInfo(spellId);
+    if (!info || !info->Stances)
+        return 0;
+
+    // A non-empty Stances mask does NOT mean the spell needs a form. Half the
+    // priest and druid book lists one -- Shadow Word: Pain names Shadowform,
+    // Nature's Grasp names Cat, Bear and Moonkin -- and carries
+    // SPELL_ATTR2_ALLOW_WHILE_NOT_SHAPESHIFTED, which is exactly what
+    // SpellInfo::CheckShapeshift reads to allow the cast outside any form. The
+    // mask is there to permit the form, not to require it, so handing one over
+    // would be a free ability for an entry that needs nothing.
+    if (info->HasAttribute(SPELL_ATTR2_ALLOW_WHILE_NOT_SHAPESHIFTED))
+        return 0;
+
+    // Stances is a 64-bit mask, so the bit has to be built as one: a 32-bit
+    // shift is undefined past form 32 and quietly matches nothing.
+    //
+    // Already able to use it? Any one of the allowed forms is enough, so a
+    // Hero who owns Berserker Stance is not handed Battle Stance as well.
+    for (auto const& [form, formSpell] : _formSpells)
+        if ((info->Stances & (uint64(1) << (form - 1))) && knows(formSpell))
+            return 0;
+
+    // Otherwise the lowest-numbered form that would unlock it, which keeps
+    // the choice stable rather than depending on map order.
+    uint32 best = 0, bestForm = 0;
+    for (auto const& [form, formSpell] : _formSpells)
+        if ((info->Stances & (uint64(1) << (form - 1))) && (!bestForm || form < bestForm))
+        {
+            bestForm = form;
+            best = formSpell;
+        }
+    if (!best && noAbility)
+        *noAbility = true;
+    return best;
+}
+
+void ClasslessMgr::KitLines(std::vector<uint32> const& spells, std::vector<uint32>& out) const
+{
+    if (!cfg.formKitsEnable)
+        return;
+    for (uint32 rankSpell : spells)
+        if (auto itr = _formKits.find(rankSpell); itr != _formKits.end())
+            for (uint32 spellId : itr->second)
+                if (AbilityEntry const* c = FindAbilityBySpell(spellId))
+                    if (std::find(out.begin(), out.end(), c->firstSpellId) == out.end())
+                        out.push_back(c->firstSpellId);
 }
 
 // Elemental variants: the same strike dealt as an element, generated into
@@ -2058,9 +2085,15 @@ ClasslessMgr::PlanBudget ClasslessMgr::BudgetOf(Archetype const& arch) const
     uint8 const cap = uint8(std::min<uint32>(sWorld->getIntConfig(CONFIG_MAX_PLAYER_LEVEL), 255));
     b.totalA = cfg.startingAbilityEssence + LevelsEarned(cap, cfg.essenceStartLevel) * cfg.abilityEssencePerLevel;
     b.totalT = LevelsEarned(cap, cfg.talentEssenceStartLevel) * cfg.talentEssencePerLevel;
+    // what comes free with another entry costs nothing, as in game
+    std::set<uint32> freeLines;
+    for (PlanStep const& s : PlanArchetype(arch, 0).abilities)
+        if (s.free)
+            freeLines.insert(s.spell);
     for (uint32 firstSpell : arch.abilities)
         if (AbilityEntry const* e = GetAbility(firstSpell))
-            b.spentA += AbilityCost(*e);
+            if (!freeLines.count(firstSpell))
+                b.spentA += AbilityCost(*e);
     for (auto const& [talentId, rank] : arch.talents)
         b.spentT += cfg.talentFlatCost ? cfg.talentCostPerRank : cfg.talentCostPerRank * rank;
     return b;
@@ -2412,7 +2445,8 @@ ClasslessMgr::ArchetypePlan ClasslessMgr::PlanArchetype(Player* player, uint32 a
     return PlanArchetype(*arch, st ? st->rebirths : 0);
 }
 
-ClasslessMgr::ArchetypePlan ClasslessMgr::PlanArchetype(Archetype const& arch, uint32 rebirths) const
+ClasslessMgr::ArchetypePlan ClasslessMgr::PlanArchetype(Archetype const& arch, uint32 rebirths,
+                                                       std::vector<uint32> const* heirlooms) const
 {
     ArchetypePlan plan;
     plan.found = true;
@@ -2455,10 +2489,57 @@ ClasslessMgr::ArchetypePlan ClasslessMgr::PlanArchetype(Archetype const& arch, u
                 plan.talents.push_back(step);
             }
 
+    // Every line the character holds, with the level it arrived at, bought
+    // or free. FollowArchetype skips a line already owned and pays nothing
+    // for it, so an entry that arrived with another is free here too.
+    std::map<uint32, uint8> held;
+    uint8 now = 1;
+    // a spell is known once its line is held and its rank's level is reached
+    // (rank 1 comes with the line), as GrantAbilityInternal teaches them
+    auto knows = [&](uint32 spell) -> bool
+    {
+        auto f = _spellToFirst.find(spell);
+        if (f == _spellToFirst.end() || !held.count(f->second))
+            return false;
+        AbilityEntry const* e = GetAbility(f->second);
+        if (!e)
+            return false;
+        for (size_t i = 0; i < e->ranks.size(); ++i)
+            if (e->ranks[i] == spell)
+                return i == 0 || e->rankLevels[i] <= now;
+        return false;
+    };
+    // What lands for free, the way the grants do it: the kit, then the form
+    // the spell needs. Those two come under the kit guard, so they bring
+    // nothing further of their own.
+    auto bringAlong = [&](std::vector<uint32> const& kitSpells, uint32 formFor)
+    {
+        std::vector<uint32> lines;
+        KitLines(kitSpells, lines);
+        for (uint32 line : lines)
+            held.emplace(line, now);
+        if (!cfg.formKitsEnable || !formFor)
+            return;
+        if (uint32 const formSpell = MissingFormSpell(formFor, knows))
+            if (AbilityEntry const* form = FindAbilityBySpell(formSpell))
+                held.emplace(form->firstSpellId, now);
+    };
+    // a line granted outright (bought, an heirloom, a talent's line)
+    auto arrive = [&](AbilityEntry const& e)
+    {
+        held.emplace(e.firstSpellId, now);
+        bringAlong(e.ranks, e.firstSpellId);
+    };
+    if (heirlooms)
+        for (uint32 first : *heirlooms)
+            if (AbilityEntry const* e = GetAbility(first))
+                arrive(*e);
+
     uint32 spentA = 0, spentT = 0;
     size_t nextA = 0, nextT = 0;
     for (uint8 level = 1; level <= cap; ++level)
     {
+        now = level;
         // what the essence schedule has paid by this level (see the rebuild
         // in the essence top-up), less what the plan has spent so far
         uint32 const earnedA = cfg.startingAbilityEssence
@@ -2467,16 +2548,24 @@ ClasslessMgr::ArchetypePlan ClasslessMgr::PlanArchetype(Archetype const& arch, u
         uint32 const earnedT = LevelsEarned(level, cfg.talentEssenceStartLevel) * cfg.talentEssencePerLevel
             + rebirths * cfg.rebirthLegacyTalentEssence;
 
-        // abilities strictly in order: one that waits holds up the rest
+        // abilities strictly in order: one that waits holds up the rest, and
+        // one already held is passed over at no cost
         while (nextA < abilities.size())
         {
             AbilityEntry const* e = abilities[nextA];
+            if (auto h = held.find(e->firstSpellId); h != held.end())
+            {
+                plan.abilities[nextA].level = h->second;
+                plan.abilities[nextA++].free = true;
+                continue;
+            }
             uint8 const unlock = e->rankLevels.empty() ? 1 : e->rankLevels[0];
             uint32 const cost = AbilityCost(*e);
             if ((cfg.respectLevelReqs && unlock > level) || waitA[nextA] > level || earnedA < spentA + cost)
                 break;
             spentA += cost;
             plan.abilities[nextA++].level = level;
+            arrive(*e);
         }
 
         // talent ranks in plan order, stopping at the first that cannot be
@@ -2495,7 +2584,20 @@ ClasslessMgr::ArchetypePlan ClasslessMgr::PlanArchetype(Archetype const& arch, u
                 break;
             spentT += cost;
             if (!owned[nextT])
+            {
                 plan.talents[nextT].level = level;   // the level it is first taken
+                // what the first rank hands over, in GrantTalentRankInternal's
+                // order: its ability lines, its kit, the form it needs
+                for (uint32 first : t->abilityLines)
+                    if (!held.count(first))
+                        if (AbilityEntry const* e = GetAbility(first))
+                            arrive(*e);
+                std::vector<uint32> ranks;
+                for (uint8 r = 0; r < t->maxRank && r < t->rankSpells.size(); ++r)
+                    if (t->rankSpells[r])
+                        ranks.push_back(t->rankSpells[r]);
+                bringAlong(ranks, t->rankSpells[0]);
+            }
             ++owned[nextT];
         }
     }

@@ -768,7 +768,12 @@ namespace
     void SendPlan(Player* player, uint32 id, Archetype const& arch, std::string const& problem)
     {
         CharState& st = sClasslessMgr->GetState(player);
-        ClasslessMgr::ArchetypePlan const plan = sClasslessMgr->PlanArchetype(arch, st.rebirths);
+        // the lines this character carries through Rebirth are theirs from level 1
+        std::vector<uint32> heirlooms;
+        for (auto const& [first, owned] : st.abilities)
+            if (owned.source == GrantSource::Heirloom)
+                heirlooms.push_back(first);
+        ClasslessMgr::ArchetypePlan const plan = sClasslessMgr->PlanArchetype(arch, st.rebirths, &heirlooms);
         std::string buf;
         auto flush = [&](char const* kind)
         {
@@ -779,10 +784,11 @@ namespace
         for (ClasslessMgr::PlanStep const& s : plan.abilities)
         {
             // the fourth field is the level the ability unlocks at, which the
-            // editor's Fix order sorts by
+            // editor's Fix order sorts by; the fifth is 1 when it comes free
             AbilityEntry const* e = sClasslessMgr->GetAbility(s.spell);
             uint32 const unlock = (e && !e->rankLevels.empty()) ? e->rankLevels[0] : 1;
-            std::string item = Acore::StringFormat("{}:{}:{}:{};", s.spell, uint32(s.rarity), uint32(s.level), unlock);
+            std::string item = Acore::StringFormat("{}:{}:{}:{}:{};", s.spell, uint32(s.rarity), uint32(s.level), unlock,
+                                                   s.free ? 1 : 0);
             if (buf.size() + item.size() > MAX_BODY - 16)
                 flush("APA");
             buf += item;
