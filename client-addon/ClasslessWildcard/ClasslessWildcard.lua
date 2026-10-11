@@ -3457,7 +3457,10 @@ do
     end
 
     local function Changed(sort)
-        if sort then Normalize() end
+        if sort then
+            Normalize()
+            E.wheeling, E.sortDue = nil, nil
+        end
         E.dirty = true
         E.verdictOk = false
         E.previewDue = GetTime() + 0.4
@@ -3471,6 +3474,8 @@ do
     -- the preview a moment after the last change, not one per keystroke
     E:SetScript("OnUpdate", function()
         E.Lift()
+        -- the wheel's sort waits for the preview, which knows where each unlocks
+        if E.sortDue and GetTime() >= E.sortDue and E.preview and E.preview.done then Changed(true) end
         if E.previewDue and GetTime() >= E.previewDue then
             E.previewDue = nil
             local b = E.build
@@ -3571,11 +3576,11 @@ do
 
     -- The level an entry is bought at, chosen: never before it can be
     -- bought, never past the cap. Its own floor clears the hold.
-    local function SetLevel(kind, id, lv)
+    local function SetLevel(kind, id, lv, keepOrder)
         local _, waits, _, _, floor = Kind(kind)
         lv = math.max(floor(id), math.min(math.floor(tonumber(lv) or 0), Cap()))
         waits[id] = lv > floor(id) and lv or nil
-        Changed(true)
+        Changed(not keepOrder)
     end
 
     -- Sooner or later by one row. Next to a row of the same level the two
@@ -3695,20 +3700,25 @@ do
         return r
     end
     E.levelBox = CreateFrame("EditBox", "ClasslessWildcardBuildLevel", E.child, "InputBoxTemplate")
-    E.levelBox:SetWidth(26); E.levelBox:SetHeight(18)
+    E.levelBox:SetWidth(24); E.levelBox:SetHeight(18)
     E.levelBox:SetAutoFocus(false)
     E.levelBox:SetNumeric(true)
     E.levelBox:SetMaxLetters(2)
+    E.levelBox:SetJustifyH("CENTER")
     E.levelBox:Hide()
-    E.levelBox:SetScript("OnEnterPressed", function(self)
+    -- Enter, or clicking away, keeps the typed level; Escape keeps the old one
+    E.levelBox:SetScript("OnEnterPressed", function(self) self:ClearFocus() end)
+    E.levelBox:SetScript("OnEscapePressed", function(self) self.target = nil; self:ClearFocus() end)
+    E.levelBox:SetScript("OnEditFocusLost", function(self)
         local t = self.target
         self.target = nil
-        self:ClearFocus()
+        if self.row then self.row.level:Show(); self.row = nil end
         self:Hide()
-        if t then SetLevel(t.kind, t.id, self:GetText()) end
+        if t and (self:GetText() or "") ~= "" then SetLevel(t.kind, t.id, self:GetText()) end
     end)
-    E.levelBox:SetScript("OnEscapePressed", function(self) self.target = nil; self:ClearFocus(); self:Hide() end)
-    E.levelBox:SetScript("OnEditFocusLost", function(self) self.target = nil; self:Hide() end)
+    E.levelBox:SetScript("OnHide", function(self)
+        if self.row then self.row.level:Show(); self.row = nil end
+    end)
 
     -- what a row's level button says and does
     local function WireLevel(r, kind, id, step)
@@ -3716,16 +3726,25 @@ do
         local held = waits[id]
         r.levelBtn:SetScript("OnClick", function(self)
             local box = E.levelBox
+            if box:IsShown() then box:ClearFocus() end
             box:ClearAllPoints()
             box:SetPoint("LEFT", self, "LEFT", 6, 0)
+            box:SetFrameLevel(r:GetFrameLevel() + 5)
+            r.level:Hide()
+            box.row = r
             box.target = { kind = kind, id = id }
             box:SetText(tostring(level(id)))
             box:Show()
             box:SetFocus()
             box:HighlightText()
         end)
+        -- The row stays where it is while the wheel turns, or the next notch
+        -- would land on whatever row slid under the cursor. It takes its
+        -- place in the list once the wheel has rested for a moment.
         r.levelBtn:SetScript("OnMouseWheel", function(_, delta)
-            SetLevel(kind, id, level(id) + (delta > 0 and -1 or 1))
+            E.wheeling = kind .. id
+            E.sortDue = GetTime() + 1.2
+            SetLevel(kind, id, level(id) + (delta > 0 and -1 or 1), true)
         end)
         r.levelBtn:SetScript("OnEnter", function(self)
             GameTooltip:SetOwner(self, "ANCHOR_LEFT")
@@ -3792,7 +3811,8 @@ do
             h.text:Show(); h.rule:Show()
             y = y + 19
         end
-        local function LevelText(step, held)
+        local function LevelText(step, held, key, chosen)
+            if E.wheeling == key then return "|cffffd100Lv " .. chosen .. "|r" end
             if not pv.done or not step then return "" end
             if step.level <= 0 then return "|cffff5544" .. cap .. "+|r" end
             return held and ("|cffffd100Lv " .. step.level .. "|r") or ("Lv " .. step.level)
@@ -3821,7 +3841,7 @@ do
             local step = pv.abilities and pv.abilities[id]
             r.spellId, r.isTalent = id, false
             Place(r, i, Warning(pv.warnA and pv.warnA[i]))
-            r.level:SetText(r.warning and "|cffff5544!|r" or LevelText(step, b.waitA[id]))
+            r.level:SetText(r.warning and "|cffff5544!|r" or LevelText(step, b.waitA[id], "A" .. id, LevelA(b, id)))
             WireLevel(r, "A", id, step)
             Arrows(r, "A", i)
             r.icon:SetTexture(SpellIcon(id))
@@ -3845,7 +3865,7 @@ do
             local tid = t[1]
             r.spellId, r.isTalent = info.spell, true
             Place(r, i, Warning(pv.warnT and pv.warnT[i]))
-            r.level:SetText(r.warning and "|cffff5544!|r" or LevelText(step, b.waitT[tid]))
+            r.level:SetText(r.warning and "|cffff5544!|r" or LevelText(step, b.waitT[tid], "T" .. tid, LevelT(b, tid)))
             WireLevel(r, "T", tid, step)
             Arrows(r, "T", i)
             r.icon:SetTexture(info.spell and SpellIcon(info.spell) or "Interface\\Icons\\INV_Misc_QuestionMark")

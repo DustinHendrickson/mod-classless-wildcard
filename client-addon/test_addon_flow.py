@@ -58,6 +58,14 @@ StubMT.__index = function(self, k)
     if k == "Show" then return function(s) rawset(s, "__shown", true) end end
     if k == "Hide" then return function(s) rawset(s, "__shown", false) end end
     if k == "IsShown" or k == "IsVisible" then return function(s) return rawget(s, "__shown") end end
+    -- as in the client, giving up focus runs the box's focus-lost handler
+    if k == "SetFocus" then return function(s) rawset(s, "__focus", true) end end
+    if k == "ClearFocus" then return function(s)
+        if not rawget(s, "__focus") then return end
+        rawset(s, "__focus", false)
+        local f = rawget(s, "__scripts").OnEditFocusLost
+        if f then f(s) end
+    end end
     if k == "SetScript" then return function(s, n, f) rawget(s, "__scripts")[n] = f end end
     if k == "HookScript" then return function(s, n, f)
         local old = rawget(s, "__scripts")[n]
@@ -3855,6 +3863,42 @@ def test_build_levels(h):
     E["verdictOk"] = True
     h.click(E["save"])
     h.check(h.rt.eval("ClasslessWildcardDB.customBuilds[1].waitT[9000]") == 25, "Save keeps the held levels")
+
+    # The level box sits over the label, which hides while it is open
+    h.check(order() == [100, 200, 300], "abilities back in unlock order: %r" % order())
+    h.click(rows[1]["levelBtn"])
+    h.check(box["__shown"] is True and rows[1]["level"]["__shown"] is False,
+            "the level box takes the label's place while it is open")
+    box["__scripts"]["OnEscapePressed"](box)
+    h.check(box["__shown"] is False and rows[1]["level"]["__shown"] is True and wait("A", 100) is None,
+            "Escape closes the box, puts the label back and keeps the old level")
+    # clicking away keeps what was typed, like Enter
+    h.click(rows[1]["levelBtn"])
+    box["__text"] = "6"
+    box.ClearFocus(box)
+    h.check(wait("A", 100) == 6 and order() == [200, 100, 300] and rows[2]["level"]["__shown"] is True,
+            "clicking away keeps the typed level: %r, %r" % (wait("A", 100), order()))
+
+    # The wheel leaves the row under the cursor until it rests, then sorts
+    wheel = rows[2]["levelBtn"]["__scripts"]["OnMouseWheel"]
+    for _ in range(6):
+        wheel(rows[2]["levelBtn"], -1)
+    h.check(wait("A", 100) == 12 and order() == [200, 100, 300],
+            "turning the wheel past another row's level leaves the row where it is: %r, %r"
+            % (wait("A", 100), order()))
+    h.check(str(rows[2]["level"]["__text"]) == "|cffffd100Lv 12|r",
+            "and the row shows the level chosen as it turns: %r" % str(rows[2]["level"]["__text"]))
+    h.rt.execute("NOW = NOW + 0.5")
+    E["__scripts"]["OnUpdate"](E, 0.5)
+    h.check(order() == [200, 100, 300], "still in place half a second after the last notch: %r" % order())
+    h.recv("APA|0|200:0:4:4;100:0:12:1;300:0:10:10;")
+    h.recv("APT|0|12295:1:1:2:20:9001:20;12294:1:1:3:25:9000:10;")
+    h.recv("APE|0|3|66|2|71|")
+    h.rt.execute("NOW = NOW + 1")
+    E["__scripts"]["OnUpdate"](E, 1)
+    h.check(order() == [200, 300, 100] and E["sortDue"] is None,
+            "once the wheel has rested the row takes its place: %r" % order())
+
     E["dirty"] = False
     CW.FinishBuildEditor()
     if CW.archFly:
