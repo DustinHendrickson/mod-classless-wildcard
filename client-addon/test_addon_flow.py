@@ -353,6 +353,7 @@ function PaperDollFrame_UpdateStats() end
 TIP = {}
 GameTooltip = Stub("GameTooltip", "GameTooltip")
 function GameTooltip:SetOwner(owner) TIP = {}; TIP.owner = owner end
+function GameTooltip:GetOwner() return TIP.owner end
 function GameTooltip:SetText(t) TIP[table.getn(TIP) + 1] = tostring(t) end
 function GameTooltip:AddLine(t) TIP[table.getn(TIP) + 1] = tostring(t) end
 function GameTooltip:AddDoubleLine(a, b) TIP[table.getn(TIP) + 1] = tostring(a) .. " " .. tostring(b) end
@@ -371,6 +372,9 @@ for i = 1, 8 do
     Stub("FontString", "GameTooltipTextRight" .. i)
 end
 function GameTooltip:SetHyperlink(link)
+    -- as in the client: the link a shown tooltip already holds toggles it off
+    if TIP.shown and TIP.link == link then TIP.shown = false; return end
+    TIP.link = link
     HYPERLINKS = HYPERLINKS + 1
     local cleared = rawget(GameTooltip, "__scripts").OnTooltipCleared
     if cleared then cleared(GameTooltip) end
@@ -3100,21 +3104,35 @@ def test_spell_corrections(h):
             "an owned spell is corrected from the login list, nothing asked: %r %r" % (line("Left", 2), h.sent()))
 
     # Revenge is not owned: the first hover asks, once, and shows the client's
-    # copy until the answer comes.
-    tip.SetHyperlink(tip, "spell:6572")
+    # copy until the answer comes. Hovered through a row the way the panel
+    # does it, hint line and all.
+    h.rt.execute("HOVER = CreateFrame('Button'); HOVER.spellId = 6572; "
+                 "HOVER:SetScript('OnEnter', function(self) GameTooltip:Hide(); GameTooltip:SetOwner(self, 'ANCHOR_RIGHT'); "
+                 "GameTooltip:SetHyperlink('spell:' .. self.spellId); GameTooltip:AddLine('the row hint'); GameTooltip:Show() end)")
+    hover = h.rt.eval("HOVER")
+    def enter():
+        hover["__scripts"]["OnEnter"](hover)
+    enter()
     h.check(h.sent() == ["SFQ 6572"], "an unowned spell is asked about: %r" % h.sent())
-    tip.SetHyperlink(tip, "spell:6572")
-    h.check(h.sent() == ["SFQ 6572"], "and only once: %r" % h.sent())
+    tip.Hide(tip)
+    enter()
+    h.check(h.sent() == ["SFQ 6572"] and tip.IsShown(tip),
+            "and only once, and hovering it again shows it again: %r" % h.sent())
 
     # The answer redraws the tooltip still up for it, with the true numbers.
+    # The same link on a shown tooltip would toggle it off, so it is drawn
+    # again through the row's own OnEnter.
     drawn = g.HYPERLINKS
     h.recv("SQ|6572:5:0:5000:0:0:0:0:0:0:0:0:0:0;")
     h.check(g.HYPERLINKS == drawn + 1 and line("Left", 2) == "5 Rage" and line("Right", 3) == "5 sec cooldown",
             "the answer redraws it: %r, %r" % (line("Left", 2), line("Right", 3)))
+    h.check(tip.IsShown(tip) and "the row hint" in str(h.rt.eval("TipText()")),
+            "and it stays up, with the row's own hint line: %r" % str(h.rt.eval("TipText()")))
     h.check(line("Right", 1) == "Rank 1" and line("Right", 2) == "Melee Range" and line("Left", 3) == "Instant",
             "and touches nothing else on it")
     # hovering it again is corrected straight away, nothing asked
     h.clear_sent()
+    tip.Hide(tip)
     tip.SetHyperlink(tip, "spell:6572")
     h.check(line("Left", 2) == "5 Rage" and h.sent() == [], "from then on it is corrected at once")
 

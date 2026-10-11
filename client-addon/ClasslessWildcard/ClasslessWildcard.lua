@@ -728,6 +728,7 @@ local function MakeEntry(x, y, width, index)
 
     e:SetScript("OnEnter", function(self)
         if self.spellId then
+            GameTooltip:Hide()   -- the same link on a shown tooltip toggles it off
             GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
             GameTooltip:SetHyperlink("spell:" .. self.spellId)
             if self.tipLine then GameTooltip:AddLine(self.tipLine, 0.9, 0.8, 0.4) end
@@ -925,6 +926,7 @@ for i = 1, BUILD_ROWS do
 
     r:SetScript("OnEnter", function(self)
         if self.spellId then
+            GameTooltip:Hide()   -- the same link on a shown tooltip toggles it off
             GameTooltip:SetOwner(self, "ANCHOR_LEFT")
             GameTooltip:SetHyperlink("spell:" .. self.spellId)
             if self.note then
@@ -1202,6 +1204,7 @@ do
         end)
         r:SetScript("OnEnter", function(self)
             if not self.spellId then return end
+            GameTooltip:Hide()   -- the same link on a shown tooltip toggles it off
             GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
             GameTooltip:SetHyperlink("spell:" .. self.spellId)
             GameTooltip:Show()
@@ -1892,6 +1895,7 @@ do
     fly.abilityBtn.ring:SetVertexColor(0.64, 0.21, 0.93)
     fly.abilityBtn:SetScript("OnEnter", function(self)
         if not self.spellId then return end
+        GameTooltip:Hide()   -- the same link on a shown tooltip toggles it off
         GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
         GameTooltip:SetHyperlink("spell:" .. self.spellId)
         GameTooltip:Show()
@@ -2974,6 +2978,7 @@ do
             r:SetHighlightTexture("Interface\\QuestFrame\\UI-QuestTitleHighlight", "ADD")
             r:SetScript("OnEnter", function(self)
                 if not self.spellId then return end
+                GameTooltip:Hide()   -- the same link on a shown tooltip toggles it off
                 GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
                 GameTooltip:SetHyperlink("spell:" .. self.spellId)
                 GameTooltip:Show()
@@ -3696,6 +3701,7 @@ do
         r.name:SetJustifyH("LEFT")
         r:SetHighlightTexture("Interface\\QuestFrame\\UI-QuestTitleHighlight", "ADD")
         r:SetScript("OnEnter", function(self)
+            GameTooltip:Hide()   -- the same link on a shown tooltip toggles it off
             GameTooltip:SetOwner(self, "ANCHOR_LEFT")
             if self.spellId then
                 GameTooltip:SetHyperlink("spell:" .. self.spellId)
@@ -7037,6 +7043,7 @@ rvHover:SetScript("OnEnter", function(self)
     local anim = CW.revealAnim
     local d = anim and anim.data
     if d and d.spell and anim.phase == "shown" then
+        GameTooltip:Hide()   -- the same link on a shown tooltip toggles it off
         GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
         GameTooltip:SetHyperlink("spell:" .. d.spell)
         GameTooltip:Show()
@@ -8548,7 +8555,15 @@ local function HandleMessage(msg)
                 if f then CW.spellFix[id] = CW.ReadFix(f) end
             end
             if CW.tipSpell == id and GameTooltip:IsShown() and CW.spellFix[id] then
-                GameTooltip:SetHyperlink("spell:" .. id)
+                -- Drawn again through the owner's own OnEnter, after a Hide:
+                -- SetHyperlink with the link a shown tooltip already holds
+                -- toggles it OFF (the client's chat-link toggle lives in it),
+                -- which left the row under the mouse with no tooltip at all.
+                -- The OnEnter also puts back the row's own hint line.
+                local owner = GameTooltip:GetOwner()
+                local enter = owner and owner.GetScript and owner:GetScript("OnEnter")
+                GameTooltip:Hide()
+                if enter then enter(owner) end
             elseif CW.spellFix[id] and CW.runBadge and GameTooltip:IsOwned(CW.runBadge) then
                 CW.RunTooltip(CW.runBadge)   -- the run card quotes its reward ability
             end
