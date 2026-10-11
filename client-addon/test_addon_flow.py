@@ -175,6 +175,8 @@ end
 
 -- API calls whose return values the addon reads
 function SendAddonMessage(prefix, msg, channel, target) SENT[#SENT + 1] = msg end
+function GetNumRaidMembers() return 0 end
+function GetNumPartyMembers() return 0 end
 function UnitName() return "''' + PLAYER + r'''" end
 function UnitLevel() return 80 end
 function UnitStat() return 10, 10, 0, 0 end
@@ -510,8 +512,8 @@ def test_archetypes(h):
     name1 = str(rows[1].name["__text"])
     h.check("Blade Dancer" in name1 and "26 abilities, 71 talent ranks" in str(rows[1].counts["__text"]),
             "row shows the name, and the counts on their own line: %r" % str(rows[1].counts["__text"]))
-    h.check(rows[1]["__h"] == 50 and rows[2]["__h"] == 50, "rows are sized from their text (%s)" % rows[1]["__h"])
-    h.check("following" in str(rows[2].name["__text"]) and str(rows[2].apply["__text"]) == "Stop",
+    h.check(rows[1]["__h"] == 58 and rows[2]["__h"] == 58, "rows are sized from their text (%s)" % rows[1]["__h"])
+    h.check("Following" in str(rows[2].name["__text"]) and str(rows[2].apply["__text"]) == "Stop",
             "the followed archetype is tagged and offers Stop")
     h.check(str(rows[1].apply["__text"]) == "Follow", "an unfollowed archetype offers Follow")
     h.clear_sent()
@@ -519,9 +521,40 @@ def test_archetypes(h):
     h.check("ARCHAPPLY 0" in h.sent(), "Stop sends ARCHAPPLY 0")
     h.click(btn)
     h.check(str(rows[2].desc["__text"]).startswith("Armored caster"), "row shows the description")
-    h.check(fly["__h"] == 54 + 2 * 50 + 10, "flyout sized to intro plus two rows (%s)" % fly["__h"])
+    h.check(fly["__h"] == 88 + (2 * 62 - 4) + 14, "flyout sized to header, intro and two rows (%s)" % fly["__h"])
     h.check(str(fly.intro["__text"]) == str(fly.INTRO), "intro text restored once the list arrives")
     h.check(wizard["__shown"] is False, "wizard stays closed (reply went to the flyout)")
+
+    # Build: the archetype's build order in its own window, levels from the server
+    h.clear_sent()
+    h.click(rows[1].view)
+    plan = CW.archPlan
+    h.check(plan["__shown"] is True and "ARCHPLAN 1" in h.sent() and str(plan["title"]["__text"]) == "Blade Dancer",
+            "Build opens the window titled for the archetype and asks for its plan: %r" % h.sent())
+    h.check(plan["loading"]["__shown"] is True, "it says Loading until the plan arrives")
+    h.recv("APA|1|1752:0:1;772:1:4;")
+    h.recv("APA|1|133:3:0;")
+    h.recv("APT|1|12294:2:3:3:10;")
+    h.recv("APA|2|999:0:1;")   # another archetype's reply is ignored
+    h.recv("APE|1")
+    prow = plan["rows"]
+    texts = [(str(prow[i]["level"]["__text"]), str(prow[i]["rank"]["__text"]), prow[i]["spellId"]) for i in (1, 2, 3, 4)]
+    h.check(plan["loading"]["__shown"] is False and texts[0] == ("Lv 1", "", 1752) and texts[1][0] == "Lv 4"
+            and texts[2][0].endswith("+|r") and texts[3] == ("Lv 10", "|cffaaaaaa3/3|r", 12294) and prow[5] is None,
+            "abilities then talents, in order, with their levels and the talent's ranks: %r" % texts)
+    hdr = [str(x["text"]["__text"]) for x in plan["headers"].values()]
+    h.check(hdr[0].startswith("Abilities") and "3" in hdr[0] and hdr[1].startswith("Talents") and "3 ranks" in hdr[1],
+            "each section is headed with its count: %r" % hdr)
+    prow[1]["__scripts"]["OnEnter"](prow[1])
+    h.check(h.rt.eval("HYPERLINKS") > 0, "hovering a row shows the spell's own tooltip")
+    prow[1]["__scripts"]["OnLeave"](prow[1])
+    h.check(plan["follow"]["__shown"] is True and str(plan["follow"]["__text"]) == "Follow",
+            "opened from the panel it offers Follow")
+    h.click(plan["done"])
+    h.check(plan["__shown"] is False, "Close closes it")
+    h.click(rows[2].view)
+    h.check(str(plan["follow"]["__text"]) == "Stop", "for the followed archetype it offers Stop")
+    plan["__shown"] = False
 
     h.clear_sent()
     h.click(rows[1].apply)
@@ -542,7 +575,7 @@ def test_archetypes(h):
     h.recv("ARE|")
     h.check(rows[1]["__shown"] is True and rows[2]["__shown"] is False, "a new reply replaces the cached list")
     h.check("Ranger" in str(rows[1].name["__text"]), "row 1 is the new archetype")
-    h.check(fly.list.scroll["__h"] == 50 and fly.list.child["__h"] == 50, "one row: the list is one row tall, nothing to scroll")
+    h.check(fly.list.scroll["__h"] == 58 and fly.list.child["__h"] == 58, "one row: the list is one row tall, nothing to scroll")
 
     # the shipped realm sends thirteen: rows are made on demand and the list
     # scrolls instead of growing the flyout past the panel
@@ -552,9 +585,9 @@ def test_archetypes(h):
     h.check(rows[13] is not None and rows[13]["__shown"] is True and rows[14] is None,
             "thirteen rows exist and show, no fourteenth")
     h.check("Build 13" in str(rows[13].name["__text"]), "row 13 is the last archetype")
-    h.check(fly.list.child["__h"] == 13 * 50, "scroll child holds all thirteen (%s)" % fly.list.child["__h"])
+    h.check(fly.list.child["__h"] == 13 * 62 - 4, "scroll child holds all thirteen (%s)" % fly.list.child["__h"])
     h.check(fly.list.scroll["__h"] == 440, "visible list capped at 440 (%s)" % fly.list.scroll["__h"])
-    h.check(fly["__h"] == 54 + 440 + 10, "flyout sized to the capped list (%s)" % fly["__h"])
+    h.check(fly["__h"] == 88 + 440 + 14, "flyout sized to the capped list (%s)" % fly["__h"])
     h.clear_sent()
     h.click(rows[13].apply)
     g.StaticPopupDialogs["CW_CLASSLESS_ARCHETYPE"]["OnAccept"](g.LAST_POPUP_FRAME)
@@ -565,7 +598,7 @@ def test_archetypes(h):
     h.recv("ARE|")
     h.check(rows[1]["__shown"] is False, "a reply with no rows clears the list")
     h.check("No archetypes" in str(fly.intro["__text"]), "empty list says so instead of Loading...")
-    h.check(fly["__h"] == 54 + 46 + 10, "flyout keeps one row of height when empty (%s)" % fly["__h"])
+    h.check(fly["__h"] == 88 + 46 + 14, "flyout keeps one row of height when empty (%s)" % fly["__h"])
 
     # the other flyouts close it and it closes them
     h.click(CW.helpBtn)
@@ -605,7 +638,7 @@ def test_wizard(h):
     h.check(str(CW.wizTitle["__text"]) == "Pick a Starter Archetype", "page 2: archetype title")
     h.check(rows[1]["__shown"] is True and rows[2]["__shown"] is True and rows[3]["__shown"] is False, "two rows shown, the rest hidden")
     h.check(":" in str(rows[1].desc["__text"]), "description keeps its colon: %r" % str(rows[1].desc["__text"]))
-    h.check(wizard["__w"] == 480 and wizard["__h"] == 72 + 2 * 50 + 52, "wizard resized to fit (%sx%s)" % (wizard["__w"], wizard["__h"]))
+    h.check(wizard["__w"] == 560 and wizard["__h"] == 72 + (2 * 62 - 4) + 52, "wizard resized to fit (%sx%s)" % (wizard["__w"], wizard["__h"]))
     h.check(CW.wizClassless["__shown"] is False and CW.wizLater["__shown"] is False and CW.wizArchSkip["__shown"] is True,
             "path buttons hidden, empty-slate button shown")
     h.check(CW.archFly["__shown"] is False, "panel flyout stays closed")
@@ -1485,8 +1518,19 @@ def test_rebirth(h):
     CW.ToggleHeirloom(686)
     picked = sorted(int(k) for k in fly["picked"].keys())
     h.check(picked == [133, 686], "unpicking frees the slot: %r" % picked)
-    h.check("2" in str(fly["count"]["__text"]) and "200" in str(fly["count"]["__text"]),
-            "the picker counts and prices: %r" % str(fly["count"]["__text"]))
+    h.check(str(fly["count"]["__text"]) == "|cff00ff002|r of 2" and "200" in str(fly["cost"]["__text"]),
+            "the picker counts and prices: %r, %r" % (str(fly["count"]["__text"]), str(fly["cost"]["__text"])))
+    # The header names the rank this Rebirth brings, and its rows the bonuses
+    # at that rank from the realm's numbers.
+    r = CW.rules
+    h.check(str(fly["title"]["__text"]) == "Rebirth 2" and "Wildcard" in str(fly["subtitle"]["__text"]),
+            "the picker is titled with the coming rank and the path: %r / %r"
+            % (str(fly["title"]["__text"]), str(fly["subtitle"]["__text"])))
+    want = ["+%d%% XP" % min(r.xpFirst + r.xpPerRank, r.xpMax), "+%d%% XP" % min(r.otherXpPerRank * 2, r.otherXpMax),
+            "+%d%%" % min(r.statPct * 2, r.statMax)]
+    got = [str(fly["rankRows"][i]["value"]["__text"]) for i in (1, 2, 3)]
+    h.check(got == want, "the rank rows show rank 2's bonuses: %r (want %r)" % (got, want))
+    h.check(fly["empty"]["__shown"] is False, "with abilities to carry, no empty-list line")
 
     # The confirm names the character's own path and the heirlooms; OK sends
     # the heirlooms and nothing about a path, which is never chosen again.
@@ -1826,53 +1870,87 @@ def test_challenge_runs(h):
             and CW.lifeIcons[2]["gem"]["__shown"] is True,
             "the lost life is an empty heart, still plainly visible; the others stay full")
 
-    # The end: shards paid, the rule lifts, the lives go.
+    # The end: shards paid, the rule lifts, the lives go. It shows on the
+    # summary card, which reads back here as its parts.
+    h.rt.execute("""
+        function CardText()
+            local c = ClasslessWildcardSummary
+            local out = { "T=" .. tostring(c.title:GetText()), "S=" .. tostring(c.subtitle:GetText()) }
+            for _, x in ipairs(c.headers) do if x:IsShown() then tinsert(out, "H=" .. tostring(x:GetText())) end end
+            for _, r in ipairs(c.rows) do
+                if r.label:IsShown() then tinsert(out, tostring(r.label:GetText()) .. "=" .. tostring(r.value:GetText())) end
+            end
+            for _, n in ipairs(c.notes) do if n:IsShown() then tinsert(out, "N=" .. tostring(n:GetText())) end end
+            return table.concat(out, " | ")
+        end
+        function CloseCard()
+            local c = ClasslessWildcardSummary
+            c:Hide()
+            local f = rawget(c, "__scripts").OnHide
+            if f then f(c) end
+        end
+    """)
+    card = CW.summary
+    def shown_card(msg):
+        h.rt.execute("CloseCard()")
+        h.recv(msg)
+        return str(h.rt.eval("CardText()"))
     h.clear_sent()
-    h.recv("RE|0|17|19|0|Hardcore")
-    h.check(g.LAST_POPUP == "CW_RUN_END" and "STATE" in h.sent() and "OWN" in h.sent(), "the end pops up and refreshes everything")
-    # A repeat finish pays no gold, and the popup does not claim "0 gold".
-    h.recv("RE|1|80|1|0|Glass")
-    h.check("gold" not in str(g.LAST_POPUP_ARG) and "1 shard." in str(g.LAST_POPUP_ARG),
-            "a finish without gold says 1 shard and no gold: %r" % str(g.LAST_POPUP_ARG))
-    h.recv("RE|1|80|107|400|Glass")
-    h.check("107 shards and 400 gold." in str(g.LAST_POPUP_ARG),
-            "a first finish names its gold: %r" % str(g.LAST_POPUP_ARG))
-    # The full message: lives, the reward ability, both titles, all named.
-    h.recv("RE|1|80|142|400|Glass|5|3|3|133|Tester the Unshattered|Tester the Unbroken|0")
-    t = str(g.LAST_POPUP_ARG)
-    h.check(t.startswith("|cff00ff00Challenge complete|r\n|cffffd100Glass|r") and "Level 80, 3 of 3 lives left." in t,
-            "a finish leads with the challenge and how it went: %r" % t[:90])
-    h.check("is yours as an heirloom." in t and "New title: |cffffd100Tester the Unshattered|r" in t
-            and "Not a life lost: a third more shards, and |cffffd100Tester the Unbroken|r." in t,
+    t = shown_card("RE|0|17|19|0|Hardcore")
+    h.check(card["__shown"] is True and "STATE" in h.sent() and "OWN" in h.sent(),
+            "the end shows its card and refreshes everything")
+    h.check("T=Challenge Over" in t and "S=Hardcore" in t and "Level reached=17" in t and "Shards=19" in t,
+            "a run lost: the challenge, the level and the shards: %r" % t)
+    # A repeat finish pays no gold, and the card does not claim "0 gold".
+    t = shown_card("RE|1|80|1|0|Glass")
+    h.check("Gold=" not in t and "Shards=1" in t, "a finish without gold has no gold row: %r" % t)
+    t = shown_card("RE|1|80|107|400|Glass")
+    h.check("Gold=400" in t and "Shards=107" in t, "a first finish names its gold: %r" % t)
+    # Everything a finish can give, each on its own row.
+    t = shown_card("RE|1|80|142|400|Glass|5|3|3|133|Tester the Unshattered|Tester the Unbroken|0")
+    h.check("T=Challenge Complete" in t and "S=Glass" in t and "H=The run" in t and "H=Rewards" in t
+            and "Level reached=80" in t and "Lives left=3 of 3" in t,
+            "a finish leads with the challenge and how it went: %r" % t)
+    h.check("Heirloom ability=Spell 133" in t and "New title=Tester the Unshattered" in t
+            and "New title=Tester the Unbroken" in t and "N=Not a life lost: a third more shards." in t,
             "and names the ability and both new titles: %r" % t)
-    h.recv("RE|1|80|80|0|Glass|5|1|3|0||Tester the Unbroken|1")
-    t = str(g.LAST_POPUP_ARG)
-    h.check("Gold is paid for the first finish only." in t and "New title" not in t and "heirloom" not in t
-            and "Not a life lost" not in t,
+    t = shown_card("RE|1|80|80|0|Glass|5|1|3|0|||1")
+    h.check("N=Gold is paid for the first finish only." in t and "New title" not in t
+            and "Heirloom ability" not in t and "Not a life lost" not in t and "Lives left=1 of 3" in t,
             "a repeat says why there is no gold and claims nothing it did not give: %r" % t)
-    h.recv("RE|0|34|34|0|Nemesis|1|0|5|0|||0")
-    t = str(g.LAST_POPUP_ARG)
-    h.check(t.startswith("|cffff4444Challenge over|r") and "Your last life was lost at level 34." in t
-            and "You earn 34 shards." in t and "Your level, gear and build stay." in t,
+    t = shown_card("RE|0|34|34|0|Nemesis|1|0|5|0|||0")
+    h.check("T=Challenge Over" in t and "H=Earned" in t and "Lives left=0 of 5" in t
+            and "N=The rule lifts. Your level, gear and build stay." in t,
             "a run lost says where it ended and what stays: %r" % t)
     # A Rebirth's summary
-    h.recv("RB|2|150|50|6|0|2|6|4|3|Tester the Twice Reborn|133,686")
-    t = str(g.LAST_POPUP_ARG)
-    h.check(g.LAST_POPUP == "CW_REBIRTH_DONE" and t.startswith("|cffff8800Rebirth 2|r\nA new life begins at level 1."),
-            "a Rebirth gets its own summary: %r" % t[:70])
-    h.check("+150%|r experience from kills and dungeons" in t and "+50%|r from quests" in t
-            and "+6%|r to every primary stat" in t, "with the rank's three bonuses: %r" % t)
-    h.check("Heirlooms: " in t and "6|r Ability Essence and |cff00ff004|r Talent Essence" in t
-            and "New title: |cffffd100Tester the Twice Reborn|r" in t,
-            "the heirlooms, the starting essence and the title: %r" % t)
-    h.check("Your quest history is cleared" in t and "2 pieces of gear did not fit in your bags and were mailed to you." in t
-            and "Your next Rebirth carries up to 3 heirlooms." in t,
-            "the quests, the mailed gear and the next allowance: %r" % t)
-    h.recv("RB|1|100|25|3|1|0|0|0|2||")
-    t = str(g.LAST_POPUP_ARG)
-    h.check("No heirlooms carried." in t and "A new starting hand has been dealt." in t
-            and "Your quest history is kept." in t and "mailed" not in t and "New title" not in t,
+    t = shown_card("RB|2|150|50|6|0|2|6|4|3|Tester the Twice Reborn|133,686")
+    h.check("T=Rebirth 2" in t and "S=A new life begins at level 1." in t and "H=Your rank" in t and "H=This life" in t,
+            "a Rebirth gets its own card: %r" % t[:80])
+    h.check("Kills and dungeons=+150% XP" in t and "Quests, exploration, PvP=+50% XP" in t
+            and "Every primary stat=+6%" in t, "with the rank's three bonuses as rows: %r" % t)
+    h.check("Heirlooms=Spell 133" in t and "=Spell 686" in t and "Ability Essence=6" in t and "Talent Essence=4" in t
+            and "New title=Tester the Twice Reborn" in t and "Quest history=Cleared" in t,
+            "the heirlooms one per row, the essence, the title, the quests: %r" % t)
+    h.check("N=Every quest pays its experience again." in t
+            and "N=2 pieces of gear did not fit in your bags and were mailed to you." in t
+            and "N=Your next Rebirth carries up to 3 heirlooms." in t,
+            "and the notes under them: %r" % t)
+    h.check(str(card["button"]["__text"]) == "Begin", "its button says Begin")
+    t = shown_card("RB|1|100|25|3|1|0|0|0|2||")
+    h.check("Heirlooms=None" in t and "Starting hand=Dealt" in t and "Quest history=Kept" in t
+            and "mailed" not in t and "New title" not in t and "Every quest pays" not in t,
             "a Wildcard Rebirth with nothing carried says only what is true: %r" % t)
+    # A Rebirth that ends a run sends both at once: the second waits its turn.
+    h.rt.execute("CloseCard()")
+    h.recv("RE|1|80|107|400|Glass|5|3|3|0|||0")
+    h.recv("RB|1|100|25|3|1|0|0|0|2||")
+    t = str(h.rt.eval("CardText()"))
+    h.check("T=Challenge Complete" in t, "the run's card shows first: %r" % t[:40])
+    h.rt.execute("CloseCard()")
+    t = str(h.rt.eval("CardText()"))
+    h.check(card["__shown"] is True and "T=Rebirth 1" in t, "and the Rebirth's when it is closed: %r" % t[:40])
+    h.rt.execute("CloseCard()")
+    h.check(card["__shown"] is False, "and then nothing is left waiting")
     h.recv(run_state(1, 17, shards=19))
     h.check(CW.runBadge["__shown"] is False and not CW.lifeIcons[1]["__shown"], "no run, no badge, no lives shown")
 
@@ -3342,6 +3420,299 @@ def test_tree_header(h):
     h.recv("TBE|")
 
 
+def test_dealt_hand(h):
+    print("--- Dealt Hand: Wildcard only, and nothing is rerolled")
+    CW, g = h.CW, h.g
+    runs = CW.runFly
+    h.recv("CH|21|Dealt Hand|3|500|Wildcard Heroes only. No rerolls.|0|0|961472|%s the Fated|1")
+    h.recv("CH|5|Glass|3|400|Half health.|0|0|0||255")
+    h.recv("CH|19|Ironman|3|500|White gear only.|0|0|0|")
+    h.recv("CHE|")
+    dh = CW.challengesById[21]
+    h.check(dh.path == 1 and CW.challengesById[5].path == 255 and CW.challengesById[19].path == 255,
+            "the list reads each challenge's path, and an absent field means either")
+
+    def page(run_id):
+        CW.OpenRuns()
+        runs["selected"] = run_id
+        CW.RenderRuns()
+        return str(runs["req"]["__text"]), runs["start"]["__enabled"]
+
+    # A Classless Hero sees who it is for, and cannot start it.
+    h.recv(run_state(0, 1, run_ready=1))
+    req, start = page(21)
+    h.check("Wildcard Heroes only. Your path is Classless." in req and start is False,
+            "a Classless Hero is told it is Wildcard only, and Start is off: %r" % req)
+    req, start = page(5)
+    h.check("start this now" in req and start is True, "while a challenge for either path still starts: %r" % req)
+    # A Wildcard Hero can.
+    h.recv(run_state(1, 1, run_ready=1))
+    req, start = page(21)
+    h.check("start this now" in req and start is True, "a Wildcard Hero can start it: %r" % req)
+    runs["__shown"] = False
+
+    # On the run, field 31 says no rerolls: nothing offers one.
+    h.recv(run_state(1, 1, run=21, lives=3, lives_max=3) + "|1")
+    h.check(CW.NoRerolls() is True, "field 31 marks the run as no-reroll")
+    h.recv("OA|133:0:0:0;686:0:1:0;")
+    h.recv("OAE|")
+    h.recv("OT|101:12294:1:1:2;")
+    h.recv("OTE|")
+    CW.SetTab("ABIL")
+    shown = [CW.buildRows[i]["actBtn"]["__shown"] for i in (1, 2, 3)]
+    locks = [CW.buildRows[i]["lockBtn"]["__shown"] for i in (1, 2)]
+    h.check(shown == [False, False, False], "My Build offers no reroll on any row: %r" % shown)
+    h.check(locks == [False, False], "and no padlocks, which only matter to a reroll: %r" % locks)
+    CW.revealFX.SetRerollButton()
+    h.check(str(CW.revealReroll["__text"]) == "No rerolls" and CW.revealReroll["__enabled"] is False,
+            "a level-up card's button says No rerolls and is off: %r" % str(CW.revealReroll["__text"]))
+    hand = CW.handFrame
+    hand["__scripts"]["OnShow"](hand)
+    h.check(CW.handRoll["__enabled"] is False, "the starting hand's roll button is off")
+    h.clear_sent()
+    CW.handRoll["__scripts"]["OnClick"](CW.handRoll)
+    CW.AskTalentReroll(101, "Talent", 1, 2)
+    h.check(h.sent() == [], "and nothing reaches the server even when pressed: %r" % h.sent())
+    hand["__shown"] = False
+
+    # The run over, rerolls come back.
+    h.recv(run_state(1, 5, run=0) + "|0")
+    h.check(CW.NoRerolls() is False, "with the run over, rerolls are offered again")
+    CW.revealFX.SetRerollButton()
+    h.check(str(CW.revealReroll["__text"]) != "No rerolls", "and the card's button is a reroll again")
+
+    # Thirteen challenges all get a row; the list does not drop the last one.
+    for i in range(1, 14):
+        h.recv("CH|%d|Challenge %d|3|400|A rule.|0|0|0||255" % (i, i))
+    h.recv("CHE|")
+    CW.OpenRuns()
+    shown = [bool(runs["rows"][i]["__shown"]) for i in range(1, 15)]
+    h.check(shown == [True] * 13 + [False], "thirteen challenges, thirteen rows: %r" % shown)
+    runs["__shown"] = False
+
+    # Loaded Die: the face in the middle of the screen.
+    text = [str(x) for x in h.rt.eval("{ ClasslessWildcard_API.LoadedDieText(14, 20, false) }").values()]
+    h.check(text[0] == "Loaded Die: 14", "a throw shows its face: %r" % text[0])
+    text = [str(x) for x in h.rt.eval("{ ClasslessWildcard_API.LoadedDieText(20, 20, true) }").values()]
+    h.check(text[0] == "Rolled a 1, thrown again. Loaded Die: 20! The die returns to your hand."
+            and [float(x) for x in text[1:]] == [1.0, 0.82, 0.0],
+            "a 1 thrown again and the top face, in gold: %r" % text)
+
+
+def test_custom_builds(h):
+    print("--- My Builds: save, edit, share, import and follow your own archetype")
+    CW, g = h.CW, h.g
+    fly, E, S = CW.archFly, CW.buildEditor, CW.shareWindow
+    h.recv(state(0))
+    h.rt.execute("ClasslessWildcardDB = ClasslessWildcardDB or {}; ClasslessWildcardDB.customBuilds = {}")
+
+    # the code: a build round-trips, and damage or truncation is refused
+    h.rt.execute('''
+        CB = { name = "Frostfire Duelist", desc = "Fire up close, frost at range.",
+               abilities = { 1752, 772, 133, 961472, 116 }, talents = { {12294, 1}, {9000, 3} } }
+        CODE = ClasslessWildcard_API.EncodeBuild(CB)
+        RT = ClasslessWildcard_API.DecodeBuild(CODE)
+    ''')
+    code = str(h.rt.eval("CODE"))
+    rt = h.rt.eval("RT")
+    h.check(code.startswith("CWA1:") and rt is not None and str(rt.name) == "Frostfire Duelist"
+            and list(rt.abilities.values()) == [1752, 772, 133, 961472, 116]
+            and [list(t.values()) for t in rt.talents.values()] == [[12294, 1], [9000, 3]]
+            and str(rt.desc) == "Fire up close, frost at range.",
+            "a build round-trips through its code (%d characters)" % len(code))
+    damaged = code[:20] + ("A" if code[20] != "A" else "B") + code[21:]
+    h.rt.globals().M = damaged
+    h.check(h.rt.eval("(ClasslessWildcard_API.DecodeBuild(M))") is None, "a damaged code is refused")
+    h.rt.globals().M = code[:-3]
+    h.check(h.rt.eval("(ClasslessWildcard_API.DecodeBuild(M))") is None, "a cut-off code is refused")
+
+    # the tab
+    fly["__shown"] = True
+    h.click(fly["tabMine"])
+    h.check(str(fly["title"]["__text"]) == "My Builds" and fly["bar"]["__shown"] is True
+            and fly["empty"]["__shown"] is True, "My Builds shows its bar and says it is empty")
+
+    # Save my build: the server sends the current build, the editor opens on it
+    h.clear_sent()
+    h.click(fly["bar"]["mine"])
+    h.check(h.sent() == ["ARCHMINE"], "Save my build asks for the current build")
+    h.recv("AMA|1752,772,")
+    h.recv("AMT|12294:1,")
+    h.recv("AME|")
+    h.check(E["__shown"] is True and str(E["name"]["__text"]) == "Tester's build",
+            "the editor opens on it, named for the character: %r" % str(E["name"]["__text"]))
+    h.clear_sent()
+    h.rt.execute("NOW = NOW + 1")
+    E["__scripts"]["OnUpdate"](E, 0.5)
+    sent = h.sent()
+    h.check(sent[0] == "ARCHUP CLEAR" and "ARCHUP A 1752,772" in sent and "ARCHUP T 12294:1" in sent
+            and sent[-1] == "ARCHPLANX Tester's build",
+            "the editor previews the build on the server: %r" % sent)
+    h.check(E["save"]["__enabled"] is False, "Save waits for the server's verdict")
+    h.recv("APA|0|1752:0:1;772:1:4;")
+    h.recv("APT|0|12294:2:1:1:10:12294;")
+    h.recv("APE|0|3|66|1|71|")
+    rows = E["rows"]
+    h.check(str(rows[1]["level"]["__text"]) == "Lv 1" and str(rows[2]["level"]["__text"]) == "Lv 4"
+            and str(rows[3]["rank"]["__text"]) == "1/1", "rows show their levels and the talent's rank")
+    h.check(E["save"]["__enabled"] is True and "can be saved" in str(E["verdict"]["__text"])
+            and "3|r / 66" in str(E["budget"]["__text"]),
+            "a clean verdict enables Save and shows the budget: %r" % str(E["budget"]["__text"]))
+    # reorder and remove
+    h.click(rows[2]["up"])
+    h.check(list(E["build"]["abilities"].values()) == [772, 1752] and E["save"]["__enabled"] is False,
+            "moving a row reorders the build and asks the server again")
+    h.recv("APE|0|3|66|1|71|")
+    h.click(E["save"])
+    saved = h.rt.eval("ClasslessWildcardDB.customBuilds")
+    h.check(len(list(saved.values())) == 1 and str(saved[1].name) == "Tester's build"
+            and list(saved[1].abilities.values()) == [772, 1752], "Save keeps it in the addon")
+    # over budget is refused
+    E["__scripts"]["OnUpdate"](E, 0.5)
+    h.recv("APE|0|90|66|1|71|The build costs 90 Ability Essence. A Hero earns 66 by level 80.")
+    h.check(E["save"]["__enabled"] is False and "costs 90 Ability Essence" in str(E["verdict"]["__text"]),
+            "a build over budget cannot be saved, and says why")
+    E["dirty"] = False
+    E["__shown"] = False
+
+    # the row: Build, Follow, Edit, Share, Delete
+    CW.RenderArchFly()
+    r = fly["rows"][1]
+    h.check("Tester's build" in str(r["name"]["__text"]) and r["edit"]["__shown"] is True
+            and r["share"]["__shown"] is True and r["del"]["__shown"] is True,
+            "a saved build's row offers Edit, Share and Delete")
+    h.clear_sent()
+    h.click(r["apply"])
+    h.check(g.LAST_POPUP == "CW_CLASSLESS_CUSTOM" and "ARCHUP CLEAR" in h.sent() and not any(s.startswith("ARCHCUSTOM") for s in h.sent()),
+            "Follow uploads the build and asks first")
+    h.clear_sent()
+    g.StaticPopupDialogs["CW_CLASSLESS_CUSTOM"]["OnAccept"](g.LAST_POPUP_FRAME)
+    h.check(h.sent()[0] == "ARCHCUSTOM Tester's build", "accepting follows it by name: %r" % h.sent()[:1])
+    h.recv(state(0) + "|0|0|0|1|0|100|1|0|0|0|0|0|0|0|0|Tester's build")
+    fly["__shown"] = True
+    CW.archTab = "MINE"
+    CW.RenderArchFly()
+    h.check("Following" in str(fly["rows"][1]["name"]["__text"]) and str(fly["rows"][1]["apply"]["__text"]) == "Stop",
+            "the followed build is marked and offers Stop")
+
+    # Build on a saved build previews it in the build-order window
+    h.clear_sent()
+    h.click(fly["rows"][1]["view"])
+    h.check("ARCHUP CLEAR" in h.sent() and h.sent()[-1] == "ARCHPLANX Tester's build" and CW.archPlan["__shown"] is True,
+            "Build previews a saved build: %r" % h.sent()[-1])
+    h.recv("APA|0|772:1:4;1752:0:4;")
+    h.recv("APE|0|3|66|0|71|")
+    h.check(str(CW.archPlan["rows"][1]["level"]["__text"]) == "Lv 4", "and draws its levels")
+    CW.archPlan["__shown"] = False
+
+    # Share and import
+    h.click(fly["rows"][1]["share"])
+    shared = str(S["box"]["__text"])
+    h.check(S["__shown"] is True and shared.startswith("CWA1:") and str(S["go"]["__text"]) == "Send to party",
+            "Share shows the build's code: %s..." % shared[:16])
+    S["__shown"] = False
+    CW.OpenShareWindow("import")
+    S["box"]["__text"] = "CWA1:nonsense"
+    h.click(S["go"])
+    h.check(S["__shown"] is True and "damaged" in str(S["error"]["__text"]),
+            "a bad code is refused in the window: %r" % str(S["error"]["__text"]))
+    S["box"]["__text"] = code
+    h.click(S["go"])
+    h.check(S["__shown"] is False and E["__shown"] is True and str(E["name"]["__text"]) == "Frostfire Duelist",
+            "a good code opens in the editor, unsaved")
+    E["dirty"] = False
+    E["__shown"] = False
+
+    # Delete asks, then removes
+    h.click(fly["rows"][1]["del"])
+    g.StaticPopupDialogs["CW_CLASSLESS_DELETEBUILD"]["OnAccept"](g.LAST_POPUP_FRAME)
+    h.check(len(list(h.rt.eval("ClasslessWildcardDB.customBuilds").values())) == 0, "Delete removes it after asking")
+
+    # a build shared by a party member, in pieces
+    h.rt.globals().M = code
+    n = (len(code) + 199) // 200
+    for i in range(n):
+        piece = code[i * 200:(i + 1) * 200]
+        h.events["__scripts"]["OnEvent"](h.events, "CHAT_MSG_ADDON", "CWSH", "%d/%d/%s" % (i + 1, n, piece), "PARTY", "Friend")
+    h.check(g.LAST_POPUP == "CW_CLASSLESS_SHAREDBUILD" and "Friend" in str(g.LAST_POPUP_ARG),
+            "a party member's build arrives and asks to be viewed: %r" % str(g.LAST_POPUP_ARG))
+
+    # row warnings and Fix order
+    CW.OpenBuildEditor(h.rt.eval("{ name = 'Messy', desc = '', abilities = { 47475, 133, 133 }, "
+                                 "talents = { {1300, 2}, {1200, 1} } }"), None)
+    h.rt.execute("ClasslessWildcard_API.talentInfo[1200] = { spell = 12294, rarity = 1, max = 2 }")
+    h.rt.execute("NOW = NOW + 1")
+    E["__scripts"]["OnUpdate"](E, 0.5)
+    h.recv("APA|0|47475:1:0:70;133:0:1:1;")
+    h.recv("APT|0|12295:1:2:2:10:1300;12294:1:1:2:10:1200;")
+    h.recv("APW|0|A:0:never:0;A:2:twice:0;T:0:needs:1200;")
+    h.recv("APE|0|9|66|3|71|Mortal Strike would never be bought in this order by level 80.")
+    rows = E["rows"]
+    h.check(str(rows[1]["level"]["__text"]) == "|cffff5544!|r" and "never bought" in str(rows[1]["warning"])
+            and "already in the build" in str(rows[3]["warning"]) and rows[2]["warning"] is None,
+            "warned rows are marked and say why: %r / %r" % (rows[1]["warning"], rows[3]["warning"]))
+    h.check("needs Spell 12294 earlier" in str(rows[4]["warning"]), "a talent names what it needs: %r" % rows[4]["warning"])
+    h.check(E["fix"]["__shown"] is True and E["save"]["__enabled"] is False, "Fix order is offered, Save is not")
+    h.clear_sent()
+    h.click(E["fix"])
+    h.check(list(E["build"]["abilities"].values()) == [133, 47475]
+            and [list(t.values()) for t in E["build"]["talents"].values()] == [[1200, 1], [1300, 2]],
+            "Fix order sorts abilities by unlock, drops the repeat and puts the talent below what it needs: %r / %r"
+            % (list(E["build"]["abilities"].values()), [list(t.values()) for t in E["build"]["talents"].values()]))
+    h.rt.execute("NOW = NOW + 1")
+    E["__scripts"]["OnUpdate"](E, 0.5)
+    h.check(h.sent()[-1] == "ARCHPLANX Messy", "and asks the server again")
+    h.recv("APE|0|9|66|3|71|")
+    h.check(E["fix"]["__shown"] is False and E["save"]["__enabled"] is True, "a clean build hides Fix order and can be saved")
+    E["dirty"] = False
+    E["__shown"] = False
+
+    # the commands
+    h.rt.execute('SlashCmdList["CLASSLESSWILDCARD"]("import")')
+    h.check(S["__shown"] is True and str(S["go"]["__text"]) == "Import", "/cw import opens the import window")
+    S["__shown"] = False
+    fly["__shown"] = False
+    h.rt.execute('SlashCmdList["CLASSLESSWILDCARD"]("builds")')
+    h.check(fly["__shown"] is True and str(fly["title"]["__text"]) == "My Builds", "/cw builds opens My Builds")
+
+    # a starter build copied into My Builds, from its build-order window
+    CW.OpenArchPlan(h.rt.eval("{ id = 3, name = 'Battle Mage', desc = 'Armored caster.' }"))
+    h.check(CW.archPlan["copy"]["__shown"] is True, "a starter build's window offers Copy to My Builds")
+    h.recv("APA|3|133:1:1;1752:0:4;")
+    h.recv("APT|3|12294:2:3:3:10:1234;")
+    h.recv("APE|3|5|66|3|71|")
+    h.click(CW.archPlan["copy"])
+    h.check(E["__shown"] is True and str(E["name"]["__text"]) == "Battle Mage (copy)"
+            and list(E["build"]["abilities"].values()) == [133, 1752]
+            and [list(t.values()) for t in E["build"]["talents"].values()] == [[1234, 3]],
+            "Copy opens the editor on the same build, ready to change and save")
+    E["dirty"] = False
+    E["__shown"] = False
+
+    # the browsers carry a + while the editor is open, and only then
+    CW.OpenBuildEditor(h.rt.eval("CB"), None)
+    h.recv("AB|1|0|1|5308:1:2:0:0:24:2;")
+    w = CW.abilEntries[1]
+    h.check(w["planAdd"] is not None and w["planAdd"]["__shown"] is True, "an ability row gets a + while editing")
+    h.click(w["planAdd"])
+    h.click(w["planAdd"])
+    h.check(list(E["build"]["abilities"].values())[-1] == 5308
+            and list(E["build"]["abilities"].values()).count(5308) == 1,
+            "its + adds the ability to the end of the build, once")
+    h.recv("TL|161|0|1|1234:12294:2:0:3:6:1;")
+    tw = CW.talEntries[1]
+    h.click(tw["planAdd"])
+    h.click(tw["planAdd"])
+    tal = [list(t.values()) for t in E["build"]["talents"].values()]
+    h.check([1234, 2] in tal, "a talent's + adds it, then a rank more: %r" % tal)
+    E["dirty"] = False
+    E["__shown"] = False
+    h.recv("AB|1|0|1|5308:1:2:0:0:24:2;")
+    h.check(w["planAdd"]["__shown"] is False, "with the editor closed the + is gone")
+    fly["__shown"] = False
+    CW.archTab = "STARTER"
+
+
 def test_challenge_tracker(h):
     print("--- Challenge tracker: what a run is counting, on screen while playing")
     CW, g = h.CW, h.g
@@ -3420,6 +3791,27 @@ def test_challenge_tracker(h):
     h.check(f["__shown"] is False, "/cw tracker hides it")
     h.rt.execute('SlashCmdList["CLASSLESSWILDCARD"]("tracker")')
     h.check(f["__shown"] is True, "and shows it again")
+    # The Settings panel's checkbox is the same setting as /cw tracker.
+    setfly = CW.setFly
+    tcb = setfly["trackerCheck"]
+    CW.RenderSettings()
+    h.check(tcb["__checked"] is True, "Settings shows the tracker as on")
+    tcb["__checked"] = False
+    tcb["__scripts"]["OnClick"](tcb)
+    h.check(f["__shown"] is False and g.ClasslessWildcardDB.trackerOff is True,
+            "unticking it hides the tracker and saves that account-wide")
+    setfly["__shown"] = True
+    h.rt.execute('SlashCmdList["CLASSLESSWILDCARD"]("tracker")')
+    h.check(f["__shown"] is True and tcb["__checked"] is True,
+            "/cw tracker shows it again, and the open panel ticks itself to match")
+    setfly["__shown"] = False
+    f["__point"] = None
+    CW.ResetTrackerPosition()
+    pt = [str(x) for x in f["__point"].values()]
+    h.check(pt[0] == "TOP" and g.ClasslessWildcardDB.trackerPos is None,
+            "Reset tracker position puts it back at the top and forgets the drag: %r" % pt)
+    h.check(str(setfly["trackerReset"]["__text"]) == "Reset tracker position", "with its own button in Settings")
+
     h.recv("RT|0|0|0|0|0|0|0|")
     h.check(f["__shown"] is False, "the run over, it goes away")
 
@@ -3466,6 +3858,8 @@ def main():
     test_talent_unlearn(h)
     test_tree_header(h)
     test_challenge_tracker(h)
+    test_dealt_hand(h)
+    test_custom_builds(h)
     if h.failures:
         print("\n%d check(s) FAILED" % h.failures)
         return 1

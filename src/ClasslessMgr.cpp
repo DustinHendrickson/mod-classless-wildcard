@@ -1899,6 +1899,23 @@ std::string ClasslessMgr::ArchetypeName(uint32 archetypeId) const
     return itr == _archetypes.end() ? std::string("an archetype") : itr->second.name;
 }
 
+std::string ClasslessMgr::ArchetypeName(CharState const& st) const
+{
+    if (st.archetype == CUSTOM_ARCHETYPE)
+        return st.custom.name.empty() ? std::string("your own build") : st.custom.name;
+    return ArchetypeName(st.archetype);
+}
+
+Archetype const* ClasslessMgr::FindArchetype(CharState const& st, uint32 id) const
+{
+    if (!id)
+        return nullptr;
+    if (id == CUSTOM_ARCHETYPE)
+        return st.custom.id == CUSTOM_ARCHETYPE ? &st.custom : nullptr;
+    auto itr = _archetypes.find(id);
+    return itr == _archetypes.end() ? nullptr : &itr->second;
+}
+
 static std::string JoinNames(std::vector<std::string> const& names)
 {
     std::string out;
@@ -1923,20 +1940,26 @@ bool ClasslessMgr::ApplyArchetype(Player* player, uint32 archetypeId, std::strin
             if (err) *err = "You are not following an archetype.";
             return false;
         }
-        std::string name = ArchetypeName(st.archetype);
+        std::string name = ArchetypeName(st);
         st.archetype = 0;
         SaveState(player);
         Msg(player, Acore::StringFormat("You no longer follow |cffffff00{}|r. Everything you own stays; from here you buy your own abilities and talents.", name));
         return true;
     }
 
-    auto itr = _archetypes.find(archetypeId);
-    if (itr == _archetypes.end())
+    // The player's own build is followed through ApplyCustomArchetype, which
+    // checks it first; this path takes the starter builds only.
+    if (archetypeId == CUSTOM_ARCHETYPE || !_archetypes.count(archetypeId))
     {
         if (err) *err = "Unknown archetype.";
         return false;
     }
-    Archetype const& arch = itr->second;
+    return SwitchToArchetype(player, archetypeId, err);
+}
+
+bool ClasslessMgr::SwitchToArchetype(Player* player, uint32 archetypeId, std::string* err)
+{
+    CharState& st = GetState(player);
 
     // An archetype replaces the build. Abilities come off with a full refund,
     // exactly as unlearning them one by one would. Talents are only reset in
@@ -1977,7 +2000,7 @@ bool ClasslessMgr::ApplyArchetype(Player* player, uint32 archetypeId, std::strin
 
     FollowResult got = FollowArchetype(player);
     std::string line = Acore::StringFormat("You now follow |cffffff00{}|r. Bought now: {} abilities, {} talent ranks.",
-        arch.name, got.abilities, got.talentRanks);
+        ArchetypeName(st), got.abilities, got.talentRanks);
     auto queue = ArchetypeQueue(player);
     if (!queue.empty())
     {
@@ -1987,9 +2010,282 @@ bool ClasslessMgr::ApplyArchetype(Player* player, uint32 archetypeId, std::strin
         else
             line += Acore::StringFormat(" Next: {}, as soon as you have the Ability Essence.", SpellName(firstSpell));
     }
-    Msg(player, line + Acore::StringFormat(" AE left: |cff00ff00{}|r, TE left: |cff00ff00{}|r.",
+    Msg(player, line + Acore::StringFormat(" Ability Essence left: |cff00ff00{}|r, Talent Essence left: |cff00ff00{}|r.",
         st.abilityEssence, st.talentEssence));
     return true;
+}
+
+// ---- custom archetypes ------------------------------------------------------
+namespace
+{
+    // A build's name as it may be shown and stored: printable characters only,
+    // no '|' (the client's escape code) or field separators, trimmed, capped.
+    std::string CleanBuildName(std::string const& in)
+    {
+        std::string out;
+        for (char c : in)
+        {
+            unsigned char const u = static_cast<unsigned char>(c);
+            if (u < 32 || c == '|' || c == ';' || c == ':' || c == ',' || c == '\t')
+                continue;
+            out += c;
+        }
+        size_t const b = out.find_first_not_of(' ');
+        size_t const e = out.find_last_not_of(' ');
+        out = b == std::string::npos ? std::string() : out.substr(b, e - b + 1);
+        if (out.size() > CUSTOM_ARCHETYPE_NAME_MAX)
+        {
+            out.resize(CUSTOM_ARCHETYPE_NAME_MAX);
+            // never leave half a UTF-8 character at the end
+            while (!out.empty() && (static_cast<unsigned char>(out.back()) & 0xC0) == 0x80)
+                out.pop_back();
+            if (!out.empty() && (static_cast<unsigned char>(out.back()) & 0x80))
+                out.pop_back();
+        }
+        return out;
+    }
+}
+
+ClasslessMgr::PlanBudget ClasslessMgr::BudgetOf(Archetype const& arch) const
+{
+    PlanBudget b;
+    uint8 const cap = uint8(std::min<uint32>(sWorld->getIntConfig(CONFIG_MAX_PLAYER_LEVEL), 255));
+    b.totalA = cfg.startingAbilityEssence + LevelsEarned(cap, cfg.essenceStartLevel) * cfg.abilityEssencePerLevel;
+    b.totalT = LevelsEarned(cap, cfg.talentEssenceStartLevel) * cfg.talentEssencePerLevel;
+    for (uint32 firstSpell : arch.abilities)
+        if (AbilityEntry const* e = GetAbility(firstSpell))
+            b.spentA += AbilityCost(*e);
+    for (auto const& [talentId, rank] : arch.talents)
+        b.spentT += cfg.talentFlatCost ? cfg.talentCostPerRank : cfg.talentCostPerRank * rank;
+    return b;
+}
+
+bool ClasslessMgr::ValidateCustomArchetype(Archetype& arch, std::string* err)
+{
+    auto fail = [err](std::string const& why) { if (err) *err = why; return false; };
+
+    arch.name = CleanBuildName(arch.name);
+    if (arch.name.empty())
+        return fail("Give the build a name.");
+    if (arch.abilities.empty() && arch.talents.empty())
+        return fail("The build has nothing in it.");
+    if (arch.abilities.size() > CUSTOM_ARCHETYPE_MAX || arch.talents.size() > CUSTOM_ARCHETYPE_MAX)
+        return fail(Acore::StringFormat("A build can list at most {} abilities and {} talents.",
+                                        CUSTOM_ARCHETYPE_MAX, CUSTOM_ARCHETYPE_MAX));
+
+    // Abilities: each one a player could buy here, each once.
+    std::set<uint32> seen;
+    for (uint32 firstSpell : arch.abilities)
+    {
+        AbilityEntry const* e = GetAbility(firstSpell);
+        if (!e || !e->enabled || (e->variant && !cfg.elementalInPool))
+            return fail(Acore::StringFormat("{} cannot be bought on this realm.",
+                        sSpellMgr->GetSpellInfo(firstSpell) ? SpellName(firstSpell) : std::string("An ability in the build")));
+        if (!seen.insert(firstSpell).second)
+            return fail(Acore::StringFormat("{} is in the build twice.", SpellName(firstSpell)));
+    }
+
+    // Talents: each once, within its ranks, after whatever it needs.
+    std::map<uint32, uint8> placed;   // talent -> rank, as the plan has it so far
+    for (auto const& [talentId, rank] : arch.talents)
+    {
+        TalentPoolEntry const* t = GetTalent(talentId);
+        if (!t || !t->enabled)
+            return fail("A talent in the build is not on this realm.");
+        std::string const name = SpellName(t->rankSpells[0]);
+        if (!rank || rank > t->maxRank)
+            return fail(Acore::StringFormat("{} has {} ranks, not {}.", name, uint32(t->maxRank), uint32(rank)));
+        if (placed.count(talentId))
+            return fail(Acore::StringFormat("{} is in the build twice.", name));
+        if (t->dependsOn)
+        {
+            uint8 const need = uint8(t->dependsOnRank + 1);
+            auto dep = placed.find(t->dependsOn);
+            bool met = dep != placed.end() && dep->second >= need;
+            // a prerequisite that became an ability is met by that ability
+            if (!met)
+                if (auto rep = _replacedTalents.find(t->dependsOn); rep != _replacedTalents.end())
+                    for (uint32 line : rep->second.abilityLines)
+                        if (seen.count(line))
+                            met = true;
+            if (!met)
+            {
+                TalentPoolEntry const* d = GetTalent(t->dependsOn);
+                return fail(Acore::StringFormat("{} needs {} {} of {} earlier in the build.", name, uint32(need),
+                            need == 1 ? "rank" : "ranks", d ? SpellName(d->rankSpells[0]) : std::string("another talent")));
+            }
+        }
+        placed[talentId] = rank;
+    }
+
+    // The budget: the whole plan must be bought by the cap on a Hero with no
+    // Rebirth bonus, so a build that is valid here is valid for anyone.
+    PlanBudget const b = BudgetOf(arch);
+    if (b.spentA > b.totalA)
+        return fail(Acore::StringFormat("The build costs {} Ability Essence. A Hero earns {} by level {}.",
+                    b.spentA, b.totalA, sWorld->getIntConfig(CONFIG_MAX_PLAYER_LEVEL)));
+    if (b.spentT > b.totalT)
+        return fail(Acore::StringFormat("The build costs {} Talent Essence. A Hero earns {} by level {}.",
+                    b.spentT, b.totalT, sWorld->getIntConfig(CONFIG_MAX_PLAYER_LEVEL)));
+    // Order can still leave a step unreached (an early ability waits for one
+    // that unlocks late), so the simulation has the last word.
+    ArchetypePlan const plan = PlanArchetype(arch, 0);
+    for (PlanStep const& s : plan.abilities)
+        if (!s.level)
+            return fail(Acore::StringFormat("{} would never be bought in this order by level {}. Move it, or "
+                        "what waits in front of it, earlier.", SpellName(s.spell), sWorld->getIntConfig(CONFIG_MAX_PLAYER_LEVEL)));
+    for (PlanStep const& s : plan.talents)
+        if (!s.level)
+            return fail(Acore::StringFormat("{} would never be bought in this order by level {}.",
+                        SpellName(s.spell), sWorld->getIntConfig(CONFIG_MAX_PLAYER_LEVEL)));
+    return true;
+}
+
+std::vector<ClasslessMgr::RowProblem> ClasslessMgr::InspectCustomArchetype(Archetype const& arch) const
+{
+    std::vector<RowProblem> out;
+    auto add = [&out](char kind, size_t index, char const* code, uint32 extra = 0)
+    {
+        RowProblem p;
+        p.kind = kind;
+        p.index = uint32(index);
+        p.code = code;
+        p.extra = extra;
+        out.push_back(p);
+    };
+
+    std::set<uint32> seen;
+    for (size_t i = 0; i < arch.abilities.size(); ++i)
+    {
+        uint32 const id = arch.abilities[i];
+        AbilityEntry const* e = GetAbility(id);
+        if (!e || !e->enabled || (e->variant && !cfg.elementalInPool))
+            add('A', i, "gone");
+        else if (!seen.insert(id).second)
+            add('A', i, "twice");
+    }
+
+    std::map<uint32, uint8> placed;
+    for (size_t i = 0; i < arch.talents.size(); ++i)
+    {
+        auto const& [talentId, rank] = arch.talents[i];
+        TalentPoolEntry const* t = GetTalent(talentId);
+        if (!t || !t->enabled)
+        {
+            add('T', i, "gone");
+            continue;
+        }
+        if (placed.count(talentId))
+        {
+            add('T', i, "twice");
+            continue;
+        }
+        if (!rank || rank > t->maxRank)
+            add('T', i, "rank");
+        if (t->dependsOn)
+        {
+            auto dep = placed.find(t->dependsOn);
+            bool met = dep != placed.end() && dep->second >= t->dependsOnRank + 1;
+            bool viaAbility = false;
+            if (!met)
+                if (auto rep = _replacedTalents.find(t->dependsOn); rep != _replacedTalents.end())
+                {
+                    viaAbility = true;
+                    for (uint32 line : rep->second.abilityLines)
+                        if (seen.count(line))
+                            met = true;
+                }
+            if (!met)
+                add('T', i, "needs", viaAbility ? 0 : t->dependsOn);
+        }
+        placed[talentId] = rank;
+    }
+
+    // what the order leaves unbought by the cap, on a Hero with no Rebirth bonus
+    ArchetypePlan const plan = PlanArchetype(arch, 0);
+    std::map<uint32, size_t> abilityAt, talentAt;
+    for (size_t i = 0; i < arch.abilities.size(); ++i)
+        abilityAt.emplace(arch.abilities[i], i);
+    for (size_t i = 0; i < arch.talents.size(); ++i)
+        talentAt.emplace(arch.talents[i].first, i);
+    for (PlanStep const& s : plan.abilities)
+        if (!s.level)
+            if (auto at = abilityAt.find(s.spell); at != abilityAt.end())
+                add('A', at->second, "never");
+    for (PlanStep const& s : plan.talents)
+        if (!s.level)
+            if (auto at = talentAt.find(s.talentId); at != talentAt.end())
+                add('T', at->second, "never");
+    return out;
+}
+
+void ClasslessMgr::SaveCustomArchetype(Player* player, Archetype const& arch)
+{
+    std::string abilities, talents;
+    for (uint32 id : arch.abilities)
+        abilities += Acore::StringFormat("{}{}", abilities.empty() ? "" : ",", id);
+    for (auto const& [id, rank] : arch.talents)
+        talents += Acore::StringFormat("{}{}:{}", talents.empty() ? "" : ",", id, uint32(rank));
+    std::string name = arch.name;
+    CharacterDatabase.EscapeString(name);
+    CharacterDatabase.Execute("REPLACE INTO cw_char_custom_archetype (guid, name, abilities, talents) VALUES ({}, '{}', '{}', '{}')",
+        player->GetGUID().GetCounter(), name, abilities, talents);
+}
+
+bool ClasslessMgr::ApplyCustomArchetype(Player* player, Archetype arch, std::string* err)
+{
+    CharState& st = GetState(player);
+    if (st.mode != Mode::Classless)
+    {
+        if (err) *err = "Archetypes are build templates for the Classless path.";
+        return false;
+    }
+    if (!ValidateCustomArchetype(arch, err))
+        return false;
+    // Taken over before the switch: the refund and reset only look at what is
+    // owned, and the message the switch prints names the new build.
+    arch.id = CUSTOM_ARCHETYPE;
+    std::string const was = st.archetype ? ArchetypeName(st) : std::string();
+    st.custom = std::move(arch);
+    SaveCustomArchetype(player, st.custom);
+    if (!was.empty())
+        st.archetype = 0;   // the respec inside the switch would otherwise name the new build as the one left
+    return SwitchToArchetype(player, CUSTOM_ARCHETYPE, err);
+}
+
+Archetype ClasslessMgr::CurrentBuildAsArchetype(Player* player)
+{
+    Archetype out;
+    CharState& st = GetState(player);
+    std::vector<AbilityEntry const*> bought;
+    for (auto const& [firstSpell, owned] : st.abilities)
+        if (owned.source == GrantSource::Picked || owned.source == GrantSource::Rolled)
+            if (AbilityEntry const* e = GetAbility(firstSpell))
+                if (e->enabled)
+                    bought.push_back(e);
+    // bought as each unlocks: the order a follow would buy them in
+    std::stable_sort(bought.begin(), bought.end(), [](AbilityEntry const* a, AbilityEntry const* b)
+    {
+        uint8 const la = a->rankLevels.empty() ? 1 : a->rankLevels[0];
+        uint8 const lb = b->rankLevels.empty() ? 1 : b->rankLevels[0];
+        return la != lb ? la < lb : a->firstSpellId < b->firstSpellId;
+    });
+    for (AbilityEntry const* e : bought)
+        out.abilities.push_back(e->firstSpellId);
+
+    // talents by tier, so every prerequisite comes before what needs it
+    std::vector<std::pair<TalentPoolEntry const*, uint8>> talents;
+    for (auto const& [talentId, rank] : st.talents)
+        if (TalentPoolEntry const* t = GetTalent(talentId))
+            if (t->enabled && rank)
+                talents.emplace_back(t, rank);
+    std::stable_sort(talents.begin(), talents.end(), [](auto const& a, auto const& b)
+    {
+        return a.first->row != b.first->row ? a.first->row < b.first->row : a.first->talentId < b.first->talentId;
+    });
+    for (auto const& [t, rank] : talents)
+        out.talents.emplace_back(t->talentId, rank);
+    return out;
 }
 
 uint32 ClasslessMgr::LevelsEarned(uint8 level, uint8 startLevel)
@@ -2016,10 +2312,11 @@ ClasslessMgr::FollowResult ClasslessMgr::FollowArchetype(Player* player)
     CharState& st = GetState(player);
     if (st.mode != Mode::Classless || !st.archetype)
         return out;
-    auto itr = _archetypes.find(st.archetype);
-    if (itr == _archetypes.end())
+    Archetype const* found = FindArchetype(st, st.archetype);
+    if (!found)
         return out;
-    Archetype const& arch = itr->second;
+    // a copy: buying can rewrite the state the custom build lives in
+    Archetype const arch = *found;
 
     // Each purchase stays out of chat; the callers print one summary.
     GrantGuard quiet(_revealSuppress);
@@ -2070,14 +2367,111 @@ ClasslessMgr::FollowResult ClasslessMgr::FollowArchetype(Player* player)
     return out;
 }
 
+ClasslessMgr::ArchetypePlan ClasslessMgr::PlanArchetype(Player* player, uint32 archetypeId)
+{
+    CharState const* st = player ? FindState(player) : nullptr;
+    Archetype const* arch = st ? FindArchetype(*st, archetypeId) : nullptr;
+    if (!arch && archetypeId != CUSTOM_ARCHETYPE)
+        if (auto itr = _archetypes.find(archetypeId); itr != _archetypes.end())
+            arch = &itr->second;
+    if (!arch)
+        return ArchetypePlan();
+    return PlanArchetype(*arch, st ? st->rebirths : 0);
+}
+
+ClasslessMgr::ArchetypePlan ClasslessMgr::PlanArchetype(Archetype const& arch, uint32 rebirths) const
+{
+    ArchetypePlan plan;
+    plan.found = true;
+    uint8 const cap = uint8(std::min<uint32>(sWorld->getIntConfig(CONFIG_MAX_PLAYER_LEVEL), 255));
+
+    // every entry the follow would act on, in its order, level unknown yet
+    std::vector<AbilityEntry const*> abilities;
+    for (uint32 firstSpell : arch.abilities)
+        if (AbilityEntry const* e = GetAbility(firstSpell))
+            if (e->enabled)
+            {
+                abilities.push_back(e);
+                PlanStep step;
+                step.spell = firstSpell;
+                step.rarity = uint8(e->rarity);
+                plan.abilities.push_back(step);
+            }
+    std::vector<TalentPoolEntry const*> talents;
+    std::vector<uint8> want, owned;
+    for (auto const& [talentId, rank] : arch.talents)
+        if (TalentPoolEntry const* t = GetTalent(talentId))
+            if (t->enabled)
+            {
+                uint8 const target = std::min<uint8>(rank, t->maxRank);
+                if (!target)
+                    continue;
+                talents.push_back(t);
+                want.push_back(target);
+                owned.push_back(0);
+                PlanStep step;
+                step.spell = t->rankSpells[target - 1];
+                step.rarity = uint8(t->rarity);
+                step.talentId = t->talentId;
+                step.rank = target;
+                step.maxRank = t->maxRank;
+                plan.talents.push_back(step);
+            }
+
+    uint32 spentA = 0, spentT = 0;
+    size_t nextA = 0, nextT = 0;
+    for (uint8 level = 1; level <= cap; ++level)
+    {
+        // what the essence schedule has paid by this level (see the rebuild
+        // in the essence top-up), less what the plan has spent so far
+        uint32 const earnedA = cfg.startingAbilityEssence
+            + LevelsEarned(level, cfg.essenceStartLevel) * cfg.abilityEssencePerLevel
+            + rebirths * cfg.rebirthLegacyAbilityEssence;
+        uint32 const earnedT = LevelsEarned(level, cfg.talentEssenceStartLevel) * cfg.talentEssencePerLevel
+            + rebirths * cfg.rebirthLegacyTalentEssence;
+
+        // abilities strictly in order: one that waits holds up the rest
+        while (nextA < abilities.size())
+        {
+            AbilityEntry const* e = abilities[nextA];
+            uint8 const unlock = e->rankLevels.empty() ? 1 : e->rankLevels[0];
+            uint32 const cost = AbilityCost(*e);
+            if ((cfg.respectLevelReqs && unlock > level) || earnedA < spentA + cost)
+                break;
+            spentA += cost;
+            plan.abilities[nextA++].level = level;
+        }
+
+        // talent ranks in plan order, stopping at the first that cannot be
+        // bought, the way FollowArchetype does
+        while (nextT < talents.size())
+        {
+            TalentPoolEntry const* t = talents[nextT];
+            if (owned[nextT] >= want[nextT])
+            {
+                ++nextT;
+                continue;
+            }
+            uint32 const cost = (cfg.talentFlatCost && owned[nextT] > 0) ? 0 : cfg.talentCostPerRank;
+            if ((cfg.respectLevelReqs && level < 10 + t->row * 5) || earnedT < spentT + cost)
+                break;
+            spentT += cost;
+            if (!owned[nextT])
+                plan.talents[nextT].level = level;   // the level it is first taken
+            ++owned[nextT];
+        }
+    }
+    return plan;
+}
+
 std::vector<std::pair<uint32, uint8>> ClasslessMgr::ArchetypeQueue(Player* player)
 {
     std::vector<std::pair<uint32, uint8>> out;
     CharState& st = GetState(player);
-    auto itr = _archetypes.find(st.archetype);
-    if (!st.archetype || itr == _archetypes.end())
+    Archetype const* found = FindArchetype(st, st.archetype);
+    if (!found)
         return out;
-    Archetype const& arch = itr->second;
+    Archetype const& arch = *found;
     for (size_t i = ArchetypeCursor(st, arch); i < arch.abilities.size(); ++i)
     {
         uint32 firstSpell = arch.abilities[i];
@@ -2532,6 +2926,10 @@ namespace
         { 20, "big_game_hunter", "Big Game Hunter", 3, "Normal enemies give no XP. Elites and bosses give full, quests give double.", 400, 197, "trophy_hunt",
           "Normal enemies give no experience at all. Elite and rare enemies and dungeon bosses give their full experience, and quests give double. Hunt the dangerous things, run the dungeons, and do the quests.",
           "Look for elite quest areas and dungeons at your level, and pick up every quest you find, since quests pay double. Group up for elites you cannot take alone." },
+        { 21, "dealt_hand",      "Dealt Hand",      3, "Wildcard Heroes only. No rerolls, starting hand included. You play every ability and talent the Wildcard deals you.", 500, 198, "loaded_die",
+          "This run is for Wildcard Heroes. From the moment it starts nothing can be rerolled. Not the starting hand, not the abilities and talents dealt as you level, and no Reroll Scroll changes that. The reroll charges you earn each level still build up, and they are yours to spend when the run ends.",
+          "Read every ability you are dealt and find the few that work together, then build around them. Talents are dealt too, so look over My Build after each level. Stat points are still yours to place, so use them to cover what the hand is missing.",
+          Mode::Wildcard },
         { 3,  "hardcore",        "Hardcore",        1, "One life. A death ends the run.", 1000, 188, "last_breath",
           "You have one life. If you die the run is over, though you keep your level, gear and build and simply carry on without the rule. Deaths in battlegrounds, arenas and duels still do not count. The largest gold reward of any challenge.",
           "Know your escape abilities and when to use them, avoid fights you are not sure of, and rest to full before every pull. Duels, battlegrounds and arenas cost nothing, so they are safe places to practice." },
@@ -2610,6 +3008,14 @@ bool ClasslessMgr::StartRun(Player* player, uint8 challengeId, std::string* err)
     if (st.mode == Mode::Unchosen)
     {
         if (err) *err = "Choose your path first.";
+        return false;
+    }
+    // A challenge built on one path's mechanics is for that path only; the
+    // run never changes the path to fit.
+    if (ch->path != Mode::Unchosen && st.mode != ch->path)
+    {
+        if (err) *err = Acore::StringFormat("{} is for {} Heroes.", ch->name,
+                                            ch->path == Mode::Wildcard ? "Wildcard" : "Classless");
         return false;
     }
 
@@ -3272,6 +3678,37 @@ void ClasslessMgr::LoadCharacter(Player* player, CharState& st)
             st.nemeses[f[0].Get<uint32>()] = mark;
         } while (result->NextRow());
     }
+
+    // The character's own build, when it follows one. Anything the realm has
+    // since turned off is dropped rather than followed.
+    if (QueryResult result = CharacterDatabase.Query(
+        "SELECT name, abilities, talents FROM cw_char_custom_archetype WHERE guid = {}", guid))
+    {
+        Field* f = result->Fetch();
+        Archetype& arch = st.custom;
+        arch.id = CUSTOM_ARCHETYPE;
+        arch.name = f[0].Get<std::string>();
+        // kept alive here: Tokenize hands back views into the string it is given
+        std::string const abilitiesCsv = f[1].Get<std::string>();
+        std::string const talentsCsv = f[2].Get<std::string>();
+        for (auto const& tok : Acore::Tokenize(abilitiesCsv, ',', false))
+            if (Optional<uint32> id = Acore::StringTo<uint32>(tok))
+                if (AbilityEntry const* e = GetAbility(*id); e && e->enabled)
+                    arch.abilities.push_back(*id);
+        for (auto const& tok : Acore::Tokenize(talentsCsv, ',', false))
+        {
+            auto parts = Acore::Tokenize(tok, ':', false);
+            if (parts.size() != 2)
+                continue;
+            Optional<uint32> id = Acore::StringTo<uint32>(parts[0]);
+            Optional<uint32> rank = Acore::StringTo<uint32>(parts[1]);
+            if (id && rank && *rank)
+                if (TalentPoolEntry const* t = GetTalent(*id); t && t->enabled)
+                    arch.talents.emplace_back(*id, uint8(std::min<uint32>(*rank, t->maxRank)));
+        }
+    }
+    if (st.archetype == CUSTOM_ARCHETYPE && st.custom.id != CUSTOM_ARCHETYPE)
+        st.archetype = 0;   // its row is gone: follow nothing rather than a build that is not there
 
     // The best each challenge has gone, for the picker.
     if (QueryResult result = CharacterDatabase.Query(
@@ -4228,7 +4665,7 @@ void ClasslessMgr::HandleLevelUp(Player* player, uint8 oldLevel)
     if (st.mode == Mode::Classless && st.archetype)
     {
         FollowResult got = FollowArchetype(player);
-        std::string name = ArchetypeName(st.archetype);
+        std::string name = ArchetypeName(st);
         if (!got.learned.empty())
             Msg(player, Acore::StringFormat("|cffffff00{}|r: learned {}.", name, JoinNames(got.learned)));
         if (got.talentRanks)
@@ -5276,6 +5713,44 @@ void ClasslessMgr::UpdateAbilityRanks(Player* player)
         AbilityEntry const* e = GetAbility(firstSpell);
         if (!e)
             continue;
+
+        // The highest rank this level allows, and the highest one held.
+        size_t allowed = 0, held = 0;
+        bool holdsAny = false;
+        for (size_t i = 0; i < e->ranks.size(); ++i)
+        {
+            if (i == 0 || e->rankLevels[i] <= level)
+                allowed = i;
+            if (player->HasSpell(e->ranks[i]))
+            {
+                held = i;
+                holdsAny = true;
+            }
+        }
+
+        // Ranks above the level come off. A Rebirth puts a Hero back at
+        // level 1 still holding every rank an heirloom reached at the cap,
+        // and an heirloom is meant to grow with the new life, not arrive at
+        // full strength. removeSpell takes that rank and every one above it.
+        // The core deactivated the lower ranks when the higher ones were
+        // learned, and does not wake them again, so the top allowed rank is
+        // taken off and taught again to put it back in the spellbook; then
+        // the client is told to swap every action button from the rank it
+        // held to this one. Heirlooms only: nothing else outlives a Rebirth,
+        // and a level never drops any other way.
+        if (owned.source == GrantSource::Heirloom && holdsAny && held > allowed)
+        {
+            uint32 const was = e->ranks[held];
+            uint32 const now = e->ranks[allowed];
+            player->removeSpell(e->ranks[allowed + 1], SPEC_MASK_ALL, false);
+            player->removeSpell(now, SPEC_MASK_ALL, false);
+            player->learnSpell(now);
+            WorldPacket data(SMSG_SUPERCEDED_SPELL, 4 + 4);
+            data << uint32(was);
+            data << uint32(now);
+            player->SendDirectMessage(&data);
+        }
+
         for (size_t i = 0; i < e->ranks.size(); ++i)
             if ((i == 0 || e->rankLevels[i] <= level) && !player->HasSpell(e->ranks[i]))
                 player->learnSpell(e->ranks[i]);
@@ -5543,7 +6018,7 @@ bool ClasslessMgr::Respec(Player* player, std::string* err)
         + st.rebirths * cfg.rebirthLegacyTalentEssence;
     if (st.archetype)
     {
-        Msg(player, Acore::StringFormat("You no longer follow |cffffff00{}|r.", ArchetypeName(st.archetype)));
+        Msg(player, Acore::StringFormat("You no longer follow |cffffff00{}|r.", ArchetypeName(st)));
         st.archetype = 0;
     }
 
@@ -6007,6 +6482,11 @@ bool ClasslessMgr::Reroll(Player* player, bool isTalent, uint32 entry, std::stri
         if (err) *err = "Rerolls are a Wildcard mechanic.";
         return false;
     }
+    if (OnRun(player, ChallengeId::DealtHand))
+    {
+        if (err) *err = "No rerolls on Dealt Hand. You play what you are dealt.";
+        return false;
+    }
 
     bool free = player->GetLevel() < cfg.wcFreeRerollLevel;
 
@@ -6173,6 +6653,11 @@ uint32 ClasslessMgr::RerollUnlockedAbilities(Player* player, std::string* err)
     if (st.mode != Mode::Wildcard)
     {
         if (err) *err = "Rerolls are a Wildcard mechanic.";
+        return 0;
+    }
+    if (OnRun(player, ChallengeId::DealtHand))
+    {
+        if (err) *err = "No rerolls on Dealt Hand. You play what you are dealt.";
         return 0;
     }
 

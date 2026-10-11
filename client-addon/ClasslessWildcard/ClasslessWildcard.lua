@@ -1076,13 +1076,16 @@ end
 -- another ability cannot be carried on its own, and the server refuses it.
 -- Everything lives on CW.rebirthFly; the main chunk is at Lua's local limit.
 do
-    -- 460 x 470, centred on the panel, in the panel's own flyout dress.
-    -- Measured top to bottom so nothing can overlap whatever the text wraps
-    -- to: title -12, intro -30 (six lines at most, to -108), count -114, eight
-    -- rows of 24 from -132 (to -324), the page arrows at -340, Be reborn and
-    -- Cancel at -434.
+    -- 460 x 500, centred on the panel, in the panel's own flyout dress, laid
+    -- out like the summary card that follows it. Top to bottom: icon and
+    -- title -18; the next rank as three rows under a header -70 (to -146);
+    -- what is kept and what is reset -158 (four lines at most, to -212); the
+    -- Heirlooms header and its count -222, the hint -244, six rows of 24 from
+    -- -272 (to -416), the page arrows at -420; the cost and the two buttons
+    -- along the bottom.
+    local W, PAD = 460, 18
     local fly = CreateFrame("Frame", "ClasslessWildcardRebirth", frame)
-    fly:SetWidth(460); fly:SetHeight(470)
+    fly:SetWidth(W); fly:SetHeight(500)
     fly:SetPoint("CENTER", frame, "CENTER", 0, 0)
     CW.OverPanel(fly)   -- under the confirm popups, over the panel
     fly:SetBackdrop({
@@ -1097,32 +1100,83 @@ do
     CW.rebirthFly = fly
     fly.picked = {}
     fly.page = 0
-    local ROWS, ROW_H = 8, 24
+    local ROWS, ROW_H = 6, 24
 
-    fly.title = fly:CreateFontString(nil, "OVERLAY", "GameFontNormal")
-    fly.title:SetPoint("TOP", 0, -12)
+    local function SectionHeader(text, y)
+        local h = fly:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+        h:SetPoint("TOPLEFT", PAD, y)
+        h:SetJustifyH("LEFT")
+        h:SetText(text)
+        local rule = fly:CreateTexture(nil, "ARTWORK")
+        rule:SetHeight(1)
+        rule:SetTexture(1, 0.82, 0, 0.25)
+        rule:SetPoint("TOPLEFT", PAD, y - 16)
+        rule:SetPoint("TOPRIGHT", -PAD, y - 16)
+        return h
+    end
+
+    fly.icon = fly:CreateTexture(nil, "ARTWORK")
+    fly.icon:SetWidth(36); fly.icon:SetHeight(36)
+    fly.icon:SetPoint("TOPLEFT", PAD + 2, -PAD)
+    fly.icon:SetTexCoord(0.07, 0.93, 0.07, 0.93)
+    fly.icon:SetTexture("Interface\\Icons\\Spell_Nature_Reincarnation")
+    fly.iconBorder = fly:CreateTexture(nil, "OVERLAY")
+    fly.iconBorder:SetWidth(58); fly.iconBorder:SetHeight(58)
+    fly.iconBorder:SetPoint("CENTER", fly.icon, "CENTER", 0, 0)
+    fly.iconBorder:SetTexture("Interface\\Buttons\\UI-Quickslot2")
+    fly.title = fly:CreateFontString(nil, "OVERLAY", "GameFontNormalLarge")
+    fly.title:SetPoint("TOPLEFT", fly.icon, "TOPRIGHT", 12, -1)
+    fly.title:SetJustifyH("LEFT")
+    fly.title:SetTextColor(1, 0.53, 0)
     fly.title:SetText("Rebirth")
+    fly.subtitle = fly:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
+    fly.subtitle:SetPoint("TOPLEFT", fly.title, "BOTTOMLEFT", 0, -5)
+    fly.subtitle:SetJustifyH("LEFT")
+
+    -- the rank this Rebirth brings, from the realm's own numbers
+    SectionHeader("Your rank after this Rebirth", -70)
+    fly.rankRows = {}
+    for i = 1, 3 do
+        local y = -92 - (i - 1) * 18
+        local label = fly:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
+        label:SetPoint("TOPLEFT", PAD + 4, y)
+        label:SetJustifyH("LEFT")
+        label:SetTextColor(0.85, 0.85, 0.85)
+        local value = fly:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
+        value:SetPoint("TOPRIGHT", -PAD, y)
+        value:SetJustifyH("RIGHT")
+        value:SetTextColor(0.1, 1, 0.1)
+        fly.rankRows[i] = { label = label, value = value }
+    end
+    fly.rankRows[1].label:SetText("Kills and dungeons")
+    fly.rankRows[2].label:SetText("Quests, exploration, PvP")
+    fly.rankRows[3].label:SetText("Every primary stat")
 
     fly.intro = fly:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
-    fly.intro:SetPoint("TOPLEFT", 14, -30)
-    fly.intro:SetWidth(432)
+    fly.intro:SetPoint("TOPLEFT", PAD, -158)
+    fly.intro:SetWidth(W - 2 * PAD)
     fly.intro:SetJustifyH("LEFT")
-    fly.intro:SetText("A new life. Back to level 1; you choose whether your quests are wiped or kept. "
-        .. "Gold, bags, bank, reputation, riding and flight paths stay; worn gear goes into your bags, or by mail if they are full. "
-        .. "Each Rebirth adds a permanent rank: more kill XP, a bonus to every stat, legacy essence on the Classless path, "
-        .. "one more heirloom next time, and a title. "
-        .. "You stay on your path. "
-        .. "Tick the abilities to carry with you. An heirloom is usable from level 1 and never rerolled.")
+    fly.intro:SetTextColor(0.75, 0.75, 0.75)
+    fly.intro:SetText("|cffffd100Kept:|r gold, bags, bank, reputation, riding and flight paths.\n"
+        .. "|cffffd100Reset:|r your level, build and stat points. Worn gear goes into your bags, or by mail if they are full.\n"
+        .. "|cffffd100Quests:|r you choose next whether they are wiped or kept.")
 
-    fly.count = fly:CreateFontString(nil, "OVERLAY", "GameFontNormal")
-    fly.count:SetPoint("TOPLEFT", 14, -114)
-    fly.count:SetJustifyH("LEFT")
+    SectionHeader("Heirlooms", -222)
+    fly.count = fly:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
+    fly.count:SetPoint("TOPRIGHT", -PAD, -222)
+    fly.count:SetJustifyH("RIGHT")
+    fly.hint = fly:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+    fly.hint:SetPoint("TOPLEFT", PAD, -244)
+    fly.hint:SetWidth(W - 2 * PAD)
+    fly.hint:SetJustifyH("LEFT")
+    fly.hint:SetTextColor(0.75, 0.75, 0.75)
+    fly.hint:SetText("Click the abilities to carry. An heirloom is usable from level 1 and never rerolled.")
 
     fly.rows = {}
     for i = 1, ROWS do
         local r = CreateFrame("Button", nil, fly)
-        r:SetWidth(432); r:SetHeight(ROW_H)
-        r:SetPoint("TOPLEFT", 14, -132 - (i - 1) * ROW_H)
+        r:SetWidth(W - 2 * PAD); r:SetHeight(ROW_H)
+        r:SetPoint("TOPLEFT", PAD, -272 - (i - 1) * ROW_H)
         r.stripe = r:CreateTexture(nil, "BACKGROUND")
         r.stripe:SetAllPoints(r)
         r.stripe:SetTexture("Interface\\Buttons\\WHITE8X8")
@@ -1155,29 +1209,34 @@ do
         r:SetScript("OnLeave", function() GameTooltip:Hide() end)
         fly.rows[i] = r
     end
+    fly.empty = fly:CreateFontString(nil, "OVERLAY", "GameFontDisable")
+    fly.empty:SetPoint("TOPLEFT", PAD + 4, -278)
+    fly.empty:SetText("You own nothing that can be carried.")
 
     -- the panel's own page arrows, not text buttons
     fly.prev = CreateFrame("Button", nil, fly)
     StyleArrow(fly.prev, true)
-    fly.prev:SetPoint("TOPLEFT", 14, -340)
+    fly.prev:SetPoint("TOPLEFT", PAD, -420)
     fly.next = CreateFrame("Button", nil, fly)
     StyleArrow(fly.next, false)
-    fly.next:SetPoint("TOPRIGHT", -14, -340)
+    fly.next:SetPoint("TOPRIGHT", -PAD, -420)
     fly.pageText = fly:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
-    fly.pageText:SetPoint("TOP", 0, -347)
+    fly.pageText:SetPoint("TOP", 0, -427)
     fly.prev:SetScript("OnClick", function() fly.page = math.max(0, fly.page - 1); CW.RenderRebirth() end)
     fly.next:SetScript("OnClick", function() fly.page = fly.page + 1; CW.RenderRebirth() end)
 
     fly.reborn = CreateFrame("Button", nil, fly, "UIPanelButtonTemplate")
     fly.reborn:SetWidth(140); fly.reborn:SetHeight(24)
-    fly.reborn:SetPoint("BOTTOMLEFT", 14, 12)
+    fly.reborn:SetPoint("BOTTOMLEFT", PAD, 16)
     fly.reborn:SetText("Be reborn")
     fly.reborn:SetScript("OnClick", function() CW.AskRebirth() end)
     fly.cancel = CreateFrame("Button", nil, fly, "UIPanelButtonTemplate")
-    fly.cancel:SetWidth(90); fly.cancel:SetHeight(24)
-    fly.cancel:SetPoint("BOTTOMRIGHT", -14, 12)
+    fly.cancel:SetWidth(100); fly.cancel:SetHeight(24)
+    fly.cancel:SetPoint("BOTTOMRIGHT", -PAD, 16)
     fly.cancel:SetText("Cancel")
     fly.cancel:SetScript("OnClick", function() fly:Hide() end)
+    fly.cost = fly:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+    fly.cost:SetPoint("BOTTOM", fly, "BOTTOM", 0, 22)
 
     function CW.RebirthCandidates()
         local out = {}
@@ -1197,8 +1256,18 @@ do
         local s = CW.state
         local list = CW.RebirthCandidates()
         local max = s.heirloomMax or 1
-        fly.count:SetText("Heirlooms  |cff00ff00" .. PickedCount() .. "|r / " .. max
-            .. "        Cost  |cffffd100" .. (s.rebirthPrice or 0) .. " gold|r")
+        local rank = (s.rebirths or 0) + 1
+        local r = CW.rules
+        fly.title:SetText("Rebirth " .. rank)
+        fly.subtitle:SetText("Begin a new life at level 1, on your "
+            .. (s.mode == 0 and "|cff00ccffClassless|r" or "|cffff8800Wildcard|r") .. " path.")
+        -- the same formulas as RebirthXpPct and ApplyRebirthMods
+        fly.rankRows[1].value:SetText("+" .. math.min(r.xpFirst + r.xpPerRank * (rank - 1), r.xpMax) .. "% XP")
+        fly.rankRows[2].value:SetText("+" .. math.min(r.otherXpPerRank * rank, r.otherXpMax) .. "% XP")
+        fly.rankRows[3].value:SetText("+" .. math.min(r.statPct * rank, r.statMax) .. "%")
+        fly.count:SetText("|cff00ff00" .. PickedCount() .. "|r of " .. max)
+        fly.cost:SetText("Cost  |cffffffff" .. (s.rebirthPrice or 0) .. "|r |TInterface\\MoneyFrame\\UI-GoldIcon:14:14:2:0|t")
+        if #list == 0 then fly.empty:Show() else fly.empty:Hide() end
         local total = math.max(1, math.ceil(#list / ROWS))
         if fly.page >= total then fly.page = total - 1 end
         fly.pageText:SetText((fly.page + 1) .. " / " .. total)
@@ -1290,6 +1359,37 @@ end
 -- best this character did on it. Pick one, read its rule, start it. Shards
 -- and the extra life live here too. Everything hangs on CW.runFly.
 CW.challenges = {}
+
+-- What a Loaded Die throw says in the middle of the screen: the face, gold on
+-- the top one, and the 1 it threw away when it was thrown again.
+function CW.LoadedDieText(roll, sides, rerolled)
+    local text
+    if roll >= sides then
+        text = "Loaded Die: " .. roll .. "! The die returns to your hand."
+    else
+        text = "Loaded Die: " .. roll
+    end
+    if rerolled then text = "Rolled a 1, thrown again. " .. text end
+    if roll >= sides then return text, 1.0, 0.82, 0.0 end
+    local t = (roll - 1) / math.max(1, sides - 1)          -- low red, high green
+    return text, 1.0 - 0.6 * t, 0.4 + 0.6 * t, 0.4
+end
+
+-- A challenge built on one path's mechanics is for that path only (the
+-- server's Challenge::path); 255 is either. A run never changes a path.
+function CW.RunPathFits(c)
+    local want = c and c.path or 255
+    return want == 255 or (CW.state.mode or 255) == want
+end
+
+function CW.RunPathText(c)
+    local want = c and c.path == 1 and "Wildcard" or "Classless"
+    local mode = CW.state.mode or 255
+    if mode == 255 then
+        return want .. " Heroes only. Choose the " .. want .. " path to start it."
+    end
+    return want .. " Heroes only. Your path is " .. (mode == 1 and "Wildcard" or "Classless") .. "."
+end
 -- A run starts before the path deadline on the character's own path, so
 -- the last word only confirms.
 StaticPopupDialogs["CW_RUN_CONFIRM"] = {
@@ -1303,108 +1403,300 @@ StaticPopupDialogs["CW_RUN_DEATH"] = {
     text = "%s", button1 = "Onward",
     timeout = 0, whileDead = 1, hideOnEscape = 1, preferredIndex = 3,
 }
-StaticPopupDialogs["CW_RUN_END"] = {
-    text = "%s", button1 = OKAY,
-    timeout = 0, whileDead = 1, hideOnEscape = 1, preferredIndex = 3,
-}
-StaticPopupDialogs["CW_REBIRTH_DONE"] = {
-    text = "%s", button1 = "Begin",
-    timeout = 0, whileDead = 1, hideOnEscape = 1, preferredIndex = 3,
-}
+-- ---------------------------------------------------------------------------
+-- The summary card: what a Rebirth or the end of a run gave, laid out the
+-- way the panel lays things out. An icon and a large title, then sections of
+-- label and value rows in two aligned columns, then notes, then one button.
+-- A StaticPopup centres every line in a narrow box and wraps mid-phrase, so
+-- this is a frame of its own. Escape closes it.
+--
+-- spec = { icon, title, titleColor = {r,g,b}, subtitle,
+--          sections = { { header, rows = { { label, value, {r,g,b}, icon } } } },
+--          notes = { "..." }, button }
+-- ---------------------------------------------------------------------------
+do
+    local W, PAD, ROW_H, ICON = 380, 20, 20, 40
+    local LABEL_W = 160
+    local GREEN, ORANGE, GOLD, PURPLE, GREY = { 0.1, 1, 0.1 }, { 1, 0.53, 0 }, { 1, 0.82, 0 },
+        { 0.64, 0.21, 0.93 }, { 0.6, 0.6, 0.6 }
+    CW.SUMMARY_COLORS = { green = GREEN, orange = ORANGE, gold = GOLD, purple = PURPLE, grey = GREY }
 
--- The end of a run, as its popup reads.
--- "RE|finished|level|shards|gold|name|challenge|lives left|lives max|
---  reward spell|title|Unbroken title|repeat"; the fields past name are absent
--- from older servers and read as nothing new.
-function CW.RunEndText(p)
-    local finished, level = tonumber(p[2]) == 1, tonumber(p[3]) or 1
-    local shards, gold, name = tonumber(p[4]) or 0, tonumber(p[5]) or 0, p[6] or "The run"
-    local left, max = tonumber(p[8]) or 0, tonumber(p[9]) or 0
-    local reward, title, unbroken = tonumber(p[10]) or 0, p[11] or "", p[12] or ""
-    local repeatRun = tonumber(p[13]) == 1
-    local earned = shards .. (shards == 1 and " shard" or " shards") .. (gold > 0 and (" and " .. gold .. " gold") or "")
-    local t = {}
-    if finished then
-        tinsert(t, "|cff00ff00Challenge complete|r")
-        tinsert(t, "|cffffd100" .. name .. "|r")
-        tinsert(t, "")
-        tinsert(t, max > 0 and ("Level " .. level .. ", " .. left .. " of " .. max
-            .. (max == 1 and " life" or " lives") .. " left.") or ("Level " .. level .. "."))
-        tinsert(t, "")
-        tinsert(t, "You earn " .. earned .. "." .. (repeatRun and " Gold is paid for the first finish only." or ""))
+    local card = CreateFrame("Frame", "ClasslessWildcardSummary", UIParent)
+    card:SetWidth(W); card:SetHeight(200)
+    card:SetPoint("CENTER", UIParent, "CENTER", 0, 80)
+    card:SetFrameStrata("DIALOG")
+    card:SetToplevel(true)
+    card:SetBackdrop({
+        bgFile = "Interface\\Buttons\\WHITE8X8",
+        edgeFile = "Interface\\DialogFrame\\UI-DialogBox-Border",
+        tile = false, edgeSize = 32,
+        insets = { left = 11, right = 12, top = 12, bottom = 11 },
+    })
+    -- near solid, like the panel's flyouts: the world must not show through the rows
+    card:SetBackdropColor(0.03, 0.03, 0.05, 0.96)
+    card:EnableMouse(true)
+    card:Hide()
+    CW.summary = card
+    tinsert(UISpecialFrames, "ClasslessWildcardSummary")
+
+    card.icon = card:CreateTexture(nil, "ARTWORK")
+    card.icon:SetWidth(ICON); card.icon:SetHeight(ICON)
+    card.icon:SetPoint("TOPLEFT", PAD + 2, -PAD - 2)
+    card.icon:SetTexCoord(0.07, 0.93, 0.07, 0.93)
+    card.iconBorder = card:CreateTexture(nil, "OVERLAY")
+    card.iconBorder:SetWidth(ICON + 22); card.iconBorder:SetHeight(ICON + 22)
+    card.iconBorder:SetPoint("CENTER", card.icon, "CENTER", 0, 0)
+    card.iconBorder:SetTexture("Interface\\Buttons\\UI-Quickslot2")
+    card.title = card:CreateFontString(nil, "OVERLAY", "GameFontNormalLarge")
+    card.title:SetPoint("TOPLEFT", card.icon, "TOPRIGHT", 12, -2)
+    card.title:SetJustifyH("LEFT")
+    card.subtitle = card:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
+    card.subtitle:SetPoint("TOPLEFT", card.title, "BOTTOMLEFT", 0, -5)
+    card.subtitle:SetPoint("RIGHT", card, "RIGHT", -PAD, 0)
+    card.subtitle:SetJustifyH("LEFT")
+
+    card.button = CreateFrame("Button", nil, card, "UIPanelButtonTemplate")
+    card.button:SetWidth(130); card.button:SetHeight(24)
+    card.button:SetScript("OnClick", function() card:Hide() end)
+
+    -- pooled pieces, made the first time a card needs that many
+    card.headers, card.rules, card.rows, card.notes = {}, {}, {}, {}
+    local function Header(i)
+        local h = card.headers[i]
+        if not h then
+            h = card:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+            h:SetJustifyH("LEFT")
+            card.headers[i] = h
+        end
+        return h
+    end
+    local function Rule(i)
+        local r = card.rules[i]
+        if not r then
+            r = card:CreateTexture(nil, "ARTWORK")
+            r:SetHeight(1)
+            r:SetTexture(1, 0.82, 0, 0.25)
+            card.rules[i] = r
+        end
+        return r
+    end
+    local function Row(i)
+        local r = card.rows[i]
+        if not r then
+            r = {}
+            r.icon = card:CreateTexture(nil, "ARTWORK")
+            r.icon:SetWidth(16); r.icon:SetHeight(16)
+            r.icon:SetTexCoord(0.07, 0.93, 0.07, 0.93)
+            r.label = card:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
+            r.label:SetJustifyH("LEFT")
+            r.label:SetWidth(LABEL_W)
+            r.value = card:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
+            r.value:SetJustifyH("RIGHT")
+            card.rows[i] = r
+        end
+        return r
+    end
+    local function Note(i)
+        local n = card.notes[i]
+        if not n then
+            n = card:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+            n:SetJustifyH("LEFT")
+            n:SetWidth(W - 2 * PAD)
+            card.notes[i] = n
+        end
+        return n
+    end
+    local function HideAll(list, key)
+        for _, v in ipairs(list) do
+            if key then v[key]:Hide() else v:Hide() end
+        end
+    end
+
+    -- A Rebirth that ends a live run sends both cards at once; the second
+    -- waits for the first to be closed rather than replacing it unseen.
+    card.queue = {}
+    card:SetScript("OnHide", function()
+        local nextSpec = tremove(card.queue, 1)
+        if nextSpec then CW.ShowSummary(nextSpec) end
+    end)
+
+    function CW.ShowSummary(spec)
+        if card:IsShown() then
+            tinsert(card.queue, spec)
+            return
+        end
+        HideAll(card.headers); HideAll(card.rules); HideAll(card.notes)
+        for _, r in ipairs(card.rows) do r.icon:Hide(); r.label:Hide(); r.value:Hide() end
+
+        card.icon:SetTexture(spec.icon or "Interface\\Icons\\INV_Misc_QuestionMark")
+        local c = spec.titleColor or GOLD
+        card.title:SetText(spec.title or "")
+        card.title:SetTextColor(c[1], c[2], c[3])
+        card.subtitle:SetText(spec.subtitle or "")
+
+        local y = -PAD - ICON - 18
+        local nh, nr = 0, 0
+        for _, sec in ipairs(spec.sections or {}) do
+            nh = nh + 1
+            local h = Header(nh)
+            h:ClearAllPoints()
+            h:SetPoint("TOPLEFT", PAD, y)
+            h:SetText(sec.header or "")
+            h:Show()
+            local rule = Rule(nh)
+            rule:ClearAllPoints()
+            rule:SetPoint("TOPLEFT", PAD, y - 16)
+            rule:SetPoint("TOPRIGHT", -PAD, y - 16)
+            rule:Show()
+            y = y - 22
+            for _, row in ipairs(sec.rows or {}) do
+                nr = nr + 1
+                local r = Row(nr)
+                local x = PAD + 4
+                r.icon:ClearAllPoints()
+                if row[4] then
+                    r.icon:SetTexture(row[4])
+                    r.icon:SetPoint("TOPRIGHT", card, "TOPRIGHT", -PAD, y - 1)
+                end
+                r.label:ClearAllPoints()
+                r.label:SetPoint("TOPLEFT", x, y - 2)
+                r.label:SetText(row[1] or "")
+                r.label:SetTextColor(0.85, 0.85, 0.85)
+                r.value:ClearAllPoints()
+                r.value:SetPoint("TOPRIGHT", card, "TOPRIGHT", row[4] and (-PAD - 22) or -PAD, y - 2)
+                r.value:SetWidth(W - 2 * PAD - 4 - LABEL_W - 8 - (row[4] and 22 or 0))
+                r.value:SetText(row[2] or "")
+                local vc = row[3] or { 1, 1, 1 }
+                r.value:SetTextColor(vc[1], vc[2], vc[3])
+                r.label:Show(); r.value:Show()
+                if row[4] then r.icon:Show() end
+                y = y - ROW_H
+            end
+            y = y - 12
+        end
+
+        for i, text in ipairs(spec.notes or {}) do
+            local n = Note(i)
+            n:ClearAllPoints()
+            n:SetPoint("TOPLEFT", PAD, y)
+            n:SetText(text)
+            n:SetTextColor(0.75, 0.75, 0.75)
+            n:Show()
+            local h = n:GetStringHeight()
+            y = y - ((h and h > 0) and h or 12) - 5
+        end
+
+        y = y - 10
+        card.button:ClearAllPoints()
+        card.button:SetPoint("TOP", card, "TOP", 0, y)
+        card.button:SetText(spec.button or OKAY)
+        card:SetHeight(-y + 24 + PAD + 2)
+        card:Show()
+    end
+
+    -- "RE|finished|level|shards|gold|name|challenge|lives left|lives max|
+    --  reward spell|title|Unbroken title|repeat"; the fields past name are
+    -- absent from older servers and read as nothing new.
+    function CW.RunEndSpec(p)
+        local finished, level = tonumber(p[2]) == 1, tonumber(p[3]) or 1
+        local shards, gold, name = tonumber(p[4]) or 0, tonumber(p[5]) or 0, p[6] or "Challenge"
+        local id, left, max = tonumber(p[7]) or 0, tonumber(p[8]) or 0, tonumber(p[9]) or 0
+        local reward, title, unbroken = tonumber(p[10]) or 0, p[11] or "", p[12] or ""
+        local repeatRun = tonumber(p[13]) == 1
+        local ch = CW.challengesById and CW.challengesById[id]
+        local iconSpell = reward > 0 and reward or (ch and ch.reward or 0)
+
+        local run = { { "Level reached", tostring(level) } }
+        if max > 0 then tinsert(run, { "Lives left", left .. " of " .. max }) end
+        local rewards = { { "Shards", tostring(shards), GOLD } }
+        if gold > 0 then tinsert(rewards, { "Gold", tostring(gold), GOLD, "Interface\\MoneyFrame\\UI-GoldIcon" }) end
         if reward > 0 then
-            tinsert(t, "|cffa335ee" .. ((GetSpellInfo(reward)) or "The reward ability") .. "|r is yours as an heirloom.")
+            tinsert(rewards, { "Heirloom ability", (GetSpellInfo(reward)) or "Reward ability", PURPLE, SpellIcon(reward) })
         end
-        if title ~= "" then tinsert(t, "New title: |cffffd100" .. title .. "|r") end
-        if max > 0 and left == max then
-            tinsert(t, "Not a life lost: a third more shards"
-                .. (unbroken ~= "" and (", and |cffffd100" .. unbroken .. "|r") or "") .. ".")
-        end
-    else
-        tinsert(t, "|cffff4444Challenge over|r")
-        tinsert(t, "|cffffd100" .. name .. "|r")
-        tinsert(t, "")
-        tinsert(t, "Your last life was lost at level " .. level .. ".")
-        tinsert(t, "You earn " .. earned .. ".")
-    end
-    tinsert(t, "")
-    tinsert(t, finished and "The rule lifts." or "The rule lifts. Your level, gear and build stay.")
-    return table.concat(t, "\n")
-end
+        if title ~= "" then tinsert(rewards, { "New title", title, GOLD }) end
+        if unbroken ~= "" then tinsert(rewards, { "New title", unbroken, GOLD }) end
 
--- A new life, as its popup reads.
--- "RB|rank|kill%|other%|stat%|questsKept|mailed|abilityEssence|talentEssence|
---  heirlooms next time|new title|carried ids"
-function CW.RebirthDoneText(p)
-    local rank = tonumber(p[2]) or 1
-    local kill, other, stat = tonumber(p[3]) or 0, tonumber(p[4]) or 0, tonumber(p[5]) or 0
-    local kept, mailed = tonumber(p[6]) == 1, tonumber(p[7]) or 0
-    local ae, te, nextMax = tonumber(p[8]) or 0, tonumber(p[9]) or 0, tonumber(p[10]) or 0
-    local title, ids = p[11] or "", p[12] or ""
-    local names = {}
-    for id in string.gmatch(ids, "%d+") do
-        tinsert(names, "|cffff8800" .. ((GetSpellInfo(tonumber(id))) or ("#" .. id)) .. "|r")
+        local notes = {}
+        if finished and max > 0 and left == max then tinsert(notes, "Not a life lost: a third more shards.") end
+        if repeatRun then tinsert(notes, "Gold is paid for the first finish only.") end
+        tinsert(notes, finished and "The rule lifts." or "The rule lifts. Your level, gear and build stay.")
+
+        return {
+            icon = iconSpell > 0 and SpellIcon(iconSpell) or "Interface\\Icons\\INV_Misc_Bone_HumanSkull_01",
+            title = finished and "Challenge Complete" or "Challenge Over",
+            titleColor = finished and GREEN or { 1, 0.27, 0.27 },
+            subtitle = name,
+            sections = { { header = "The run", rows = run }, { header = finished and "Rewards" or "Earned", rows = rewards } },
+            notes = notes,
+            button = OKAY,
+        }
     end
-    local t = {
-        "|cffff8800Rebirth " .. rank .. "|r",
-        "A new life begins at level 1.",
-        "",
-        "|cff00ff00+" .. kill .. "%|r experience from kills and dungeons",
-        "|cff00ff00+" .. other .. "%|r from quests, exploration and battlegrounds",
-        "|cff00ff00+" .. stat .. "%|r to every primary stat",
-        "",
-    }
-    tinsert(t, #names > 0 and ("Heirlooms: " .. table.concat(names, ", ") .. ".")
-        or "No heirlooms carried.")
-    if ae > 0 or te > 0 then
-        tinsert(t, "You start with |cff00ff00" .. ae .. "|r Ability Essence and |cff00ff00" .. te .. "|r Talent Essence.")
-    else
-        tinsert(t, "A new starting hand has been dealt.")
+
+    -- "RB|rank|kill%|other%|stat%|questsKept|mailed|abilityEssence|talentEssence|
+    --  heirlooms next time|new title|carried ids"
+    function CW.RebirthDoneSpec(p)
+        local rank = tonumber(p[2]) or 1
+        local kill, other, stat = tonumber(p[3]) or 0, tonumber(p[4]) or 0, tonumber(p[5]) or 0
+        local kept, mailed = tonumber(p[6]) == 1, tonumber(p[7]) or 0
+        local ae, te, nextMax = tonumber(p[8]) or 0, tonumber(p[9]) or 0, tonumber(p[10]) or 0
+        local title, ids = p[11] or "", p[12] or ""
+
+        local life = {}
+        for id in string.gmatch(ids, "%d+") do
+            id = tonumber(id)
+            tinsert(life, { #life == 0 and "Heirlooms" or "", (GetSpellInfo(id)) or ("#" .. id), ORANGE, SpellIcon(id) })
+        end
+        if #life == 0 then tinsert(life, { "Heirlooms", "None", GREY }) end
+        if ae > 0 or te > 0 then
+            tinsert(life, { "Ability Essence", tostring(ae), GREEN })
+            tinsert(life, { "Talent Essence", tostring(te), GREEN })
+        else
+            tinsert(life, { "Starting hand", "Dealt", GREEN })
+        end
+        tinsert(life, { "Quest history", kept and "Kept" or "Cleared" })
+        if title ~= "" then tinsert(life, { "New title", title, GOLD }) end
+
+        local notes = {}
+        if not kept then tinsert(notes, "Every quest pays its experience again.") end
+        if mailed > 0 then
+            tinsert(notes, mailed .. (mailed == 1 and " piece of gear" or " pieces of gear")
+                .. " did not fit in your bags and " .. (mailed == 1 and "was" or "were") .. " mailed to you.")
+        end
+        if nextMax > 0 then
+            tinsert(notes, "Your next Rebirth carries up to " .. nextMax .. (nextMax == 1 and " heirloom." or " heirlooms."))
+        end
+
+        return {
+            icon = "Interface\\Icons\\Spell_Nature_Reincarnation",
+            title = "Rebirth " .. rank,
+            titleColor = ORANGE,
+            subtitle = "A new life begins at level 1.",
+            sections = {
+                { header = "Your rank", rows = {
+                    { "Kills and dungeons", "+" .. kill .. "% XP", GREEN },
+                    { "Quests, exploration, PvP", "+" .. other .. "% XP", GREEN },
+                    { "Every primary stat", "+" .. stat .. "%", GREEN },
+                } },
+                { header = "This life", rows = life },
+            },
+            notes = notes,
+            button = "Begin",
+        }
     end
-    if title ~= "" then tinsert(t, "New title: |cffffd100" .. title .. "|r") end
-    tinsert(t, "")
-    tinsert(t, kept and "Your quest history is kept." or "Your quest history is cleared, so every quest pays again.")
-    if mailed > 0 then
-        tinsert(t, mailed .. (mailed == 1 and " piece of gear did" or " pieces of gear did")
-            .. " not fit in your bags and " .. (mailed == 1 and "was" or "were") .. " mailed to you.")
-    end
-    if nextMax > 0 then
-        tinsert(t, "Your next Rebirth carries up to " .. nextMax .. (nextMax == 1 and " heirloom." or " heirlooms."))
-    end
-    return table.concat(t, "\n")
 end
 do
     -- The whole panel, edge to edge, so the challenges get its full size.
-    -- Two panes. On the left every challenge, all twelve at
-    -- once, each a row with its lives as pips and its gold. On the right the
+    -- Two panes. On the left every challenge at once, each a row with its
+    -- lives as pips and its gold. On the right the
     -- one selected, in full: the rule, how it plays, what it takes to start,
     -- its lives, every reward with the reward ability's own tooltip, and the
     -- character's record on it. The right pane scrolls, so no amount of text
     -- can run into anything; the bottom bar under it holds Start, and the X
     -- in the top-right closes it.
     --
-    -- Measured, left: title -12, subtitle -34, twelve rows of 29 from -54 (to
-    -- -402), shards at 40 from the bottom, Extra life at 10. Right: name -12,
+    -- Measured, left: title -12, subtitle -34, fourteen rows of 29 from -54
+    -- (to -460; thirteen challenges and room for one more), shards at 40 from
+    -- the bottom, Extra life at 10. Right: name -12,
     -- rule -40 (two lines, to -72), divider -80, scroll from -86 to 46 from
     -- the bottom, Start at 12, the summary at 18. Widths follow the panel's.
     local fly = CreateFrame("Frame", "ClasslessWildcardRuns", frame)
@@ -1424,7 +1716,7 @@ do
     fly.selected = nil
     local FLY_W = frame:GetWidth()
     -- the right pane's text column: the scroll frame's width less its bar
-    local ROWS, ROW_H, LEFT_W, RX, CW_W = 12, 29, 284, 318, FLY_W - 318 - 72
+    local ROWS, ROW_H, LEFT_W, RX, CW_W = 14, 29, 284, 318, FLY_W - 318 - 72
     -- gold as the game draws it: the amount, then the gold coin
     local function Coin(amount, size)
         size = size or 14
@@ -1699,6 +1991,8 @@ do
             status = "|cffff8800You are on this run|r: " .. lives .. "."
         elseif (s.run or 0) > 0 then
             status = NO .. "|cffff4444You are on " .. (live and live.name or "another run") .. "|r: " .. lives .. "."
+        elseif not CW.RunPathFits(c) then
+            status = NO .. "|cffff4444" .. CW.RunPathText(c) .. "|r"
         elseif s.runReady == 1 then
             status = OK .. "|cff00ff00You can start this now.|r"
         else
@@ -1876,7 +2170,7 @@ do
             fly.scroll:Show()
             local lives = math.min(6, c.lives + ((s.extraLife or 0) > 0 and 1 or 0))
             fly.summary:SetText("Starts with |cffffffff" .. lives .. (lives == 1 and " life" or " lives") .. "|r")
-            local canStart = (s.run or 0) == 0 and s.runReady == 1
+            local canStart = (s.run or 0) == 0 and s.runReady == 1 and CW.RunPathFits(c)
             if canStart then fly.start:Enable() else fly.start:Disable() end
         else
             fly.dName:SetText("Challenge Runs")
@@ -2061,7 +2355,7 @@ statReset:SetText("Reset edits")
 -- click. Classless only: the server refuses ARCHAPPLY on any other path, and
 -- UpdateStatus hides the button and this panel outside that mode.
 local archFly = CreateFrame("Frame", "ClasslessWildcardArchetypes", frame)
-archFly:SetWidth(460); archFly:SetHeight(120)
+archFly:SetWidth(520); archFly:SetHeight(120)
 archFly:SetPoint("BOTTOMLEFT", frame, "BOTTOMLEFT", 20, 56)
 archFly:SetFrameStrata("DIALOG")
 archFly:SetBackdrop({
@@ -2075,15 +2369,37 @@ archFly:EnableMouse(true)
 archFly:Hide()
 CW.archFly = archFly
 
-archFly.title = archFly:CreateFontString(nil, "OVERLAY", "GameFontNormal")
-archFly.title:SetPoint("TOP", 0, -12)
-archFly.title:SetText("Starter Archetypes")
+-- Laid out like the panel's other cards: an icon and a large title, then
+-- three short labelled lines in place of a paragraph, then the builds.
+archFly.icon = archFly:CreateTexture(nil, "ARTWORK")
+archFly.icon:SetWidth(32); archFly.icon:SetHeight(32)
+archFly.icon:SetPoint("TOPLEFT", 18, -16)
+archFly.icon:SetTexCoord(0.07, 0.93, 0.07, 0.93)
+archFly.icon:SetTexture("Interface\\Icons\\INV_Misc_Book_11")
+archFly.iconBorder = archFly:CreateTexture(nil, "OVERLAY")
+archFly.iconBorder:SetWidth(54); archFly.iconBorder:SetHeight(54)
+archFly.iconBorder:SetPoint("CENTER", archFly.icon, "CENTER", 0, 0)
+archFly.iconBorder:SetTexture("Interface\\Buttons\\UI-Quickslot2")
+archFly.title = archFly:CreateFontString(nil, "OVERLAY", "GameFontNormalLarge")
+archFly.title:SetPoint("TOPLEFT", archFly.icon, "TOPRIGHT", 12, -1)
+archFly.title:SetText("Archetypes")
+archFly.subtitle = archFly:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
+archFly.subtitle:SetPoint("TOPLEFT", archFly.title, "BOTTOMLEFT", 0, -4)
+archFly.subtitle:SetText("A build that is bought for you as you level.")
 
-archFly.INTRO = "An archetype is a build you follow from level 1 to 80. Choosing one replaces your build: your abilities are unlearned and refunded, and your talents are reset with them. From then on its abilities and talents are bought for you as each becomes available. Stop following at any time; what you own stays."
+function archFly.IntroText()
+    return "|cffffd100Follow:|r its abilities and talents are bought for you, in order, as each becomes available, "
+        .. "from level 1 to " .. (CW.rules.maxLevel or 80) .. ".\n"
+        .. "|cffffd100Switch:|r your current abilities are unlearned and refunded, and your talents are reset.\n"
+        .. "|cffffd100Stop:|r at any time. What you own stays.\n"
+        .. "|cffffd100Build:|r see every step and the level it is bought at before you choose."
+end
+archFly.INTRO = archFly.IntroText()
 archFly.intro = archFly:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
-archFly.intro:SetPoint("TOPLEFT", 14, -30)
-archFly.intro:SetWidth(432)
+archFly.intro:SetPoint("TOPLEFT", 18, -62)
+archFly.intro:SetWidth(484)
 archFly.intro:SetJustifyH("LEFT")
+archFly.intro:SetTextColor(0.8, 0.8, 0.8)
 archFly.intro:SetText(archFly.INTRO)
 
 -- One archetype row: the name on the first line, the description under it
@@ -2091,28 +2407,48 @@ archFly.intro:SetText(archFly.INTRO)
 -- button on the right. Rows are stacked from their measured text heights by
 -- FillArchRows, so nothing overlaps whatever the text wraps to. The panel
 -- flyout and the first-login wizard both use these.
+-- Each row sits on a faint stripe with 8px of padding, its text column
+-- clear of two buttons on the right: Build (the build order, in its own
+-- window) and the row's action.
 local ARCH_ROW_H = 46
 local function MakeArchRow(parent, width, buttonText)
     local r = CreateFrame("Frame", nil, parent)
     r:SetWidth(width); r:SetHeight(ARCH_ROW_H)
+    r.stripe = r:CreateTexture(nil, "BACKGROUND")
+    r.stripe:SetAllPoints(r)
+    r.stripe:SetTexture("Interface\\Buttons\\WHITE8X8")
+    r.stripe:SetVertexColor(1, 1, 1, 0.05)
+    local textW = width - 170
     r.name = r:CreateFontString(nil, "OVERLAY", "GameFontNormal")
-    r.name:SetPoint("TOPLEFT", 0, 0)
-    r.name:SetWidth(width - 82)
+    r.name:SetPoint("TOPLEFT", 8, -6)
+    r.name:SetWidth(textW)
     r.name:SetJustifyH("LEFT")
     r.desc = r:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
-    r.desc:SetPoint("TOPLEFT", 0, -16)
-    r.desc:SetWidth(width - 82)
+    r.desc:SetPoint("TOPLEFT", 8, -23)
+    r.desc:SetWidth(textW)
     r.desc:SetJustifyH("LEFT")
     r.desc:SetJustifyV("TOP")
     r.counts = r:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
-    r.counts:SetPoint("TOPLEFT", r.desc, "BOTTOMLEFT", 0, -2)
-    r.counts:SetWidth(width - 82)
+    r.counts:SetPoint("TOPLEFT", r.desc, "BOTTOMLEFT", 0, -3)
+    r.counts:SetWidth(textW)
     r.counts:SetJustifyH("LEFT")
     r.apply = CreateFrame("Button", nil, r, "UIPanelButtonTemplate")
-    r.apply:SetWidth(70); r.apply:SetHeight(22)
-    r.apply:SetPoint("RIGHT", 0, 0)
+    r.apply:SetWidth(72); r.apply:SetHeight(22)
+    r.apply:SetPoint("RIGHT", -8, 0)
     r.apply:SetText(buttonText)
     r.apply.defaultText = buttonText
+    r.view = CreateFrame("Button", nil, r, "UIPanelButtonTemplate")
+    r.view:SetWidth(72); r.view:SetHeight(22)
+    r.view:SetPoint("RIGHT", r.apply, "LEFT", -6, 0)
+    r.view:SetText("Build")
+    r.view:SetScript("OnEnter", function(self)
+        GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
+        GameTooltip:AddLine("Build order")
+        GameTooltip:AddLine("Every ability and talent this archetype buys, in order, with the level each is bought at.",
+            1, 1, 1, true)
+        GameTooltip:Show()
+    end)
+    r.view:SetScript("OnLeave", function() GameTooltip:Hide() end)
     r:Hide()
     return r
 end
@@ -2162,21 +2498,30 @@ local function FillArchRows(L, list, onChoose, x, top)
         if arch then
             local count = (arch.count == 1) and "1 ability" or (arch.count .. " abilities")
             if (arch.ranks or 0) > 0 then count = count .. ", " .. arch.ranks .. " talent ranks" end
-            r.name:SetText("|cffffff00" .. arch.name .. "|r" .. (arch.following and "  |cff00ff00following|r" or ""))
+            r.name:SetText("|cffffd100" .. arch.name .. "|r" .. (arch.following and "  |cff00ff00Following|r" or ""))
             r.desc:SetText(arch.desc)
-            r.counts:SetText("|cffaaaaaa" .. count .. "|r")
+            r.counts:SetText("|cff999999" .. count .. "|r")
             r.apply:SetText(arch.following and "Stop" or r.apply.defaultText)
             r.apply:SetScript("OnClick", function() onChoose(arch) end)
-            local h = 16 + TextHeight(r.desc) + 2 + 12 + 8
+            r.view:SetScript("OnClick", function() if CW.OpenArchPlan then CW.OpenArchPlan(arch) end end)
+            -- the row being followed is picked out in gold, the rest alternate
+            if arch.following then
+                r.stripe:SetVertexColor(1, 0.82, 0.3, 0.12)
+            else
+                r.stripe:SetVertexColor(1, 1, 1, i % 2 == 0 and 0.03 or 0.06)
+            end
+            local h = 23 + TextHeight(r.desc) + 3 + 12 + 8
+            if CW.DecorateBuildRow then h = h + CW.DecorateBuildRow(r, arch) end
             r:ClearAllPoints()
             r:SetPoint("TOPLEFT", 0, -y)
             r:SetHeight(h)
             r:Show()
-            y = y + h
+            y = y + h + 4   -- a 4px gap between rows
         else
             r:Hide()
         end
     end
+    if #list > 0 then y = y - 4 end   -- and none after the last
     local visible = math.min(y, ARCH_LIST_MAX_H)
     L.child:SetHeight(math.max(y, 1))
     L.scroll:ClearAllPoints()
@@ -2188,14 +2533,23 @@ local function FillArchRows(L, list, onChoose, x, top)
     return #list, visible
 end
 
-archFly.list = MakeArchList(archFly, "ClasslessWildcardArchetypeList", 432, "Follow")
+archFly.list = MakeArchList(archFly, "ClasslessWildcardArchetypeList", 488, "Follow")
 archFly.rows = archFly.list.rows
 
 -- Fills the flyout from CW.archetypes (cached from the last AR/ARE reply):
 -- the intro text first, the rows stacked under whatever height it wrapped
 -- to, and the panel sized to the lot.
 local function RenderArchFly()
+    -- the My Builds tab is drawn by its own block further down
+    if CW.archTab == "MINE" and CW.RenderMyBuilds then
+        CW.RenderMyBuilds()
+        return
+    end
+    if CW.ArchTabsRefresh then CW.ArchTabsRefresh() end
+    if CW.HideMyBuildsBar then CW.HideMyBuildsBar() end
+    if archFly.empty then archFly.empty:Hide() end
     local list = CW.archetypes or {}
+    archFly.INTRO = archFly.IntroText()   -- the cap is the realm's, read fresh
     if #list > 0 then
         archFly.intro:SetText(archFly.INTRO)
     elseif CW.archetypesLoaded then
@@ -2203,7 +2557,7 @@ local function RenderArchFly()
     else
         archFly.intro:SetText("Loading...")
     end
-    local top = 30 + TextHeight(archFly.intro) + 12
+    local top = 62 + TextHeight(archFly.intro) + 14
     local shown, used = FillArchRows(archFly.list, list, function(arch)
         archFly:Hide()
         if arch.following then
@@ -2212,11 +2566,1399 @@ local function RenderArchFly()
             local dlg = StaticPopup_Show("CW_CLASSLESS_ARCHETYPE", arch.name)
             if dlg then dlg.data = arch.id end
         end
-    end, 14, top)
-    archFly:SetHeight(top + math.max(used, ARCH_ROW_H) + 10)
+    end, 18, top)
+    archFly:SetHeight(top + math.max(used, ARCH_ROW_H) + 14)
 end
 CW.RenderArchFly = RenderArchFly
+-- the flyout's own list, filled from any list of rows (My Builds uses it)
+function CW.FillArchRowsFor(list, onChoose, top)
+    return FillArchRows(archFly.list, list, onChoose, 18, top)
+end
 
+-- Share codes ---------------------------------------------------------------
+-- A custom build as a string that survives chat, forums and Discord:
+-- "CWA1:" and URL-safe base64 (A-Z a-z 0-9 - _, no padding) of
+--   version (1) | name length, name | description length, description |
+--   ability count, ability ids as zigzag deltas | talent count,
+--   (talent id, rank) pairs | CRC-16 of all of it
+-- with every count and id a varint. Plain arithmetic throughout: no bit
+-- library is needed, so it runs the same in any 5.1.
+do
+    local B64 = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_"
+    local B64INV = {}
+    for i = 1, 64 do B64INV[B64:sub(i, i)] = i - 1 end
+    local PREFIX, VERSION, MAX_ENTRIES, NAME_MAX, DESC_MAX = "CWA1:", 1, 200, 32, 120
+
+    local function xor(a, b)
+        local r, p = 0, 1
+        while a > 0 or b > 0 do
+            local x, y = a % 2, b % 2
+            if x ~= y then r = r + p end
+            a, b, p = (a - x) / 2, (b - y) / 2, p * 2
+        end
+        return r
+    end
+
+    -- CRC-16/CCITT-FALSE: polynomial 0x1021, starting at 0xFFFF
+    local function crc16(bytes, n)
+        local crc = 65535
+        for i = 1, n do
+            crc = xor(crc, bytes[i] * 256)
+            for _ = 1, 8 do
+                if crc >= 32768 then
+                    crc = xor((crc * 2) % 65536, 4129)
+                else
+                    crc = (crc * 2) % 65536
+                end
+            end
+        end
+        return crc
+    end
+
+    local function putVarint(out, n)
+        while n >= 128 do
+            out[#out + 1] = n % 128 + 128
+            n = math.floor(n / 128)
+        end
+        out[#out + 1] = n
+    end
+
+    local function putText(out, s, max)
+        s = s:sub(1, max)
+        out[#out + 1] = #s
+        for i = 1, #s do out[#out + 1] = s:byte(i) end
+    end
+
+    -- the build's name and description as they may be stored: no client
+    -- escape code or separators, trimmed, capped without splitting a character
+    -- `loose` keeps punctuation (a description); a name also loses the
+    -- separators the server's messages are split on
+    function CW.CleanBuildText(s, max, loose)
+        s = (s or ""):gsub(loose and "[%c|]" or "[%c|;:,]", ""):gsub("^%s+", ""):gsub("%s+$", "")
+        if #s > max then
+            s = s:sub(1, max)
+            while #s > 0 and s:byte(#s) >= 128 and s:byte(#s) < 192 do s = s:sub(1, -2) end
+            if #s > 0 and s:byte(#s) >= 192 then s = s:sub(1, -2) end
+        end
+        return s
+    end
+
+    function CW.EncodeBuild(build)
+        local out = { VERSION }
+        putText(out, CW.CleanBuildText(build.name, NAME_MAX), NAME_MAX)
+        putText(out, CW.CleanBuildText(build.desc, DESC_MAX, true), DESC_MAX)
+        putVarint(out, #build.abilities)
+        local prev = 0
+        for _, id in ipairs(build.abilities) do
+            local d = id - prev
+            putVarint(out, d >= 0 and d * 2 or -d * 2 - 1)
+            prev = id
+        end
+        putVarint(out, #build.talents)
+        for _, t in ipairs(build.talents) do
+            putVarint(out, t[1])
+            out[#out + 1] = t[2]
+        end
+        local crc = crc16(out, #out)
+        out[#out + 1] = math.floor(crc / 256)
+        out[#out + 1] = crc % 256
+        local chars, n = {}, #out
+        for i = 1, n, 3 do
+            local a, b, c = out[i], out[i + 1] or 0, out[i + 2] or 0
+            local v = a * 65536 + b * 256 + c
+            local left = n - i + 1
+            chars[#chars + 1] = B64:sub(math.floor(v / 262144) + 1, math.floor(v / 262144) + 1)
+            local k2 = math.floor(v / 4096) % 64
+            chars[#chars + 1] = B64:sub(k2 + 1, k2 + 1)
+            if left > 1 then
+                local k3 = math.floor(v / 64) % 64
+                chars[#chars + 1] = B64:sub(k3 + 1, k3 + 1)
+            end
+            if left > 2 then
+                local k4 = v % 64
+                chars[#chars + 1] = B64:sub(k4 + 1, k4 + 1)
+            end
+        end
+        return PREFIX .. table.concat(chars)
+    end
+
+    -- the build, or nil and why not
+    function CW.DecodeBuild(code)
+        code = (code or ""):gsub("%s", "")
+        if code:sub(1, #PREFIX) ~= PREFIX then
+            return nil, "That is not a build code. Build codes start with " .. PREFIX
+        end
+        code = code:sub(#PREFIX + 1)
+        if #code % 4 == 1 then return nil, "The code is incomplete. Copy all of it." end
+        local bytes = {}
+        for i = 1, #code, 4 do
+            local v, got = 0, 0
+            for j = 0, 3 do
+                local ch = code:sub(i + j, i + j)
+                if ch ~= "" then
+                    local k = B64INV[ch]
+                    if not k then return nil, "The code has a character it should not." end
+                    v = v * 64 + k
+                    got = got + 1
+                else
+                    v = v * 64
+                end
+            end
+            -- a short last group's spare bits are zero, so a build has one code
+            if (got == 2 and math.floor(v / 4096) % 16 ~= 0) or (got == 3 and math.floor(v / 64) % 4 ~= 0) then
+                return nil, "The code is damaged or incomplete. Copy all of it."
+            end
+            bytes[#bytes + 1] = math.floor(v / 65536) % 256
+            if got > 2 then bytes[#bytes + 1] = math.floor(v / 256) % 256 end
+            if got > 3 then bytes[#bytes + 1] = v % 256 end
+        end
+        local n = #bytes
+        if n < 3 then return nil, "The code is incomplete. Copy all of it." end
+        if crc16(bytes, n - 2) ~= bytes[n - 1] * 256 + bytes[n] then
+            return nil, "The code is damaged or incomplete. Copy all of it."
+        end
+        local pos, last = 1, n - 2
+        local function byte()
+            if pos > last then error("short", 0) end
+            pos = pos + 1
+            return bytes[pos - 1]
+        end
+        local function varint()
+            local v, mul = 0, 1
+            for _ = 1, 5 do
+                local b = byte()
+                v = v + (b % 128) * mul
+                if b < 128 then return v end
+                mul = mul * 128
+            end
+            error("long", 0)
+        end
+        local function text(max)
+            local len = byte()
+            if len > max then error("text", 0) end
+            local t = {}
+            for i = 1, len do t[i] = string.char(byte()) end
+            return table.concat(t)
+        end
+        local ok, build = pcall(function()
+            if byte() ~= VERSION then error("version", 0) end
+            local b = { abilities = {}, talents = {} }
+            b.name = text(NAME_MAX)
+            b.desc = text(DESC_MAX)
+            local na = varint()
+            if na > MAX_ENTRIES then error("count", 0) end
+            local prev = 0
+            for i = 1, na do
+                local z = varint()
+                prev = prev + ((z % 2 == 0) and z / 2 or -(z + 1) / 2)
+                b.abilities[i] = prev
+            end
+            local nt = varint()
+            if nt > MAX_ENTRIES then error("count", 0) end
+            for i = 1, nt do
+                local id = varint()
+                b.talents[i] = { id, byte() }
+            end
+            if pos <= last then error("trailing", 0) end
+            return b
+        end)
+        if not ok then
+            return nil, build == "version" and "That build code is from a newer version of the addon."
+                or "The code is damaged or incomplete. Copy all of it."
+        end
+        build.name = CW.CleanBuildText(build.name, NAME_MAX)
+        build.desc = CW.CleanBuildText(build.desc, DESC_MAX, true)
+        return build
+    end
+
+    -- The server takes a build as plain ids in pieces, and checks every one.
+    function CW.UploadBuild(build)
+        Send("ARCHUP CLEAR")
+        local piece = {}
+        local function flush(kind)
+            if #piece > 0 then Send("ARCHUP " .. kind .. " " .. table.concat(piece, ",")) end
+            piece = {}
+        end
+        for _, id in ipairs(build.abilities) do
+            piece[#piece + 1] = tostring(id)
+            if #piece >= 20 then flush("A") end
+        end
+        flush("A")
+        for _, t in ipairs(build.talents) do
+            piece[#piece + 1] = t[1] .. ":" .. t[2]
+            if #piece >= 16 then flush("T") end
+        end
+        flush("T")
+    end
+
+    -- The saved builds: account-wide, in the addon's saved variables.
+    function CW.SavedBuilds()
+        ClasslessWildcardDB = ClasslessWildcardDB or {}
+        ClasslessWildcardDB.customBuilds = ClasslessWildcardDB.customBuilds or {}
+        return ClasslessWildcardDB.customBuilds
+    end
+
+    function CW.CopyBuild(b)
+        local c = { name = b.name, desc = b.desc or "", abilities = {}, talents = {} }
+        for i, id in ipairs(b.abilities or {}) do c.abilities[i] = id end
+        for i, t in ipairs(b.talents or {}) do c.talents[i] = { t[1], t[2] } end
+        return c
+    end
+end
+
+-- Build order --------------------------------------------------------------
+-- One archetype's whole build, in the order following it buys things, with
+-- the level each is bought at on this character (the server simulates the
+-- essence schedule: ARCHPLAN -> APA/APT pieces -> APE). Abilities, then
+-- talents, in one scrolling list; every row shows the spell's own tooltip on
+-- hover. Opened from a row's Build button, over the archetype list.
+do
+    local W, H, PAD, ROW_H = 420, 500, 18, 22
+    local P = CreateFrame("Frame", "ClasslessWildcardArchPlan", frame)
+    P:SetWidth(W); P:SetHeight(H)
+    P:SetPoint("CENTER", frame, "CENTER", 0, 0)
+    P:SetFrameStrata("DIALOG")
+    P:SetToplevel(true)
+    P:SetBackdrop({
+        bgFile = "Interface\\Buttons\\WHITE8X8",
+        edgeFile = "Interface\\Tooltips\\UI-Tooltip-Border",
+        tile = false, edgeSize = 14,
+        insets = { left = 4, right = 4, top = 4, bottom = 4 },
+    })
+    P:SetBackdropColor(0.03, 0.03, 0.05, 0.98)
+    P:EnableMouse(true)
+    P:Hide()
+    CW.archPlan = P
+
+    P.close = CreateFrame("Button", nil, P, "UIPanelCloseButton")
+    P.close:SetPoint("TOPRIGHT", -2, -2)
+    P.close:SetScript("OnClick", function() P:Hide() end)
+    P.icon = P:CreateTexture(nil, "ARTWORK")
+    P.icon:SetWidth(32); P.icon:SetHeight(32)
+    P.icon:SetPoint("TOPLEFT", PAD, -16)
+    P.icon:SetTexCoord(0.07, 0.93, 0.07, 0.93)
+    P.icon:SetTexture("Interface\\Icons\\INV_Misc_Book_11")
+    P.iconBorder = P:CreateTexture(nil, "OVERLAY")
+    P.iconBorder:SetWidth(54); P.iconBorder:SetHeight(54)
+    P.iconBorder:SetPoint("CENTER", P.icon, "CENTER", 0, 0)
+    P.iconBorder:SetTexture("Interface\\Buttons\\UI-Quickslot2")
+    P.title = P:CreateFontString(nil, "OVERLAY", "GameFontNormalLarge")
+    P.title:SetPoint("TOPLEFT", P.icon, "TOPRIGHT", 12, -1)
+    P.title:SetPoint("RIGHT", P, "RIGHT", -32, 0)
+    P.title:SetJustifyH("LEFT")
+    P.subtitle = P:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
+    P.subtitle:SetPoint("TOPLEFT", P.title, "BOTTOMLEFT", 0, -4)
+    P.subtitle:SetText("Build order")
+    P.note = P:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+    P.note:SetPoint("TOPLEFT", PAD, -60)
+    P.note:SetWidth(W - 2 * PAD)
+    P.note:SetJustifyH("LEFT")
+    P.note:SetTextColor(0.75, 0.75, 0.75)
+    P.note:SetText("Bought in this order as you level. The level is when each is bought, "
+        .. "from the Ability and Talent Essence you earn. Hover any row for its tooltip.")
+
+    P.scroll = CreateFrame("ScrollFrame", "ClasslessWildcardArchPlanScroll", P, "UIPanelScrollFrameTemplate")
+    P.scroll:SetPoint("TOPLEFT", PAD, -94)
+    P.scroll:SetPoint("BOTTOMRIGHT", -PAD - 22, 46)
+    P.scroll.scrollBarHideable = 1
+    P.child = CreateFrame("Frame", nil, P.scroll)
+    P.child:SetWidth(W - 2 * PAD - 22); P.child:SetHeight(1)
+    P.scroll:SetScrollChild(P.child)
+    local CHILD_W = W - 2 * PAD - 22
+
+    P.loading = P:CreateFontString(nil, "OVERLAY", "GameFontDisable")
+    P.loading:SetPoint("TOPLEFT", PAD + 4, -100)
+    P.loading:SetText("Loading...")
+
+    P.follow = CreateFrame("Button", nil, P, "UIPanelButtonTemplate")
+    P.follow:SetWidth(110); P.follow:SetHeight(24)
+    P.follow:SetPoint("BOTTOMLEFT", PAD, 14)
+    P.follow:SetText("Follow")
+    P.done = CreateFrame("Button", nil, P, "UIPanelButtonTemplate")
+    P.done:SetWidth(100); P.done:SetHeight(24)
+    P.done:SetPoint("BOTTOMRIGHT", -PAD, 14)
+    P.done:SetText(CLOSE or "Close")
+    P.done:SetScript("OnClick", function() P:Hide() end)
+    -- a starter build as the start of one of your own
+    P.copy = CreateFrame("Button", nil, P, "UIPanelButtonTemplate")
+    P.copy:SetWidth(140); P.copy:SetHeight(24)
+    P.copy:SetPoint("BOTTOM", P, "BOTTOM", 0, 14)
+    P.copy:SetText("Copy to My Builds")
+    P.copy:SetScript("OnClick", function()
+        local d = P.data
+        if not d or not d.done or not CW.OpenBuildEditor then return end
+        local b = { name = (P.arch and P.arch.name or "Build") .. " (copy)", desc = P.arch and P.arch.desc or "",
+                    abilities = {}, talents = {} }
+        for _, s in ipairs(d.abilities) do tinsert(b.abilities, s.spell) end
+        for _, s in ipairs(d.talents) do
+            if s.talentId then
+                tinsert(b.talents, { s.talentId, s.rank })
+                CW.talentInfo = CW.talentInfo or {}
+                CW.talentInfo[s.talentId] = { spell = s.spell, rarity = s.rarity, max = s.maxRank }
+            end
+        end
+        P:Hide()
+        CW.OpenBuildEditor(b, nil)
+    end)
+
+    -- pooled pieces of the list
+    P.headers, P.rows = {}, {}
+    local function Header(i)
+        local h = P.headers[i]
+        if not h then
+            h = { text = P.child:CreateFontString(nil, "OVERLAY", "GameFontNormal"),
+                  rule = P.child:CreateTexture(nil, "ARTWORK") }
+            h.text:SetJustifyH("LEFT")
+            h.rule:SetHeight(1)
+            h.rule:SetTexture(1, 0.82, 0, 0.25)
+            P.headers[i] = h
+        end
+        return h
+    end
+    local function Row(i)
+        local r = P.rows[i]
+        if not r then
+            r = CreateFrame("Button", nil, P.child)
+            r:SetWidth(CHILD_W); r:SetHeight(ROW_H)
+            r.stripe = r:CreateTexture(nil, "BACKGROUND")
+            r.stripe:SetAllPoints(r)
+            r.stripe:SetTexture("Interface\\Buttons\\WHITE8X8")
+            r.level = r:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+            r.level:SetPoint("LEFT", 4, 0)
+            r.level:SetWidth(40)
+            r.level:SetJustifyH("LEFT")
+            r.icon = r:CreateTexture(nil, "ARTWORK")
+            r.icon:SetWidth(18); r.icon:SetHeight(18)
+            r.icon:SetPoint("LEFT", 48, 0)
+            r.icon:SetTexCoord(0.07, 0.93, 0.07, 0.93)
+            r.name = r:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
+            r.name:SetPoint("LEFT", r.icon, "RIGHT", 8, 0)
+            r.name:SetPoint("RIGHT", -44, 0)
+            r.name:SetJustifyH("LEFT")
+            r.rank = r:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+            r.rank:SetPoint("RIGHT", -6, 0)
+            r.rank:SetJustifyH("RIGHT")
+            r:SetHighlightTexture("Interface\\QuestFrame\\UI-QuestTitleHighlight", "ADD")
+            r:SetScript("OnEnter", function(self)
+                if not self.spellId then return end
+                GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
+                GameTooltip:SetHyperlink("spell:" .. self.spellId)
+                GameTooltip:Show()
+            end)
+            r:SetScript("OnLeave", function() GameTooltip:Hide() end)
+            P.rows[i] = r
+        end
+        return r
+    end
+
+    function CW.RenderArchPlan()
+        local d = P.data
+        for _, h in ipairs(P.headers) do h.text:Hide(); h.rule:Hide() end
+        for _, r in ipairs(P.rows) do r:Hide() end
+        if not d or not d.done then
+            P.loading:Show()
+            return
+        end
+        P.loading:Hide()
+        local y, nh, nr = 0, 0, 0
+        local function Section(label, steps, talents)
+            nh = nh + 1
+            local h = Header(nh)
+            h.text:ClearAllPoints()
+            h.text:SetPoint("TOPLEFT", P.child, "TOPLEFT", 0, -y)
+            h.text:SetText(label)
+            h.rule:ClearAllPoints()
+            h.rule:SetPoint("TOPLEFT", P.child, "TOPLEFT", 0, -y - 16)
+            h.rule:SetPoint("TOPRIGHT", P.child, "TOPRIGHT", 0, -y - 16)
+            h.text:Show(); h.rule:Show()
+            y = y + 22
+            for i, s in ipairs(steps) do
+                nr = nr + 1
+                local r = Row(nr)
+                r.spellId = s.spell
+                r:ClearAllPoints()
+                r:SetPoint("TOPLEFT", P.child, "TOPLEFT", 0, -y)
+                r.stripe:SetVertexColor(1, 1, 1, i % 2 == 0 and 0.03 or 0.06)
+                -- 0: the essence never reaches it before the cap
+                r.level:SetText(s.level > 0 and ("Lv " .. s.level)
+                    or ("|cff888888" .. (CW.rules.maxLevel or 80) .. "+|r"))
+                r.icon:SetTexture(SpellIcon(s.spell))
+                r.name:SetText(SpellLabel(s.spell, s.rarity))
+                r.rank:SetText(talents and ("|cffaaaaaa" .. s.rank .. "/" .. s.maxRank .. "|r") or "")
+                r:Show()
+                y = y + ROW_H
+            end
+            y = y + 12
+        end
+        local ranks = 0
+        for _, s in ipairs(d.talents) do ranks = ranks + s.rank end
+        Section("Abilities  |cffaaaaaa" .. #d.abilities .. "|r", d.abilities, false)
+        if #d.talents > 0 then
+            Section("Talents  |cffaaaaaa" .. ranks .. " ranks|r", d.talents, true)
+        end
+        P.child:SetHeight(math.max(y, 1))
+        P.scroll:SetVerticalScroll(0)
+        P.scroll:UpdateScrollChildRect()
+    end
+
+    -- arch.build marks one of the player's own builds: the server has not got
+    -- it, so it is uploaded and previewed (id 0) rather than looked up by id
+    function CW.OpenArchPlan(arch)
+        P.arch = arch
+        P.data = { id = arch.build and 0 or arch.id, abilities = {}, talents = {} }
+        P.title:SetText(arch.name)
+        P.follow:SetText(arch.following and "Stop" or "Follow")
+        P.follow:SetScript("OnClick", function()
+            P:Hide()
+            if CW.archFly then CW.archFly:Hide() end
+            if arch.following then
+                Send("ARCHAPPLY 0")
+            elseif arch.build then
+                CW.FollowBuild(arch.build)
+            else
+                local dlg = StaticPopup_Show("CW_CLASSLESS_ARCHETYPE", arch.name)
+                if dlg then dlg.data = arch.id end
+            end
+        end)
+        -- the follow button belongs to the panel's flyout; the first-login
+        -- wizard chooses with its own buttons, so it is hidden there
+        if CW.archFly and CW.archFly:IsShown() then P.follow:Show() else P.follow:Hide() end
+        -- copying is for starter builds on the Classless path; a saved build is edited instead
+        if not arch.build and CW.state.mode == 0 then P.copy:Show() else P.copy:Hide() end
+        P:SetFrameLevel((CW.archFly and CW.archFly:GetFrameLevel() or 0) + 20)
+        CW.RenderArchPlan()
+        P:Show()
+        if arch.build then
+            CW.planTarget = "plan"
+            CW.UploadBuild(arch.build)
+            Send("ARCHPLANX " .. CW.CleanBuildText(arch.build.name, 32))
+        else
+            Send("ARCHPLAN " .. arch.id)
+        end
+    end
+
+    -- "APA|id|spell:rarity:level;..." and "APT|id|spell:rarity:rank:max:level:talentId;..."
+    -- pieces arrive in order; APE|id|spentA|totalA|spentT|totalT|problem draws
+    -- the lot. A preview (id 0) is the editor's when the editor asked for it.
+    function CW.ReadArchPlan(kind, p)
+        if tonumber(p[2]) == 0 and CW.planTarget == "editor" and CW.EditorReadPlan then
+            CW.EditorReadPlan(kind, p)
+            return
+        end
+        local d = P.data
+        if not d or tonumber(p[2]) ~= d.id then return end
+        if kind == "APW" then
+            return   -- row warnings are the editor's business
+        elseif kind == "APA" then
+            for spell, rarity, level in string.gmatch(p[3] or "", "(%d+):(%d+):(%d+):?%d*;") do
+                tinsert(d.abilities, { spell = tonumber(spell), rarity = tonumber(rarity), level = tonumber(level) })
+            end
+        elseif kind == "APT" then
+            for spell, rarity, rank, max, level, tid in string.gmatch(p[3] or "", "(%d+):(%d+):(%d+):(%d+):(%d+):?(%d*);") do
+                tinsert(d.talents, { spell = tonumber(spell), rarity = tonumber(rarity), rank = tonumber(rank),
+                                     maxRank = tonumber(max), level = tonumber(level), talentId = tonumber(tid) })
+            end
+        else
+            d.done = true
+            if P:IsShown() then CW.RenderArchPlan() end
+        end
+    end
+end
+
+-- My Builds ------------------------------------------------------------------
+-- The player's own archetypes: saved in the addon (account-wide, this
+-- computer), moved and shared as build codes, followed exactly like a starter
+-- build. The server checks every build before it is previewed or followed and
+-- refuses one that does not fit the essence a Hero earns by the cap.
+StaticPopupDialogs["CW_CLASSLESS_CUSTOM"] = {
+    text = "Follow %s? Your abilities and talents are unlearned and refunded, then its build is bought for you as you level.",
+    button1 = "Follow",
+    button2 = "Cancel",
+    OnAccept = function(self)
+        if self.data then Send("ARCHCUSTOM " .. self.data) end
+        if CW.SetTab then CW.SetTab("HERO") end
+    end,
+    timeout = 0, whileDead = 1, hideOnEscape = 1, preferredIndex = 3,
+}
+StaticPopupDialogs["CW_CLASSLESS_DELETEBUILD"] = {
+    text = "Delete %s? Share it first if you want to keep a copy.",
+    button1 = "Delete",
+    button2 = "Cancel",
+    OnAccept = function(self) if self.data and CW.DeleteBuild then CW.DeleteBuild(self.data) end end,
+    timeout = 0, whileDead = 1, hideOnEscape = 1, preferredIndex = 3,
+}
+StaticPopupDialogs["CW_CLASSLESS_DISCARDBUILD"] = {
+    text = "Close the editor? Your changes to %s are not saved.",
+    button1 = "Close",
+    button2 = "Keep editing",
+    OnAccept = function() if CW.buildEditor then CW.buildEditor.dirty = false; CW.buildEditor:Hide() end end,
+    timeout = 0, whileDead = 1, hideOnEscape = 1, preferredIndex = 3,
+}
+StaticPopupDialogs["CW_CLASSLESS_SHAREDBUILD"] = {
+    text = "%s shared a build: %s.",
+    button1 = "View",
+    button2 = "Ignore",
+    OnAccept = function(self) if self.data and CW.OpenBuildEditor then CW.OpenBuildEditor(self.data, nil) end end,
+    timeout = 0, whileDead = 1, hideOnEscape = 1, preferredIndex = 3,
+}
+
+do
+    local NAME_MAX, DESC_MAX = 32, 120
+
+    function CW.FollowBuild(build)
+        CW.UploadBuild(build)
+        local name = CW.CleanBuildText(build.name, NAME_MAX)
+        local dlg = StaticPopup_Show("CW_CLASSLESS_CUSTOM", name)
+        if dlg then dlg.data = name end
+    end
+
+    function CW.DeleteBuild(index)
+        tremove(CW.SavedBuilds(), index)
+        if CW.archFly and CW.archFly:IsShown() then CW.RenderArchFly() end
+    end
+
+    local function Counts(b)
+        local ranks = 0
+        for _, t in ipairs(b.talents) do ranks = ranks + t[2] end
+        return #b.abilities, ranks
+    end
+
+    -- ---- the tab and its bar ---------------------------------------------------
+    local fly = CW.archFly
+    CW.archTab = "STARTER"
+    local function TabButton(text, tab, x)
+        local b = CreateFrame("Button", nil, fly, "UIPanelButtonTemplate")
+        b:SetWidth(96); b:SetHeight(22)
+        b:SetPoint("TOPRIGHT", x, -20)
+        b:SetText(text)
+        b:SetScript("OnClick", function()
+            CW.archTab = tab
+            CW.RenderArchFly()
+        end)
+        return b
+    end
+    fly.tabMine = TabButton("My Builds", "MINE", -16)
+    fly.tabStarter = TabButton("Starter", "STARTER", -116)
+
+    fly.bar = CreateFrame("Frame", nil, fly)
+    fly.bar:SetWidth(484); fly.bar:SetHeight(24)
+    fly.bar:Hide()
+    local function BarButton(text, w, x, onClick, tip)
+        local b = CreateFrame("Button", nil, fly.bar, "UIPanelButtonTemplate")
+        b:SetWidth(w); b:SetHeight(22)
+        b:SetPoint("LEFT", x, 0)
+        b:SetText(text)
+        b:SetScript("OnClick", onClick)
+        b:SetScript("OnEnter", function(self)
+            GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
+            GameTooltip:AddLine(text)
+            GameTooltip:AddLine(tip, 1, 1, 1, true)
+            GameTooltip:Show()
+        end)
+        b:SetScript("OnLeave", function() GameTooltip:Hide() end)
+        return b
+    end
+    fly.bar.mine = BarButton("Save my build", 130, 0, function()
+        CW.awaitMine = { abilities = {}, talents = {} }
+        Send("ARCHMINE")
+    end, "Your current abilities and talents as a new build, abilities in the order they unlock.")
+    fly.bar.new = BarButton("New", 80, 136, function()
+        CW.OpenBuildEditor({ name = "New build", desc = "", abilities = {}, talents = {} }, nil)
+    end, "An empty build. Add to it with the + on the rows of the Abilities and Talents tabs.")
+    fly.bar.import = BarButton("Import", 80, 222, function()
+        CW.OpenShareWindow("import")
+    end, "Paste a build code someone shared with you.")
+
+    function CW.HideMyBuildsBar()
+        fly.bar:Hide()
+    end
+
+    function CW.ArchTabsRefresh()
+        local mine = CW.archTab == "MINE"
+        if mine then fly.tabMine:LockHighlight(); fly.tabStarter:UnlockHighlight()
+        else fly.tabStarter:LockHighlight(); fly.tabMine:UnlockHighlight() end
+        fly.title:SetText(mine and "My Builds" or "Archetypes")
+        fly.subtitle:SetText(mine and "Your own archetypes, saved on this computer."
+            or "A build that is bought for you as you level.")
+    end
+
+    local MINE_INTRO = "|cffffd100Follow:|r a build of your own, bought for you as you level like a starter build.\n"
+        .. "|cffffd100Share:|r a build travels as a code. Copy it to move a build to another computer or give it to a friend.\n"
+        .. "|cffffd100Budget:|r a build must fit the Ability and Talent Essence a Hero earns by the level cap."
+
+    -- the flyout's My Builds page: the bar, then the saved builds as rows
+    function CW.RenderMyBuilds()
+        CW.ArchTabsRefresh()
+        local s = CW.state
+        local builds = CW.SavedBuilds()
+        fly.intro:SetText(MINE_INTRO)
+        local top = 62 + math.max(12, fly.intro:GetStringHeight() or 0) + 12
+        fly.bar:ClearAllPoints()
+        fly.bar:SetPoint("TOPLEFT", 18, -top)
+        fly.bar:Show()
+        top = top + 24 + 12
+        local list = {}
+        for i, b in ipairs(builds) do
+            local count, ranks = Counts(b)
+            list[i] = {
+                id = 0, build = b, index = i,
+                name = CW.CleanBuildText(b.name, NAME_MAX), desc = b.desc ~= "" and b.desc or "No description.",
+                count = count, ranks = ranks,
+                following = (s.customName or "") ~= "" and s.customName == CW.CleanBuildText(b.name, NAME_MAX),
+            }
+        end
+        if #list == 0 then
+            fly.empty = fly.empty or fly:CreateFontString(nil, "OVERLAY", "GameFontDisable")
+            fly.empty:ClearAllPoints()
+            fly.empty:SetPoint("TOPLEFT", 26, -top - 4)
+            fly.empty:SetText("No builds yet. Save your own, start a new one, or import a code.")
+            fly.empty:Show()
+        elseif fly.empty then
+            fly.empty:Hide()
+        end
+        local _, used = CW.FillArchRowsFor(list, function(arch)
+            fly:Hide()
+            if arch.following then
+                Send("ARCHAPPLY 0")
+            else
+                CW.FollowBuild(arch.build)
+            end
+        end, top)
+        fly:SetHeight(top + math.max(used, 46) + 14)
+    end
+
+    -- the small actions a saved build's row carries, made on first use
+    function CW.DecorateBuildRow(r, arch)
+        if not r.edit then
+            local function Small(text, x)
+                local b = CreateFrame("Button", nil, r, "UIPanelButtonTemplate")
+                b:SetWidth(64); b:SetHeight(18)
+                b:SetPoint("BOTTOMLEFT", x, 6)
+                b:SetText(text)
+                return b
+            end
+            r.edit, r.share, r.del = Small("Edit", 8), Small("Share", 76), Small("Delete", 144)
+        end
+        if arch and arch.build then
+            r.edit:SetScript("OnClick", function() CW.OpenBuildEditor(arch.build, arch.index) end)
+            r.share:SetScript("OnClick", function() CW.OpenShareWindow("share", arch.build) end)
+            r.del:SetScript("OnClick", function()
+                local dlg = StaticPopup_Show("CW_CLASSLESS_DELETEBUILD", arch.name)
+                if dlg then dlg.data = arch.index end
+            end)
+            r.edit:Show(); r.share:Show(); r.del:Show()
+            return 24   -- the height the actions add to the row
+        end
+        r.edit:Hide(); r.share:Hide(); r.del:Hide()
+        return 0
+    end
+
+    -- ---- "Save my build" ---------------------------------------------------------
+    -- AMA|id,id,...  AMT|id:rank,...  AME| : the character's build as a plan
+    function CW.ReadMyBuild(kind, p)
+        local m = CW.awaitMine
+        if not m then return end
+        if kind == "AMA" then
+            for id in string.gmatch(p[2] or "", "(%d+),") do tinsert(m.abilities, tonumber(id)) end
+        elseif kind == "AMT" then
+            for id, rank in string.gmatch(p[2] or "", "(%d+):(%d+),") do tinsert(m.talents, { tonumber(id), tonumber(rank) }) end
+        else
+            CW.awaitMine = nil
+            local who = UnitName("player") or "My"
+            CW.OpenBuildEditor({ name = who .. "'s build", desc = "", abilities = m.abilities, talents = m.talents }, nil)
+        end
+    end
+end
+
+-- Build editor ----------------------------------------------------------------
+-- One build, edited in place: name and description, the ordered list with
+-- up, down and remove on every row (talents also - and + on their rank), the
+-- budget against what a Hero earns by the cap, and the server's verdict. Every
+-- change is previewed on the server (ARCHPLANX) a moment later, which is where
+-- the levels, the budget and any reason to refuse come from; Save waits for a
+-- clean verdict. Rows are added from the Abilities and Talents tabs, whose rows
+-- carry a + while the editor is open.
+do
+    local W, H, PAD, ROW_H = 480, 560, 18, 24
+    local E = CreateFrame("Frame", "ClasslessWildcardBuildEditor", frame)
+    E:SetWidth(W); E:SetHeight(H)
+    E:SetPoint("TOPLEFT", frame, "TOPRIGHT", 8, 0)
+    E:SetFrameStrata("DIALOG")
+    E:SetToplevel(true)
+    E:SetBackdrop({
+        bgFile = "Interface\\Buttons\\WHITE8X8",
+        edgeFile = "Interface\\Tooltips\\UI-Tooltip-Border",
+        tile = false, edgeSize = 14,
+        insets = { left = 4, right = 4, top = 4, bottom = 4 },
+    })
+    E:SetBackdropColor(0.03, 0.03, 0.05, 0.98)
+    E:EnableMouse(true)
+    E:SetMovable(true); E:SetClampedToScreen(true)
+    E:RegisterForDrag("LeftButton")
+    E:SetScript("OnDragStart", E.StartMoving)
+    E:SetScript("OnDragStop", E.StopMovingOrSizing)
+    E:Hide()
+    CW.buildEditor = E
+
+    E.close = CreateFrame("Button", nil, E, "UIPanelCloseButton")
+    E.close:SetPoint("TOPRIGHT", -2, -2)
+    E.close:SetScript("OnClick", function() CW.CloseBuildEditor() end)
+    E.title = E:CreateFontString(nil, "OVERLAY", "GameFontNormalLarge")
+    E.title:SetPoint("TOPLEFT", PAD, -16)
+    E.title:SetText("Build editor")
+
+    local function Label(text, y)
+        local l = E:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+        l:SetPoint("TOPLEFT", PAD, y)
+        l:SetText(text)
+        return l
+    end
+    local function Box(name, w, y, max)
+        local b = CreateFrame("EditBox", name, E, "InputBoxTemplate")
+        b:SetWidth(w); b:SetHeight(20)
+        b:SetPoint("TOPLEFT", PAD + 6, y)
+        b:SetAutoFocus(false)
+        b:SetMaxLetters(max)
+        b:SetScript("OnEscapePressed", function(self) self:ClearFocus() end)
+        b:SetScript("OnEnterPressed", function(self) self:ClearFocus() end)
+        return b
+    end
+    Label("Name", -46)
+    E.name = Box("ClasslessWildcardBuildName", 260, -60, 32)
+    Label("Description", -86)
+    E.desc = Box("ClasslessWildcardBuildDesc", W - 2 * PAD - 12, -100, 120)
+
+    E.hint = E:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+    E.hint:SetPoint("TOPLEFT", PAD, -128)
+    E.hint:SetWidth(W - 2 * PAD)
+    E.hint:SetJustifyH("LEFT")
+    E.hint:SetTextColor(0.75, 0.75, 0.75)
+    E.hint:SetText("Add with the + on the rows of the Abilities and Talents tabs. Order is when each is bought: "
+        .. "move a row up to buy it sooner.")
+
+    E.scroll = CreateFrame("ScrollFrame", "ClasslessWildcardBuildEditorScroll", E, "UIPanelScrollFrameTemplate")
+    E.scroll:SetPoint("TOPLEFT", PAD, -158)
+    E.scroll:SetPoint("BOTTOMRIGHT", -PAD - 22, 104)
+    E.scroll.scrollBarHideable = 1
+    E.child = CreateFrame("Frame", nil, E.scroll)
+    local CHILD_W = W - 2 * PAD - 22
+    E.child:SetWidth(CHILD_W); E.child:SetHeight(1)
+    E.scroll:SetScrollChild(E.child)
+
+    E.budget = E:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+    E.budget:SetPoint("BOTTOMLEFT", PAD, 80)
+    E.budget:SetWidth(W - 2 * PAD)
+    E.budget:SetJustifyH("LEFT")
+    E.verdict = E:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+    E.verdict:SetPoint("BOTTOMLEFT", PAD, 50)
+    E.verdict:SetWidth(W - 2 * PAD)
+    E.verdict:SetJustifyH("LEFT")
+
+    E.save = CreateFrame("Button", nil, E, "UIPanelButtonTemplate")
+    E.save:SetWidth(104); E.save:SetHeight(24)
+    E.save:SetPoint("BOTTOMLEFT", PAD, 14)
+    E.save:SetText("Save")
+    E.shareBtn = CreateFrame("Button", nil, E, "UIPanelButtonTemplate")
+    E.shareBtn:SetWidth(104); E.shareBtn:SetHeight(24)
+    E.shareBtn:SetPoint("LEFT", E.save, "RIGHT", 8, 0)
+    E.shareBtn:SetText("Share")
+    E.cancel = CreateFrame("Button", nil, E, "UIPanelButtonTemplate")
+    E.cancel:SetWidth(100); E.cancel:SetHeight(24)
+    E.cancel:SetPoint("BOTTOMRIGHT", -PAD, 14)
+    E.cancel:SetText("Close")
+    E.cancel:SetScript("OnClick", function() CW.CloseBuildEditor() end)
+    E.fix = CreateFrame("Button", nil, E, "UIPanelButtonTemplate")
+    E.fix:SetWidth(104); E.fix:SetHeight(24)
+    E.fix:SetPoint("LEFT", E.shareBtn, "RIGHT", 8, 0)
+    E.fix:SetText("Fix order")
+    E.fix:Hide()
+    E.fix:SetScript("OnClick", function()
+        if not E.preview or not E.preview.done then return end
+        CW.FixBuildOrder(E.build, E.preview)
+        CW.BuildEditorChanged()
+    end)
+    E.fix:SetScript("OnEnter", function(self)
+        GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
+        GameTooltip:AddLine("Fix order")
+        GameTooltip:AddLine("Puts abilities in the order they unlock, moves each talent below the talent it needs, "
+            .. "caps ranks and drops repeats. Rows marked in red say what is wrong.", 1, 1, 1, true)
+        GameTooltip:Show()
+    end)
+    E.fix:SetScript("OnLeave", function() GameTooltip:Hide() end)
+
+    -- talent names, icons and ranks the editor has seen, from the browser
+    -- rows and from previews: a build stores only the talent id
+    CW.talentInfo = CW.talentInfo or {}
+
+    local function Changed()
+        E.dirty = true
+        E.verdictOk = false
+        E.previewDue = GetTime() + 0.4
+        CW.RenderBuildEditor()
+    end
+
+    function CW.BuildEditorChanged() Changed() end
+
+    -- the preview a moment after the last change, not one per keystroke
+    E:SetScript("OnUpdate", function()
+        if E.previewDue and GetTime() >= E.previewDue then
+            E.previewDue = nil
+            local b = E.build
+            b.name = E.name:GetText() or ""
+            b.desc = E.desc:GetText() or ""
+            E.preview = { abilities = {}, talents = {}, warnA = {}, warnT = {} }
+            CW.planTarget = "editor"
+            CW.UploadBuild(b)
+            Send("ARCHPLANX " .. CW.CleanBuildText(b.name, 32))
+        end
+    end)
+    E.name:SetScript("OnTextChanged", function(_, user) if user then Changed() end end)
+    E.desc:SetScript("OnTextChanged", function(_, user) if user then E.dirty = true end end)
+
+    function CW.EditorReadPlan(kind, p)
+        local pv = E.preview
+        if not pv then return end
+        if kind == "APA" then
+            for spell, rarity, level, unlock in string.gmatch(p[3] or "", "(%d+):(%d+):(%d+):?(%d*);") do
+                pv.abilities[tonumber(spell)] = { level = tonumber(level), rarity = tonumber(rarity),
+                                                  unlock = tonumber(unlock) or 1 }
+            end
+        elseif kind == "APW" then
+            -- kind:index:code:extra; the index is 0-based in its list
+            for k, i, code, extra in string.gmatch(p[3] or "", "([AT]):(%d+):(%a+):(%d+);") do
+                local list = k == "A" and pv.warnA or pv.warnT
+                list[tonumber(i) + 1] = { code = code, extra = tonumber(extra) }
+            end
+        elseif kind == "APT" then
+            for spell, rarity, rank, max, level, tid in string.gmatch(p[3] or "", "(%d+):(%d+):(%d+):(%d+):(%d+):?(%d*);") do
+                tid = tonumber(tid)
+                if tid then
+                    pv.talents[tid] = { level = tonumber(level) }
+                    local info = CW.talentInfo[tid] or {}
+                    info.spell, info.rarity, info.max = info.spell or tonumber(spell), tonumber(rarity), tonumber(max)
+                    CW.talentInfo[tid] = info
+                end
+            end
+        else
+            pv.spentA, pv.totalA = tonumber(p[3]) or 0, tonumber(p[4]) or 0
+            pv.spentT, pv.totalT = tonumber(p[5]) or 0, tonumber(p[6]) or 0
+            pv.problem = p[7] or ""
+            pv.done = true
+            E.verdictOk = pv.problem == ""
+            CW.RenderBuildEditor()
+        end
+    end
+
+    -- ---- the rows ------------------------------------------------------------------
+    E.rows, E.headers = {}, {}
+    local function IconButton(parent, tex, size, tip)
+        local b = CreateFrame("Button", nil, parent)
+        b:SetWidth(size); b:SetHeight(size)
+        b:SetNormalTexture(tex .. "-Up")
+        b:SetPushedTexture(tex .. "-Down")
+        b:SetHighlightTexture("Interface\\Buttons\\UI-Common-MouseHilight", "ADD")
+        if tip then
+            b:SetScript("OnEnter", function(self)
+                GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
+                GameTooltip:SetText(tip)
+                GameTooltip:Show()
+            end)
+            b:SetScript("OnLeave", function() GameTooltip:Hide() end)
+        end
+        return b
+    end
+    local function Row(i)
+        local r = E.rows[i]
+        if r then return r end
+        r = CreateFrame("Button", nil, E.child)
+        r:SetWidth(CHILD_W); r:SetHeight(ROW_H)
+        r.stripe = r:CreateTexture(nil, "BACKGROUND")
+        r.stripe:SetAllPoints(r)
+        r.stripe:SetTexture("Interface\\Buttons\\WHITE8X8")
+        r.level = r:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+        r.level:SetPoint("LEFT", 4, 0)
+        r.level:SetWidth(40)
+        r.level:SetJustifyH("LEFT")
+        r.icon = r:CreateTexture(nil, "ARTWORK")
+        r.icon:SetWidth(18); r.icon:SetHeight(18)
+        r.icon:SetPoint("LEFT", 46, 0)
+        r.icon:SetTexCoord(0.07, 0.93, 0.07, 0.93)
+        r.name = r:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
+        r.name:SetPoint("LEFT", r.icon, "RIGHT", 6, 0)
+        r.name:SetPoint("RIGHT", -122, 0)
+        r.name:SetJustifyH("LEFT")
+        r.del = IconButton(r, "Interface\\Buttons\\UI-MinusButton", 16, "Remove")
+        r.del:SetPoint("RIGHT", -2, 0)
+        r.down = IconButton(r, "Interface\\Buttons\\UI-ScrollBar-ScrollDownButton", 20, "Buy later")
+        r.down:SetPoint("RIGHT", r.del, "LEFT", -2, 0)
+        r.up = IconButton(r, "Interface\\Buttons\\UI-ScrollBar-ScrollUpButton", 20, "Buy sooner")
+        r.up:SetPoint("RIGHT", r.down, "LEFT", 0, 0)
+        r.rank = r:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+        r.rank:SetPoint("RIGHT", r.up, "LEFT", -20, 0)
+        r.rank:SetJustifyH("CENTER")
+        r.minus = IconButton(r, "Interface\\Buttons\\UI-SpellbookIcon-PrevPage", 18, "One rank fewer")
+        r.minus:SetPoint("RIGHT", r.rank, "LEFT", -2, 0)
+        r.plus = IconButton(r, "Interface\\Buttons\\UI-SpellbookIcon-NextPage", 18, "One rank more")
+        r.plus:SetPoint("LEFT", r.rank, "RIGHT", 2, 0)
+        r:SetHighlightTexture("Interface\\QuestFrame\\UI-QuestTitleHighlight", "ADD")
+        r:SetScript("OnEnter", function(self)
+            GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
+            if self.spellId then
+                GameTooltip:SetHyperlink("spell:" .. self.spellId)
+            else
+                GameTooltip:SetText(self.name:GetText() or "")
+            end
+            -- what the server found wrong with this row, under the spell
+            if self.warning then GameTooltip:AddLine(self.warning, 1, 0.33, 0.27, true) end
+            GameTooltip:Show()
+        end)
+        r:SetScript("OnLeave", function() GameTooltip:Hide() end)
+        E.rows[i] = r
+        return r
+    end
+    local function Header(i)
+        local h = E.headers[i]
+        if h then return h end
+        h = { text = E.child:CreateFontString(nil, "OVERLAY", "GameFontNormal"), rule = E.child:CreateTexture(nil, "ARTWORK") }
+        h.text:SetJustifyH("LEFT")
+        h.rule:SetHeight(1)
+        h.rule:SetTexture(1, 0.82, 0, 0.25)
+        E.headers[i] = h
+        return h
+    end
+
+    -- the row's warning in words, from the code the server sent
+    local function Warning(w)
+        if not w then return nil end
+        local cap = CW.rules.maxLevel or 80
+        if w.code == "gone" then return "This realm does not have it, or it cannot be bought." end
+        if w.code == "twice" then return "It is already in the build." end
+        if w.code == "rank" then return "It does not have that many ranks." end
+        if w.code == "never" then return "In this order it is never bought by level " .. cap .. "." end
+        if w.code == "needs" then
+            if (w.extra or 0) == 0 then return "It needs an ability that is not in the build." end
+            local info = CW.talentInfo[w.extra]
+            local name = info and info.spell and (GetSpellInfo(info.spell))
+            return "It needs " .. (name or "another talent") .. " earlier in the build."
+        end
+        return nil
+    end
+
+    local function Move(list, i, d)
+        local j = i + d
+        if j < 1 or j > #list then return end
+        list[i], list[j] = list[j], list[i]
+        Changed()
+    end
+
+    function CW.RenderBuildEditor()
+        local b, pv = E.build, E.preview or {}
+        if not b then return end
+        for _, r in ipairs(E.rows) do r:Hide() end
+        for _, h in ipairs(E.headers) do h.text:Hide(); h.rule:Hide() end
+        local y, nr, nh = 0, 0, 0
+        local cap = CW.rules.maxLevel or 80
+        local function Section(label)
+            nh = nh + 1
+            local h = Header(nh)
+            h.text:ClearAllPoints(); h.text:SetPoint("TOPLEFT", E.child, "TOPLEFT", 0, -y)
+            h.text:SetText(label)
+            h.rule:ClearAllPoints()
+            h.rule:SetPoint("TOPLEFT", E.child, "TOPLEFT", 0, -y - 16)
+            h.rule:SetPoint("TOPRIGHT", E.child, "TOPRIGHT", 0, -y - 16)
+            h.text:Show(); h.rule:Show()
+            y = y + 22
+        end
+        local function LevelText(step)
+            if not pv.done or not step then return "" end
+            return step.level > 0 and ("Lv " .. step.level) or ("|cffff5544" .. cap .. "+|r")
+        end
+
+        Section("Abilities  |cffaaaaaa" .. #b.abilities .. "|r")
+        for i, id in ipairs(b.abilities) do
+            nr = nr + 1
+            local r = Row(nr)
+            local step = pv.abilities and pv.abilities[id]
+            r.spellId = id
+            r:ClearAllPoints(); r:SetPoint("TOPLEFT", E.child, "TOPLEFT", 0, -y)
+            r.warning = Warning(pv.warnA and pv.warnA[i])
+            if r.warning then r.stripe:SetVertexColor(1, 0.2, 0.15, 0.18)
+            else r.stripe:SetVertexColor(1, 1, 1, i % 2 == 0 and 0.03 or 0.06) end
+            r.level:SetText(r.warning and "|cffff5544!|r" or LevelText(step))
+            r.icon:SetTexture(SpellIcon(id))
+            r.name:SetText(SpellLabel(id, step and step.rarity or 0))
+            r.rank:SetText(""); r.minus:Hide(); r.plus:Hide()
+            r.up:SetScript("OnClick", function() Move(b.abilities, i, -1) end)
+            r.down:SetScript("OnClick", function() Move(b.abilities, i, 1) end)
+            r.del:SetScript("OnClick", function() tremove(b.abilities, i); Changed() end)
+            r:Show()
+            y = y + ROW_H
+        end
+        y = y + 10
+        local ranks = 0
+        for _, t in ipairs(b.talents) do ranks = ranks + t[2] end
+        Section("Talents  |cffaaaaaa" .. ranks .. " ranks|r")
+        for i, t in ipairs(b.talents) do
+            nr = nr + 1
+            local r = Row(nr)
+            local info = CW.talentInfo[t[1]] or {}
+            local step = pv.talents and pv.talents[t[1]]
+            r.spellId = info.spell
+            r:ClearAllPoints(); r:SetPoint("TOPLEFT", E.child, "TOPLEFT", 0, -y)
+            r.warning = Warning(pv.warnT and pv.warnT[i])
+            if r.warning then r.stripe:SetVertexColor(1, 0.2, 0.15, 0.18)
+            else r.stripe:SetVertexColor(1, 1, 1, i % 2 == 0 and 0.03 or 0.06) end
+            r.level:SetText(r.warning and "|cffff5544!|r" or LevelText(step))
+            r.icon:SetTexture(info.spell and SpellIcon(info.spell) or "Interface\\Icons\\INV_Misc_QuestionMark")
+            r.name:SetText(info.spell and SpellLabel(info.spell, info.rarity or 0) or ("Talent " .. t[1]))
+            r.rank:SetText(t[2] .. "/" .. (info.max or "?"))
+            r.minus:Show(); r.plus:Show()
+            r.minus:SetScript("OnClick", function()
+                t[2] = t[2] - 1
+                if t[2] < 1 then tremove(b.talents, i) end
+                Changed()
+            end)
+            r.plus:SetScript("OnClick", function()
+                if not info.max or t[2] < info.max then t[2] = t[2] + 1; Changed() end
+            end)
+            r.up:SetScript("OnClick", function() Move(b.talents, i, -1) end)
+            r.down:SetScript("OnClick", function() Move(b.talents, i, 1) end)
+            r.del:SetScript("OnClick", function() tremove(b.talents, i); Changed() end)
+            r:Show()
+            y = y + ROW_H
+        end
+        E.child:SetHeight(math.max(y, 1))
+        E.scroll:UpdateScrollChildRect()
+
+        -- the budget and the verdict, once the server has looked
+        if pv.done then
+            local function Part(label, spent, total)
+                local c = spent > total and "|cffff5544" or "|cff00ff00"
+                return label .. "  " .. c .. spent .. "|r / " .. total
+            end
+            E.budget:SetText(Part("Ability Essence", pv.spentA, pv.totalA) .. "      "
+                .. Part("Talent Essence", pv.spentT, pv.totalT) .. "      |cffaaaaaaby level " .. cap .. "|r")
+            if pv.problem ~= "" then
+                E.verdict:SetText("|cffff5544" .. pv.problem .. "|r")
+            else
+                E.verdict:SetText("|cff00ff00This build can be saved and followed.|r")
+            end
+        else
+            E.budget:SetText("|cffaaaaaaChecking the build...|r")
+            E.verdict:SetText("")
+        end
+        if E.verdictOk then E.save:Enable() else E.save:Disable() end
+        if E.verdictOk then E.shareBtn:Enable() else E.shareBtn:Disable() end
+        if CW.BuildNeedsFix(pv) then E.fix:Show() else E.fix:Hide() end
+    end
+
+    -- Whether Fix order has anything it can do: a repeat, a rank past the
+    -- maximum, a talent above what it needs, or a step the order leaves unbought.
+    function CW.BuildNeedsFix(pv)
+        if not pv or not pv.done then return false end
+        for _, list in ipairs({ pv.warnA or {}, pv.warnT or {} }) do
+            for _, w in pairs(list) do
+                if w.code == "twice" or w.code == "rank" or w.code == "never"
+                    or (w.code == "needs" and (w.extra or 0) > 0) then
+                    return true
+                end
+            end
+        end
+        return false
+    end
+
+    -- Fix order: repeats dropped, ranks capped, abilities in the order they
+    -- unlock (ties keep their place), and every talent moved below the talent
+    -- it needs. What order cannot fix (something the realm lacks, an ability
+    -- a talent needs) is left for the player, still marked.
+    function CW.FixBuildOrder(b, pv)
+        local seen, abilities = {}, {}
+        for i, id in ipairs(b.abilities) do
+            if not seen[id] then
+                seen[id] = true
+                abilities[#abilities + 1] = { id = id, at = i,
+                    unlock = (pv.abilities[id] and pv.abilities[id].unlock) or 1 }
+            end
+        end
+        table.sort(abilities, function(x, y)
+            if x.unlock ~= y.unlock then return x.unlock < y.unlock end
+            return x.at < y.at
+        end)
+        b.abilities = {}
+        for i, a in ipairs(abilities) do b.abilities[i] = a.id end
+
+        local needs, inBuild, talents = {}, {}, {}
+        for i, t in ipairs(b.talents) do
+            local w = pv.warnT and pv.warnT[i]
+            if w and w.code == "needs" and (w.extra or 0) > 0 then needs[t[1]] = w.extra end
+        end
+        seen = {}
+        for _, t in ipairs(b.talents) do
+            if not seen[t[1]] then
+                seen[t[1]] = true
+                local info = CW.talentInfo[t[1]]
+                local rank = t[2]
+                if info and info.max and rank > info.max then rank = info.max end
+                talents[#talents + 1] = { t[1], rank }
+                inBuild[t[1]] = true
+            end
+        end
+        local placed, out, left = {}, {}, talents
+        while #left > 0 do
+            local rest, moved = {}, false
+            for _, t in ipairs(left) do
+                local dep = needs[t[1]]
+                if not dep or placed[dep] or not inBuild[dep] then
+                    out[#out + 1] = t
+                    placed[t[1]] = true
+                    moved = true
+                else
+                    rest[#rest + 1] = t
+                end
+            end
+            if not moved then
+                for _, t in ipairs(rest) do out[#out + 1] = t end
+                break
+            end
+            left = rest
+        end
+        b.talents = out
+    end
+
+    function CW.OpenBuildEditor(build, index)
+        E.build = CW.CopyBuild(build)
+        E.index = index
+        E.dirty = index == nil
+        E.verdictOk = false
+        E.preview = nil
+        E.name:SetText(E.build.name or "")
+        E.desc:SetText(E.build.desc or "")
+        E:SetFrameLevel((CW.archFly and CW.archFly:GetFrameLevel() or 0) + 30)
+        E:Show()
+        E.previewDue = GetTime()
+        CW.RenderBuildEditor()
+        -- the browsers' + buttons appear while this is open
+        if frame:IsShown() and CW.SetTab and (CW.tab == "ABIL" or CW.tab == "TAL") then CW.SetTab(CW.tab) end
+    end
+
+    function CW.CloseBuildEditor()
+        if E.dirty and E.build and #E.build.abilities + #E.build.talents > 0 then
+            StaticPopup_Show("CW_CLASSLESS_DISCARDBUILD", CW.CleanBuildText(E.name:GetText(), 32))
+            return
+        end
+        E:Hide()
+    end
+    E:SetScript("OnHide", function()
+        if frame:IsShown() and CW.SetTab and (CW.tab == "ABIL" or CW.tab == "TAL") then CW.SetTab(CW.tab) end
+    end)
+
+    E.save:SetScript("OnClick", function()
+        if not E.verdictOk then return end
+        local b = CW.CopyBuild(E.build)
+        b.name = CW.CleanBuildText(E.name:GetText(), 32)
+        b.desc = CW.CleanBuildText(E.desc:GetText(), 120, true)
+        local saved = CW.SavedBuilds()
+        if E.index and saved[E.index] then saved[E.index] = b else tinsert(saved, b); E.index = #saved end
+        E.dirty = false
+        UIErrorsFrame:AddMessage(b.name .. " saved.", 1.0, 0.82, 0.0)
+        if CW.archFly and CW.archFly:IsShown() then CW.RenderArchFly() end
+    end)
+    E.shareBtn:SetScript("OnClick", function()
+        local b = CW.CopyBuild(E.build)
+        b.name, b.desc = E.name:GetText() or "", E.desc:GetText() or ""
+        CW.OpenShareWindow("share", b)
+    end)
+
+    -- The browsers' rows get a + while the editor is open. A talent's + adds
+    -- one rank, or the talent at rank 1; an ability's adds it once.
+    function CW.BrowserRowHook(w, kind, e)
+        if not kind or not E:IsShown() or CW.state.mode ~= 0 then
+            if w.planAdd then w.planAdd:Hide() end
+            return
+        end
+        if not w.planAdd then
+            w.planAdd = IconButton(w, "Interface\\Buttons\\UI-PlusButton", 18, "Add to the build")
+            w.planAdd:SetPoint("RIGHT", w, "RIGHT", -24, 0)
+            w.planAdd:SetFrameLevel(w:GetFrameLevel() + 5)
+        end
+        local b = E.build
+        if kind == "A" then
+            local id = e.id
+            w.planAdd:SetScript("OnClick", function()
+                for _, x in ipairs(b.abilities) do if x == id then return end end
+                tinsert(b.abilities, id)
+                Changed()
+            end)
+        else
+            CW.talentInfo[e.talentId] = { spell = e.spell, rarity = e.rarity, max = e.max }
+            local tid, max = e.talentId, e.max
+            w.planAdd:SetScript("OnClick", function()
+                for _, t in ipairs(b.talents) do
+                    if t[1] == tid then
+                        if t[2] < max then t[2] = t[2] + 1; Changed() end
+                        return
+                    end
+                end
+                tinsert(b.talents, { tid, 1 })
+                Changed()
+            end)
+        end
+        w.planAdd:Show()
+    end
+end
+
+-- Share and import ------------------------------------------------------------
+-- One small window, two jobs: show a build's code ready to copy (and send it
+-- to the party), or take a pasted code and open it in the editor.
+do
+    local W, PAD = 440, 18
+    local S = CreateFrame("Frame", "ClasslessWildcardShare", UIParent)
+    S:SetWidth(W); S:SetHeight(230)
+    S:SetPoint("CENTER", UIParent, "CENTER", 0, 60)
+    S:SetFrameStrata("DIALOG")
+    S:SetToplevel(true)
+    S:SetBackdrop({
+        bgFile = "Interface\\Buttons\\WHITE8X8",
+        edgeFile = "Interface\\DialogFrame\\UI-DialogBox-Border",
+        tile = false, edgeSize = 32,
+        insets = { left = 11, right = 12, top = 12, bottom = 11 },
+    })
+    S:SetBackdropColor(0.03, 0.03, 0.05, 0.96)
+    S:EnableMouse(true)
+    S:Hide()
+    CW.shareWindow = S
+    tinsert(UISpecialFrames, "ClasslessWildcardShare")
+
+    S.title = S:CreateFontString(nil, "OVERLAY", "GameFontNormalLarge")
+    S.title:SetPoint("TOPLEFT", PAD + 4, -20)
+    S.sub = S:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+    S.sub:SetPoint("TOPLEFT", S.title, "BOTTOMLEFT", 0, -6)
+    S.sub:SetWidth(W - 2 * PAD - 8)
+    S.sub:SetJustifyH("LEFT")
+    S.sub:SetTextColor(0.75, 0.75, 0.75)
+
+    S.boxBg = CreateFrame("Frame", nil, S)
+    S.boxBg:SetPoint("TOPLEFT", PAD + 2, -64)
+    S.boxBg:SetPoint("TOPRIGHT", -PAD - 2, -64)
+    S.boxBg:SetHeight(90)
+    S.boxBg:SetBackdrop({
+        bgFile = "Interface\\Buttons\\WHITE8X8",
+        edgeFile = "Interface\\Tooltips\\UI-Tooltip-Border",
+        tile = false, edgeSize = 12,
+        insets = { left = 3, right = 3, top = 3, bottom = 3 },
+    })
+    S.boxBg:SetBackdropColor(0, 0, 0, 0.6)
+    S.box = CreateFrame("EditBox", "ClasslessWildcardShareBox", S.boxBg)
+    S.box:SetPoint("TOPLEFT", 8, -8)
+    S.box:SetPoint("BOTTOMRIGHT", -8, 8)
+    S.box:SetMultiLine(true)
+    S.box:SetAutoFocus(false)
+    S.box:SetFontObject(ChatFontNormal)
+    S.box:SetMaxLetters(2000)
+    S.box:SetScript("OnEscapePressed", function() S:Hide() end)
+
+    S.error = S:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+    S.error:SetPoint("TOPLEFT", PAD + 4, -160)
+    S.error:SetWidth(W - 2 * PAD - 8)
+    S.error:SetJustifyH("LEFT")
+
+    S.go = CreateFrame("Button", nil, S, "UIPanelButtonTemplate")
+    S.go:SetWidth(140); S.go:SetHeight(24)
+    S.go:SetPoint("BOTTOMLEFT", PAD + 4, 18)
+    S.done = CreateFrame("Button", nil, S, "UIPanelButtonTemplate")
+    S.done:SetWidth(100); S.done:SetHeight(24)
+    S.done:SetPoint("BOTTOMRIGHT", -PAD - 4, 18)
+    S.done:SetScript("OnClick", function() S:Hide() end)
+
+    -- share mode keeps the code as it is: a stray key press cannot damage it
+    S.box:SetScript("OnTextChanged", function(self, user)
+        if S.mode == "share" and user and self:GetText() ~= S.code then
+            self:SetText(S.code)
+            self:HighlightText()
+        end
+    end)
+
+    local function Count(f)
+        local n = f and f()
+        return type(n) == "number" and n or 0
+    end
+    local function InRaid() return Count(GetNumRaidMembers) > 0 end
+    local function InGroup() return InRaid() or Count(GetNumPartyMembers) > 0 end
+
+    function CW.OpenShareWindow(mode, build)
+        S.mode = mode
+        S.error:SetText("")
+        if mode == "share" then
+            S.code = CW.EncodeBuild(build)
+            S.title:SetText("Share " .. CW.CleanBuildText(build.name, 32))
+            S.sub:SetText("The build's code. Press Ctrl+C to copy it, then paste it anywhere: chat, a forum, a friend.")
+            S.box:SetText(S.code)
+            S.go:SetText("Send to party")
+            if InGroup() then S.go:Enable() else S.go:Disable() end
+            S.go:SetScript("OnClick", function()
+                CW.SendBuildToGroup(S.code)
+                S.error:SetText("|cff00ff00Sent to your " .. (InRaid() and "raid" or "party") .. ".|r")
+            end)
+            S.done:SetText(CLOSE or "Close")
+            S:Show()
+            S.box:SetFocus()
+            S.box:HighlightText()
+        else
+            S.code = nil
+            S.title:SetText("Import a build")
+            S.sub:SetText("Paste a build code (Ctrl+V). It opens in the editor, where you can check it and save it.")
+            S.box:SetText("")
+            S.go:SetText("Import")
+            S.go:Enable()
+            S.go:SetScript("OnClick", function()
+                local build, why = CW.DecodeBuild(S.box:GetText())
+                if not build then
+                    S.error:SetText("|cffff5544" .. why .. "|r")
+                    return
+                end
+                S:Hide()
+                CW.OpenBuildEditor(build, nil)
+            end)
+            S.done:SetText(CANCEL or "Cancel")
+            S:Show()
+            S.box:SetFocus()
+        end
+    end
+
+    -- ---- party and raid sharing ----------------------------------------------------
+    -- A code goes out over the addon channel in numbered pieces; members with
+    -- the addon put the pieces back together and are asked whether to look.
+    local SHARE_PREFIX, PIECE = "CWSH", 200
+    CW.SHARE_PREFIX = SHARE_PREFIX
+    function CW.SendBuildToGroup(code)
+        local channel = InRaid() and "RAID" or "PARTY"
+        local n = math.ceil(#code / PIECE)
+        for i = 1, n do
+            SendAddonMessage(SHARE_PREFIX, i .. "/" .. n .. "/" .. code:sub((i - 1) * PIECE + 1, i * PIECE), channel)
+        end
+    end
+
+    local incoming = {}
+    function CW.ReceiveBuildPiece(sender, msg)
+        if not sender or sender == UnitName("player") then return end
+        local i, n, piece = (msg or ""):match("^(%d+)/(%d+)/(.*)$")
+        i, n = tonumber(i), tonumber(n)
+        if not i or not n or n < 1 or n > 20 or i > n then return end
+        local box = incoming[sender]
+        if not box or box.n ~= n or i == 1 then
+            box = { n = n, pieces = {}, got = 0 }
+            incoming[sender] = box
+        end
+        if not box.pieces[i] then box.got = box.got + 1 end
+        box.pieces[i] = piece
+        if box.got < n then return end
+        incoming[sender] = nil
+        local build = CW.DecodeBuild(table.concat(box.pieces))
+        if not build then return end
+        local dlg = StaticPopup_Show("CW_CLASSLESS_SHAREDBUILD", sender, build.name ~= "" and build.name or "a build")
+        if dlg then dlg.data = build end
+    end
+end
 -- help flyout ---------------------------------------------------------------
 -- A scrollable "how it works" panel covering both systems. Static text, so it
 -- is built once here; the Help button toggles it.
@@ -2484,7 +4226,7 @@ local function BuildHelpText()
 "",
 "|cffff4444==  CHALLENGE RUNS: one rule, counted lives  ==|r",
 "A run is a life under one rule, on your own path. Challenge runs start before level " .. (s.deadline or 2) .. ". Pick a challenge, read its rule, go.",
-"   |cffffd100Lives:|r the hearts on the run badge at the top-right of this panel, and on the challenge tracker at the top of your screen. Hover either for your challenge's rule and rewards. The tracker also shows what your challenge is counting: the time left on the level on Hourglass, whether the hunter is on you on Pursued, your nemeses on Nemesis, and your health band on Berserker. Drag it to move it, click it for the challenge page, and type /cw tracker to hide or show it. Each challenge shows how many lives it gives. A death costs one; battlegrounds, arenas and duels are free.",
+"   |cffffd100Lives:|r the hearts on the run badge at the top-right of this panel, and on the challenge tracker at the top of your screen. Hover either for your challenge's rule and rewards. The tracker also shows what your challenge is counting: the time left on the level on Hourglass, whether the hunter is on you on Pursued, your nemeses on Nemesis, and your health band on Berserker. Drag it to move it, click it for the challenge page, and hide or show it under Settings or with /cw tracker. Each challenge shows how many lives it gives. A death costs one; battlegrounds, arenas and duels are free.",
 "   |cffffd100Running out|r ends the run: the rule lifts and you keep everything. |cffffd100Reaching " .. cap .. "|r with a life left finishes it. Your first finish of a challenge pays its gold, its title, and an ability no roll or shop can give, kept as an heirloom. Finish with no life lost for |cffffd100the Unbroken|r.",
 "   |cffffd100Shards:|r every run pays them when it ends, finished or not: one per level reached, two per level past 60, and a third more for a run with no life lost. They buy an |cffffd100extra life|r for your next run, on the challenge page.",
 "",
@@ -2674,9 +4416,12 @@ local function RenderAbilPane()
                 end)
             end
             w:Show()
+            -- the build editor's + button, while it is open
+            if CW.BrowserRowHook then CW.BrowserRowHook(w, "A", e) end
         else
             w.spellId = nil
             w:Hide()
+            if CW.BrowserRowHook then CW.BrowserRowHook(w, nil) end
         end
     end
     CW.ShowEmptyNote(CW.abilEmpty, CW.abilRows[1], CW.abilScope, "abilities")
@@ -2769,9 +4514,11 @@ local function RenderTalPane()
                 end)
             end
             w:Show()
+            if CW.BrowserRowHook then CW.BrowserRowHook(w, "T", t) end
         else
             w.spellId = nil
             w:Hide()
+            if CW.BrowserRowHook then CW.BrowserRowHook(w, nil) end
         end
     end
     CW.ShowEmptyNote(CW.talEmpty, CW.talRows[1], CW.talScope, "talents")
@@ -2783,9 +4530,21 @@ end
 -- nothing left to protect and would only refuse a reroll they asked for. The
 -- server drops them all at that level; this is the same window, so the button
 -- goes at the same moment.
+-- A run that bars every reroll (Dealt Hand). The server refuses them; these
+-- keep the buttons from offering one at all, and say why when one is pressed.
+function CW.NoRerolls()
+    return (CW.state.noRerolls or 0) == 1
+end
+
+function CW.SayNoRerolls()
+    UIErrorsFrame:AddMessage("No rerolls on Dealt Hand. You play what you are dealt.", 1.0, 0.82, 0.0)
+end
+
+-- Padlocks only decide what a starting-hand reroll keeps, so with no rerolls
+-- there is nothing for them to do.
 function CW.LocksMatter()
     local s = CW.state
-    return s.mode == 1 and (s.level or 1) < (s.freeReroll or 10)
+    return s.mode == 1 and (s.level or 1) < (s.freeReroll or 10) and not CW.NoRerolls()
 end
 
 -- Rerolling a talent trades it away for a new one. Staking extra Reroll
@@ -2880,7 +4639,8 @@ local function RenderBuild()
                 -- A locked ability cannot be rerolled, so it gets no die.
                 -- Offering one put an action on screen the server was always
                 -- going to refuse, which reads as the lock being ignored.
-                if it.kind == "A" and it.locked == 1 and CW.LocksMatter() then
+                -- On Dealt Hand nothing is rerolled, so no row gets one.
+                if (it.kind == "A" and it.locked == 1 and CW.LocksMatter()) or CW.NoRerolls() then
                     r.actBtn:Hide()
                 else
                     r.actBtn:Show()
@@ -2891,6 +4651,8 @@ local function RenderBuild()
                     r.actBtn:SetScript("OnClick", function()
                         if kind == "T" then
                             CW.AskTalentReroll(id, tname, trank, tmax)
+                        elseif CW.NoRerolls() then
+                            CW.SayNoRerolls()
                         else
                             Send("RR " .. id)
                         end
@@ -3219,7 +4981,7 @@ wizLater:SetScript("OnClick", function() wizard:Hide() end)
 -- Page 2: archetype rows (shown after choosing Classless). The wizard grows
 -- to fit them and shrinks back when page 1 is shown again.
 local WIZ_W, WIZ_H = 420, 300
-local WIZ_ARCH_W = 480
+local WIZ_ARCH_W = 560   -- two buttons per row (Build, Choose) beside the text
 local wizList = MakeArchList(wizard, "ClasslessWildcardWizardArchetypes", WIZ_ARCH_W - 40, "Choose")
 local archSkip = CreateFrame("Button", nil, wizard, "UIPanelButtonTemplate")
 archSkip:SetWidth(180); archSkip:SetHeight(22)
@@ -4118,6 +5880,10 @@ do
     -- `onSent` runs once the reroll has actually gone out, so the caller can
     -- react. The roll reveal uses it to hold itself open for the replacement.
     function CW.AskTalentReroll(talentId, name, rank, maxRank, onSent)
+        if CW.NoRerolls() then
+            CW.SayNoRerolls()
+            return
+        end
         if not CW.CanStakeScrolls() or (rank or 0) >= (maxRank or 0) then
             Send("RRT " .. talentId .. " 0")
             if onSent then onSent() end
@@ -4226,7 +5992,7 @@ do
     end
 
     local reset = CreateFrame("Button", nil, fly, "UIPanelButtonTemplate")
-    reset:SetWidth(150); reset:SetHeight(22)
+    reset:SetWidth(170); reset:SetHeight(22)
     reset:SetPoint("TOPLEFT", 18, -y - 8)
     reset:SetText("Reset bar position")
     reset:SetScript("OnClick", function() CW.ResetBarsPosition() end)
@@ -4237,6 +6003,46 @@ do
         GameTooltip:Show()
     end)
     reset:SetScript("OnLeave", function() GameTooltip:Hide() end)
+    y = y + 8 + 22
+
+    -- The challenge tracker: whether it is drawn, and where it goes back to.
+    y = y + 14
+    local th = fly:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+    th:SetPoint("TOPLEFT", 16, -y)
+    th:SetText("|cffffd100Challenge tracker|r")
+    y = y + 19
+    local tcb = CreateFrame("CheckButton", "ClasslessWildcardSettingTracker", fly, "UICheckButtonTemplate")
+    tcb:SetWidth(24); tcb:SetHeight(24)
+    tcb:SetPoint("TOPLEFT", 18, -y)
+    if _G["ClasslessWildcardSettingTrackerText"] then
+        _G["ClasslessWildcardSettingTrackerText"]:SetText("Show the tracker")
+    end
+    tcb:SetScript("OnClick", function(self)
+        CW.SetTrackerShown(self:GetChecked() and true or false)
+    end)
+    tcb:SetScript("OnEnter", function(self)
+        GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
+        GameTooltip:AddLine("Show the tracker")
+        GameTooltip:AddLine("The frame at the top of the screen during a challenge run: your lives, and what the "
+            .. "rule is counting. Drag it anywhere you like.", 1, 1, 1, true)
+        GameTooltip:Show()
+    end)
+    tcb:SetScript("OnLeave", function() GameTooltip:Hide() end)
+    fly.trackerCheck = tcb
+    y = y + 24
+    local treset = CreateFrame("Button", nil, fly, "UIPanelButtonTemplate")
+    treset:SetWidth(170); treset:SetHeight(22)
+    treset:SetPoint("TOPLEFT", 18, -y - 8)
+    treset:SetText("Reset tracker position")
+    treset:SetScript("OnClick", function() if CW.ResetTrackerPosition then CW.ResetTrackerPosition() end end)
+    treset:SetScript("OnEnter", function(self)
+        GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
+        GameTooltip:AddLine("Reset tracker position")
+        GameTooltip:AddLine("Puts the tracker back at the top of the screen.", 1, 1, 1, true)
+        GameTooltip:Show()
+    end)
+    treset:SetScript("OnLeave", function() GameTooltip:Hide() end)
+    fly.trackerReset = treset
     fly:SetHeight(y + 8 + 22 + 14)
 
     -- The panel is the one place these live, so it reads them back rather than
@@ -4256,6 +6062,7 @@ do
             -- 1/nil, never false: SetChecked is not reliably boolean here
             cb:SetChecked(on and 1 or nil)
         end
+        fly.trackerCheck:SetChecked((not CW.TrackerShown or CW.TrackerShown()) and 1 or nil)
     end
     CW.settingsChecks = checks
 
@@ -5074,7 +6881,11 @@ function rvFX.SetRerollButton()
     local s = CW.state
     local charges = (s.rerolls or 0) + (s.scrolls or 0)
     rvReroll.buy = nil
-    if (s.level or 1) < (s.freeReroll or 10) then
+    if CW.NoRerolls() then
+        -- Dealt Hand: the card is yours, and the button says so
+        rvReroll:SetText("No rerolls")
+        rvReroll:Disable()
+    elseif (s.level or 1) < (s.freeReroll or 10) then
         rvReroll:SetText("Reroll (free)")
         rvReroll:Enable()
     elseif charges > 0 then
@@ -5537,6 +7348,10 @@ rvReroll:SetScript("OnClick", function()
         -- the same choice My Build offers: trade it away, or stake scrolls on
         -- keeping it and raising its rank
         CW.AskTalentReroll(d.entry, SpellLabel(d.spell, d.rarity), d.rank, d.maxRank, AwaitReroll)
+        return
+    end
+    if CW.NoRerolls() then
+        CW.SayNoRerolls()
         return
     end
     Send("RR " .. d.entry)
@@ -6046,6 +7861,10 @@ hand:SetScript("OnUpdate", function(self, elapsed)
 end)
 
 handRoll:SetScript("OnClick", function()
+    if CW.NoRerolls() then
+        CW.SayNoRerolls()
+        return
+    end
     -- One command: the server rerolls every unlocked ability from its own
     -- state. Firing one RR per entry from this snapshot went stale as soon as
     -- the first landed, so the rest came back "You do not own that ability".
@@ -6064,9 +7883,16 @@ end)
 hand:SetScript("OnShow", function()
     hand.ApplyLayers()
     -- the level free rolls end at is the server's to decide, so say what it says
-    handHint:SetText("Click an ability to lock it in: |cffffd100gold ring + closed padlock = kept|r." ..
-        " Roll Abilities rerolls only the unlocked ones. Free until level "
-        .. (CW.state.freeReroll or 10) .. "!")
+    if CW.NoRerolls() then
+        -- Dealt Hand: this is the hand, and it stays
+        handHint:SetText("|cffff5544Dealt Hand|r: this is your hand. Nothing can be rerolled on this run.")
+        handRoll:Disable()
+    else
+        handHint:SetText("Click an ability to lock it in: |cffffd100gold ring + closed padlock = kept|r." ..
+            " Roll Abilities rerolls only the unlocked ones. Free until level "
+            .. (CW.state.freeReroll or 10) .. "!")
+        handRoll:Enable()
+    end
     ClasslessWildcardCharDB = ClasslessWildcardCharDB or {}
     ClasslessWildcardCharDB.handSeen = true   -- opened by any route: don't auto-open again
     CW.suppressReveals = true -- the hand shows results directly, no popups
@@ -6181,6 +8007,8 @@ local function HandleMessage(msg)
         s.extraLife = tonumber(p[28]) or 0
         s.runReady = tonumber(p[29]) or 0
         s.hourglassLeft = tonumber(p[30]) or 0   -- Hourglass: seconds left on this level
+        s.noRerolls = tonumber(p[31]) or 0        -- Dealt Hand: nothing may be rerolled
+        s.customName = p[32] or ""                -- the player's own build, while it is followed
         CW.hourglassAt = GetTime()
         -- the live run is named from the challenge list, which a fresh login
         -- has not fetched yet: ask once, so the header does not say "Challenge 3"
@@ -6464,6 +8292,7 @@ local function HandleMessage(msg)
             best = tonumber(p[7]) or 0, finished = tonumber(p[8]) or 0,
             reward = tonumber(p[9]) or 0,   -- the ability it pays, a spell id
             title = p[10] or "",            -- "%s the Nemesis", as the client shows it
+            path = tonumber(p[11]) or 255,  -- the path it asks for: 0, 1, or 255 for either
             detail = "",                    -- how it plays, joined from CD pieces
             tips = "",                      -- advice, joined from CT pieces
         }
@@ -6484,6 +8313,15 @@ local function HandleMessage(msg)
         if CW.UpdateTracker then CW.UpdateTracker() end
     elseif kind == "RT" then
         CW.ReadTracker(p)
+    elseif kind == "APA" or kind == "APT" or kind == "APW" or kind == "APE" then
+        CW.ReadArchPlan(kind, p)
+    elseif kind == "AMA" or kind == "AMT" or kind == "AME" then
+        CW.ReadMyBuild(kind, p)
+    elseif kind == "LD" then
+        -- Loaded Die landed: "LD|roll|sides|rerolled"
+        local text, r, g, b = CW.LoadedDieText(tonumber(p[2]) or 0, tonumber(p[3]) or 20, tonumber(p[4]) == 1)
+        UIErrorsFrame:AddMessage(text, r, g, b)
+        if (tonumber(p[2]) or 0) == (tonumber(p[3]) or 20) and PlaySound then pcall(PlaySound, "LEVELUPSOUND") end
     elseif kind == "RD" then
         -- a life lost: lives left, lives at the start, what the rule did
         local lives, max, what = tonumber(p[2]) or 0, tonumber(p[3]) or 0, p[4] or ""
@@ -6492,13 +8330,13 @@ local function HandleMessage(msg)
         Send("STATE")
     elseif kind == "RE" then
         -- the run is over: what it paid, and what is new
-        StaticPopup_Show("CW_RUN_END", CW.RunEndText(p))
+        CW.ShowSummary(CW.RunEndSpec(p))
         if PlaySound then pcall(PlaySound, tonumber(p[2]) == 1 and "LEVELUPSOUND" or "igQuestFailed") end
         Send("STATE")
         Send("OWN")
     elseif kind == "RB" then
         -- a Rebirth went through: the new life, summed up
-        StaticPopup_Show("CW_REBIRTH_DONE", CW.RebirthDoneText(p))
+        CW.ShowSummary(CW.RebirthDoneSpec(p))
         if PlaySound then pcall(PlaySound, "LEVELUPSOUND") end
 
     elseif kind == "OK" then
@@ -7087,8 +8925,8 @@ do
     end
 
     function CW.UpdateTracker()
-        ClasslessWildcardCharDB = ClasslessWildcardCharDB or {}
-        if RT.run == 0 or RT.livesMax == 0 or ClasslessWildcardCharDB.trackerOff then
+        ClasslessWildcardDB = ClasslessWildcardDB or {}
+        if RT.run == 0 or RT.livesMax == 0 or ClasslessWildcardDB.trackerOff then
             f:Hide()
             if GameTooltip:IsOwned(f) then GameTooltip:Hide() end
             return
@@ -7136,10 +8974,10 @@ do
     f:SetScript("OnDragStart", function(self) self:StartMoving() end)
     f:SetScript("OnDragStop", function(self)
         self:StopMovingOrSizing()
-        ClasslessWildcardCharDB = ClasslessWildcardCharDB or {}
+        ClasslessWildcardDB = ClasslessWildcardDB or {}
         local point, _rel, relPoint, x, y = self:GetPoint()
         if point then
-            ClasslessWildcardCharDB.trackerPos = { point = point, relPoint = relPoint, x = x, y = y }
+            ClasslessWildcardDB.trackerPos = { point = point, relPoint = relPoint, x = x, y = y }
         end
     end)
     f:SetScript("OnEnter", function(self) CW.TrackerTooltip(self) end)
@@ -7153,19 +8991,37 @@ do
     end)
 
     function CW.RestoreTrackerPosition()
-        ClasslessWildcardCharDB = ClasslessWildcardCharDB or {}
-        local pos = ClasslessWildcardCharDB.trackerPos
+        ClasslessWildcardDB = ClasslessWildcardDB or {}
+        local pos = ClasslessWildcardDB.trackerPos
         if not pos or not pos.point then return end
         f:ClearAllPoints()
         f:SetPoint(pos.point, UIParent, pos.relPoint or pos.point, pos.x or 0, pos.y or 0)
     end
 
-    function CW.ToggleTracker()
-        ClasslessWildcardCharDB = ClasslessWildcardCharDB or {}
-        ClasslessWildcardCharDB.trackerOff = not ClasslessWildcardCharDB.trackerOff or nil
+    -- The Settings checkbox and /cw tracker change the same setting, stored
+    -- by absence like the bars' so an old saved-variables file shows it.
+    function CW.TrackerShown()
+        return not (ClasslessWildcardDB and ClasslessWildcardDB.trackerOff)
+    end
+
+    function CW.SetTrackerShown(on)
+        ClasslessWildcardDB = ClasslessWildcardDB or {}
+        ClasslessWildcardDB.trackerOff = (not on) or nil
         CW.UpdateTracker()
-        Print(ClasslessWildcardCharDB.trackerOff and "Challenge tracker hidden. /cw tracker shows it again."
-            or "Challenge tracker shown.")
+        if CW.setFly and CW.setFly:IsShown() and CW.RenderSettings then CW.RenderSettings() end
+    end
+
+    function CW.ToggleTracker()
+        CW.SetTrackerShown(not CW.TrackerShown())
+        Print(CW.TrackerShown() and "Challenge tracker shown."
+            or "Challenge tracker hidden. /cw tracker shows it again.")
+    end
+
+    function CW.ResetTrackerPosition()
+        ClasslessWildcardDB = ClasslessWildcardDB or {}
+        ClasslessWildcardDB.trackerPos = nil
+        f:ClearAllPoints()
+        f:SetPoint("TOP", UIParent, "TOP", 0, -40)
     end
 end
 
@@ -7181,6 +9037,8 @@ events:SetScript("OnEvent", function(self, event, arg1, arg2, arg3, arg4)
     if event == "CHAT_MSG_ADDON" then
         if arg1 == PREFIX and arg4 == UnitName("player") then
             HandleMessage(arg2)
+        elseif arg1 == CW.SHARE_PREFIX and CW.ReceiveBuildPiece then
+            CW.ReceiveBuildPiece(arg4, arg2)   -- a build shared by a party member
         end
     elseif event == "CINEMATIC_STOP" then
         CW.RefreshPanelArt()
@@ -7241,6 +9099,29 @@ SlashCmdList["CLASSLESSWILDCARD"] = function(msg)
     elseif msg == "tracker" then
         CW.ToggleTracker()
         return
+    elseif msg == "builds" or msg == "import" then
+        -- My Builds, or straight to pasting a code; Classless Heroes only
+        if CW.state.mode ~= 0 then
+            Print("Builds are for the Classless path.")
+            return
+        end
+        if msg == "import" then
+            CW.OpenShareWindow("import")
+            return
+        end
+        if not frame:IsShown() then frame:Show() end
+        CW.archTab = "MINE"
+        CW.archFly:Show()
+        CW.RenderArchFly()
+        return
+    elseif msg == "testcards" and ClasslessWildcardDB and ClasslessWildcardDB.dev then
+        -- preview both summary cards with sample numbers; nothing is sent
+        local me = UnitName("player") or "Hero"
+        CW.ShowSummary(CW.RunEndSpec({ "RE", "1", "80", "142", "400", "Glass", "5", "3", "3", "133",
+            me .. " the Unshattered", me .. " the Unbroken", "0" }))
+        CW.ShowSummary(CW.RebirthDoneSpec({ "RB", "2", "150", "50", "6", "0", "2", "9", "4", "3",
+            me .. " the Twice Reborn", "133,686" }))
+        return
     elseif msg == "testroll" and ClasslessWildcardDB and ClasslessWildcardDB.dev then
         -- preview the reveal without a real roll (Fireball, random rarity).
         -- test = true keeps Reroll local: the ability is not really owned, so
@@ -7260,7 +9141,8 @@ end
 -- ---------------------------------------------------------------------------
 do
     local FLYOUTS = { "ClasslessWildcardStats", "ClasslessWildcardArchetypes", "ClasslessWildcardHelp",
-                      "ClasslessWildcardSettings", "ClasslessWildcardRebirth", "ClasslessWildcardRuns" }
+                      "ClasslessWildcardSettings", "ClasslessWildcardRebirth", "ClasslessWildcardRuns",
+                      "ClasslessWildcardArchPlan" }
     local function Listed(name, on)
         for i = #UISpecialFrames, 1, -1 do
             if UISpecialFrames[i] == name then tremove(UISpecialFrames, i) end

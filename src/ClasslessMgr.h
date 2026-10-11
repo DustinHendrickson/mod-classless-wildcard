@@ -123,6 +123,34 @@ public:
     // becomes available. Id 0 stops following.
     bool ApplyArchetype(Player* player, uint32 archetypeId, std::string* err);
     std::string ArchetypeName(uint32 archetypeId) const;
+    // the name of what this character follows, its own build included
+    std::string ArchetypeName(ClasslessWildcard::CharState const& st) const;
+    // A starter archetype by id, or the character's own build for
+    // CUSTOM_ARCHETYPE. nullptr when there is neither.
+    ClasslessWildcard::Archetype const* FindArchetype(ClasslessWildcard::CharState const& st, uint32 id) const;
+
+    // ------- custom archetypes -------
+    // A build the player made, checked here before it is ever followed: every
+    // ability and talent must be one they could buy, talents after their
+    // prerequisites, and the whole plan must fit the essence a Hero with no
+    // Rebirth bonus earns by the cap, so a shared build works for anyone.
+    // Cleans the name in place. False with a player-facing reason otherwise.
+    bool ValidateCustomArchetype(ClasslessWildcard::Archetype& arch, std::string* err);
+    // Every row's problem, for the editor to mark: kind 'A' or 'T', the row's
+    // index in its list (0-based), a code ("gone", "twice", "rank", "needs",
+    // "never") and, for "needs", the prerequisite talent (0 for an ability).
+    struct RowProblem { char kind = 'A'; uint32 index = 0; char const* code = ""; uint32 extra = 0; };
+    std::vector<RowProblem> InspectCustomArchetype(ClasslessWildcard::Archetype const& arch) const;
+    // Follow the player's own build, exactly as a starter archetype is
+    // followed: the current build is refunded and reset first.
+    bool ApplyCustomArchetype(Player* player, ClasslessWildcard::Archetype arch, std::string* err);
+    // The character's current build as an ordered plan: bought abilities by
+    // unlock level, talents by tier. What "Save my build" starts from.
+    ClasslessWildcard::Archetype CurrentBuildAsArchetype(Player* player);
+    // What a plan spends against what a Hero with no Rebirth bonus earns by
+    // the cap: Ability and Talent Essence, spent and available.
+    struct PlanBudget { uint32 spentA = 0, totalA = 0, spentT = 0, totalT = 0; };
+    PlanBudget BudgetOf(ClasslessWildcard::Archetype const& arch) const;
     std::string SpellNameOf(uint32 spellId) const;   // rank-1 spell name, for chat lines
     struct FollowResult
     {
@@ -134,6 +162,15 @@ public:
     // Buy the followed archetype's abilities strictly in build order while
     // each is unlocked and affordable, then its talent ranks in order.
     FollowResult FollowArchetype(Player* player);
+    // An archetype as following it plays out on this character: every
+    // ability and talent with the level it is bought at, simulated from level
+    // 1 to the cap with the realm's essence schedule and the character's
+    // Rebirth bonus, in the order and by the rules FollowArchetype uses.
+    // A level of 0 means the schedule never reaches it.
+    struct PlanStep { uint32 spell = 0; uint8 rarity = 0; uint8 rank = 0; uint8 maxRank = 0; uint8 level = 0; uint32 talentId = 0; };
+    struct ArchetypePlan { bool found = false; std::vector<PlanStep> abilities; std::vector<PlanStep> talents; };
+    ArchetypePlan PlanArchetype(Player* player, uint32 archetypeId);
+    ArchetypePlan PlanArchetype(ClasslessWildcard::Archetype const& arch, uint32 rebirths) const;
     // What the build still has to buy, in order, with each unlock level.
     std::vector<std::pair<uint32, uint8>> ArchetypeQueue(Player* player);
     static uint32 LevelsEarned(uint8 level, uint8 startLevel);
@@ -332,6 +369,10 @@ private:
     bool ApplyDefaultMode(Player* player);
     void LoadCharacter(Player* player, ClasslessWildcard::CharState& st);
     size_t ArchetypeCursor(ClasslessWildcard::CharState const& st, ClasslessWildcard::Archetype const& arch) const;
+    // The switch both kinds of archetype share: refund and reset the build,
+    // set what is followed, buy what is affordable now, and say so.
+    bool SwitchToArchetype(Player* player, uint32 archetypeId, std::string* err);
+    void SaveCustomArchetype(Player* player, ClasslessWildcard::Archetype const& arch);
     void GrantAbilityInternal(Player* player, ClasslessWildcard::AbilityEntry const& e,
                               ClasslessWildcard::GrantSource source, bool persist = true,
                               bool announce = true);

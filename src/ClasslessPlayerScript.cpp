@@ -697,8 +697,10 @@ public:
     // that same GUID to the next character created. Without this, that new
     // character would load the deleted Hero's abilities, talents, essence,
     // stat allocation, chosen path and reroll cooldowns -- a fresh level 1 with
-    // somebody else's level 80 build. Even where the GUID is not reused the
-    // rows would simply accumulate forever.
+    // somebody else's level 80 build -- plus their challenge-run history (the
+    // "best" records the picker shows and the finish payout checks) and
+    // Nemesis marks. Even where the GUID is not reused the rows would simply
+    // accumulate forever.
     //
     // Appended to the core's own delete transaction, so the rows go with the
     // character or not at all.
@@ -708,6 +710,9 @@ public:
         trans->Append("DELETE FROM cw_char_abilities WHERE guid = {}", guid);
         trans->Append("DELETE FROM cw_char_talents WHERE guid = {}", guid);
         trans->Append("DELETE FROM cw_char_bans WHERE guid = {}", guid);
+        trans->Append("DELETE FROM cw_char_custom_archetype WHERE guid = {}", guid);
+        trans->Append("DELETE FROM cw_char_runs WHERE guid = {}", guid);
+        trans->Append("DELETE FROM cw_char_nemeses WHERE guid = {}", guid);
         sClasslessMgr->UnloadState(ObjectGuid::Create<HighGuid::Player>(guid));
     }
 

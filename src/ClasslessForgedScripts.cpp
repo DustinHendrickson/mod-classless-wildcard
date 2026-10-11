@@ -1263,7 +1263,7 @@ public:
 // =====================================================================
 // The challenge-run rewards.
 //
-// Twelve abilities, one per challenge, each paid for finishing a run and
+// One ability per challenge, each paid for finishing a run and
 // each doing something no class can. The rows (gen_forged_spells.py) carry
 // the shape and the look; this is the part a row cannot say. Lines are
 // found by recipe key through ForgedLine, never by a written-in id, and a
@@ -1785,6 +1785,49 @@ private:
     }
 };
 
+// =====================================================================
+// Loaded Die -- Dealt Hand's reward. The run takes every reroll away; this
+// is a die that rerolls its own 1 and comes back to the hand on its top face.
+// Slot 1 is the damage per point the die shows, slot 2 its number of sides.
+// The roll goes to the addon ("LD|roll|sides|rerolled"), which shows the face
+// in the middle of the screen.
+// =====================================================================
+class spell_cw_loaded_die : public SpellScript
+{
+    PrepareSpellScript(spell_cw_loaded_die);
+
+    void Roll(SpellEffIndex /*effIndex*/)
+    {
+        Unit* caster = GetCaster();
+        if (!caster)
+            return;
+        int32 const sides = std::max<int32>(2, GetSpellInfo()->Effects[EFFECT_1].CalcValue(caster));
+        uint32 const first = urand(1, uint32(sides));
+        uint32 const roll = first == 1 ? urand(1, uint32(sides)) : first;   // a 1 is thrown again, once
+        SetHitDamage(GetHitDamage() * int32(roll));
+
+        Player* player = caster->ToPlayer();
+        if (!player)
+            return;
+        PushAddon(player, Acore::StringFormat("LD|{}|{}|{}", roll, sides, first == 1 ? 1 : 0));
+        if (roll != uint32(sides))
+            return;
+        // The top face: the die comes back. A tick out, so the cooldown the
+        // cast has just started is there to clear.
+        uint32 const spellId = GetSpellInfo()->Id;
+        player->m_Events.AddEventAtOffset([player, spellId]()
+        {
+            if (player->IsInWorld())
+                player->RemoveSpellCooldown(spellId, true);
+        }, 1ms);
+    }
+
+    void Register() override
+    {
+        OnEffectHitTarget += SpellEffectFn(spell_cw_loaded_die::Roll, EFFECT_0, SPELL_EFFECT_SCHOOL_DAMAGE);
+    }
+};
+
 void AddClasslessForgedScripts()
 {
     new cw_forged_pet_model();
@@ -1814,4 +1857,5 @@ void AddClasslessForgedScripts()
     RegisterSpellScript(spell_cw_brink);
     RegisterSpellScript(spell_cw_ironbound);
     RegisterSpellScript(spell_cw_trophy_hunt);
+    RegisterSpellScript(spell_cw_loaded_die);
 }

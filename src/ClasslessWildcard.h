@@ -201,7 +201,7 @@ namespace ClasslessWildcard
         // Wildfire, Ironborn, Pacifist Opening and Famine: cut before release,
         // rules that took something away instead of changing the fight
         Legion = 14, Hourglass = 15, Spiteful = 16, Bloodpact = 17,
-        Berserker = 18, Ironman = 19, BigGameHunter = 20
+        Berserker = 18, Ironman = 19, BigGameHunter = 20, DealtHand = 21
     };
     struct Challenge
     {
@@ -215,6 +215,9 @@ namespace ClasslessWildcard
         char const* rewardRecipe;   // a forged line flagged `reward`, granted as an heirloom ("" = none)
         char const* detail;     // how the rule plays, in full, for the challenge page (no '|')
         char const* tips;       // practical advice for playing under this rule (no '|')
+        // The path a character must already walk to start it (a Mode value),
+        // or Unchosen for either. A run never sets or changes a path.
+        Mode path = Mode::Unchosen;
     };
     // Nemesis: a creature kind that has killed this Hero, and how much it grew.
     struct NemesisMark
@@ -240,6 +243,13 @@ namespace ClasslessWildcard
         std::vector<std::pair<uint32, uint8>> talents;    // talentId -> rank
     };
 
+    // CharState::archetype when the character follows its own build, held in
+    // CharState::custom and cw_char_custom_archetype rather than cw_archetypes.
+    constexpr uint32 CUSTOM_ARCHETYPE = 0xFFFFFFFF;
+    // the most entries a custom build may list, far past any real build
+    constexpr size_t CUSTOM_ARCHETYPE_MAX = 200;
+    constexpr size_t CUSTOM_ARCHETYPE_NAME_MAX = 32;
+
     // Per-character runtime state (mirrored to characters DB).
     struct CharState
     {
@@ -251,7 +261,9 @@ namespace ClasslessWildcard
         // two separate pools just made the UI read as three confusing numbers.
         uint32 rerolls = 0;
         uint8  lastProcessedLevel = 0;
-        uint32 archetype = 0;            // cw_archetypes.id the Hero follows (0 = none)
+        uint32 archetype = 0;            // cw_archetypes.id the Hero follows (0 = none, CUSTOM_ARCHETYPE = `custom`)
+        Archetype custom;                // the character's own build, when it follows one (id CUSTOM_ARCHETYPE)
+        Archetype upload;                // runtime: a build the addon is sending in pieces (ARCHUP)
         // Rebirths completed: the New Game Plus rank. Each one is a run from
         // 1 to the cap, and the rank sets the XP rate, the stat bonus, the
         // heirloom count and the legacy essence of every run after it.

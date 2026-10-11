@@ -98,6 +98,7 @@ TITLES = [
     dict(key="berserker",       name="%s the Berserker"),
     dict(key="ironman",         name="%s the Ironclad"),
     dict(key="big_game_hunter", name="%s the Big Game Hunter"),
+    dict(key="dealt_hand",      name="%s the Fated"),
 ]
 for _i, _t in enumerate(TITLES):
     _t["id"] = TITLE_ID_BASE + _i
@@ -1667,6 +1668,24 @@ RECIPES = [
         compare="15% damage and healing at three trophies, held for five minutes, earned only from "
                 "the enemies most worth fighting.",
     ),
+    dict(
+        # Dealt Hand. The run takes away every reroll; this hands one back
+        # (spell_cw_loaded_die throws the die, rolls a 1 again, and returns the
+        # die to the hand on its highest face). Holy Lance's golden bolt, so it
+        # reads as nothing else on the bar; the dice icon.
+        key="loaded_die", name="Loaded Die", rarity=3, type=3, reward=True, script=True,
+        first_level=10, ranks=5, step=14, donor=585, school=2,
+        icon=4175, visual=8679, speed=SPEED_BOLT,
+        power=("mana", 6), power_is_pct=True,
+        range_idx=RANGE_30, cast_idx=CAST_INSTANT, cooldown_ms=30000,
+        effects=[dict(eff=E_SCHOOL_DAMAGE, base=dmg(0.1), tgt=T_ENEMY),   # per point the die shows
+                 dict(eff=E_DUMMY, base=20, tgt=T_ENEMY)],               # the die's sides
+        desc=("Throws a loaded die at the target. It rolls 1 to $s2 and deals $s1 Holy damage for each "
+              "point it shows. A roll of 1 is thrown again, once. A roll of $s2 returns the die to your "
+              "hand, and the cooldown is reset."),
+        compare="Averages the curve's nuke at its level (10.5 points of 0.1), instant, on thirty "
+                "seconds. A 20 is twice that and comes straight back; a 1 is thrown again.",
+    ),
 ]
 
 # ---- id assignment ----------------------------------------------------------
@@ -1885,6 +1904,7 @@ ID_ORDER = [
     "mark_of_the_nemesis", "giantsbane", "last_breath", "turnabout", "shatterpoint",
     "one_against_many", "rewind",
     "spite_mirror", "sanguine_pact", "brink", "ironbound", "trophy_hunt",
+    "loaded_die",
 ]
 
 _recipe_keys = {r["key"] for r in RECIPES}

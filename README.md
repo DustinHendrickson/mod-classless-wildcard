@@ -110,6 +110,15 @@ with your build on the right. Lock or reroll anything you own from the same wind
   and keep what was bought.
   - Two-class: *Blade Dancer*, *Battle Mage*, *Ranger of the Light*, *Shadow Mender*, *Thornshade*, *Storm Warrior*
   - Elemental: *Hellfire Knight*, *Rime Reaver*, *Stoneguard*, *Venomstalker*, *Nightclaw*, *Dawnward*, *Spellblade*
+  - **Build** on any archetype lists every ability and talent it buys, in order, with the level
+    each is bought at on your character.
+  - **My Builds:** make your own archetypes. *Save my build* turns your current abilities and
+    talents into one; the editor reorders, removes, and adds with the **+** on the Abilities and
+    Talents rows. Rows with a problem are marked in red and say why, and **Fix order** sorts what
+    order can fix. A build must fit the Ability and Talent Essence a Hero earns by the level cap.
+    Builds are saved by the addon on your computer and travel as a code (`CWA1:...`): **Share**
+    to copy it or send it to your party, **Import** to paste one. Follow one exactly like a
+    starter archetype.
 - **Rebirth.** At the level cap, start over at level 1 with a permanent rank that stacks.
   - **Kept:** your path, gold, bags, bank, reputation, riding, flight paths, and the **heirloom**
     abilities you choose to carry (usable from level 1, one more per rank).
@@ -276,7 +285,7 @@ A run is one life under one rule, on the character's own path. Challenge runs st
 - **Tracker.** While a run is live, a small frame at the top of the screen shows the challenge,
   your lives, and what the rule is counting: Hourglass's level clock as a draining bar, whether
   Pursued's hunter is on you, your nemeses (named on hover), and Berserker's health band. Drag it
-  to move it, click it for the challenge page, `/cw tracker` to hide or show it.
+  to move it, click it for the challenge page. Hide or show it under Settings or with `/cw tracker`.
 
 | Challenge       | Lives | Rule                                                                                       | Gold | Title              | Reward           |
 | --------------- | ----- | ------------------------------------------------------------------------------------------ | ---- | ------------------ | ---------------- |
@@ -291,6 +300,7 @@ A run is one life under one rule, on the character's own path. Challenge runs st
 | Berserker       | 3     | Below 35% health: double damage, and your hits clear slows. Above 75%: 30% less damage.     | 450  | the Berserker      | Brink            |
 | Ironman         | 3     | White and grey gear only.                                                                  | 500  | the Ironclad       | Ironbound        |
 | Big Game Hunter | 3     | Normal enemies give no XP. Elites and bosses give full XP, quests give double.             | 400  | the Big Game Hunter | Trophy Hunt     |
+| Dealt Hand      | 3     | Wildcard only. No rerolls, starting hand included: you play every ability and talent dealt. | 500  | the Fated          | Loaded Die       |
 | Hardcore        | 1     | One death ends the run.                                                                    | 1000 | the Deathless      | Last Breath      |
 
 ### Reward abilities
@@ -311,6 +321,7 @@ be rolled or bought.
 | Brink               | 8 sec: you cannot die, and deal 2% more damage per 1% missing health, up to double. |
 | Ironbound           | 10 sec: armour equal to half your max health, and stun immunity. |
 | Trophy Hunt         | Mark an elite, rare or boss. If it dies marked: 5% more damage and healing for 5 min, stacks three times. |
+| Loaded Die          | Instant Holy damage for each point a 20-sided die shows. A 1 is thrown again, once; a 20 resets the cooldown. |
 | Last Breath         | Passive. Once every 5 min a killing blow leaves you at 1 health, and for 6 sec your hits heal you for their full damage. |
 
 ---
@@ -438,6 +449,9 @@ spellbook tab. You can own a base attack and its variants together.
 | `/cw` or `/classless` | Open the Hero Advancement panel |
 | `/cw help` | Open the guide |
 | `/cw hand` | Open the starting hand (Wildcard, below level 10) |
+| `/cw builds` | Open My Builds (Classless) |
+| `/cw import` | Paste a build code (Classless) |
+| `/cw tracker` | Hide or show the challenge tracker |
 | `/cwbars` | Toggle the resource mini-bars |
 | `/cwbars show \| hide` | Show or hide the mini-bars |
 | `/cwbars lock \| unlock` | Pin or unpin the mini-bars |

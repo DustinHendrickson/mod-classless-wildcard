@@ -102,7 +102,7 @@ public:
                     next = queue.front().second > player->GetLevel()
                         ? Acore::StringFormat(" (next: {} at level {})", sClasslessMgr->SpellNameOf(queue.front().first), uint32(queue.front().second))
                         : Acore::StringFormat(" (next: {}, when you have the Ability Essence)", sClasslessMgr->SpellNameOf(queue.front().first));
-                handler->PSendSysMessage("Following: |cffffff00{}|r{}", sClasslessMgr->ArchetypeName(st.archetype), next);
+                handler->PSendSysMessage("Following: |cffffff00{}|r{}", sClasslessMgr->ArchetypeName(st), next);
             }
         }
         if (st.mode == Mode::Wildcard)

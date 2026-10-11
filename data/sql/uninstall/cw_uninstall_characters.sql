@@ -16,6 +16,9 @@ DROP TABLE IF EXISTS `cw_char_abilities`;
 DROP TABLE IF EXISTS `cw_char_talents`;
 DROP TABLE IF EXISTS `cw_char_cards`;
 DROP TABLE IF EXISTS `cw_char_bans`;
+DROP TABLE IF EXISTS `cw_char_runs`;
+DROP TABLE IF EXISTS `cw_char_nemeses`;
+DROP TABLE IF EXISTS `cw_char_custom_archetype`;
 
 -- module DB-updater bookkeeping, so reinstalling later re-applies cleanly
 DELETE FROM `updates` WHERE `name` LIKE 'cw_%';

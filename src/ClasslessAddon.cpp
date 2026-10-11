@@ -87,7 +87,7 @@ namespace
         // realm that tuned Wildcard.FreeRerollLevel got an addon that disagreed
         // with its own server. Fields are read by position now, and anything the
         // addon does not know about is ignored, so the packet can simply grow.
-        SendAddon(player, Acore::StringFormat("S|{}|{}|{}|{}|{}|{}|{}|{}|{}|{}|{}|{}|{}|{}|{}|{}|{}|{}|{}|{}|{}|{}|{}|{}|{}|{}|{}|{}|{}",
+        SendAddon(player, Acore::StringFormat("S|{}|{}|{}|{}|{}|{}|{}|{}|{}|{}|{}|{}|{}|{}|{}|{}|{}|{}|{}|{}|{}|{}|{}|{}|{}|{}|{}|{}|{}|{}|{}",
             uint32(st.mode), st.abilityEssence, st.talentEssence, st.pity, chance,
             scrolls, player->GetLevel(), cfg.modeChoiceDeadline,
             cfg.rebirthEnable ? 1 : 0, cfg.rebirthCostGold,
@@ -117,7 +117,13 @@ namespace
             (!st.run && player->GetLevel() < cfg.modeChoiceDeadline && st.mode != Mode::Unchosen) ? 1 : 0,
             // field 30: Hourglass's clock, seconds left on this level (0 on
             // any other run), for the run badge's tooltip
-            sClasslessMgr->HourglassSecondsLeft(player)));
+            sClasslessMgr->HourglassSecondsLeft(player),
+            // field 31: 1 while the live run bars every reroll (Dealt Hand),
+            // so the addon offers none rather than offering one to refuse
+            sClasslessMgr->OnRun(player, ChallengeId::DealtHand) ? 1 : 0,
+            // field 32: the name of the player's own build while it is the
+            // one followed ("" otherwise), for My Builds to mark it
+            st.archetype == CUSTOM_ARCHETYPE ? SanitizeText(st.custom.name) : std::string()));
 
         // the on-screen challenge tracker, which every state refresh keeps
         // honest (a login, a /reload, the panel opening)
@@ -752,6 +758,62 @@ namespace
         SendAddon(player, "ARE|");
     }
 
+    // A plan as the build-order window reads it: APA (abilities)
+    // "spell:rarity:level;" and APT (talents) "spell:rarity:rank:maxRank:level:talentId;"
+    // pieces, as many to a message as fit, then
+    // "APE|id|spentA|totalA|spentT|totalT|problem": what the build spends
+    // against what a Hero with no Rebirth bonus earns by the cap, and the first
+    // reason it would be refused ("" when there is none).
+    void SendPlan(Player* player, uint32 id, Archetype const& arch, std::string const& problem)
+    {
+        CharState& st = sClasslessMgr->GetState(player);
+        ClasslessMgr::ArchetypePlan const plan = sClasslessMgr->PlanArchetype(arch, st.rebirths);
+        std::string buf;
+        auto flush = [&](char const* kind)
+        {
+            if (!buf.empty())
+                SendAddon(player, Acore::StringFormat("{}|{}|{}", kind, id, buf));
+            buf.clear();
+        };
+        for (ClasslessMgr::PlanStep const& s : plan.abilities)
+        {
+            // the fourth field is the level the ability unlocks at, which the
+            // editor's Fix order sorts by
+            AbilityEntry const* e = sClasslessMgr->GetAbility(s.spell);
+            uint32 const unlock = (e && !e->rankLevels.empty()) ? e->rankLevels[0] : 1;
+            std::string item = Acore::StringFormat("{}:{}:{}:{};", s.spell, uint32(s.rarity), uint32(s.level), unlock);
+            if (buf.size() + item.size() > MAX_BODY - 16)
+                flush("APA");
+            buf += item;
+        }
+        flush("APA");
+        for (ClasslessMgr::PlanStep const& s : plan.talents)
+        {
+            std::string item = Acore::StringFormat("{}:{}:{}:{}:{}:{};", s.spell, uint32(s.rarity),
+                                                   uint32(s.rank), uint32(s.maxRank), uint32(s.level), s.talentId);
+            if (buf.size() + item.size() > MAX_BODY - 16)
+                flush("APT");
+            buf += item;
+        }
+        flush("APT");
+        // A preview of the player's own build also says what is wrong with
+        // each row: "APW|0|kind:index:code:extra;..." (index 0-based).
+        if (!id)
+        {
+            for (ClasslessMgr::RowProblem const& p : sClasslessMgr->InspectCustomArchetype(arch))
+            {
+                std::string item = Acore::StringFormat("{}:{}:{}:{};", p.kind, p.index, p.code, p.extra);
+                if (buf.size() + item.size() > MAX_BODY - 16)
+                    flush("APW");
+                buf += item;
+            }
+            flush("APW");
+        }
+        ClasslessMgr::PlanBudget const b = sClasslessMgr->BudgetOf(arch);
+        SendAddon(player, Acore::StringFormat("APE|{}|{}|{}|{}|{}|{}", id, b.spentA, b.totalA, b.spentT, b.totalT,
+                                              SanitizeText(problem)));
+    }
+
     void HandleRequest(Player* player, std::string_view request)
     {
         std::vector<std::string_view> args = Acore::Tokenize(request, ' ', false);
@@ -882,6 +944,104 @@ namespace
             else
                 SendErr(player, err);
         }
+        else if (cmd == "ARCHPLAN")
+        {
+            // "ARCHPLAN <id>": the archetype's build order on this character,
+            // each step with the level it is bought at.
+            uint32 const id = argNum(1);
+            CharState& st = sClasslessMgr->GetState(player);
+            Archetype const* arch = id == CUSTOM_ARCHETYPE ? sClasslessMgr->FindArchetype(st, id) : nullptr;
+            if (!arch)
+                if (auto itr = sClasslessMgr->Archetypes().find(id); itr != sClasslessMgr->Archetypes().end())
+                    arch = &itr->second;
+            if (!arch)
+            {
+                SendErr(player, "No archetype has that id.");
+                return;
+            }
+            SendPlan(player, id, *arch, "");
+        }
+        else if (cmd == "ARCHUP")
+        {
+            // A custom build sent in pieces, the ids already decoded by the
+            // addon: "ARCHUP CLEAR", then "ARCHUP A id,id,..." and
+            // "ARCHUP T id:rank,..." as often as it takes. Everything here is
+            // checked again before it is previewed or followed.
+            Archetype& up = sClasslessMgr->GetState(player).upload;
+            std::string_view const what = args.size() > 1 ? args[1] : std::string_view();
+            if (what == "CLEAR")
+                up = Archetype();
+            else if (what == "A" && args.size() > 2)
+            {
+                for (std::string_view tok : Acore::Tokenize(args[2], ',', false))
+                    if (Optional<uint32> id = Acore::StringTo<uint32>(tok))
+                        if (up.abilities.size() < CUSTOM_ARCHETYPE_MAX)
+                            up.abilities.push_back(*id);
+            }
+            else if (what == "T" && args.size() > 2)
+            {
+                for (std::string_view tok : Acore::Tokenize(args[2], ',', false))
+                {
+                    auto parts = Acore::Tokenize(tok, ':', false);
+                    if (parts.size() != 2)
+                        continue;
+                    Optional<uint32> id = Acore::StringTo<uint32>(parts[0]);
+                    Optional<uint32> rank = Acore::StringTo<uint32>(parts[1]);
+                    if (id && rank && up.talents.size() < CUSTOM_ARCHETYPE_MAX)
+                        up.talents.emplace_back(*id, uint8(std::min<uint32>(*rank, 255)));
+                }
+            }
+        }
+        else if (cmd == "ARCHPLANX" || cmd == "ARCHCUSTOM")
+        {
+            // "ARCHPLANX <name>": preview the uploaded build on this character
+            // (the plan as id 0, then the budget and the first problem, if
+            // any, in APE). "ARCHCUSTOM <name>": follow it.
+            Archetype arch = sClasslessMgr->GetState(player).upload;
+            std::string name;
+            for (size_t i = 1; i < args.size(); ++i)
+                name += (name.empty() ? "" : " ") + std::string(args[i]);
+            arch.name = name;
+            if (cmd == "ARCHCUSTOM")
+            {
+                sClasslessMgr->ApplyCustomArchetype(player, arch, &err)
+                    ? SendOk(player, "ARCHCUSTOM") : SendErr(player, err);
+                return;
+            }
+            std::string problem;
+            sClasslessMgr->ValidateCustomArchetype(arch, &problem);
+            SendPlan(player, 0, arch, problem);
+        }
+        else if (cmd == "ARCHMINE")
+        {
+            // The character's current build as a plan, for "Save my build":
+            // "AMA|id,id,..." and "AMT|id:rank,..." pieces, then AME.
+            Archetype const mine = sClasslessMgr->CurrentBuildAsArchetype(player);
+            std::string buf;
+            auto flush = [&](char const* kind)
+            {
+                if (!buf.empty())
+                    SendAddon(player, Acore::StringFormat("{}|{}", kind, buf));
+                buf.clear();
+            };
+            for (uint32 id : mine.abilities)
+            {
+                std::string item = Acore::StringFormat("{},", id);
+                if (buf.size() + item.size() > MAX_BODY - 8)
+                    flush("AMA");
+                buf += item;
+            }
+            flush("AMA");
+            for (auto const& [id, rank] : mine.talents)
+            {
+                std::string item = Acore::StringFormat("{}:{},", id, uint32(rank));
+                if (buf.size() + item.size() > MAX_BODY - 8)
+                    flush("AMT");
+                buf += item;
+            }
+            flush("AMT");
+            SendAddon(player, "AME|");
+        }
         else if (cmd == "ARCHAPPLY")
             sClasslessMgr->ApplyArchetype(player, argNum(1), &err) ? SendOk(player, "ARCH") : SendErr(player, err);
         else if (cmd == "REBIRTH")
@@ -925,10 +1085,13 @@ namespace
                     if (char const* n = names[player->GetSession()->GetSessionDbcLocale()])
                         title = SanitizeText(n);
                 }
-                SendAddon(player, Acore::StringFormat("CH|{}|{}|{}|{}|{}|{}|{}|{}|{}",
+                // field 11: the path the run asks for (0 Classless, 1 Wildcard,
+                // 255 either), so the page can say who may start it
+                SendAddon(player, Acore::StringFormat("CH|{}|{}|{}|{}|{}|{}|{}|{}|{}|{}",
                     uint32(ch.id), ch.name, uint32(ch.lives), ch.rewardGold, ch.rule,
                     best != st.runBest.end() ? uint32(best->second.first) : 0u,
-                    best != st.runBest.end() && best->second.second ? 1 : 0, reward, title));
+                    best != st.runBest.end() && best->second.second ? 1 : 0, reward, title,
+                    uint32(ch.path)));
                 // How the rule plays, in full, as "CD|id|text" pieces the addon
                 // joins in order. Split on spaces, because one addon message
                 // carries about 255 characters and a full explanation does not
