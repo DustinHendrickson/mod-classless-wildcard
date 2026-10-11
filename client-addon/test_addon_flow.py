@@ -3528,9 +3528,14 @@ def test_custom_builds(h):
 
     # the tab
     fly["__shown"] = True
+    CW.archTab = "STARTER"
+    CW.RenderArchFly()
+    h.check(str(fly["tabMine"]["__text"]) == "My Builds" and fly["tabStarter"] is None,
+            "one page switch, naming the other page")
     h.click(fly["tabMine"])
     h.check(str(fly["title"]["__text"]) == "My Builds" and fly["bar"]["__shown"] is True
             and fly["empty"]["__shown"] is True, "My Builds shows its bar and says it is empty")
+    h.check(str(fly["tabMine"]["__text"]) == "Starter Builds", "and the switch now leads back")
 
     # Save my build: the server sends the current build, the editor opens on it
     h.clear_sent()

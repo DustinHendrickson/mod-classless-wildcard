@@ -3123,22 +3123,20 @@ do
         return #b.abilities, ranks
     end
 
-    -- ---- the tab and its bar ---------------------------------------------------
+    -- ---- the page switch and My Builds' bar ----------------------------------------
+    -- One button, beside the title only: it names the other page. The
+    -- subtitle under the title stops short of it, so the two never meet.
     local fly = CW.archFly
     CW.archTab = "STARTER"
-    local function TabButton(text, tab, x)
-        local b = CreateFrame("Button", nil, fly, "UIPanelButtonTemplate")
-        b:SetWidth(96); b:SetHeight(22)
-        b:SetPoint("TOPRIGHT", x, -20)
-        b:SetText(text)
-        b:SetScript("OnClick", function()
-            CW.archTab = tab
-            CW.RenderArchFly()
-        end)
-        return b
-    end
-    fly.tabMine = TabButton("My Builds", "MINE", -16)
-    fly.tabStarter = TabButton("Starter", "STARTER", -116)
+    fly.tabMine = CreateFrame("Button", nil, fly, "UIPanelButtonTemplate")
+    fly.tabMine:SetWidth(124); fly.tabMine:SetHeight(22)
+    fly.tabMine:SetPoint("TOPRIGHT", -16, -17)
+    fly.tabMine:SetScript("OnClick", function()
+        CW.archTab = CW.archTab == "MINE" and "STARTER" or "MINE"
+        CW.RenderArchFly()
+    end)
+    fly.subtitle:SetWidth(520 - 62 - 16 - 124 - 12)
+    fly.subtitle:SetJustifyH("LEFT")
 
     fly.bar = CreateFrame("Frame", nil, fly)
     fly.bar:SetWidth(484); fly.bar:SetHeight(24)
@@ -3175,8 +3173,7 @@ do
 
     function CW.ArchTabsRefresh()
         local mine = CW.archTab == "MINE"
-        if mine then fly.tabMine:LockHighlight(); fly.tabStarter:UnlockHighlight()
-        else fly.tabStarter:LockHighlight(); fly.tabMine:UnlockHighlight() end
+        fly.tabMine:SetText(mine and "Starter Builds" or "My Builds")
         fly.title:SetText(mine and "My Builds" or "Archetypes")
         fly.subtitle:SetText(mine and "Your own archetypes, saved on this computer."
             or "A build that is bought for you as you level.")
