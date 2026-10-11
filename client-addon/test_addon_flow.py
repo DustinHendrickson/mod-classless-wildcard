@@ -3727,14 +3727,21 @@ def test_custom_builds(h):
     # a starter build copied into My Builds, from its build-order window
     CW.OpenArchPlan(h.rt.eval("{ id = 3, name = 'Battle Mage', desc = 'Armored caster.' }"))
     h.check(CW.archPlan["copy"]["__shown"] is True, "a starter build's window offers Copy to My Builds")
-    h.recv("APA|3|133:1:1;1752:0:4;")
-    h.recv("APT|3|12294:2:3:3:10:1234;")
+    # a starter build is an entry per ability and per talent rank, each with
+    # the level it is bought at: the second ability two levels after it
+    # unlocks, the talent's ranks at 10, 12 and 15
+    h.recv("APA|3|133:1:1:1:0:1;1752:0:6:4:0:1;")
+    h.recv("APT|3|12294:2:1:3:10:1234:10;12294:2:2:3:12:1234:10;12294:2:3:3:15:1234:10;")
     h.recv("APE|3|5|66|3|71|")
     h.click(CW.archPlan["copy"])
+    wa, wt = E["build"]["waitA"], E["build"]["waitT"]
     h.check(E["__shown"] is True and str(E["name"]["__text"]) == "Battle Mage (copy)"
             and list(E["build"]["abilities"].values()) == [133, 1752]
             and [list(t.values()) for t in E["build"]["talents"].values()] == [[1234, 1], [1234, 2], [1234, 3]],
             "Copy opens the editor on the same build, each talent rank a row of its own")
+    h.check(wa[133] is None and wa[1752] == 6 and wt["1234:1"] is None and wt["1234:2"] == 12 and wt["1234:3"] == 15,
+            "and every entry keeps the level the archetype buys it at: %r %r %r"
+            % (wa[1752], wt["1234:2"], wt["1234:3"]))
     E["dirty"] = False
     E["__shown"] = False
 

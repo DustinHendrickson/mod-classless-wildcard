@@ -748,9 +748,7 @@ namespace
         CharState& st = sClasslessMgr->GetState(player);
         for (auto const& [id, arch] : sClasslessMgr->Archetypes())
         {
-            uint32 ranks = 0;
-            for (auto const& [talentId, rank] : arch.talents)
-                ranks += rank;
+            uint32 const ranks = arch.TalentRanks();
             SendAddon(player, Acore::StringFormat("AR|{}|{}|{}|{}|{}|{}",
                 id, SanitizeText(arch.name), SanitizeText(arch.description),
                 uint32(arch.abilities.size()), ranks, st.archetype == id ? 1 : 0));

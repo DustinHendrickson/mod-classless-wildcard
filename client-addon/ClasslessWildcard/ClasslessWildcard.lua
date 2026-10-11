@@ -2926,14 +2926,26 @@ do
     P.copy:SetScript("OnClick", function()
         local d = P.data
         if not d or not d.done or not CW.OpenBuildEditor then return end
+        -- every entry at the level the archetype buys it at, held there when
+        -- that is later than the level it becomes available at
         local b = { name = (P.arch and P.arch.name or "Build") .. " (copy)", desc = P.arch and P.arch.desc or "",
-                    abilities = {}, talents = {} }
-        for _, s in ipairs(d.abilities) do tinsert(b.abilities, s.spell) end
+                    abilities = {}, talents = {}, waitA = {}, waitT = {} }
+        CW.abilityInfo = CW.abilityInfo or {}
+        CW.talentInfo = CW.talentInfo or {}
+        for _, s in ipairs(d.abilities) do
+            tinsert(b.abilities, s.spell)
+            local unlock = s.unlock or 1
+            if (s.level or 0) > unlock then b.waitA[s.spell] = s.level end
+            local info = CW.abilityInfo[s.spell] or {}
+            info.unlock, info.cost = unlock, s.cost or info.cost
+            CW.abilityInfo[s.spell] = info
+        end
         for _, s in ipairs(d.talents) do
             if s.talentId then
                 tinsert(b.talents, { s.talentId, s.rank })
-                CW.talentInfo = CW.talentInfo or {}
-                CW.talentInfo[s.talentId] = { spell = s.spell, rarity = s.rarity, max = s.maxRank }
+                local tier = s.tier or 10
+                if (s.level or 0) > tier then b.waitT[s.talentId .. ":" .. s.rank] = s.level end
+                CW.talentInfo[s.talentId] = { spell = s.spell, rarity = s.rarity, max = s.maxRank, tier = tier }
             end
         end
         P:Hide()
@@ -3090,13 +3102,16 @@ do
         if kind == "APW" then
             return   -- row warnings are the editor's business
         elseif kind == "APA" then
-            for spell, rarity, level in string.gmatch(p[3] or "", "(%d+):(%d+):(%d+):?%d*:?%d*:?%d*;") do
-                tinsert(d.abilities, { spell = tonumber(spell), rarity = tonumber(rarity), level = tonumber(level) })
+            -- spell:rarity:level:unlock:free:cost
+            for spell, rarity, level, unlock, _, cost in string.gmatch(p[3] or "", "(%d+):(%d+):(%d+):?(%d*):?(%d*):?(%d*);") do
+                tinsert(d.abilities, { spell = tonumber(spell), rarity = tonumber(rarity), level = tonumber(level),
+                                       unlock = tonumber(unlock), cost = tonumber(cost) })
             end
         elseif kind == "APT" then
-            for spell, rarity, rank, max, level, tid in string.gmatch(p[3] or "", "(%d+):(%d+):(%d+):(%d+):(%d+):?(%d*):?(%d*);") do
+            for spell, rarity, rank, max, level, tid, tier in string.gmatch(p[3] or "", "(%d+):(%d+):(%d+):(%d+):(%d+):?(%d*):?(%d*);") do
                 tinsert(d.talents, { spell = tonumber(spell), rarity = tonumber(rarity), rank = tonumber(rank),
-                                     maxRank = tonumber(max), level = tonumber(level), talentId = tonumber(tid) })
+                                     maxRank = tonumber(max), level = tonumber(level), talentId = tonumber(tid),
+                                     tier = tonumber(tier) })
             end
         else
             d.done = true

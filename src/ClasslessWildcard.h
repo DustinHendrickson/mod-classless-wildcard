@@ -243,7 +243,10 @@ namespace ClasslessWildcard
         std::string name;
         std::string description;
         std::vector<uint32> abilities;                    // first-rank spell ids
-        std::vector<std::pair<uint32, uint8>> talents;    // talentId -> rank
+        // talentId -> rank. A talent can be listed once per rank, each entry
+        // for a higher rank than the one before it, so each rank has a level
+        // of its own; an entry for rank 3 alone buys ranks 1 to 3.
+        std::vector<std::pair<uint32, uint8>> talents;
         // The level the build holds each entry back to, by index into the
         // list beside it: 0 is "as soon as it unlocks and is affordable". A
         // held entry waits the way one that has not unlocked does, so the
@@ -254,6 +257,18 @@ namespace ClasslessWildcard
         std::vector<uint8> talentWait;
 
         uint8 AbilityWait(size_t i) const { return i < abilityWait.size() ? abilityWait[i] : 0; }
+        // How many talent ranks the build takes: each talent's highest rank,
+        // counted once however many entries it has.
+        uint32 TalentRanks() const
+        {
+            std::map<uint32, uint8> top;
+            for (auto const& [id, rank] : talents)
+                top[id] = std::max(top[id], rank);
+            uint32 n = 0;
+            for (auto const& [id, rank] : top)
+                n += rank;
+            return n;
+        }
         uint8 TalentWait(size_t i) const { return i < talentWait.size() ? talentWait[i] : 0; }
         void AddAbility(uint32 id, uint8 wait)
         {

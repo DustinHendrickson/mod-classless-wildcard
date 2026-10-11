@@ -1203,6 +1203,8 @@ def simulate(pool, build, abilities, talents, verbose=False):
     counted = set()            # replaced talents already credited as a tree point
     ai = 0                     # next ability in strict order
     ti = 0                     # next talent entry in strict order
+    ability_at = {}            # ability first spell -> level bought
+    rank_at = []               # (talent, rank, level), in the order bought
     for level in range(1, 81):
         if level >= cfg["essence_start"]:
             ae += cfg["ae_per_level"]
@@ -1219,6 +1221,7 @@ def simulate(pool, build, abilities, talents, verbose=False):
                 break
             ae -= e["cost"]
             owned.add(e["first"])
+            ability_at[e["first"]] = level
             # an ability standing in for a talent counts as a point in its tree
             for tid in pool.line_talents.get(e["first"], ()):
                 if tid not in counted:
@@ -1259,6 +1262,7 @@ def simulate(pool, build, abilities, talents, verbose=False):
                 break               # the tier's own level (BuyTalentRank enforces it too)
             te -= cost
             ranks[t["id"]] += 1
+            rank_at.append((t, ranks[t["id"]], level))
             tab_points[t["tab"]] += 1
             got_ranks.append(t["name"])
         if verbose and (bought or got_ranks or stalled):
@@ -1275,7 +1279,76 @@ def simulate(pool, build, abilities, talents, verbose=False):
             problems.append("%s: %s is never bought by level 80 (unlocks at %d)" % (build["name"], e["name"], e["levels"][0]))
     summary = "  %d abilities (%d AE), %d talent ranks; AE left %d, TE left %d" % (
         len(abilities), sum(e["cost"] for e in abilities), sum(r for _, r in talents), ae, te)
-    return problems, ledger, summary
+    return problems, ledger, summary, ability_at, rank_at
+
+
+def entry_levels(pool, abilities, ability_at, rank_at):
+    """Each ability and each talent rank as an entry of its own, with the
+    level it is bought at: what the editor holds every build to. An entry is
+    written with "@level" when that is later than the level it becomes
+    available at (an ability's unlock, a talent's tier)."""
+    cfg = pool.cfg
+    a_rows = []
+    for e in sorted(abilities, key=lambda e: ability_at.get(e["first"], 999)):
+        lv = ability_at.get(e["first"])
+        unlock = e["levels"][0] if cfg["respect_levels"] else 1
+        a_rows.append((e, lv, unlock))
+    t_rows = []
+    for t, rank, lv in sorted(rank_at, key=lambda x: x[2]):
+        tier = 10 + t["row"] * 5 if cfg["respect_levels"] else 1
+        t_rows.append((t, rank, lv, tier))
+    return a_rows, t_rows
+
+
+def check_entry_levels(pool, build, a_rows, t_rows):
+    """The editor's rule, checked on its own: every entry at or after the
+    level it becomes available, each talent rank no sooner than the rank
+    before it, and the essence a Hero with no Rebirth bonus has earned by
+    each level covering every entry set at or before it."""
+    cfg = pool.cfg
+    out = []
+    name = build["name"]
+
+    def earned_a(lv):
+        return cfg["starting_ae"] + max(0, lv - cfg["essence_start"] + 1) * cfg["ae_per_level"]
+
+    def earned_t(lv):
+        return max(0, lv - cfg["te_start"] + 1) * cfg["te_per_level"]
+
+    spend = collections.Counter()
+    for e, lv, unlock in a_rows:
+        if lv is None:
+            out.append("%s: %s has no level" % (name, e["name"]))
+            continue
+        if lv < unlock:
+            out.append("%s: %s set for %d, before it unlocks at %d" % (name, e["name"], lv, unlock))
+        spend[lv] += e["cost"]
+    total = 0
+    for lv in sorted(spend):
+        total += spend[lv]
+        if total > earned_a(lv):
+            out.append("%s: by level %d the abilities set cost %d Ability Essence, a Hero has %d"
+                       % (name, lv, total, earned_a(lv)))
+            break
+    spend = collections.Counter()
+    last = {}
+    for t, rank, lv, tier in t_rows:
+        if lv < tier:
+            out.append("%s: %s rank %d set for %d, before its tier at %d" % (name, t["name"], rank, lv, tier))
+        prev = last.get(t["id"])
+        if prev is not None and (prev[0] != rank - 1 or prev[1] > lv):
+            out.append("%s: %s rank %d is not after rank %d" % (name, t["name"], rank, rank - 1))
+        last[t["id"]] = (rank, lv)
+        flat_free = cfg["talent_flat"] and rank > 1
+        spend[lv] += 0 if flat_free else cfg["talent_cost"]
+    total = 0
+    for lv in sorted(spend):
+        total += spend[lv]
+        if total > earned_t(lv):
+            out.append("%s: by level %d the talent ranks set cost %d Talent Essence, a Hero has %d"
+                       % (name, lv, total, earned_t(lv)))
+            break
+    return out
 
 
 # =============================================================================
@@ -1286,8 +1359,11 @@ HEADER = """-- mod-classless-wildcard: starter archetypes, generated by
 -- data/sql/generators/gen_archetypes.py. Edit the builds there, not here.
 --
 -- An archetype is a build template a Classless Hero follows from level 1 to
--- 80: abilities = first-rank spell ids in unlock order, talents = talentId:rank
--- in purchase order. The server buys each entry as it becomes available.
+-- 80. Every ability and every talent rank is an entry of its own with its
+-- own level, in the order they are bought: abilities = first-rank spell ids,
+-- talents = talentId:rank, one entry per rank. "@level" is the level an
+-- entry is bought at when that is later than the level it becomes
+-- available at. Each entry is affordable at its level.
 
 CREATE TABLE IF NOT EXISTS `cw_archetypes` (
   `id` INT UNSIGNED NOT NULL,
@@ -1309,7 +1385,8 @@ def write_sql(path, rows):
     for r in rows:
         lines.append("(%d, '%s',\n '%s',\n '%s',\n '%s')" % (
             r["id"], r["name"].replace("'", "''"), r["description"].replace("'", "''"),
-            ",".join(str(x) for x in r["abilities"]), ",".join("%d:%d" % x for x in r["talents"])))
+            ",".join("%d@%d" % (i, w) if w else str(i) for i, w in r["abilities"]),
+            ",".join("%d:%d@%d" % (i, k, w) if w else "%d:%d" % (i, k) for i, k, w in r["talents"])))
     out.append(",\n".join(lines) + ";\n")
     io.open(path, "w", encoding="utf-8", newline="\n").write("".join(out))
 
@@ -1339,8 +1416,11 @@ def main(argv=None):
     for build in BUILDS:
         print("== %s" % build["name"])
         abilities, talents, problems = resolve(pool, build)
-        sim_problems, ledger, summary = simulate(pool, build, abilities, talents, verbose=args.ledger)
+        sim_problems, ledger, summary, ability_at, rank_at = simulate(pool, build, abilities, talents,
+                                                                     verbose=args.ledger)
         problems += sim_problems
+        a_rows, t_rows = entry_levels(pool, abilities, ability_at, rank_at)
+        problems += check_entry_levels(pool, build, a_rows, t_rows)
         for line in ledger:
             print(line)
         print(summary)
@@ -1349,8 +1429,8 @@ def main(argv=None):
             print("  PROBLEM " + p)
         failed = failed or bool(problems)
         rows.append(dict(id=build["id"], name=build["name"], description=build["description"],
-                         abilities=[e["first"] for e in abilities],
-                         talents=[(t["id"], rank) for t, rank in talents]))
+                         abilities=[(e["first"], lv if lv > unlock else 0) for e, lv, unlock in a_rows],
+                         talents=[(t["id"], rank, lv if lv > tier else 0) for t, rank, lv, tier in t_rows]))
     if failed:
         print("\nnot written: fix the problems above")
         return 1

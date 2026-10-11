@@ -235,6 +235,10 @@ Each fuses two classes around one or two elements. The elemental strikes (*Fiery
 *Shadow Claw*, *Holy Aimed Shot* and the rest) carry the element, and the second class brings
 spells of the same school.
 
+They follow the same rule as a build of your own: every ability and every talent rank is an
+entry with its own level, affordable at that level. **Copy to My Builds** opens one in the editor
+with every level as the archetype sets it.
+
 | Archetype | Classes | Elements | Plays as |
 | --------- | ------- | -------- | -------- |
 | *Cinderblade* | Warrior, Mage | Fire | Fiery strikes and cleaves with fireballs between swings |

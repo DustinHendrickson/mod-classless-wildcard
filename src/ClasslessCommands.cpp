@@ -266,9 +266,7 @@ public:
         uint32 following = sClasslessMgr->GetState(handler->GetSession()->GetPlayer()).archetype;
         for (auto const& [id, arch] : sClasslessMgr->Archetypes())
         {
-            uint32 ranks = 0;
-            for (auto const& [talentId, rank] : arch.talents)
-                ranks += rank;
+            uint32 const ranks = arch.TalentRanks();
             handler->PSendSysMessage("{}. |cffffff00{}|r: {} ({} abilities, {} talent ranks, level 1 to 80){}",
                 id, arch.name, arch.description, uint32(arch.abilities.size()), ranks,
                 following == id ? " |cff00ff00following|r" : "");

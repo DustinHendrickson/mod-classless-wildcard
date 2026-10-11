@@ -265,9 +265,7 @@ namespace
         uint32 following = sClasslessMgr->GetState(player).archetype;
         for (auto const& [id, arch] : sClasslessMgr->Archetypes())
         {
-            uint32 ranks = 0;
-            for (auto const& [talentId, rank] : arch.talents)
-                ranks += rank;
+            uint32 const ranks = arch.TalentRanks();
             AddGossipItemFor(player, GOSSIP_ICON_TABARD,
                 Acore::StringFormat("{}|cffffff00{}|r: {} ({} abilities, {} talent ranks, level 1 to 80)",
                     following == id ? "[following] " : "", arch.name, arch.description,
