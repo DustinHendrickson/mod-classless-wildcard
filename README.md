@@ -15,7 +15,7 @@
 **Every character can learn every spell and every talent from every class.** Buy them with
 Essence, or let the server roll for you in Wildcard mode.
 
-[Overview](#overview) · [Features](#features) · [Wildcard rolls](#wildcard-rolls) · [Challenge runs](#challenge-runs) · [Hero line](#the-hero-line) · [Elemental variants](#elemental-variants) · [Commands](#commands) · [Install](#installation) · [Configuration](#configuration) · [Uninstall](#uninstall)
+[Overview](#overview) · [Features](#features) · [Archetypes](#archetypes-and-my-builds) · [Wildcard rolls](#wildcard-rolls) · [Challenge runs](#challenge-runs) · [Hero line](#the-hero-line) · [Elemental variants](#elemental-variants) · [Commands](#commands) · [Install](#installation) · [Configuration](#configuration) · [Uninstall](#uninstall)
 
 <br>
 
@@ -113,18 +113,7 @@ with your build on the right. Lock or reroll anything you own from the same wind
   - Elemental: *Hellfire Knight* (fire), *Rime Reaver* (frost), *Stoneguard* (earth), *Venomstalker* (poison),
     *Nightclaw* (shadow), *Dawnward* (holy), *Spellblade* (arcane)
   - Hero line: *Vagabond*, *Field Marshal*, *Frostfire Adept*, *Grifter*, *Polymath*
-  - **Build** on any archetype lists every ability and talent it buys, in order, with the level
-    each is bought at on your character.
-  - **My Builds:** make your own archetypes. *Save my build* turns your current abilities and
-    talents into one. A build is edited in the panel's My Build column: while it is open, a click
-    on an Abilities or Talents row adds it to the build (nothing is bought) and a right-click
-    takes it out, or one talent rank. Each row shows the level it is bought at; click the level
-    to choose a later one, turn the mouse wheel over it, or use the arrows for sooner and later.
-    Rows with a problem are marked in red and say why, and **Fix order** sorts what order can
-    fix. A build must fit the Ability and Talent Essence a Hero earns by the level cap.
-    Builds are saved by the addon on your computer and travel as a code (`CWA1:...`): **Share**
-    to copy it or send it to your party, **Import** to paste one. Follow one exactly like a
-    starter archetype.
+  - Make, save and share your own with **My Builds**. See [Archetypes and My Builds](#archetypes-and-my-builds).
 - **Rebirth.** At the level cap, start over at level 1 with a permanent rank that stacks.
   - **Kept:** your path, gold, bags, bank, reputation, riding, flight paths, and the **heirloom**
     abilities you choose to carry (usable from level 1, one more per rank).
@@ -235,6 +224,75 @@ nothing for that part; items, XP, gold and reputation are paid as normal.
   soon as the core has it; the worldserver log says at startup which applies.
 - Other UI addons are not supported. Anything that reads class, spellbook, talent frames or power
   type may display wrongly or throw errors.
+
+---
+
+## Archetypes and My Builds
+
+An archetype is a build bought for you as you level. Classless only. Open it from the panel's
+**Archetypes** button, which has two pages: **Starter Builds** (the realm's eighteen) and
+**My Builds** (your own). `/cw builds` opens My Builds.
+
+### Following a build
+
+- **Follow** replaces your build: what you own is refunded and reset, then the build's
+  abilities and talent ranks are bought with your essence as each one unlocks. **Stop** ends it
+  and you keep everything bought so far.
+- Abilities are bought strictly in the order listed, and so are talent ranks. An entry that is
+  waiting (for its level, or for essence) holds up everything after it in its list.
+- An ability you already own is passed over at no cost. That includes abilities that come free
+  with another entry: a form's kit (Battle Stance brings Charge, Defensive Stance brings Taunt,
+  Bear Form brings Maul and Demoralizing Roar, Tame Beast brings Call Pet), the form an ability
+  needs (Maul brings Bear Form), a talent's ability, and your heirlooms.
+- **Build** on any archetype lists every ability and talent with the level it is bought at on
+  your character. A starter build's list has **Copy to My Builds**, which opens it in the editor.
+
+### My Builds
+
+| Button | What it does |
+| ------ | ------------ |
+| **Save my build** | Your current abilities and talents as a new build, abilities in the order they unlock |
+| **New** | An empty build |
+| **Import** | Paste a build code. It opens in the editor (`/cw import` does the same) |
+| **Edit**, **Share**, **Delete** | On each saved build |
+| **Follow** | Follow the saved build, as above |
+
+Saved builds are stored by the addon on your computer and shared by every character on the
+account. The list scrolls when it outgrows the window.
+
+### The build editor
+
+A build is edited in the panel's My Build column. While the editor is open, the Abilities and
+Talents lists show every level and become the picker:
+
+- **Click** an ability to add it, or a talent to add one rank. **Right-click** takes an ability
+  out, or a talent down one rank. Nothing is bought. Rows in the build are tinted and ticked.
+- Each row in the editor shows the **level it is bought at**. Change it three ways:
+  - **Click the level** and type one. Enter or clicking away keeps it, Escape keeps the old one.
+  - **Mouse wheel** over the level, one level a notch. The row stays put while the wheel turns
+    and moves to its place in the list when the wheel stops.
+  - **Arrows** for sooner and later. Past a row of another level, the entry takes that level.
+- A level later than the entry's unlock **holds it back** to that level (shown in gold). An
+  entry never comes before its unlock or its talent tier, and never before the essence for it
+  has been earned. The level's tooltip shows when the entry unlocks.
+- Rows marked **free** come with another entry in the build and cost no essence.
+- The minus button takes a row out. Rows with a problem are marked in red and say why in their
+  tooltip. **Fix order** appears when order can fix it: abilities in unlock order, each talent
+  after the talent it needs, ranks capped and repeats dropped.
+- The bottom of the editor shows the Ability and Talent Essence the build spends against what a
+  Hero earns by the level cap, and whether it fits. **Save** is enabled once it does. A build
+  must fit a Hero with no Rebirth bonus, so it works for anyone it is shared with. The levels in
+  the rows are for your own character, Rebirth essence and heirlooms included.
+- A build holds up to 200 abilities and 200 talents, with a name of up to 32 characters and a
+  description of up to 120.
+- **Close** or **Escape** leaves the editor. With unsaved changes it asks first.
+
+### Sharing
+
+A build travels as a code starting `CWA1:`. **Share** shows it selected, ready for Ctrl+C, to
+paste in chat, a forum or a message. **Send to party** sends it to your party or raid: members
+with the addon are asked whether to view it, and it opens in their editor. A code carries the
+levels the build holds entries back to.
 
 ---
 
