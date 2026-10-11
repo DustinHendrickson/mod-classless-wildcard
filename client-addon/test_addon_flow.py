@@ -3608,12 +3608,15 @@ def test_custom_builds(h):
     h.check(list(E["build"]["abilities"].values()) == [1752, 772] and E["build"]["waitA"][1752] == 2
             and E["save"]["__enabled"] is False,
             "one level later moves that row alone and asks the server again")
+    h.rt.execute("NOW = NOW + 1")
+    E["__scripts"]["OnUpdate"](E, 0.5)
     h.recv("APE|0|3|66|1|71|")
     h.click(E["save"])
     saved = h.rt.eval("ClasslessWildcardDB.customBuilds")
     h.check(len(list(saved.values())) == 1 and str(saved[1].name) == "Tester's build"
             and list(saved[1].abilities.values()) == [1752, 772], "Save keeps it in the addon")
     # over budget is refused
+    h.rt.execute("ClasslessWildcard_API.BuildEditorChanged(); NOW = NOW + 1")
     E["__scripts"]["OnUpdate"](E, 0.5)
     h.recv("APE|0|90|66|1|71|The build costs 90 Ability Essence. A Hero earns 66 by level 80.")
     h.check(E["save"]["__enabled"] is False and "costs 90 Ability Essence" in str(E["verdict"]["__text"]),
@@ -3973,9 +3976,14 @@ def test_build_levels(h):
             "turning the wheel past other rows' levels leaves the row where it is: %r, %r" % (wait("A", 200), order()))
     h.check(str(rows[1]["level"]["__text"]) == "|cffffd100Lv 13|r",
             "and the row shows the level chosen as it turns: %r" % str(rows[1]["level"]["__text"]))
+    h.check("Checking the build" in str(E["verdict"]["__text"]) and E["save"]["__enabled"] is False,
+            "after a change the editor says it is checking, and Save waits: %r" % str(E["verdict"]["__text"]))
+    h.clear_sent()
     h.rt.execute("NOW = NOW + 0.5")
     E["__scripts"]["OnUpdate"](E, 0.5)
     h.check(order()[0] == 200, "still in place half a second after the last notch: %r" % order())
+    h.check("ARCHUP A 300,100@11,200@13,5308@41" in h.sent(),
+            "but the server is asked about the build in level order: %r" % h.sent())
     plan((1, 1, 9))
     h.rt.execute("NOW = NOW + 1")
     E["__scripts"]["OnUpdate"](E, 1)

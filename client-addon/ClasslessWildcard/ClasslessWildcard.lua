@@ -3370,7 +3370,7 @@ do
     -- the draft, scrolling
     E.scroll = CreateFrame("ScrollFrame", "ClasslessWildcardBuildEditorScroll", E, "UIPanelScrollFrameTemplate")
     E.scroll:SetPoint("TOPLEFT", 0, -52)
-    E.scroll:SetPoint("BOTTOMRIGHT", -20, 80)
+    E.scroll:SetPoint("BOTTOMRIGHT", -20, 96)
     E.scrollBar = _G["ClasslessWildcardBuildEditorScrollScrollBar"]
     local CHILD_W = W - 20
     E.child = CreateFrame("Frame", nil, E.scroll)
@@ -3388,13 +3388,13 @@ do
         .. "mouse wheel over it, or use the arrows. Only that row changes.")
 
     E.budget = E:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
-    E.budget:SetPoint("BOTTOMLEFT", 2, 64)
+    E.budget:SetPoint("BOTTOMLEFT", 2, 80)
     E.budget:SetWidth(W - 4)
     E.budget:SetJustifyH("LEFT")
     E.verdict = E:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
-    E.verdict:SetPoint("BOTTOMLEFT", 2, 30)
+    E.verdict:SetPoint("BOTTOMLEFT", 2, 28)
     E.verdict:SetWidth(W - 4)
-    E.verdict:SetHeight(30)
+    E.verdict:SetHeight(48)
     E.verdict:SetJustifyH("LEFT")
     E.verdict:SetJustifyV("TOP")
 
@@ -3543,6 +3543,25 @@ do
         end
         return true
     end
+    -- The build in the order it is bought, level by level: what the server is
+    -- asked about, saved and shared, whatever order the rows are in while the
+    -- wheel turns. The server buys in list order, so a row left out of place
+    -- would read as bought late.
+    local function Sorted(b)
+        local c = CW.CopyBuild(b)
+        local function by(list, lv)
+            local tmp = {}
+            for i, x in ipairs(list) do tmp[i] = { x = x, at = i, lv = lv(x) } end
+            table.sort(tmp, function(p, q)
+                if p.lv ~= q.lv then return p.lv < q.lv end
+                return p.at < q.at
+            end)
+            for i, t in ipairs(tmp) do list[i] = t.x end
+        end
+        by(c.abilities, function(id) return LevelA(c, id) end)
+        by(c.talents, function(t) return LevelT(c, t[1]) end)
+        return c
+    end
     -- Only once the server has said where everything unlocks: before that a
     -- loaded build's floors are unknown and a sort would scramble it.
     local function Normalize()
@@ -3558,6 +3577,7 @@ do
         end
         E.dirty = true
         E.verdictOk = false
+        E.checking = true
         E.previewDue = GetTime() + 0.4
         CW.RenderBuildEditor()
         -- the lists' ticks and ranks follow the draft
@@ -3584,7 +3604,8 @@ do
             b.desc = E.desc:GetText() or ""
             E.preview = { abilities = {}, talents = {}, warnA = {}, warnT = {} }
             CW.planTarget = "editor"
-            CW.UploadBuild(b)
+            E.asked = (E.asked or 0) + 1
+            CW.UploadBuild(Sorted(b))
             Send("ARCHPLANX " .. CW.CleanBuildText(b.name, 32))
         end
     end)
@@ -3629,7 +3650,11 @@ do
             pv.spentT, pv.totalT = tonumber(p[5]) or 0, tonumber(p[6]) or 0
             pv.problem = p[7] or ""
             pv.done = true
-            E.verdictOk = pv.problem == ""
+            -- Only the answer to the latest change counts: while another is
+            -- due or on its way, this one is about a build that has changed.
+            E.answered = (E.answered or 0) + 1
+            E.checking = E.previewDue ~= nil or E.answered < (E.asked or 0)
+            E.verdictOk = pv.problem == "" and not E.checking
             -- the first look at a build that ran on the old rule pins its
             -- levels; the server is asked again about the result
             if E.settle then
@@ -4031,7 +4056,9 @@ do
             end
             E.budget:SetText(Part("Ability Essence", pv.spentA, pv.totalA) .. "    "
                 .. Part("Talent", pv.spentT, pv.totalT))
-            if pv.problem ~= "" then
+            if E.checking then
+                E.verdict:SetText("|cffaaaaaaChecking the build...|r")
+            elseif pv.problem ~= "" then
                 E.verdict:SetText("|cffff5544" .. pv.problem .. "|r")
             elseif E.dirty then
                 E.verdict:SetText("|cff00ff00Fits by level " .. cap .. ". Not saved yet.|r")
@@ -4233,7 +4260,7 @@ do
 
     E.save:SetScript("OnClick", function()
         if not E.verdictOk then return end
-        local b = CW.CopyBuild(E.build)
+        local b = Sorted(E.build)
         b.name = CW.CleanBuildText(E.name:GetText(), 32)
         b.desc = CW.CleanBuildText(E.desc:GetText(), 120, true)
         local saved = CW.SavedBuilds()
@@ -4244,7 +4271,7 @@ do
         CW.RenderBuildEditor()
     end)
     E.shareBtn:SetScript("OnClick", function()
-        local b = CW.CopyBuild(E.build)
+        local b = Sorted(E.build)
         b.name, b.desc = E.name:GetText() or "", E.desc:GetText() or ""
         CW.OpenShareWindow("share", b)
     end)
