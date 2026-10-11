@@ -105,11 +105,14 @@ with your build on the right. Lock or reroll anything you own from the same wind
   abilities and talents. Anything you own can be rerolled from **My Build**. Reroll Scrolls add
   more. The NPC and the panel's Buy Scroll button sell them from level 10, at a price that rises
   with level.
-- **Archetypes.** Thirteen Classless build templates from 1 to 80. Following one replaces your
+- **Archetypes.** Eighteen Classless build templates from 1 to 80. Following one replaces your
   build, then buys each ability and talent rank with your essence as it unlocks. Stop any time
-  and keep what was bought.
-  - Two-class: *Blade Dancer*, *Battle Mage*, *Ranger of the Light*, *Shadow Mender*, *Thornshade*, *Storm Warrior*
-  - Elemental: *Hellfire Knight*, *Rime Reaver*, *Stoneguard*, *Venomstalker*, *Nightclaw*, *Dawnward*, *Spellblade*
+  and keep what was bought. Every archetype mixes at least two classes from the first levels,
+  takes three or more Hero line abilities, and spends its talents across more than one tree.
+  - Two classes: *Blade Dancer*, *Battle Mage*, *Ranger of the Light*, *Shadow Mender*, *Thornshade*, *Storm Warrior*
+  - Elemental: *Hellfire Knight* (fire), *Rime Reaver* (frost), *Stoneguard* (earth), *Venomstalker* (poison),
+    *Nightclaw* (shadow), *Dawnward* (holy), *Spellblade* (arcane)
+  - Hero line: *Vagabond*, *Field Marshal*, *Frostfire Adept*, *Grifter*, *Polymath*
   - **Build** on any archetype lists every ability and talent it buys, in order, with the level
     each is bought at on your character.
   - **My Builds:** make your own archetypes. *Save my build* turns your current abilities and

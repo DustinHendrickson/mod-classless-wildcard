@@ -43,6 +43,7 @@ import sys
 HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, HERE)
 from gen_elemental_variants import Dbc, F, DEFAULT_DBC  # noqa: E402
+import gen_forged_spells as forged  # noqa: E402  the Hero line and its talents
 
 MODULE = os.path.abspath(os.path.join(HERE, os.pardir, os.pardir, os.pardir))
 DEFAULT_CORE = os.path.abspath(os.path.join(MODULE, os.pardir, os.pardir))
@@ -51,7 +52,10 @@ OUT_SQL = os.path.join(HERE, os.pardir, "db-world", "cw_archetypes.sql")
 DEFAULT_MANIFEST = os.path.join(MODULE, "client-patch", "elemental_manifest.json")
 
 CLASS_BITS = {"Warrior": 1, "Paladin": 2, "Hunter": 4, "Rogue": 8, "Priest": 16,
-              "Death Knight": 32, "Shaman": 64, "Mage": 128, "Warlock": 256, "Druid": 1024}
+              "Death Knight": 32, "Shaman": 64, "Mage": 128, "Warlock": 256, "Druid": 1024,
+              # the Hero line: forged abilities and the Hero talent tab, named
+              # ("Hero", "Hurl") and ("Hero", "Hero", "Sharpened", 3) in a build
+              "Hero": forged.HERO_TAB_CLASSMASK}
 SKILL_CATEGORY_CLASS = 7
 ATTR0_PASSIVE = 0x40
 ATTR2_AUTO_REPEAT = 0x20
@@ -84,392 +88,456 @@ def rarity_from_level(level):
 # write them tier by tier.
 
 BUILDS = [
+    # ---- two classes and the Hero line -----------------------------------------
     dict(id=1, name="Blade Dancer",
-         description="Fast melee striker: rogue strikes backed by warrior mobility.",
+         description="Dual-wield skirmisher: rogue combo strikes and warrior charges, with the Hero line's sweeping arcs between.",
          abilities=[
-             ("Rogue", "Sinister Strike"), ("Rogue", "Eviscerate"), ("Rogue", "Stealth"),
-             ("Warrior", "Charge"), ("Warrior", "Rend"), ("Rogue", "Backstab"), ("Rogue", "Gouge"),
-             ("Warrior", "Hamstring"), ("Rogue", "Evasion"),
-             ("Rogue", "Slice and Dice"), ("Rogue", "Kick"), ("Rogue", "Garrote"), ("Rogue", "Ambush"),
-             ("Rogue", "Rupture"), ("Rogue", "Vanish"), ("Warrior", "Execute"),
-             ("Rogue", "Cheap Shot"), ("Rogue", "Kidney Shot"), ("Warrior", "Berserker Rage"),
-             ("Warrior", "Whirlwind"), ("Warrior", "Pummel"), ("Warrior", "Mortal Strike"),
-             ("Warrior", "Recklessness"),
-             ("Rogue", "Cloak of Shadows"), ("Rogue", "Shiv"), ("Rogue", "Tricks of the Trade"), ("Rogue", "Fan of Knives"),
+             ("Hero", "Makeshift Strike"), ("Rogue", "Sinister Strike"), ("Rogue", "Eviscerate"),
+             ("Warrior", "Charge"), ("Rogue", "Gouge"), ("Warrior", "Hamstring"), ("Rogue", "Evasion"),
+             ("Rogue", "Slice and Dice"), ("Hero", "Wide Arc"), ("Rogue", "Kick"), ("Warrior", "Overpower"),
+             ("Hero", "Adrenaline"), ("Rogue", "Rupture"), ("Hero", "Borrowed Stance"), ("Warrior", "Retaliation"),
+             ("Warrior", "Execute"), ("Rogue", "Kidney Shot"), ("Warrior", "Intercept"),
+             ("Rogue", "Blind"), ("Hero", "Vanguard Rush"), ("Warrior", "Whirlwind"), ("Warrior", "Mortal Strike"),
+             ("Warrior", "Recklessness"), ("Hero", "Repertoire"),
+             ("Rogue", "Cloak of Shadows"), ("Rogue", "Shiv"), ("Rogue", "Tricks of the Trade"),
          ],
          talents=[
              ("Rogue", "Combat", "Improved Sinister Strike", 2), ("Rogue", "Combat", "Dual Wield Specialization", 5),
              ("Rogue", "Combat", "Precision", 5), ("Rogue", "Combat", "Improved Slice and Dice", 2),
-             ("Rogue", "Combat", "Endurance", 2),
-             ("Rogue", "Combat", "Lightning Reflexes", 3), ("Rogue", "Combat", "Aggression", 5),
-             ("Rogue", "Combat", "Blade Flurry", 1), ("Rogue", "Combat", "Hack and Slash", 5),
-             ("Rogue", "Combat", "Weapon Expertise", 2), ("Rogue", "Combat", "Blade Twisting", 2),
-             ("Rogue", "Combat", "Vitality", 3), ("Rogue", "Combat", "Adrenaline Rush", 1), ("Rogue", "Combat", "Nerves of Steel", 2),
+             ("Rogue", "Combat", "Endurance", 2), ("Rogue", "Combat", "Lightning Reflexes", 3),
+             ("Rogue", "Combat", "Aggression", 5), ("Rogue", "Combat", "Blade Flurry", 1),
+             ("Rogue", "Combat", "Hack and Slash", 5), ("Rogue", "Combat", "Weapon Expertise", 2),
+             ("Rogue", "Combat", "Vitality", 3), ("Rogue", "Combat", "Adrenaline Rush", 1),
              ("Rogue", "Combat", "Combat Potency", 5),
-             ("Rogue", "Combat", "Surprise Attacks", 1), ("Rogue", "Combat", "Savage Combat", 2),
-             ("Rogue", "Combat", "Prey on the Weak", 2),
-             ("Rogue", "Combat", "Killing Spree", 1),
-             ("Warrior", "Arms", "Improved Rend", 2), ("Warrior", "Arms", "Deflection", 3),
-             ("Warrior", "Arms", "Improved Charge", 2), ("Warrior", "Arms", "Tactical Mastery", 3),
-             ("Warrior", "Arms", "Improved Overpower", 2), ("Warrior", "Arms", "Anger Management", 1),
-             ("Warrior", "Arms", "Impale", 2),
-             ("Warrior", "Arms", "Deep Wounds", 3), ("Warrior", "Arms", "Taste for Blood", 2),
+             ("Warrior", "Arms", "Tactical Mastery", 3), ("Warrior", "Arms", "Improved Overpower", 2),
+             ("Warrior", "Arms", "Anger Management", 1), ("Warrior", "Arms", "Impale", 2),
+             ("Warrior", "Arms", "Deep Wounds", 3), ("Warrior", "Arms", "Improved Hamstring", 3),
+             ("Warrior", "Arms", "Weapon Mastery", 2),
+             ("Hero", "Hero", "Field Repairs", 1), ("Hero", "Hero", "Weave", 2), ("Hero", "Hero", "Sharpened", 3),
+             ("Hero", "Hero", "Encore", 3), ("Hero", "Hero", "Overdraw", 3), ("Hero", "Hero", "Wide Swing", 2),
          ]),
     dict(id=2, name="Battle Mage",
-         description="Armored caster: fireballs up close, sword in hand.",
+         description="Armored caster: fire spells at sword's reach, Crossdraw strikes that ride on the last spell cast.",
          abilities=[
-             ("Mage", "Fireball"), ("Mage", "Frost Armor"), ("Mage", "Arcane Intellect"),
-             ("Warrior", "Charge"), ("Mage", "Frostbolt"), ("Warrior", "Rend"), ("Mage", "Fire Blast"),
-             ("Mage", "Polymorph"), ("Mage", "Arcane Missiles"),
-             ("Mage", "Frost Nova"), ("Warrior", "Overpower"), ("Mage", "Arcane Explosion"), ("Mage", "Flamestrike"),
-             ("Mage", "Blink"), ("Mage", "Pyroblast"), ("Mage", "Scorch"), ("Mage", "Counterspell"),
-             ("Mage", "Ice Block"), ("Warrior", "Intercept"), ("Mage", "Mage Armor"), ("Warrior", "Whirlwind"),
-             ("Mage", "Ice Barrier"),
-             ("Mage", "Dragon's Breath"), ("Warrior", "Recklessness"),
-             ("Mage", "Molten Armor"), ("Mage", "Frostfire Bolt"), ("Mage", "Mirror Image"),
+             ("Mage", "Fireball"), ("Mage", "Frost Armor"), ("Hero", "Makeshift Strike"),
+             ("Warrior", "Charge"), ("Warrior", "Rend"), ("Mage", "Fire Blast"), ("Warrior", "Hamstring"),
+             ("Mage", "Frost Nova"), ("Hero", "Emberfeed"), ("Hero", "Crossdraw"), ("Mage", "Flamestrike"),
+             ("Mage", "Blink"), ("Mage", "Pyroblast"), ("Warrior", "Cleave"), ("Hero", "Borrowed Stance"),
+             ("Mage", "Scorch"), ("Warrior", "Execute"), ("Hero", "Antipode Blast"), ("Mage", "Blast Wave"),
+             ("Hero", "Vanguard Rush"), ("Mage", "Dragon's Breath"), ("Warrior", "Recklessness"),
+             ("Mage", "Living Bomb"), ("Mage", "Molten Armor"), ("Mage", "Mirror Image"),
          ],
          talents=[
-             ("Mage", "Fire", "Improved Fire Blast", 2), ("Mage", "Fire", "Incineration", 3), ("Mage", "Fire", "Improved Fireball", 5),
-             ("Mage", "Fire", "Ignite", 5), ("Mage", "Fire", "World in Flames", 3),
-             ("Mage", "Fire", "Impact", 3), ("Mage", "Fire", "Pyroblast", 1),
-             ("Mage", "Fire", "Burning Soul", 2),
-             ("Mage", "Fire", "Master of Elements", 3), ("Mage", "Fire", "Critical Mass", 3),
-             ("Mage", "Fire", "Blast Wave", 1), ("Mage", "Fire", "Fire Power", 5),
+             ("Mage", "Fire", "Improved Fire Blast", 2), ("Mage", "Fire", "Incineration", 3),
+             ("Mage", "Fire", "Improved Fireball", 5), ("Mage", "Fire", "Ignite", 5), ("Mage", "Fire", "World in Flames", 3),
+             ("Mage", "Fire", "Impact", 3), ("Mage", "Fire", "Burning Soul", 2), ("Mage", "Fire", "Improved Scorch", 3),
+             ("Mage", "Fire", "Master of Elements", 3), ("Mage", "Fire", "Critical Mass", 3), ("Mage", "Fire", "Fire Power", 5),
              ("Mage", "Fire", "Pyromaniac", 3), ("Mage", "Fire", "Combustion", 1), ("Mage", "Fire", "Molten Fury", 2),
-             ("Mage", "Fire", "Empowered Fire", 3),
-             ("Mage", "Fire", "Dragon's Breath", 1),
-             ("Mage", "Fire", "Hot Streak", 3), ("Mage", "Fire", "Burnout", 1),
-             ("Mage", "Fire", "Living Bomb", 1),
-             ("Mage", "Fire", "Improved Scorch", 3), ("Mage", "Fire", "Flame Throwing", 1),
-             ("Warrior", "Arms", "Improved Rend", 2), ("Warrior", "Arms", "Deflection", 3),
-             ("Warrior", "Arms", "Improved Charge", 2), ("Warrior", "Arms", "Tactical Mastery", 3),
-             ("Warrior", "Arms", "Improved Overpower", 2), ("Warrior", "Arms", "Anger Management", 1),
-             ("Warrior", "Arms", "Impale", 2),
-             ("Warrior", "Arms", "Deep Wounds", 3), ("Warrior", "Arms", "Taste for Blood", 2),
+             ("Mage", "Fire", "Empowered Fire", 3), ("Mage", "Fire", "Hot Streak", 3), ("Mage", "Fire", "Firestarter", 2),
+             ("Mage", "Fire", "Burnout", 1),
+             ("Warrior", "Arms", "Tactical Mastery", 3), ("Warrior", "Arms", "Improved Charge", 2),
+             ("Warrior", "Arms", "Anger Management", 1), ("Warrior", "Arms", "Impale", 2), ("Warrior", "Arms", "Deep Wounds", 3),
+             ("Hero", "Hero", "Sharpened", 3), ("Hero", "Hero", "Two Schools", 5),
          ]),
     dict(id=3, name="Ranger of the Light",
-         description="Hybrid archer-paladin: shoot from range, heal and bless in melee.",
+         description="Holy archer: hallowed shots and ricochets from range, seals and healing light when the fight comes close.",
          abilities=[
-             ("Hunter", "Raptor Strike"), ("Paladin", "Holy Light"), ("Paladin", "Devotion Aura"),
-             ("Hunter", "Serpent Sting"), ("Paladin", "Seal of Righteousness"), ("Paladin", "Judgement of Light"),
-             ("Paladin", "Blessing of Might"), ("Hunter", "Arcane Shot"), ("Hunter", "Concussive Shot"),
-             ("Hunter", "Aspect of the Hawk"), ("Hunter", "Wing Clip"), ("Paladin", "Blessing of Wisdom"),
-             ("Hunter", "Aimed Shot"),
-             ("Paladin", "Retribution Aura"), ("Hunter", "Multi-Shot"), ("Paladin", "Flash of Light"),
-             ("Hunter", "Rapid Fire"), ("Hunter", "Feign Death"), ("Paladin", "Divine Shield"),
-             ("Hunter", "Volley"), ("Paladin", "Holy Shock"), ("Paladin", "Cleanse"), ("Paladin", "Hammer of Wrath"),
-             ("Hunter", "Steady Shot"),
-             ("Hunter", "Tranquilizing Shot"), ("Paladin", "Avenging Wrath"), ("Hunter", "Kill Shot"),
+             ("Paladin", "Seal of Righteousness"), ("Paladin", "Holy Light"), ("Hero", "Hurl"),
+             ("Hunter", "Serpent Sting"), ("Paladin", "Judgement of Light"), ("Hunter", "Arcane Shot"),
+             ("Hunter", "Hunter's Mark"), ("Hunter", "Concussive Shot"), ("Paladin", "Hammer of Justice"),
+             ("Hunter", "Aspect of the Hawk"), ("Hunter", "Wing Clip"), ("Hero", "Ward Off"),
+             ("Hunter", "Holy Multi-Shot"), ("Hero", "Ricochet Shot"), ("Paladin", "Flash of Light"),
+             ("Hero", "Overflow"), ("Hunter", "Rapid Fire"), ("Hunter", "Feign Death"), ("Paladin", "Divine Shield"),
+             ("Hunter", "Volley"), ("Paladin", "Holy Shock"), ("Paladin", "Hammer of Wrath"),
+             ("Hunter", "Steady Shot"), ("Paladin", "Holy Wrath"), ("Paladin", "Avenging Wrath"),
+             ("Hunter", "Holy Kill Shot"), ("Hunter", "Aspect of the Dragonhawk"),
          ],
          talents=[
              ("Hunter", "Marksmanship", "Lethal Shots", 5), ("Hunter", "Marksmanship", "Focused Aim", 3),
              ("Hunter", "Marksmanship", "Careful Aim", 3), ("Hunter", "Marksmanship", "Mortal Shots", 5),
-             ("Hunter", "Marksmanship", "Go for the Throat", 2), ("Hunter", "Marksmanship", "Aimed Shot", 1),
-             ("Hunter", "Marksmanship", "Rapid Killing", 2), ("Hunter", "Marksmanship", "Improved Stings", 3),
-             ("Hunter", "Marksmanship", "Readiness", 1), ("Hunter", "Marksmanship", "Barrage", 3),
+             ("Hunter", "Marksmanship", "Rapid Killing", 2), ("Hunter", "Marksmanship", "Improved Arcane Shot", 3),
+             ("Hunter", "Marksmanship", "Improved Stings", 3), ("Hunter", "Marksmanship", "Efficiency", 5),
+             ("Hunter", "Marksmanship", "Barrage", 3), ("Hunter", "Marksmanship", "Readiness", 1),
              ("Hunter", "Marksmanship", "Combat Experience", 2), ("Hunter", "Marksmanship", "Ranged Weapon Specialization", 3),
-             ("Hunter", "Marksmanship", "Piercing Shots", 3),
-             ("Hunter", "Marksmanship", "Trueshot Aura", 1), ("Hunter", "Marksmanship", "Improved Barrage", 3),
+             ("Hunter", "Marksmanship", "Piercing Shots", 3), ("Hunter", "Marksmanship", "Trueshot Aura", 1),
              ("Hunter", "Marksmanship", "Master Marksman", 5),
-             ("Hunter", "Marksmanship", "Marked for Death", 5), ("Hunter", "Marksmanship", "Chimera Shot", 1),
-             ("Paladin", "Holy", "Spiritual Focus", 5), ("Paladin", "Holy", "Seals of the Pure", 5),
-             ("Paladin", "Holy", "Healing Light", 3), ("Paladin", "Holy", "Divine Intellect", 5),
-             ("Paladin", "Holy", "Unyielding Faith", 2), ("Paladin", "Holy", "Aura Mastery", 1),
+             ("Paladin", "Holy", "Seals of the Pure", 5), ("Paladin", "Holy", "Healing Light", 3),
+             ("Paladin", "Holy", "Divine Intellect", 5),
+             ("Hero", "Hero", "Long Reach", 2), ("Hero", "Hero", "Sharpened", 3), ("Hero", "Hero", "Ricochet Chamber", 2),
+             ("Hero", "Hero", "Wide Swing", 1), ("Hunter", "Marksmanship", "Improved Hunter's Mark", 3),
          ]),
     dict(id=4, name="Shadow Mender",
-         description="Priest hybrid: shield and mend allies, wither foes with shadow.",
+         description="Shadow healer: shields and mends allies while curses, drains and Bleed Over wear the enemy down.",
          abilities=[
-             ("Priest", "Smite"), ("Priest", "Lesser Heal"), ("Priest", "Power Word: Fortitude"),
-             ("Priest", "Shadow Word: Pain"), ("Priest", "Power Word: Shield"), ("Priest", "Renew"), ("Priest", "Fade"),
-             ("Priest", "Mind Blast"), ("Priest", "Inner Fire"), ("Priest", "Psychic Scream"), ("Priest", "Heal"),
-             ("Priest", "Dispel Magic"), ("Priest", "Flash Heal"), ("Priest", "Mind Flay"),
-             ("Priest", "Prayer of Healing"), ("Priest", "Shadow Protection"), ("Priest", "Mind Control"),
-             ("Priest", "Abolish Disease"), ("Priest", "Greater Heal"),
-             ("Priest", "Prayer of Fortitude"), ("Priest", "Vampiric Touch"),
-             ("Priest", "Shadow Word: Death"), ("Priest", "Binding Heal"), ("Priest", "Mind Sear"), ("Priest", "Divine Hymn"),
+             ("Priest", "Lesser Heal"), ("Warlock", "Shadow Bolt"), ("Priest", "Shadow Word: Pain"),
+             ("Warlock", "Corruption"), ("Priest", "Power Word: Shield"), ("Hero", "Second Nature"),
+             ("Warlock", "Life Tap"), ("Priest", "Renew"), ("Warlock", "Curse of Agony"), ("Priest", "Mind Blast"),
+             ("Priest", "Inner Fire"), ("Warlock", "Drain Life"), ("Priest", "Heal"), ("Hero", "Ward Off"),
+             ("Priest", "Dispel Magic"), ("Priest", "Flash Heal"), ("Hero", "Overflow"), ("Hero", "Bleed Over"),
+             ("Priest", "Prayer of Healing"), ("Priest", "Greater Heal"), ("Warlock", "Death Coil"),
+             ("Hero", "Sinkhole"), ("Priest", "Vampiric Touch"), ("Warlock", "Unstable Affliction"),
+             ("Warlock", "Haunt"), ("Priest", "Prayer of Mending"),
          ],
          talents=[
-             ("Priest", "Shadow", "Spirit Tap", 3), ("Priest", "Shadow", "Darkness", 5),
-             ("Priest", "Shadow", "Improved Shadow Word: Pain", 2), ("Priest", "Shadow", "Shadow Focus", 3),
-             ("Priest", "Shadow", "Improved Mind Blast", 5), ("Priest", "Shadow", "Mind Flay", 1),
-             ("Priest", "Shadow", "Shadow Weaving", 3), ("Priest", "Shadow", "Shadow Reach", 2),
-             ("Priest", "Shadow", "Vampiric Embrace", 1),
-             ("Priest", "Shadow", "Focused Mind", 3), ("Priest", "Shadow", "Mind Melt", 2),
-             ("Priest", "Shadow", "Shadowform", 1), ("Priest", "Shadow", "Shadow Power", 5),
-             ("Priest", "Shadow", "Misery", 3), ("Priest", "Shadow", "Improved Shadowform", 2),
-             ("Priest", "Shadow", "Vampiric Touch", 1), ("Priest", "Shadow", "Pain and Suffering", 3),
-             ("Priest", "Shadow", "Twisted Faith", 5),
-             ("Priest", "Shadow", "Dispersion", 1), ("Priest", "Shadow", "Improved Spirit Tap", 2),
              ("Priest", "Discipline", "Twin Disciplines", 5), ("Priest", "Discipline", "Improved Inner Fire", 3),
-             ("Priest", "Discipline", "Improved Power Word: Fortitude", 2), ("Priest", "Discipline", "Silent Resolve", 1),
              ("Priest", "Discipline", "Meditation", 3), ("Priest", "Discipline", "Inner Focus", 1),
-             ("Priest", "Discipline", "Improved Power Word: Shield", 3), ("Priest", "Discipline", "Mental Agility", 2),
+             ("Priest", "Discipline", "Improved Power Word: Shield", 3), ("Priest", "Discipline", "Mental Agility", 3),
+             ("Priest", "Discipline", "Mental Strength", 5), ("Priest", "Discipline", "Soul Warding", 1),
+             ("Priest", "Discipline", "Focused Power", 2), ("Priest", "Discipline", "Enlightenment", 3),
+             ("Priest", "Discipline", "Power Infusion", 1), ("Priest", "Discipline", "Improved Flash Heal", 3),
+             ("Priest", "Discipline", "Renewed Hope", 2), ("Priest", "Discipline", "Rapture", 3),
+             ("Priest", "Discipline", "Divine Aegis", 3), ("Priest", "Discipline", "Pain Suppression", 1),
+             ("Priest", "Discipline", "Grace", 2),
+             ("Warlock", "Affliction", "Improved Corruption", 5), ("Warlock", "Affliction", "Improved Curse of Agony", 2),
+             ("Warlock", "Affliction", "Soul Siphon", 2), ("Warlock", "Affliction", "Fel Concentration", 3),
+             ("Warlock", "Affliction", "Empowered Corruption", 3), ("Warlock", "Affliction", "Shadow Embrace", 2),
+             ("Warlock", "Affliction", "Siphon Life", 1),
+             ("Hero", "Hero", "Long Reach", 2), ("Hero", "Hero", "Wide Swing", 1), ("Hero", "Hero", "Broad Strokes", 1),
+             ("Hero", "Hero", "Jack of All Trades", 5),
          ]),
     dict(id=5, name="Thornshade",
-         description="Druidic infiltrator: slip through shadows, restore life from hiding.",
+         description="Infiltrator healer: opens from stealth with daggers, keeps the group alive with druidic growth between strikes.",
          abilities=[
-             ("Druid", "Healing Touch"), ("Rogue", "Stealth"), ("Druid", "Wrath"), ("Druid", "Mark of the Wild"),
-             ("Druid", "Rejuvenation"), ("Druid", "Moonfire"), ("Druid", "Thorns"), ("Druid", "Entangling Roots"),
-             ("Druid", "Nature's Grasp"), ("Druid", "Regrowth"), ("Druid", "Travel Form"), ("Druid", "Remove Curse"),
-             ("Druid", "Cat Form"), ("Druid", "Prowl"), ("Rogue", "Vanish"),
-             ("Druid", "Abolish Poison"), ("Druid", "Tranquility"),
-             ("Druid", "Innervate"), ("Druid", "Barkskin"), ("Druid", "Gift of the Wild"),
-             ("Druid", "Lifebloom"), ("Rogue", "Cloak of Shadows"), ("Druid", "Cyclone"), ("Druid", "Nourish"),
-             ("Druid", "Wild Growth"),
+             ("Rogue", "Stealth"), ("Rogue", "Sinister Strike"), ("Druid", "Healing Touch"), ("Rogue", "Eviscerate"),
+             ("Druid", "Rejuvenation"), ("Rogue", "Gouge"), ("Druid", "Thorns"), ("Druid", "Entangling Roots"),
+             ("Hero", "Fistful of Grit"), ("Rogue", "Sap"), ("Hero", "Venom Beetle"), ("Druid", "Regrowth"),
+             ("Rogue", "Garrote"), ("Hero", "Cairn"), ("Rogue", "Ambush"), ("Rogue", "Vanish"), ("Hero", "Overflow"),
+             ("Rogue", "Cheap Shot"), ("Hero", "Bleed Over"), ("Rogue", "Blind"), ("Druid", "Innervate"),
+             ("Druid", "Barkskin"), ("Rogue", "Mutilate"), ("Druid", "Wild Growth"), ("Druid", "Lifebloom"),
+             ("Rogue", "Cloak of Shadows"), ("Druid", "Nourish"),
          ],
          talents=[
-             ("Druid", "Restoration", "Improved Mark of the Wild", 2), ("Druid", "Restoration", "Nature's Focus", 3),
-             ("Druid", "Restoration", "Naturalist", 5), ("Druid", "Restoration", "Subtlety", 3),
-             ("Druid", "Restoration", "Intensity", 3), ("Druid", "Restoration", "Omen of Clarity", 1),
-             ("Druid", "Restoration", "Tranquil Spirit", 5), ("Druid", "Restoration", "Improved Rejuvenation", 3),
-             ("Druid", "Restoration", "Nature's Swiftness", 1), ("Druid", "Restoration", "Gift of Nature", 5),
-             ("Druid", "Restoration", "Empowered Touch", 2), ("Druid", "Restoration", "Nature's Bounty", 5),
-             ("Druid", "Restoration", "Living Spirit", 3), ("Druid", "Restoration", "Swiftmend", 1),
-             ("Druid", "Restoration", "Empowered Rejuvenation", 5),
-             ("Druid", "Restoration", "Tree of Life", 1), ("Druid", "Restoration", "Improved Tree of Life", 2),
-             ("Druid", "Restoration", "Improved Barkskin", 1),
-             ("Rogue", "Subtlety", "Relentless Strikes", 1), ("Rogue", "Subtlety", "Master of Deception", 3),
+             ("Rogue", "Subtlety", "Relentless Strikes", 5), ("Rogue", "Subtlety", "Master of Deception", 3),
              ("Rogue", "Subtlety", "Opportunity", 2), ("Rogue", "Subtlety", "Camouflage", 3),
-             ("Rogue", "Subtlety", "Dirty Tricks", 2), ("Rogue", "Subtlety", "Elusiveness", 2),
-             ("Rogue", "Subtlety", "Serrated Blades", 3), ("Rogue", "Subtlety", "Initiative", 3),
-             ("Rogue", "Subtlety", "Setup", 1),
+             ("Rogue", "Subtlety", "Elusiveness", 2), ("Rogue", "Subtlety", "Serrated Blades", 3),
+             ("Rogue", "Subtlety", "Initiative", 3), ("Rogue", "Subtlety", "Improved Ambush", 2),
+             ("Rogue", "Subtlety", "Preparation", 1), ("Rogue", "Subtlety", "Dirty Deeds", 2),
+             ("Rogue", "Subtlety", "Master of Subtlety", 3), ("Rogue", "Subtlety", "Premeditation", 1),
+             ("Rogue", "Subtlety", "Cheat Death", 3),
+             ("Druid", "Restoration", "Nature's Focus", 3), ("Druid", "Restoration", "Naturalist", 5),
+             ("Druid", "Restoration", "Intensity", 3), ("Druid", "Restoration", "Omen of Clarity", 1),
+             ("Druid", "Restoration", "Improved Rejuvenation", 3), ("Druid", "Restoration", "Nature's Swiftness", 1),
+             ("Druid", "Restoration", "Gift of Nature", 5), ("Druid", "Restoration", "Swiftmend", 1),
+             ("Druid", "Restoration", "Empowered Rejuvenation", 5),
+             ("Hero", "Hero", "Scavenger's Eye", 2), ("Hero", "Hero", "Venom Handler", 3),
+             ("Hero", "Hero", "Medicinal Venom", 1), ("Hero", "Hero", "Opportunist", 5),
          ]),
     dict(id=6, name="Storm Warrior",
-         description="Shamanistic bruiser: lightning from afar, heroic strikes up close.",
+         description="Storm-charged bruiser: shocks and chain lightning between heavy blows, Windfury on the blade.",
          abilities=[
-             ("Shaman", "Lightning Bolt"), ("Shaman", "Healing Wave"), ("Warrior", "Heroic Strike"), ("Shaman", "Rockbiter Weapon"),
-             ("Shaman", "Earth Shock"), ("Warrior", "Charge"), ("Shaman", "Earthbind Totem"), ("Shaman", "Lightning Shield"),
-             ("Shaman", "Flame Shock"), ("Shaman", "Purge"), ("Shaman", "Ghost Wolf"), ("Shaman", "Wind Shear"),
-             ("Shaman", "Frost Shock"), ("Warrior", "Cleave"), ("Warrior", "Execute"),
-             ("Shaman", "Mana Spring Totem"), ("Shaman", "Windfury Weapon"), ("Shaman", "Chain Lightning"),
-             ("Warrior", "Whirlwind"), ("Shaman", "Chain Heal"),
-             ("Shaman", "Earth Shield"), ("Warrior", "Recklessness"),
-             ("Shaman", "Thunderstorm"), ("Shaman", "Wrath of Air Totem"), ("Shaman", "Lava Burst"), ("Warrior", "Heroic Throw"),
+             ("Shaman", "Lightning Bolt"), ("Warrior", "Heroic Strike"), ("Hero", "Makeshift Strike"),
+             ("Shaman", "Earth Shock"), ("Warrior", "Charge"), ("Warrior", "Thunder Clap"), ("Shaman", "Lightning Shield"),
+             ("Shaman", "Flame Shock"), ("Shaman", "Flametongue Weapon"), ("Hero", "Wide Arc"), ("Shaman", "Wind Shear"),
+             ("Warrior", "Cleave"), ("Hero", "Borrowed Stance"), ("Warrior", "Execute"), ("Shaman", "Windfury Weapon"),
+             ("Warrior", "Intercept"), ("Shaman", "Chain Lightning"), ("Hero", "Vanguard Rush"), ("Warrior", "Whirlwind"),
+             ("Hero", "Quickening"), ("Shaman", "Earth Shield"), ("Warrior", "Recklessness"), ("Shaman", "Thunderstorm"),
+             ("Shaman", "Lava Burst"), ("Warrior", "Enraged Regeneration"),
          ],
          talents=[
-             ("Shaman", "Enhancement", "Ancestral Knowledge", 5), ("Shaman", "Enhancement", "Enhancing Totems", 3),
-             ("Shaman", "Enhancement", "Thundering Strikes", 5),
+             ("Shaman", "Enhancement", "Ancestral Knowledge", 5), ("Shaman", "Enhancement", "Thundering Strikes", 5),
              ("Shaman", "Enhancement", "Improved Shields", 3), ("Shaman", "Enhancement", "Elemental Weapons", 3),
-             ("Shaman", "Enhancement", "Shamanistic Focus", 1),
-             ("Shaman", "Enhancement", "Flurry", 5),
-             ("Shaman", "Enhancement", "Improved Windfury Totem", 2), ("Shaman", "Enhancement", "Spirit Weapons", 1),
-             ("Shaman", "Enhancement", "Mental Dexterity", 3),
+             ("Shaman", "Enhancement", "Shamanistic Focus", 1), ("Shaman", "Enhancement", "Flurry", 5),
+             ("Shaman", "Enhancement", "Spirit Weapons", 1), ("Shaman", "Enhancement", "Mental Dexterity", 3),
              ("Shaman", "Enhancement", "Unleashed Rage", 3), ("Shaman", "Enhancement", "Weapon Mastery", 3),
              ("Shaman", "Enhancement", "Dual Wield", 1), ("Shaman", "Enhancement", "Dual Wield Specialization", 3),
-             ("Shaman", "Enhancement", "Stormstrike", 1),
-             ("Shaman", "Enhancement", "Lava Lash", 1), ("Shaman", "Enhancement", "Improved Stormstrike", 2),
-             ("Shaman", "Enhancement", "Maelstrom Weapon", 5),
-             ("Shaman", "Enhancement", "Feral Spirit", 1),
-             ("Warrior", "Fury", "Cruelty", 5), ("Warrior", "Fury", "Armored to the Teeth", 3),
-             ("Warrior", "Fury", "Unbridled Wrath", 5),
-             ("Warrior", "Fury", "Improved Cleave", 3), ("Warrior", "Fury", "Commanding Presence", 4),
+             ("Shaman", "Enhancement", "Stormstrike", 1), ("Shaman", "Enhancement", "Static Shock", 3),
+             ("Shaman", "Enhancement", "Lava Lash", 1), ("Shaman", "Enhancement", "Maelstrom Weapon", 5),
+             ("Warrior", "Fury", "Cruelty", 5), ("Warrior", "Fury", "Unbridled Wrath", 5),
+             ("Hero", "Hero", "Sharpened", 3), ("Hero", "Hero", "Adrenal Surge", 2), ("Hero", "Hero", "Overdraw", 3), ("Hero", "Hero", "Wide Swing", 2),
+             ("Shaman", "Enhancement", "Toughness", 5),
          ]),
 
-    # ---- elemental archetypes: one per element, built around the variant
-    # strikes and the talent tree that feeds that element's damage -----------
+    # ---- elemental archetypes: an element's variant strikes, the same school's
+    # spells from a second class, and the Hero line --------------------------------
     dict(id=7, name="Hellfire Knight",
-         description="Burning warrior: fiery strikes and warlock fire, fed by the Destruction tree.",
+         description="Burning warrior: fiery strikes and warlock fire, a flame turret and a signal fire to burn the field.",
          abilities=[
-             ("Warrior", "Fiery Heroic Strike"), ("Warrior", "Battle Shout"),
-             ("Warlock", "Immolate"), ("Warrior", "Charge"), ("Warlock", "Life Tap"),
-             ("Warrior", "Hamstring"), ("Warrior", "Bloodrage"), ("Warrior", "Fiery Overpower"),
-             ("Warlock", "Searing Pain"), ("Warrior", "Fiery Cleave"),
-             ("Warrior", "Execute"), ("Warrior", "Intercept"), ("Warlock", "Hellfire"),
-             ("Warrior", "Berserker Rage"), ("Warrior", "Fiery Whirlwind"), ("Warrior", "Pummel"),
+             ("Warrior", "Fiery Heroic Strike"), ("Warlock", "Immolate"), ("Warrior", "Charge"), ("Warlock", "Life Tap"),
+             ("Warrior", "Hamstring"), ("Hero", "Emberfeed"), ("Hero", "Wide Arc"), ("Warrior", "Fiery Overpower"),
+             ("Warlock", "Searing Pain"), ("Warrior", "Fiery Cleave"), ("Warrior", "Execute"), ("Hero", "Signal Fire"),
+             ("Warlock", "Hellfire"), ("Warrior", "Intercept"), ("Warrior", "Fiery Whirlwind"),
              ("Warrior", "Fiery Mortal Strike"), ("Warlock", "Soul Fire"), ("Warrior", "Recklessness"),
-             ("Warlock", "Chaos Bolt"), ("Warlock", "Incinerate"), ("Warrior", "Enraged Regeneration"),
+             ("Hero", "Reclaimed Sentry"), ("Warlock", "Chaos Bolt"),
+             ("Warrior", "Enraged Regeneration"),
          ],
          talents=[
-             ("Warlock", "Destruction", "Bane", 5),
-             ("Warlock", "Destruction", "Cataclysm", 3), ("Warlock", "Destruction", "Aftermath", 2),
-             ("Warlock", "Destruction", "Ruin", 5),
+             ("Warlock", "Destruction", "Bane", 5), ("Warlock", "Destruction", "Cataclysm", 3),
+             ("Warlock", "Destruction", "Aftermath", 2), ("Warlock", "Destruction", "Ruin", 5),
              ("Warlock", "Destruction", "Intensity", 2), ("Warlock", "Destruction", "Improved Searing Pain", 3),
              ("Warlock", "Destruction", "Improved Immolate", 3), ("Warlock", "Destruction", "Devastation", 1),
-             ("Warlock", "Destruction", "Backlash", 3),
-             ("Warlock", "Destruction", "Emberstorm", 5),
+             ("Warlock", "Destruction", "Backlash", 3), ("Warlock", "Destruction", "Emberstorm", 5),
              ("Warlock", "Destruction", "Conflagrate", 1), ("Warlock", "Destruction", "Pyroclasm", 3),
-             ("Warlock", "Destruction", "Soul Leech", 3),
-             ("Warlock", "Destruction", "Shadow and Flame", 5),
-             ("Warlock", "Destruction", "Backdraft", 3),
-             ("Warlock", "Destruction", "Fire and Brimstone", 5),
+             ("Warlock", "Destruction", "Soul Leech", 3), ("Warlock", "Destruction", "Shadow and Flame", 5),
+             ("Warlock", "Destruction", "Backdraft", 3), ("Warlock", "Destruction", "Fire and Brimstone", 5),
              ("Warlock", "Destruction", "Molten Skin", 1),
-             ("Warrior", "Fury", "Cruelty", 5), ("Warrior", "Fury", "Armored to the Teeth", 3),
-             ("Warrior", "Fury", "Unbridled Wrath", 5),
-             ("Warrior", "Fury", "Improved Cleave", 3),
-             ("Warrior", "Fury", "Improved Execute", 2),
+             ("Warrior", "Fury", "Cruelty", 5), ("Warrior", "Fury", "Unbridled Wrath", 5),
+             ("Hero", "Hero", "Scavenger's Eye", 2), ("Hero", "Hero", "Overclocked", 1), ("Hero", "Hero", "Two Schools", 5),
          ]),
     dict(id=8, name="Rime Reaver",
-         description="Frozen rogue: chilling strikes and frost magic that slow and shatter.",
+         description="Frozen blade: chilling rogue strikes and frost magic that slow, lock down and shatter.",
          abilities=[
-             ("Rogue", "Frozen Sinister Strike"), ("Rogue", "Eviscerate"),
-             ("Rogue", "Frozen Backstab"), ("Mage", "Frostbolt"), ("Rogue", "Gouge"), ("Rogue", "Evasion"),
-             ("Mage", "Frost Nova"), ("Rogue", "Slice and Dice"), ("Rogue", "Kick"),
-             ("Rogue", "Frozen Ambush"), ("Rogue", "Rupture"), ("Rogue", "Vanish"),
-             ("Mage", "Cone of Cold"), ("Rogue", "Cheap Shot"), ("Rogue", "Kidney Shot"), ("Mage", "Ice Block"),
-             ("Rogue", "Blind"), ("Mage", "Ice Barrier"), ("Rogue", "Mutilate"),
-             ("Mage", "Ice Lance"), ("Rogue", "Cloak of Shadows"), ("Rogue", "Shiv"),
-             ("Rogue", "Frozen Fan of Knives"),
+             ("Rogue", "Frozen Sinister Strike"), ("Rogue", "Eviscerate"), ("Mage", "Frostbolt"), ("Rogue", "Gouge"),
+             ("Rogue", "Evasion"), ("Hero", "Fistful of Grit"), ("Mage", "Frost Nova"), ("Rogue", "Slice and Dice"),
+             ("Rogue", "Kick"), ("Hero", "Adrenaline"), ("Rogue", "Rupture"), ("Mage", "Cone of Cold"),
+             ("Rogue", "Kidney Shot"), ("Rogue", "Frozen Hemorrhage"), ("Hero", "Vertigo"), ("Mage", "Ice Barrier"),
+             ("Death Knight", "Icy Touch"), ("Death Knight", "Chains of Ice"), ("Death Knight", "Icebound Fortitude"),
+             ("Mage", "Ice Lance"), ("Rogue", "Cloak of Shadows"), ("Rogue", "Frozen Fan of Knives"),
          ],
          talents=[
-             ("Mage", "Frost", "Improved Frostbolt", 5),
-             ("Mage", "Frost", "Ice Shards", 3), ("Mage", "Frost", "Precision", 3),
-             ("Mage", "Frost", "Piercing Ice", 3), ("Mage", "Frost", "Icy Veins", 1),
-             ("Mage", "Frost", "Shatter", 3), ("Mage", "Frost", "Arctic Reach", 2), ("Mage", "Frost", "Frost Channeling", 3),
-             ("Mage", "Frost", "Cold Snap", 1), ("Mage", "Frost", "Frozen Core", 3),
-             ("Mage", "Frost", "Winter's Chill", 3), ("Mage", "Frost", "Cold as Ice", 2),
-             ("Mage", "Frost", "Frostbite", 1), ("Mage", "Frost", "Arctic Winds", 5),
-             ("Mage", "Frost", "Fingers of Frost", 2), ("Mage", "Frost", "Empowered Frostbolt", 2),
-             ("Mage", "Frost", "Brain Freeze", 3),
+             ("Mage", "Frost", "Improved Frostbolt", 5), ("Mage", "Frost", "Ice Shards", 3), ("Mage", "Frost", "Precision", 3),
+             ("Mage", "Frost", "Piercing Ice", 3), ("Mage", "Frost", "Icy Veins", 1), ("Mage", "Frost", "Arctic Reach", 2),
+             ("Mage", "Frost", "Frost Channeling", 3), ("Mage", "Frost", "Shatter", 3), ("Mage", "Frost", "Cold Snap", 1),
+             ("Mage", "Frost", "Improved Cone of Cold", 3), ("Mage", "Frost", "Frozen Core", 3),
+             ("Mage", "Frost", "Winter's Chill", 3), ("Mage", "Frost", "Arctic Winds", 5),
+             ("Mage", "Frost", "Fingers of Frost", 2), ("Mage", "Frost", "Ice Floes", 3),
              ("Mage", "Frost", "Chilled to the Bone", 5),
-             ("Mage", "Frost", "Deep Freeze", 1),
              ("Rogue", "Assassination", "Malice", 5), ("Rogue", "Assassination", "Improved Eviscerate", 3),
-             ("Rogue", "Assassination", "Ruthlessness", 3), ("Rogue", "Assassination", "Puncturing Wounds", 3),
-             ("Rogue", "Assassination", "Lethality", 5), ("Rogue", "Assassination", "Vigor", 1),
+             ("Rogue", "Assassination", "Ruthlessness", 3), ("Rogue", "Assassination", "Lethality", 5),
+             ("Mage", "Frost", "Frostbite", 2), ("Hero", "Hero", "Opportunist", 5),
          ]),
     dict(id=9, name="Stoneguard",
-         description="Earthen bear: slowing mauls and shaman totems, built to hold the line.",
+         description="Earthen bear: mauls that slow the enemy's swings, shaman shields laid on before the fight, cairns and anchors to hold the line.",
          abilities=[
-             ("Shaman", "Healing Wave"), ("Druid", "Mark of the Wild"), ("Shaman", "Rockbiter Weapon"),
-             ("Shaman", "Earth Shock"), ("Shaman", "Earthbind Totem"), ("Shaman", "Lightning Shield"),
-             ("Druid", "Bear Form"), ("Druid", "Earthen Maul"), ("Shaman", "Strength of Earth Totem"),
-             ("Druid", "Enrage"), ("Druid", "Bash"), ("Druid", "Swipe (Bear)"), ("Druid", "Faerie Fire (Feral)"),
-             ("Shaman", "Healing Stream Totem"), ("Druid", "Challenging Roar"),
-             ("Shaman", "Grounding Totem"), ("Shaman", "Windfury Weapon"), ("Druid", "Frenzied Regeneration"),
-             ("Druid", "Barkskin"), ("Shaman", "Earth Shield"), ("Druid", "Earthen Mangle (Bear)"),
-             ("Shaman", "Earth Elemental Totem"), ("Druid", "Lacerate"),
+             ("Shaman", "Healing Wave"), ("Hero", "Makeshift Strike"), ("Shaman", "Earth Shock"), ("Hero", "Brace"),
+             ("Shaman", "Lightning Shield"), ("Hero", "Draw Attention"), ("Druid", "Bear Form"), ("Druid", "Earthen Maul"),
+             ("Druid", "Enrage"), ("Druid", "Bash"), ("Hero", "Cairn"), ("Druid", "Swipe (Bear)"), ("Hero", "Ward Off"),
+             ("Druid", "Faerie Fire (Feral)"), ("Hero", "Bulwark Anchor"), ("Druid", "Challenging Roar"),
+             ("Druid", "Frenzied Regeneration"), ("Druid", "Barkskin"), ("Shaman", "Earth Shield"),
+             ("Druid", "Earthen Mangle (Bear)"), ("Druid", "Lacerate"),
          ],
          talents=[
-             ("Druid", "Feral Combat", "Ferocity", 5),
-             ("Druid", "Feral Combat", "Feral Instinct", 3), ("Druid", "Feral Combat", "Thick Hide", 3),
-             ("Druid", "Feral Combat", "Survival Instincts", 1), ("Druid", "Feral Combat", "Sharpened Claws", 3),
-             ("Druid", "Feral Combat", "Feral Swiftness", 2),
+             ("Druid", "Feral Combat", "Ferocity", 5), ("Druid", "Feral Combat", "Feral Instinct", 3),
+             ("Druid", "Feral Combat", "Thick Hide", 3), ("Druid", "Feral Combat", "Survival Instincts", 1),
+             ("Druid", "Feral Combat", "Sharpened Claws", 3), ("Druid", "Feral Combat", "Feral Swiftness", 2),
              ("Druid", "Feral Combat", "Predatory Strikes", 3), ("Druid", "Feral Combat", "Primal Fury", 2),
              ("Druid", "Feral Combat", "Feral Charge", 1), ("Druid", "Feral Combat", "Brutal Impact", 2),
              ("Druid", "Feral Combat", "Natural Reaction", 3), ("Druid", "Feral Combat", "Survival of the Fittest", 3),
-             ("Druid", "Feral Combat", "Heart of the Wild", 5),
-             ("Druid", "Feral Combat", "Leader of the Pack", 1), ("Druid", "Feral Combat", "Improved Leader of the Pack", 2),
+             ("Druid", "Feral Combat", "Heart of the Wild", 5), ("Druid", "Feral Combat", "Leader of the Pack", 1),
              ("Druid", "Feral Combat", "Protector of the Pack", 3), ("Druid", "Feral Combat", "Infected Wounds", 3),
-             ("Druid", "Feral Combat", "Primal Tenacity", 1),
-             ("Druid", "Feral Combat", "Rend and Tear", 5),
-             ("Druid", "Feral Combat", "Berserk", 1),
-             ("Shaman", "Enhancement", "Ancestral Knowledge", 5), ("Shaman", "Enhancement", "Enhancing Totems", 3),
-             ("Shaman", "Enhancement", "Improved Shields", 3), ("Shaman", "Enhancement", "Thundering Strikes", 5),
-             ("Shaman", "Enhancement", "Anticipation", 3),
+             ("Druid", "Feral Combat", "Primal Tenacity", 3), ("Druid", "Feral Combat", "Rend and Tear", 5),
+             ("Shaman", "Enhancement", "Improved Shields", 3), ("Shaman", "Enhancement", "Anticipation", 3),
+             ("Shaman", "Enhancement", "Toughness", 5),
+             ("Hero", "Hero", "Wider Net", 2), ("Hero", "Hero", "Last Reserve", 2), ("Hero", "Hero", "Thrift", 3),
+             ("Hero", "Hero", "Quick Deploy", 2),
          ]),
     dict(id=10, name="Venomstalker",
-         description="Venomous hunter: poisoned shots and stings, with a rogue's opening moves.",
+         description="Venomous hunter: poisoned shots and stings, a venom beetle at heel, and a rogue's tricks to stay out of reach.",
          abilities=[
-             ("Hunter", "Venomous Raptor Strike"), ("Rogue", "Stealth"), ("Hunter", "Serpent Sting"),
-             ("Hunter", "Arcane Shot"), ("Hunter", "Hunter's Mark"), ("Hunter", "Concussive Shot"),
+             ("Hunter", "Venomous Raptor Strike"), ("Hunter", "Serpent Sting"), ("Hunter", "Arcane Shot"),
+             ("Rogue", "Gouge"), ("Rogue", "Evasion"), ("Hero", "Fistful of Grit"), ("Hero", "Venom Beetle"),
              ("Hunter", "Aspect of the Hawk"), ("Rogue", "Sprint"), ("Hunter", "Wing Clip"),
-             ("Hunter", "Mongoose Bite"), ("Hunter", "Venomous Multi-Shot"), ("Hunter", "Venomous Aimed Shot"),
-             ("Hunter", "Freezing Trap"), ("Hunter", "Rapid Fire"), ("Hunter", "Feign Death"),
-             ("Hunter", "Counterattack"), ("Hunter", "Viper Sting"),
-             ("Hunter", "Wyvern Sting"), ("Hunter", "Volley"), ("Hunter", "Black Arrow"), ("Hunter", "Steady Shot"),
-             ("Hunter", "Snake Trap"), ("Hunter", "Venomous Kill Shot"), ("Rogue", "Tricks of the Trade"),
+             ("Hunter", "Venomous Multi-Shot"), ("Hero", "Ricochet Shot"), ("Hunter", "Venomous Aimed Shot"),
+             ("Hero", "Bleed Over"), ("Hunter", "Feign Death"), ("Rogue", "Blind"), ("Hunter", "Wyvern Sting"),
+             ("Hunter", "Steady Shot"), ("Hunter", "Black Arrow"), ("Hunter", "Venomous Kill Shot"),
+             ("Rogue", "Tricks of the Trade"), ("Rogue", "Venomous Fan of Knives"),
          ],
          talents=[
              ("Hunter", "Survival", "Savage Strikes", 2), ("Hunter", "Survival", "Hawk Eye", 3),
              ("Hunter", "Survival", "Surefooted", 3), ("Hunter", "Survival", "Survival Instincts", 2),
-             ("Hunter", "Survival", "Survivalist", 5),
-             ("Hunter", "Survival", "T.N.T.", 3), ("Hunter", "Survival", "Lock and Load", 3),
-             ("Hunter", "Survival", "Killer Instinct", 3), ("Hunter", "Survival", "Hunter vs. Wild", 3),
-             ("Hunter", "Survival", "Lightning Reflexes", 5),
-             ("Hunter", "Survival", "Thrill of the Hunt", 3), ("Hunter", "Survival", "Expose Weakness", 3),
-             ("Hunter", "Survival", "Noxious Stings", 3), ("Hunter", "Survival", "Master Tactician", 5),
-             ("Hunter", "Survival", "Sniper Training", 3), ("Hunter", "Survival", "Entrapment", 2),
-             ("Hunter", "Survival", "Hunting Party", 3),
-             ("Hunter", "Survival", "Explosive Shot", 1),
-             ("Rogue", "Assassination", "Malice", 5), ("Rogue", "Assassination", "Remorseless Attacks", 2),
-             ("Rogue", "Assassination", "Ruthlessness", 3), ("Rogue", "Assassination", "Puncturing Wounds", 3),
-             ("Rogue", "Assassination", "Lethality", 3),
+             ("Hunter", "Survival", "Survivalist", 5), ("Hunter", "Survival", "Lock and Load", 3),
+             ("Hunter", "Survival", "Hunter vs. Wild", 3), ("Hunter", "Survival", "Killer Instinct", 3),
+             ("Hunter", "Survival", "Lightning Reflexes", 5), ("Hunter", "Survival", "Expose Weakness", 3),
+             ("Hunter", "Survival", "Thrill of the Hunt", 3), ("Hunter", "Survival", "Master Tactician", 5),
+             ("Hunter", "Survival", "Noxious Stings", 3), ("Hunter", "Survival", "Sniper Training", 3),
+             ("Hunter", "Survival", "Hunting Party", 3), ("Hunter", "Survival", "Explosive Shot", 1),
+             ("Rogue", "Assassination", "Malice", 5), ("Rogue", "Combat", "Lightning Reflexes", 3),
+             ("Hero", "Hero", "Venom Handler", 3), ("Hero", "Hero", "Medicinal Venom", 1),
+             ("Hero", "Hero", "Ricochet Chamber", 2), ("Hero", "Hero", "Long Reach", 2), ("Hero", "Hero", "Opportunist", 5),
          ]),
     dict(id=11, name="Nightclaw",
-         description="Shadow cat: darkened claws and shreds, sharpened by the Shadow tree.",
+         description="Shadow cat: darkened claws and shreds from the prowl, shadow words before the pounce, sinkholes to hold prey.",
          abilities=[
-             ("Druid", "Wrath"), ("Druid", "Mark of the Wild"), ("Druid", "Healing Touch"),
-             ("Priest", "Shadow Word: Pain"), ("Druid", "Moonfire"), ("Druid", "Rejuvenation"), ("Priest", "Fade"),
-             ("Priest", "Mind Blast"), ("Druid", "Regrowth"),
-             ("Druid", "Cat Form"), ("Druid", "Shadow Claw"), ("Druid", "Prowl"), ("Druid", "Rip"),
-             ("Druid", "Shadow Shred"), ("Druid", "Tiger's Fury"), ("Druid", "Rake"),
-             ("Druid", "Ferocious Bite"), ("Druid", "Shadow Ravage"), ("Druid", "Pounce"),
-             ("Druid", "Feline Grace"), ("Druid", "Barkskin"), ("Druid", "Shadow Mangle (Cat)"),
-             ("Druid", "Shadow Maim"), ("Druid", "Shadow Swipe (Cat)"), ("Druid", "Savage Roar"),
+             ("Druid", "Wrath"), ("Hero", "Makeshift Strike"), ("Priest", "Shadow Word: Pain"), ("Hero", "Brace"),
+             ("Hero", "Fistful of Grit"), ("Priest", "Mind Blast"), ("Hero", "Wide Arc"), ("Hero", "Adrenaline"),
+             ("Hero", "Rattle"), ("Druid", "Cat Form"), ("Druid", "Shadow Claw"), ("Druid", "Rip"),
+             ("Druid", "Prowl"), ("Druid", "Shadow Shred"), ("Druid", "Rake"), ("Druid", "Tiger's Fury"),
+             ("Druid", "Shadow Ravage"), ("Druid", "Ferocious Bite"), ("Hero", "Vertigo"), ("Hero", "Sinkhole"),
+             ("Druid", "Shadow Mangle (Cat)"), ("Priest", "Shadowfiend"), ("Druid", "Shadow Swipe (Cat)"),
+             ("Druid", "Savage Roar"),
          ],
          talents=[
-             ("Priest", "Shadow", "Spirit Tap", 3), ("Priest", "Shadow", "Darkness", 5),
-             ("Priest", "Shadow", "Improved Spirit Tap", 2),
-             ("Priest", "Shadow", "Improved Shadow Word: Pain", 2), ("Priest", "Shadow", "Shadow Focus", 3),
-             ("Priest", "Shadow", "Improved Mind Blast", 5),
-             ("Priest", "Shadow", "Shadow Weaving", 3), ("Priest", "Shadow", "Veiled Shadows", 2),
-             ("Priest", "Shadow", "Vampiric Embrace", 1), ("Priest", "Shadow", "Focused Mind", 3),
-             ("Priest", "Shadow", "Mind Melt", 2), ("Priest", "Shadow", "Improved Vampiric Embrace", 2),
-             ("Priest", "Shadow", "Shadow Power", 5),
-             ("Priest", "Shadow", "Misery", 3),
-             ("Priest", "Shadow", "Pain and Suffering", 3), ("Priest", "Shadow", "Psychic Horror", 1),
-             ("Priest", "Shadow", "Twisted Faith", 5),
-             ("Druid", "Feral Combat", "Ferocity", 5),
-             ("Druid", "Feral Combat", "Savage Fury", 2), ("Druid", "Feral Combat", "Feral Instinct", 3),
-             ("Druid", "Feral Combat", "Sharpened Claws", 3), ("Druid", "Feral Combat", "Feral Swiftness", 2),
+             ("Druid", "Feral Combat", "Ferocity", 5), ("Druid", "Feral Combat", "Feral Aggression", 5),
+             ("Druid", "Feral Combat", "Feral Instinct", 3), ("Druid", "Feral Combat", "Savage Fury", 2),
+             ("Druid", "Feral Combat", "Sharpened Claws", 3), ("Druid", "Feral Combat", "Shredding Attacks", 2),
              ("Druid", "Feral Combat", "Predatory Strikes", 3), ("Druid", "Feral Combat", "Primal Fury", 2),
-             ("Druid", "Feral Combat", "Shredding Attacks", 1),
+             ("Druid", "Feral Combat", "Primal Precision", 2), ("Druid", "Feral Combat", "Heart of the Wild", 5),
+             ("Druid", "Feral Combat", "Leader of the Pack", 1), ("Druid", "Feral Combat", "Predatory Instincts", 3),
+             ("Druid", "Feral Combat", "King of the Jungle", 3), ("Druid", "Feral Combat", "Rend and Tear", 5),
+             ("Druid", "Feral Combat", "Primal Gore", 1), ("Druid", "Feral Combat", "Berserk", 1),
+             ("Priest", "Shadow", "Darkness", 5), ("Priest", "Shadow", "Improved Shadow Word: Pain", 2),
+             ("Hero", "Hero", "Overdraw", 3), ("Hero", "Hero", "Sharpened", 3),
+             ("Hero", "Hero", "Opportunist", 5), ("Hero", "Hero", "Wide Swing", 2), ("Hero", "Hero", "Two Schools", 5),
          ]),
     dict(id=12, name="Dawnward",
-         description="Holy bulwark: shield and strikes that heal you, backed by both Protection trees.",
+         description="Holy bulwark: hallowed strikes behind a shield, Consecration underfoot, anchors and banners for the line behind.",
          abilities=[
-             ("Warrior", "Holy Heroic Strike"), ("Paladin", "Holy Light"),
-             ("Paladin", "Seal of Righteousness"), ("Paladin", "Judgement of Light"), ("Paladin", "Blessing of Might"),
-             ("Paladin", "Divine Protection"), ("Paladin", "Hammer of Justice"), ("Warrior", "Bloodrage"),
-             ("Warrior", "Shield Bash"), ("Paladin", "Righteous Defense"), ("Paladin", "Righteous Fury"),
-             ("Warrior", "Shield Block"), ("Paladin", "Consecration"), ("Warrior", "Hallowed Cleave"),
-             ("Warrior", "Shield Wall"), ("Paladin", "Divine Shield"), ("Warrior", "Shield Slam"),
-             ("Paladin", "Holy Shield"), ("Paladin", "Cleanse"),
-             ("Warrior", "Holy Devastate"), ("Paladin", "Avenger's Shield"),
-             ("Paladin", "Greater Blessing of Kings"), ("Paladin", "Divine Plea"), ("Paladin", "Shield of Righteousness"),
+             ("Warrior", "Holy Heroic Strike"), ("Paladin", "Seal of Righteousness"), ("Paladin", "Judgement of Light"),
+             ("Hero", "Brace"), ("Paladin", "Hammer of Justice"), ("Hero", "Draw Attention"), ("Warrior", "Defensive Stance"),
+             ("Warrior", "Shield Bash"), ("Warrior", "Revenge"), ("Paladin", "Righteous Fury"), ("Warrior", "Shield Block"),
+             ("Hero", "Ward Off"), ("Paladin", "Consecration"), ("Warrior", "Hallowed Cleave"), ("Warrior", "Shield Wall"),
+             ("Hero", "Bulwark Anchor"), ("Hero", "Rally Point"), ("Paladin", "Holy Shield"), ("Warrior", "Shield Slam"),
+             ("Warrior", "Holy Devastate"), ("Paladin", "Avenger's Shield"), ("Warrior", "Spell Reflection"),
+             ("Paladin", "Divine Plea"), ("Paladin", "Shield of Righteousness"),
          ],
          talents=[
-             ("Paladin", "Protection", "Divine Strength", 5),
-             ("Paladin", "Protection", "Anticipation", 5),
-             ("Paladin", "Protection", "Toughness", 5), ("Paladin", "Protection", "Improved Righteous Fury", 3),
-             ("Paladin", "Protection", "Improved Hammer of Justice", 2),
+             ("Paladin", "Protection", "Divine Strength", 5), ("Paladin", "Protection", "Anticipation", 5),
+             ("Paladin", "Protection", "Improved Righteous Fury", 3), ("Paladin", "Protection", "Toughness", 5),
              ("Paladin", "Protection", "Blessing of Sanctuary", 1), ("Paladin", "Protection", "Reckoning", 5),
              ("Paladin", "Protection", "Sacred Duty", 2), ("Paladin", "Protection", "One-Handed Weapon Specialization", 3),
-             ("Paladin", "Protection", "Ardent Defender", 3), ("Paladin", "Protection", "Spiritual Attunement", 2),
+             ("Paladin", "Protection", "Spiritual Attunement", 2), ("Paladin", "Protection", "Ardent Defender", 3),
              ("Paladin", "Protection", "Redoubt", 3), ("Paladin", "Protection", "Combat Expertise", 3),
              ("Paladin", "Protection", "Touched by the Light", 3), ("Paladin", "Protection", "Guarded by the Light", 2),
-             ("Paladin", "Protection", "Stoicism", 2),
-             ("Paladin", "Protection", "Shield of the Templar", 3),
-             ("Paladin", "Protection", "Hammer of the Righteous", 1),
-             ("Warrior", "Protection", "Shield Specialization", 5), ("Warrior", "Protection", "Improved Bloodrage", 2),
-             ("Warrior", "Protection", "Incite", 3), ("Warrior", "Protection", "Anticipation", 5),
+             ("Paladin", "Protection", "Shield of the Templar", 3), ("Paladin", "Protection", "Hammer of the Righteous", 1),
+             ("Paladin", "Protection", "Improved Hammer of Justice", 1),
+             ("Warrior", "Protection", "Shield Specialization", 5), ("Warrior", "Protection", "Incite", 3),
              ("Warrior", "Protection", "Shield Mastery", 2), ("Warrior", "Protection", "Last Stand", 1),
+             ("Warrior", "Protection", "Improved Revenge", 2),
+             ("Hero", "Hero", "Last Reserve", 2), ("Hero", "Hero", "Thrift", 3), ("Hero", "Hero", "Quick Deploy", 3),
          ]),
     dict(id=13, name="Spellblade",
-         description="Arcane duelist: arcane-laced strikes, with Intellect turned into damage.",
+         description="Arcane duelist: arcane-laced rogue strikes, Crossdraw after every spell, and arcane magic to finish.",
          abilities=[
-             ("Rogue", "Arcane Sinister Strike"), ("Mage", "Arcane Intellect"), ("Rogue", "Eviscerate"),
-             ("Rogue", "Arcane Backstab"), ("Rogue", "Gouge"), ("Mage", "Arcane Missiles"), ("Rogue", "Evasion"),
-             ("Rogue", "Slice and Dice"), ("Rogue", "Kick"), ("Mage", "Arcane Explosion"),
-             ("Rogue", "Arcane Ambush"), ("Mage", "Blink"), ("Rogue", "Rupture"), ("Rogue", "Vanish"),
-             ("Mage", "Counterspell"), ("Rogue", "Cheap Shot"), ("Rogue", "Kidney Shot"),
-             ("Rogue", "Mutilate"), ("Mage", "Arcane Barrage"), ("Mage", "Arcane Blast"),
-             ("Rogue", "Cloak of Shadows"), ("Rogue", "Shiv"), ("Rogue", "Arcane Fan of Knives"),
+             ("Rogue", "Arcane Sinister Strike"), ("Rogue", "Eviscerate"), ("Hero", "Makeshift Strike"),
+             ("Rogue", "Gouge"), ("Mage", "Arcane Missiles"), ("Rogue", "Evasion"),
+             ("Rogue", "Slice and Dice"), ("Rogue", "Kick"), ("Hero", "Crossdraw"), ("Mage", "Arcane Explosion"),
+             ("Mage", "Blink"), ("Rogue", "Rupture"), ("Hero", "Borrowed Stance"), ("Mage", "Counterspell"),
+             ("Rogue", "Arcane Hemorrhage"), ("Rogue", "Kidney Shot"), ("Hero", "Repertoire"), ("Mage", "Arcane Barrage"),
+             ("Mage", "Arcane Blast"), ("Rogue", "Cloak of Shadows"), ("Hero", "Wildcard Surge"),
+             ("Rogue", "Arcane Fan of Knives"),
          ],
          talents=[
-             ("Mage", "Arcane", "Arcane Focus", 3), ("Mage", "Arcane", "Arcane Subtlety", 2),
-             ("Mage", "Arcane", "Arcane Concentration", 5),
-             ("Mage", "Arcane", "Spell Impact", 3), ("Mage", "Arcane", "Student of the Mind", 2),
-             ("Mage", "Arcane", "Torment the Weak", 3), ("Mage", "Arcane", "Arcane Meditation", 2),
-             ("Mage", "Arcane", "Presence of Mind", 1), ("Mage", "Arcane", "Arcane Mind", 5),
-             ("Mage", "Arcane", "Arcane Instability", 3), ("Mage", "Arcane", "Arcane Potency", 2),
-             ("Mage", "Arcane", "Arcane Power", 1), ("Mage", "Arcane", "Arcane Empowerment", 3),
-             ("Mage", "Arcane", "Mind Mastery", 5),
+             ("Mage", "Arcane", "Arcane Subtlety", 2), ("Mage", "Arcane", "Arcane Focus", 3),
+             ("Mage", "Arcane", "Arcane Concentration", 5), ("Mage", "Arcane", "Spell Impact", 3),
+             ("Mage", "Arcane", "Student of the Mind", 3), ("Mage", "Arcane", "Torment the Weak", 3),
+             ("Mage", "Arcane", "Arcane Meditation", 3), ("Mage", "Arcane", "Presence of Mind", 1),
+             ("Mage", "Arcane", "Arcane Mind", 5), ("Mage", "Arcane", "Arcane Instability", 3),
+             ("Mage", "Arcane", "Arcane Potency", 2), ("Mage", "Arcane", "Arcane Empowerment", 3),
+             ("Mage", "Arcane", "Arcane Power", 1), ("Mage", "Arcane", "Mind Mastery", 5),
              ("Rogue", "Combat", "Improved Sinister Strike", 2), ("Rogue", "Combat", "Dual Wield Specialization", 5),
              ("Rogue", "Combat", "Precision", 5), ("Rogue", "Combat", "Improved Slice and Dice", 2),
-             ("Rogue", "Combat", "Endurance", 1),
-             ("Rogue", "Combat", "Lightning Reflexes", 3), ("Rogue", "Combat", "Aggression", 5),
-             ("Rogue", "Combat", "Blade Flurry", 1), ("Rogue", "Combat", "Hack and Slash", 5),
-             ("Rogue", "Combat", "Weapon Expertise", 2),
+             ("Rogue", "Combat", "Aggression", 5),
+             ("Hero", "Hero", "Sharpened", 3), ("Hero", "Hero", "Two Schools", 5), ("Hero", "Hero", "Encore", 2),
+         ]),
+
+    # ---- built on the Hero line ---------------------------------------------------
+    dict(id=14, name="Vagabond",
+         description="Road-worn brawler: the Hero line at its core, fighting with whatever is to hand and a warrior's grit.",
+         core="Hero",
+         abilities=[
+             ("Hero", "Makeshift Strike"), ("Hero", "Hurl"), ("Warrior", "Charge"), ("Warrior", "Rend"),
+             ("Hero", "Brace"), ("Hero", "Second Nature"), ("Rogue", "Gouge"), ("Warrior", "Hamstring"),
+             ("Hero", "Fistful of Grit"), ("Hero", "Wide Arc"), ("Hero", "Adrenaline"), ("Warrior", "Overpower"),
+             ("Hero", "Rattle"), ("Hero", "Ward Off"), ("Hero", "Borrowed Stance"), ("Hero", "Hush"),
+             ("Warrior", "Execute"), ("Warrior", "Intercept"), ("Hero", "Vanguard Rush"), ("Hero", "Vertigo"),
+             ("Hero", "Quickening"), ("Hero", "Sinkhole"), ("Warrior", "Recklessness"), ("Hero", "Repertoire"),
+             ("Hero", "Wildcard Surge"), ("Warrior", "Enraged Regeneration"), ("Warrior", "Heroic Throw"),
+         ],
+         talents=[
+             ("Hero", "Hero", "Improvised Arsenal", 5), ("Hero", "Hero", "Field Repairs", 1),
+             ("Hero", "Hero", "Opportunist", 5), ("Hero", "Hero", "Weave", 3), ("Hero", "Hero", "Long Reach", 2),
+             ("Hero", "Hero", "Thrift", 3), ("Hero", "Hero", "Sharpened", 3), ("Hero", "Hero", "Wide Swing", 2),
+             ("Hero", "Hero", "Overdraw", 3), ("Hero", "Hero", "Adrenal Surge", 2), ("Hero", "Hero", "Encore", 3),
+             ("Hero", "Hero", "Two Schools", 3), ("Hero", "Hero", "Last Reserve", 2),
+             ("Warrior", "Arms", "Improved Rend", 2), ("Warrior", "Arms", "Improved Charge", 1),
+             ("Warrior", "Arms", "Tactical Mastery", 3), ("Warrior", "Arms", "Improved Overpower", 2),
+             ("Warrior", "Arms", "Anger Management", 1), ("Warrior", "Arms", "Impale", 2),
+             ("Warrior", "Arms", "Deep Wounds", 3), ("Warrior", "Arms", "Taste for Blood", 3), ("Warrior", "Arms", "Improved Hamstring", 3),
+             ("Warrior", "Fury", "Cruelty", 5), ("Warrior", "Fury", "Unbridled Wrath", 5),
+             ("Warrior", "Fury", "Improved Execute", 2), ("Warrior", "Fury", "Improved Intercept", 2),
+         ]),
+    dict(id=15, name="Field Marshal",
+         description="Battlefield commander: cairns, anchors, banners and a flame turret set down where the fight is, auras and shouts over it all.",
+         abilities=[
+             ("Paladin", "Seal of Righteousness"), ("Paladin", "Devotion Aura"), ("Hero", "Makeshift Strike"),
+             ("Warrior", "Battle Shout"), ("Paladin", "Blessing of Might"), ("Paladin", "Judgement of Light"),
+             ("Hero", "Brace"), ("Paladin", "Hammer of Justice"), ("Warrior", "Demoralizing Shout"), ("Hero", "Cairn"),
+             ("Paladin", "Retribution Aura"), ("Paladin", "Blessing of Kings"), ("Paladin", "Consecration"),
+             ("Hero", "Waystone"), ("Paladin", "Concentration Aura"), ("Warrior", "Intimidating Shout"),
+             ("Hero", "Overflow"), ("Hero", "Signal Fire"), ("Hero", "Bulwark Anchor"), ("Hero", "Rally Point"),
+             ("Paladin", "Divine Shield"), ("Hero", "Quicksilver"), ("Paladin", "Hammer of Wrath"),
+             ("Hero", "Reclaimed Sentry"), ("Paladin", "Greater Blessing of Kings"), ("Paladin", "Crusader Aura"),
+         ],
+         talents=[
+             ("Hero", "Hero", "Scavenger's Eye", 3), ("Hero", "Hero", "Wider Net", 2), ("Hero", "Hero", "Long Reach", 2),
+             ("Hero", "Hero", "Quick Deploy", 3), ("Hero", "Hero", "Thrift", 3), ("Hero", "Hero", "Broad Strokes", 1),
+             ("Hero", "Hero", "Overclocked", 1),
+             ("Paladin", "Holy", "Divine Intellect", 5),              ("Paladin", "Holy", "Aura Mastery", 1), ("Paladin", "Holy", "Improved Concentration Aura", 3),
+             ("Paladin", "Retribution", "Benediction", 5), ("Paladin", "Retribution", "Improved Blessing of Might", 2),
+             ("Paladin", "Retribution", "Heart of the Crusader", 3), ("Paladin", "Retribution", "Improved Judgements", 2),
+             ("Paladin", "Retribution", "Conviction", 5), ("Paladin", "Retribution", "Crusade", 3),
+             ("Paladin", "Protection", "Divine Strength", 5), ("Paladin", "Protection", "Toughness", 4),
+             ("Paladin", "Protection", "Improved Hammer of Justice", 2), ("Paladin", "Retribution", "Pursuit of Justice", 2), ("Paladin", "Protection", "Improved Devotion Aura", 3),
+             ("Warrior", "Fury", "Booming Voice", 2), ("Warrior", "Fury", "Commanding Presence", 5),
+             ("Warrior", "Fury", "Improved Demoralizing Shout", 4),
+         ]),
+    dict(id=16, name="Frostfire Adept",
+         description="Fire and frost in turns: mage bolts and shaman shocks of both schools, Antipode Blast to strike with both at once.",
+         abilities=[
+             ("Mage", "Fireball"), ("Shaman", "Healing Wave"), ("Mage", "Frostbolt"), ("Mage", "Fire Blast"),
+             ("Hero", "Second Nature"), ("Mage", "Frost Nova"), ("Shaman", "Flame Shock"), ("Shaman", "Searing Totem"),
+             ("Hero", "Emberfeed"), ("Shaman", "Fire Nova"), ("Hero", "Bolt Forward"), ("Hero", "Ward Off"),
+             ("Shaman", "Frost Shock"), ("Mage", "Pyroblast"), ("Mage", "Scorch"), ("Hero", "Antipode Blast"),
+             ("Mage", "Cone of Cold"), ("Mage", "Blast Wave"), ("Mage", "Dragon's Breath"), ("Mage", "Living Bomb"),
+             ("Mage", "Ice Lance"), ("Mage", "Frostfire Bolt"), ("Shaman", "Lava Burst"),
+         ],
+         talents=[
+             ("Mage", "Fire", "Improved Fireball", 5), ("Mage", "Fire", "Incineration", 3), ("Mage", "Fire", "Ignite", 5),
+             ("Mage", "Fire", "World in Flames", 3), ("Mage", "Fire", "Impact", 3), ("Mage", "Fire", "Burning Soul", 2),
+             ("Mage", "Fire", "Improved Scorch", 3), ("Mage", "Fire", "Master of Elements", 3),
+             ("Mage", "Fire", "Critical Mass", 3), ("Mage", "Fire", "Fire Power", 5), ("Mage", "Fire", "Pyromaniac", 3),
+             ("Mage", "Fire", "Combustion", 1), ("Mage", "Fire", "Molten Fury", 2),
+             ("Mage", "Frost", "Improved Frostbolt", 5), ("Mage", "Frost", "Ice Shards", 3), ("Mage", "Frost", "Precision", 3),
+             ("Mage", "Frost", "Piercing Ice", 3), ("Mage", "Frost", "Icy Veins", 1),
+             ("Shaman", "Elemental", "Convection", 5), ("Shaman", "Elemental", "Concussion", 5),
+             ("Hero", "Hero", "Two Schools", 5),
+         ]),
+    dict(id=17, name="Grifter",
+         description="Never fights fair: grit in the eyes, a hand in the pocket, sheep and sinkholes, and gone before the guards arrive.",
+         abilities=[
+             ("Rogue", "Stealth"), ("Rogue", "Sinister Strike"), ("Rogue", "Eviscerate"), ("Rogue", "Pick Pocket"),
+             ("Rogue", "Gouge"), ("Mage", "Polymorph"), ("Rogue", "Evasion"), ("Hero", "Fistful of Grit"),
+             ("Rogue", "Sap"), ("Mage", "Frost Nova"), ("Rogue", "Kick"), ("Hero", "Rattle"), ("Mage", "Blink"),
+             ("Hero", "Hush"), ("Rogue", "Vanish"), ("Mage", "Counterspell"), ("Rogue", "Cheap Shot"),
+             ("Rogue", "Kidney Shot"), ("Mage", "Ice Block"), ("Rogue", "Blind"), ("Hero", "Vertigo"),
+             ("Hero", "Sinkhole"), ("Mage", "Dragon's Breath"), ("Rogue", "Deadly Throw"),
+             ("Rogue", "Cloak of Shadows"), ("Mage", "Mirror Image"),
+         ],
+         talents=[
+             ("Rogue", "Subtlety", "Master of Deception", 3), ("Rogue", "Subtlety", "Opportunity", 2),
+             ("Rogue", "Subtlety", "Dirty Tricks", 2), ("Rogue", "Subtlety", "Camouflage", 3),
+             ("Rogue", "Subtlety", "Elusiveness", 2), ("Rogue", "Subtlety", "Initiative", 3),
+             ("Rogue", "Subtlety", "Setup", 3), ("Rogue", "Subtlety", "Preparation", 1),
+             ("Rogue", "Subtlety", "Dirty Deeds", 2), ("Rogue", "Subtlety", "Heightened Senses", 2),
+             ("Rogue", "Subtlety", "Master of Subtlety", 3), ("Rogue", "Subtlety", "Cheat Death", 3),
+             ("Rogue", "Combat", "Improved Gouge", 3), ("Rogue", "Combat", "Improved Kick", 2),
+             ("Rogue", "Combat", "Deflection", 2), ("Rogue", "Combat", "Endurance", 2), ("Rogue", "Combat", "Lightning Reflexes", 3),
+             ("Rogue", "Assassination", "Improved Kidney Shot", 3),
+             ("Mage", "Arcane", "Arcane Subtlety", 2), ("Mage", "Arcane", "Improved Counterspell", 2),
+             ("Mage", "Arcane", "Improved Blink", 2), ("Mage", "Arcane", "Prismatic Cloak", 3),
+             ("Mage", "Frost", "Frostbite", 3), ("Mage", "Frost", "Permafrost", 3), ("Mage", "Frost", "Ice Floes", 3),
+             ("Hero", "Hero", "Opportunist", 5), ("Hero", "Hero", "Wide Swing", 2), ("Hero", "Hero", "Long Reach", 2),
+         ]),
+    dict(id=18, name="Polymath",
+         description="A signature from every class and the Hero line to tie them together: Jack of All Trades, Repertoire, Wildcard Surge.",
+         abilities=[
+             ("Hero", "Makeshift Strike"), ("Rogue", "Sinister Strike"), ("Mage", "Fireball"), ("Paladin", "Holy Light"),
+             ("Warlock", "Corruption"), ("Druid", "Rejuvenation"), ("Warrior", "Charge"),
+             ("Priest", "Power Word: Shield"), ("Hunter", "Arcane Shot"), ("Rogue", "Evasion"), ("Warlock", "Fear"),
+             ("Shaman", "Flame Shock"), ("Hero", "Crossdraw"), ("Hero", "Borrowed Stance"), ("Mage", "Blink"),
+             ("Priest", "Flash Heal"), ("Mage", "Ice Block"), ("Shaman", "Chain Lightning"), ("Paladin", "Divine Shield"),
+             ("Warrior", "Whirlwind"), ("Druid", "Barkskin"), ("Shaman", "Earth Shield"), ("Warrior", "Recklessness"),
+             ("Hero", "Repertoire"), ("Death Knight", "Death Grip"), ("Hero", "Wildcard Surge"),
+             ("Paladin", "Avenging Wrath"),
+         ],
+         talents=[
+             ("Hero", "Hero", "Weave", 3), ("Hero", "Hero", "Sharpened", 3), ("Hero", "Hero", "Encore", 3),
+             ("Hero", "Hero", "Two Schools", 5), ("Hero", "Hero", "Jack of All Trades", 5),
+             ("Rogue", "Combat", "Precision", 5), ("Paladin", "Protection", "Divine Strength", 5),
+             ("Priest", "Discipline", "Twin Disciplines", 5), ("Druid", "Restoration", "Naturalist", 5),
+             ("Shaman", "Elemental", "Concussion", 5), ("Warlock", "Affliction", "Improved Corruption", 5),
+             ("Hunter", "Marksmanship", "Lethal Shots", 5), ("Paladin", "Retribution", "Conviction", 5),
+             ("Warrior", "Fury", "Cruelty", 5), ("Mage", "Fire", "Improved Fireball", 5),
+             ("Mage", "Arcane", "Arcane Subtlety", 2),
          ]),
 ]
 
@@ -481,8 +549,10 @@ BUILDS = [
 def read_conf(path):
     """The handful of Classless settings the schedule depends on, with the
     shipped defaults if the file lacks a key."""
+    # enforce_rows is off: the server has no points-in-tree gate any more (see
+    # BuyTalentRank), only the tier's level, so the simulation must not add one
     cfg = dict(starting_ae=3, essence_start=4, te_start=10, ae_per_level=1, te_per_level=1,
-               costs=[1, 2, 3, 5, 8], talent_cost=1, talent_flat=0, enforce_rows=1,
+               costs=[1, 2, 3, 5, 8], talent_cost=1, talent_flat=0, enforce_rows=0, forged=1,
                respect_levels=1, trainer_only=1, include_racials=0, include_passives=1,
                include_dk=1, elemental=1, elemental_in_pool=1, rarity_bump=1,
                replace_ability_talents=1)
@@ -505,6 +575,7 @@ def read_conf(path):
         "ClasslessWildcard.IncludeRacials": ("include_racials", int),
         "ClasslessWildcard.IncludePassives": ("include_passives", int),
         "ClasslessWildcard.IncludeDeathKnight": ("include_dk", int),
+        "ClasslessWildcard.Forged.Enable": ("forged", int),
     }
     if os.path.exists(path):
         for line in io.open(path, encoding="utf-8"):
@@ -538,7 +609,9 @@ class Pool:
         self.first_of, self.chain_of = self._ranks(os.path.join(base, "spell_ranks.sql"))
         self._abilities()
         self._variants(manifest)
+        self._forged()
         self._replaced_talents()
+        self._hero_talents()
 
     # ---- helpers ------------------------------------------------------------
     def name(self, spell_id):
@@ -777,6 +850,40 @@ class Pool:
                 element=ranks[0]["element"])
             self.variants += 1
 
+    def _forged(self):
+        """The Hero line, the way LoadForged registers it: every forged line
+        that is not a challenge reward, its ranks at the levels the forged
+        generator writes, its rarity from the recipe and its cost from that."""
+        self.forged = 0
+        if not self.cfg["forged"]:
+            return
+        for r in forged.RECIPES:
+            if r.get("reward"):
+                continue        # paid by a challenge run, never bought
+            first = forged.block_of(forged.pinned_index(r["key"]))
+            levels = [r["first_level"] + i * r["step"] for i in range(r["ranks"])]
+            levels = [lv for lv in levels if lv <= 80]
+            rarity = r["rarity"]
+            self.abilities[first] = dict(
+                first=first, class_mask=CLASS_BITS["Hero"], ranks=[first + i for i in range(len(levels))],
+                levels=levels, name=r["name"], passive=bool(r.get("passive")), enabled=True,
+                rarity=rarity, cost=self.cfg["costs"][rarity], forged=True)
+            self.forged += 1
+
+    def _hero_talents(self):
+        """The Hero talent tab, as the forged generator writes it to
+        talent_dbc: no prerequisites, tiers opening at 10 + 5 per row."""
+        if not self.cfg["forged"]:
+            return
+        self.tabs[forged.HERO_TALENT_TAB] = ("Hero", CLASS_BITS["Hero"])
+        for n, tal in enumerate(forged.TALENTS):
+            tid = forged.TALENT_ID_BASE + n
+            spells = [forged.TALENT_SPELL_BASE + n * forged.TALENT_SPELL_STRIDE + r for r in range(tal["ranks"])]
+            self.talents[tid] = dict(id=tid, tab=forged.HERO_TALENT_TAB, tab_name="Hero",
+                                     class_mask=CLASS_BITS["Hero"], row=tal["row"], col=tal["col"],
+                                     spells=spells, max_rank=tal["ranks"], depends_on=0,
+                                     depends_on_rank=0, name=tal["name"])
+
     def _replaced_talents(self):
         """Ability talents, the way ResolveTalentAbilityLines sees them: a
         talent whose rank spell heads an ability line, or teaches one through
@@ -879,6 +986,7 @@ def resolve(pool, build):
         if any(a["first"] == e["first"] for a in abilities):
             problems.append("%s: %s listed twice" % (build["name"], name))
             continue
+        e = dict(e, listed_as=cls)    # the class this build takes it from
         abilities.append(e)
     talents = []
     for cls, tab, name, rank in build["talents"]:
@@ -899,7 +1007,121 @@ def resolve(pool, build):
         talents.append((t, rank))
     # abilities are bought in unlock order; keep list order within a level
     abilities.sort(key=lambda e: e["levels"][0])
-    return abilities, talents, problems
+    # talents are bought strictly in list order, so a high tier listed early
+    # would hold back every cheaper rank after it: buy them tier by tier,
+    # keeping list order within a tier (a prerequisite in the same tier is
+    # listed first)
+    talents.sort(key=lambda tr: tr[0]["row"])
+    return abilities, talents, problems + design_problems(pool, build, abilities, talents)
+
+
+MAX_SHARE = 0.55        # no one source supplies more than this share of a build
+EARLY = 10              # every main source has an ability unlocking by this level
+MIN_HERO = 3            # Hero line abilities in every build
+
+RECIPE_KEY = {r["name"]: r["key"] for r in forged.RECIPES}
+# What each Hero talent needs the build to own: "any" of the lines it modifies
+# (read off the talent's own `affects`), or for the scripted ones the lines
+# their script reads. "all" lists lines that must every one be owned.
+HERO_TALENT_LINES = {t["name"]: dict(any=set(t["affects"]), all=set())
+                     for t in forged.TALENTS if t.get("affects")}
+HERO_TALENT_LINES.update({
+    "Improvised Arsenal": dict(any=set(), all={"makeshift_strike", "hurl"}),
+    "Field Repairs": dict(any={"second_nature", "adrenaline"}, all=set()),
+    "Last Reserve": dict(any=set(), all={"ward_off"}),
+    "Venom Handler": dict(any=set(), all={"venom_beetle"}),
+    "Medicinal Venom": dict(any=set(), all={"venom_beetle"}),
+    "Field Study": dict(any=set(), all={"emberfeed", "bleed_over"}),
+    "Opportunist": dict(any={"kick_dirt", "vertigo", "sinkhole"}, all=set()),
+    "Adrenal Surge": dict(any=set(), all={"quickening"}),
+    "Overclocked": dict(any=set(), all={"reclaimed_sentry"}),
+    "Broad Strokes": dict(any=set(), all={"overflow"}),
+})
+JACK_STEP = next(t["extra"][0] for t in forged.TALENTS if t["name"] == "Jack of All Trades")
+
+
+def source_of(e):
+    """Which source an ability line counts for: "Hero", or the class it was
+    listed under (a line several classes share counts once, for the first)."""
+    if e.get("forged"):
+        return "Hero"
+    return e.get("listed_as") or "?"
+
+
+def design_problems(pool, build, abilities, talents):
+    """The archetype rules: a real mix of sources from the first levels, the
+    Hero line in every build, and talents from more than one tree."""
+    out = []
+    name = build["name"]
+    counts = collections.Counter(source_of(e) for e in abilities)
+    first = {}
+    for e in abilities:
+        first.setdefault(source_of(e), e["levels"][0])
+    classes = [s for s in counts if s != "Hero"]
+    if len(classes) < 2:
+        out.append("%s: abilities from %d class(es); an archetype mixes at least two" % (name, len(classes)))
+    if counts.get("Hero", 0) < MIN_HERO:
+        out.append("%s: %d Hero line abilities; every archetype uses at least %d" % (name, counts.get("Hero", 0), MIN_HERO))
+    core = build.get("core")      # a build may be built around one source on purpose
+    for src, n in counts.items():
+        if src != core and n > MAX_SHARE * len(abilities):
+            out.append("%s: %s supplies %d of %d abilities, more than %d%%" % (name, src, n, len(abilities), MAX_SHARE * 100))
+    for src, n in counts.most_common():
+        # the main sources (more than three abilities) all show up early
+        if n > 3 and first[src] > EARLY:
+            out.append("%s: the first %s ability unlocks at %d; every main source starts by level %d"
+                       % (name, src, first[src], EARLY))
+    trees = {t["tab"] for t, _ in talents}
+    if len(trees) < 2:
+        out.append("%s: talents from one tree; an archetype draws on at least two" % name)
+    # a Hero talent that reaches no line the build owns is ranks spent on nothing
+    owned = {RECIPE_KEY.get(e["name"]) for e in abilities if e.get("forged")}
+    for t, _ in talents:
+        if t["tab_name"] != "Hero":
+            continue
+        lines = HERO_TALENT_LINES.get(t["name"])
+        if lines is None:
+            continue
+        missing = sorted(lines["all"] - owned)
+        if lines["any"] and not lines["any"] & owned:
+            missing.append("one of " + "/".join(sorted(lines["any"])))
+        if missing:
+            out.append("%s: %s needs %s, which the build does not buy"
+                       % (name, t["name"], " and ".join(missing)))
+    # Jack of All Trades pays one step per three classes owned (the Hero line
+    # is no class); OwnedClassMask counts class talents as well as abilities
+    jack = [r for t, r in talents if t["name"] == "Jack of All Trades" and t["tab_name"] == "Hero"]
+    if jack:
+        mask = 0
+        for e in abilities:
+            if not e.get("forged"):
+                mask |= e["class_mask"]
+        for t, _ in talents:
+            if t["tab_name"] != "Hero":
+                mask |= t["class_mask"]
+        classes = bin(mask & 0x7FF).count("1")
+        if classes < JACK_STEP:
+            out.append("%s: Jack of All Trades pays per %d classes and the build has %d; it does nothing"
+                       % (name, JACK_STEP, classes))
+    total = sum(r for _, r in talents)
+    if total != 71:
+        out.append("%s: %d talent ranks planned; the essence schedule pays exactly 71 by level 80" % (name, total))
+    return out
+
+
+def mix_report(abilities, talents):
+    counts = collections.Counter(source_of(e) for e in abilities)
+    first = {}
+    for e in abilities:
+        first.setdefault(source_of(e), e["levels"][0])
+    trees = collections.Counter()
+    for t, r in talents:
+        trees[t["tab_name"]] += r
+    early = [e["name"] for e in abilities if e["levels"][0] <= 12]
+    return ("  mix: %s" + "\n" + "  trees: %s" + "\n" + "  levels 1-12: %s") % (
+        ", ".join("%s %d (from L%d)" % (s, n, first[s]) for s, n in counts.most_common()),
+        ", ".join("%s %d" % kv for kv in trees.most_common()),
+        ", ".join(early))
 
 
 LATE_LEVELS = 3   # an ability bought more than this many levels after it unlocks is a pacing problem
@@ -1043,8 +1265,8 @@ def main(argv=None):
     args = ap.parse_args(argv)
 
     pool = Pool(args.dbc, args.core, read_conf(args.conf), args.manifest)
-    print("pool: %d ability lines (%d elemental variants), %d talents" % (
-        sum(1 for e in pool.abilities.values() if e["enabled"]), pool.variants, len(pool.talents)))
+    print("pool: %d ability lines (%d elemental variants, %d Hero line), %d talents" % (
+        sum(1 for e in pool.abilities.values() if e["enabled"]), pool.variants, pool.forged, len(pool.talents)))
     if args.catalog:
         if args.catalog not in CLASS_BITS:
             sys.exit("class must be one of: " + ", ".join(CLASS_BITS))
@@ -1060,6 +1282,7 @@ def main(argv=None):
         for line in ledger:
             print(line)
         print(summary)
+        print(mix_report(abilities, talents))
         for p in problems:
             print("  PROBLEM " + p)
         failed = failed or bool(problems)

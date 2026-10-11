@@ -577,15 +577,15 @@ def test_archetypes(h):
     h.check("Ranger" in str(rows[1].name["__text"]), "row 1 is the new archetype")
     h.check(fly.list.scroll["__h"] == 58 and fly.list.child["__h"] == 58, "one row: the list is one row tall, nothing to scroll")
 
-    # the shipped realm sends thirteen: rows are made on demand and the list
+    # the shipped realm sends eighteen: rows are made on demand and the list
     # scrolls instead of growing the flyout past the panel
-    for i in range(1, 14):
+    for i in range(1, 19):
         h.recv("AR|%d|Build %d|Description %d.|24|71|0" % (i, i, i))
     h.recv("ARE|")
-    h.check(rows[13] is not None and rows[13]["__shown"] is True and rows[14] is None,
-            "thirteen rows exist and show, no fourteenth")
-    h.check("Build 13" in str(rows[13].name["__text"]), "row 13 is the last archetype")
-    h.check(fly.list.child["__h"] == 13 * 62 - 4, "scroll child holds all thirteen (%s)" % fly.list.child["__h"])
+    h.check(rows[18] is not None and rows[18]["__shown"] is True and rows[19] is None,
+            "eighteen rows exist and show, no nineteenth")
+    h.check("Build 18" in str(rows[18].name["__text"]), "row 18 is the last archetype")
+    h.check(fly.list.child["__h"] == 18 * 62 - 4, "scroll child holds all eighteen (%s)" % fly.list.child["__h"])
     h.check(fly.list.scroll["__h"] == 440, "visible list capped at 440 (%s)" % fly.list.scroll["__h"])
     h.check(fly["__h"] == 88 + 440 + 14, "flyout sized to the capped list (%s)" % fly["__h"])
     h.clear_sent()
@@ -655,11 +655,11 @@ def test_wizard(h):
             "page 1 again hides rows and shows the path buttons")
     h.check(CW.wizArchList.scroll["__shown"] is False, "page 1 again hides the list")
 
-    # thirteen archetypes: the wizard stops growing at the list cap and scrolls
-    for i in range(1, 14):
+    # eighteen archetypes: the wizard stops growing at the list cap and scrolls
+    for i in range(1, 19):
         h.recv("AR|%d|Build %d|Description %d.|24|71|0" % (i, i, i))
     h.recv("ARE|")
-    h.check(rows[13]["__shown"] is True and CW.wizArchList.scroll["__shown"] is True, "thirteen rows shown in the list")
+    h.check(rows[18]["__shown"] is True and CW.wizArchList.scroll["__shown"] is True, "eighteen rows shown in the list")
     h.check(CW.wizArchList.scroll["__h"] == 440 and wizard["__h"] == 72 + 440 + 52,
             "wizard sized to the capped list (%s)" % wizard["__h"])
     h.clear_sent()
