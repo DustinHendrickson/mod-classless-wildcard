@@ -3310,7 +3310,15 @@ do
     local E = CreateFrame("Frame", "ClasslessWildcardBuildEditor", frame)
     E:SetPoint("TOPLEFT", frame, "TOPLEFT", BUILD_X, PANE_TOP - 30)
     E:SetPoint("BOTTOMRIGHT", frame, "BOTTOMLEFT", BUILD_X + W, 64)
-    E:SetFrameLevel(frame:GetFrameLevel() + 20)
+    -- Kept above the panel. The panel is toplevel, so every click on it
+    -- raises its level, and a level set once at load soon falls under it:
+    -- the panel's opaque ground then covers the editor, which still works
+    -- but cannot be seen. Lifted on open and whenever the panel overtakes it.
+    function E.Lift()
+        local want = frame:GetFrameLevel() + 20
+        if E:GetFrameLevel() < want then E:SetFrameLevel(want) end
+    end
+    E.Lift()
     E:EnableMouse(true)
     E:Hide()
     CW.buildEditor = E
@@ -3462,6 +3470,7 @@ do
 
     -- the preview a moment after the last change, not one per keystroke
     E:SetScript("OnUpdate", function()
+        E.Lift()
         if E.previewDue and GetTime() >= E.previewDue then
             E.previewDue = nil
             local b = E.build
@@ -4005,7 +4014,12 @@ do
         WidenScopes()
         ScopeLabels()
         E.scroll:SetVerticalScroll(0)
+        local opening = not E:IsShown()
+        E.Lift()
         E:Show()
+        if opening then
+            UIErrorsFrame:AddMessage("Click abilities and talents on the left to add them to the build.", 1.0, 0.82, 0.0)
+        end
         if not frame:IsShown() then frame:Show() end
         E.previewDue = GetTime()
         CW.RenderBuildEditor()
@@ -4031,8 +4045,8 @@ do
             Open(nextBuild.build, nextBuild.index)
             return
         end
-        E:Hide()
         E.build = nil
+        E:Hide()
         RestoreScopes()
         ScopeLabels()
         if CW.SetTab then CW.SetTab(CW.tab) end
@@ -4043,6 +4057,16 @@ do
         end
         E.fromFly = nil
     end
+
+    -- Escape hides the editor straight away. It is shown again and closed
+    -- the proper way, so unsaved changes still ask and the lists come back.
+    -- Hiding the whole panel leaves it open (still shown, just not visible).
+    E:SetScript("OnHide", function()
+        if E.build and not E:IsShown() then
+            E:Show()
+            CW.CloseBuildEditor()
+        end
+    end)
 
     function CW.CloseBuildEditor()
         if E.dirty and E.build and #E.build.abilities + #E.build.talents > 0 then
@@ -9465,7 +9489,7 @@ end
 do
     local FLYOUTS = { "ClasslessWildcardStats", "ClasslessWildcardArchetypes", "ClasslessWildcardHelp",
                       "ClasslessWildcardSettings", "ClasslessWildcardRebirth", "ClasslessWildcardRuns",
-                      "ClasslessWildcardArchPlan" }
+                      "ClasslessWildcardArchPlan", "ClasslessWildcardBuildEditor" }
     local function Listed(name, on)
         for i = #UISpecialFrames, 1, -1 do
             if UISpecialFrames[i] == name then tremove(UISpecialFrames, i) end

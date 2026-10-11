@@ -3706,6 +3706,13 @@ def test_custom_builds(h):
             "the lists show every level while a build is drafted")
     h.check(CW.buildRows[1]["__shown"] is False and E["__shown"] is True,
             "the My Build column gives way to the editor")
+    # A click raises the toplevel panel; the editor must climb back over it,
+    # or the panel's opaque ground hides it while it still takes clicks.
+    panel = h.rt.eval("ClasslessWildcardFrame")
+    panel["__level"] = (E["__level"] or 0) + 5
+    E["__scripts"]["OnUpdate"](E, 0.1)
+    h.check(E["__level"] > panel["__level"], "the editor stays above the panel after the panel is raised: %r over %r"
+            % (E["__level"], panel["__level"]))
     h.recv("AB|1|0|1|5308:1:2:0:0:24:2;")
     w = CW.abilEntries[1]
     h.clear_sent()
@@ -3730,6 +3737,16 @@ def test_custom_builds(h):
     tw["__scripts"]["OnClick"](tw, "RightButton")
     tal = [list(t.values()) for t in E["build"]["talents"].values()]
     h.check([1234, 1] in tal, "a right-click on a talent takes one rank off: %r" % tal)
+    # Escape closes the editor before the panel, and asks over unsaved changes
+    CW.SyncEscape()
+    listed = [str(v) for v in g.UISpecialFrames.values()]
+    h.check("ClasslessWildcardBuildEditor" in listed and "ClasslessWildcardFrame" not in listed,
+            "with the editor open, Escape would close the editor and leave the panel: %r" % listed)
+    g.LAST_POPUP = None
+    E["__shown"] = False
+    E["__scripts"]["OnHide"](E)
+    h.check(g.LAST_POPUP == "CW_CLASSLESS_DISCARDBUILD" and E["__shown"] is True and E["build"] is not None,
+            "Escape with changes asks first, and the editor stays until answered")
     # Close with changes asks; accepting leaves the editor and puts things back
     h.click(E["cancel"])
     h.check(g.LAST_POPUP == "CW_CLASSLESS_DISCARDBUILD" and E["__shown"] is True, "closing with changes asks first")
