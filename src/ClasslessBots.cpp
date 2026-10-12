@@ -1073,7 +1073,7 @@ namespace
         void Pick() override
         {
             bool healer = _kit->role == ClasslessBots::ROLE_HEAL;
-            float range = sPlayerbotAIConfig.healDistance;
+            float range = botAI->GetRange("heal");
 
             // who needs it: a healer looks after everyone, anyone else after
             // themselves and a party member in real trouble
@@ -1245,7 +1245,7 @@ namespace
     protected:
         void Pick() override
         {
-            std::vector<Unit*> friends = _party ? Friends(bot, sPlayerbotAIConfig.spellDistance) : std::vector<Unit*>{ bot };
+            std::vector<Unit*> friends = _party ? Friends(bot, botAI->GetRange("spell")) : std::vector<Unit*>{ bot };
             for (Unit* target : friends)
                 for (KitSpell const& ks : _kit->spells)
                 {
@@ -1445,7 +1445,7 @@ namespace
             if (!enemy || !enemy->IsAlive())
                 return;
             if (!IsStrongTarget(enemy)
-                && EnemiesNear(botAI, bot, bot, sPlayerbotAIConfig.spellDistance) < GUARDIAN_MIN_ENEMIES)
+                && EnemiesNear(botAI, bot, bot, botAI->GetRange("spell")) < GUARDIAN_MIN_ENEMIES)
                 return;
             for (KitSpell const& ks : _kit->spells)
                 if (ks.kind == Kind::Guardian && !HasOut(ks.entry) && Usable(ks, enemy))
