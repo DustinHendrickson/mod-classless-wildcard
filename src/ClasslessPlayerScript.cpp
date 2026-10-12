@@ -715,6 +715,7 @@ public:
         trans->Append("DELETE FROM cw_char_custom_archetype WHERE guid = {}", guid);
         trans->Append("DELETE FROM cw_char_runs WHERE guid = {}", guid);
         trans->Append("DELETE FROM cw_char_nemeses WHERE guid = {}", guid);
+        trans->Append("DELETE FROM cw_char_nemesis_heads WHERE guid = {}", guid);
         sClasslessMgr->UnloadState(ObjectGuid::Create<HighGuid::Player>(guid));
     }
 

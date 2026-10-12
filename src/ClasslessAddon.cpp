@@ -1110,12 +1110,14 @@ namespace
                         title = SanitizeText(n);
                 }
                 // field 11: the path the run asks for (0 Classless, 1 Wildcard,
-                // 255 either), so the page can say who may start it
-                SendAddon(player, Acore::StringFormat("CH|{}|{}|{}|{}|{}|{}|{}|{}|{}|{}",
+                // 255 either), so the page can say who may start it; field 12:
+                // the nemesis heads it asks for besides the level cap (0 none)
+                SendAddon(player, Acore::StringFormat("CH|{}|{}|{}|{}|{}|{}|{}|{}|{}|{}|{}",
                     uint32(ch.id), ch.name, uint32(ch.lives), ch.rewardGold, ch.rule,
                     best != st.runBest.end() ? uint32(best->second.first) : 0u,
                     best != st.runBest.end() && best->second.second ? 1 : 0, reward, title,
-                    uint32(ch.path)));
+                    uint32(ch.path),
+                    ch.id == uint8(ChallengeId::Nemesis) ? uint32(NEMESIS_HEADS_TO_FINISH) : 0u));
                 // How the rule plays, in full, as "CD|id|text" pieces the addon
                 // joins in order. Split on spaces, because one addon message
                 // carries about 255 characters and a full explanation does not

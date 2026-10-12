@@ -402,10 +402,14 @@ private:
     ClasslessWildcard::TalentPoolEntry const* ChooseTalent(Player* player, ClasslessWildcard::CharState& st,
                                                            std::vector<uint32> const& exclude, bool& synergy);
     void SaveNemeses(ObjectGuid guid, ClasslessWildcard::CharState const& st);
+    void SaveNemesisHeads(ObjectGuid guid, ClasslessWildcard::CharState const& st);
+    // Has the live run met what it asks for besides the level cap? Only
+    // Nemesis asks for more: its heads.
+    bool RunGoalMet(ClasslessWildcard::CharState const& st) const;
     void ApplyNemesisTo(Creature* creature, ClasslessWildcard::NemesisMark const& mark);
     // Nemesis levels already applied to a live creature, by guid: a creature
     // engaged twice is not grown twice, and one that died is forgotten.
-    std::unordered_map<ObjectGuid, uint8> _nemesisApplied;
+    std::unordered_map<ObjectGuid, std::pair<uint8, uint8>> _nemesisApplied;   // levels, deaths
     bool IsBanned(ClasslessWildcard::CharState const& st, bool isTalent, uint32 entry) const;
     // Release every reroll cooldown of one kind. Used when the level-legal pool
     // has been starved by them; returns true if anything was actually freed.

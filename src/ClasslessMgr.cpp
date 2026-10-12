@@ -2939,7 +2939,7 @@ bool ClasslessMgr::Rebirth(Player* player, std::vector<uint32> const& heirlooms,
     // A Rebirth ends any run the character is on. It is at the level cap, so
     // a run with a life left is finished; the new life can start a new one.
     if (st.run)
-        EndRun(player, st.lives > 0);
+        EndRun(player, st.lives > 0 && RunGoalMet(st));
 
     uint32 const guid = player->GetGUID().GetCounter();
     GrantGuard bulk(_bulkCorrections);   // one push at the end, not one per spell
@@ -3080,16 +3080,21 @@ namespace
     uint32 NextHunterIn() { return urand(HUNTER_MIN_S, HUNTER_MAX_S); }
     constexpr uint8  NEMESIS_LEVELS_PER_KILL = 5;
     constexpr uint8  NEMESIS_LEVEL_CAP = 83;
-    constexpr float  NEMESIS_SCALE = 1.25f;        // the one cue the client cannot ignore
+    // How much bigger a nemesis is than its kind, the one cue the client
+    // cannot ignore: a quarter at the first death, more with every death
+    // after, up to twice its size.
+    constexpr float  NEMESIS_SCALE_FIRST = 1.25f;
+    constexpr float  NEMESIS_SCALE_PER_DEATH = 0.15f;
+    constexpr float  NEMESIS_SCALE_MAX = 2.0f;
 
     std::vector<Challenge> const CHALLENGES = {
         // id, key, name, lives, rule, gold, title (TITLES in gen_forged_spells.py), the reward
         // line (a forged recipe flagged `reward`), how the rule plays in full, and tips. Lives follow how often the rule itself kills:
         // five where the world is turned up, three where the fight changes shape, one only where
         // the rule IS death. The list is in the order the picker shows it.
-        { 1,  "nemesis",         "Nemesis",         5, "Whatever kills you grows. It gains five levels, becomes elite and remembers you. Kill it to take the levels back as XP.", 500, 186, "mark_of_the_nemesis",
-          "A creature that kills you becomes your nemesis. Every creature of that kind gains five levels, elite health and damage, and grows larger, for the rest of the run. If that kind kills you again it gains five more, up to thirty. Kill one and the mark is lifted, and the levels it took come back to you as experience. Pets, totems and summoned creatures are never marked.",
-          "Remember what killed you. Avoid that kind of creature until you are ready, then hunt one down to take the levels back. A nemesis that has grown more is worth more experience when it falls. Be careful in places full of the same creature, since every one of them carries the mark." },
+        { 1,  "nemesis",         "Nemesis",         UNLIMITED_LIVES, "Unlimited lives. Whatever kills you takes the experience in your bar, gains five levels and grows. Slay five different nemeses and reach level 80 to finish.", 500, 186, "mark_of_the_nemesis",
+          "You have unlimited lives on this run. A creature that kills you becomes your nemesis and takes all the experience in your current level's bar, though never the level itself. Every creature of that kind gains five levels, elite health and damage, and grows larger, for the rest of the run. Each time that kind kills you again it gains five more levels, up to thirty, grows larger still and takes your bar again. Kill one and the mark is lifted, all the experience that kind took comes back to you, and you take its head. To finish, reach level 80 holding five heads, each from a different kind of creature. Reaching 80 first does not end the run, it ends the moment the fifth head is yours. Pets, totems and summoned creatures are never marked.",
+          "Remember what killed you. Avoid that kind of creature until you are ready, then hunt one down to take your experience back and its head. A kind you already have a head from earns no second one, so five heads means falling to five different kinds and coming back for each. Every death to the same kind makes it stronger and costs you another bar. Be careful in places full of the same creature, since every one of them carries the mark." },
         { 2,  "elite_world",     "Elite World",     5, "Every enemy you fight is an elite, with triple health and double damage.", 750, 187, "giantsbane",
           "The moment an enemy engages you or your pet it gains triple health, and every hit it lands on you or your pet deals double damage. This applies to every creature in the world, dungeons included. Pull one at a time, and use every stun, slow and snare you own.",
           "Pull one enemy at a time and rest between fights. Stuns, fears, slows and snares matter far more than usual. Anything that would be a fair fight on your own is now a group fight, so find others for it." },
@@ -3214,12 +3219,19 @@ bool ClasslessMgr::StartRun(Player* player, uint8 challengeId, std::string* err)
     }
 
     st.run = ch->id;
-    st.livesMax = ch->lives + st.extraLife;
+    if (ch->lives == UNLIMITED_LIVES)
+        st.livesMax = UNLIMITED_LIVES;  // nothing to add to: an extra life waits for the next run
+    else
+    {
+        st.livesMax = ch->lives + st.extraLife;
+        st.extraLife = 0;
+    }
     st.lives = st.livesMax;
-    st.extraLife = 0;
     st.runData = st.run == uint8(ChallengeId::Pursued) ? NextHunterIn() : 0;
     st.nemeses.clear();
     SaveNemeses(player->GetGUID(), st);
+    st.nemesisHeads.clear();
+    SaveNemesisHeads(player->GetGUID(), st);
     st.hunterTimerMs = 0;
 
     uint32 mailed = 0;
@@ -3246,8 +3258,11 @@ bool ClasslessMgr::StartRun(Player* player, uint8 challengeId, std::string* err)
     }
 
     SaveState(player);
-    Msg(player, Acore::StringFormat("|cffffd100{}|r begins. {} You have {} {}.{}",
-        ch->name, ch->rule, uint32(st.lives), st.lives == 1 ? "life" : "lives", MailedNotice(mailed)));
+    if (st.livesMax == UNLIMITED_LIVES)
+        Msg(player, Acore::StringFormat("|cffffd100{}|r begins. {}{}", ch->name, ch->rule, MailedNotice(mailed)));
+    else
+        Msg(player, Acore::StringFormat("|cffffd100{}|r begins. {} You have {} {}.{}",
+            ch->name, ch->rule, uint32(st.lives), st.lives == 1 ? "life" : "lives", MailedNotice(mailed)));
     PushRunTracker(player);
     return true;
 }
@@ -3265,7 +3280,12 @@ void ClasslessMgr::LoseLife(Player* player, Unit* killer)
     if (!ch)
         return;
 
-    if (st->lives)
+    // An unlimited run counts its deaths in runData instead, for the record
+    // and for the Unbroken title.
+    bool const unlimited = st->livesMax == UNLIMITED_LIVES;
+    if (unlimited)
+        ++st->runData;
+    else if (st->lives)
         --st->lives;
 
     std::string what;
@@ -3292,11 +3312,15 @@ void ClasslessMgr::LoseLife(Player* player, Unit* killer)
     SaveState(player);
     PushAddon(player, Acore::StringFormat("RD|{}|{}|{}", uint32(st->lives), uint32(st->livesMax), what));
     PushRunTracker(player);
-    Msg(player, Acore::StringFormat("|cffff4444A life lost.|r {}: {} of {} {} left.{}{}",
-        ch->name, uint32(st->lives), uint32(st->livesMax), st->livesMax == 1 ? "life" : "lives",
-        what.empty() ? "" : " ", what));
+    if (unlimited)
+        Msg(player, Acore::StringFormat("|cffff4444You died.|r {}{}{}", ch->name,
+            what.empty() ? "." : ": ", what));
+    else
+        Msg(player, Acore::StringFormat("|cffff4444A life lost.|r {}: {} of {} {} left.{}{}",
+            ch->name, uint32(st->lives), uint32(st->livesMax), st->livesMax == 1 ? "life" : "lives",
+            what.empty() ? "" : " ", what));
 
-    if (!st->lives)
+    if (!unlimited && !st->lives)
         EndRun(player, false);
 }
 
@@ -3308,7 +3332,9 @@ void ClasslessMgr::EndRun(Player* player, bool finished)
         return;
 
     uint8 const level = player->GetLevel();
-    uint8 const used = st.livesMax > st.lives ? st.livesMax - st.lives : 0;
+    bool const unlimited = st.livesMax == UNLIMITED_LIVES;
+    uint8 const used = unlimited ? uint8(std::min<uint32>(st.runData, 255))
+                                 : (st.livesMax > st.lives ? st.livesMax - st.lives : 0);
     uint32 shards = level + (level > 60 ? uint32(level - 60) : 0);
     if (!used)
         shards += shards / 3;
@@ -3362,6 +3388,8 @@ void ClasslessMgr::EndRun(Player* player, bool finished)
     st.runData = 0;
     st.nemeses.clear();
     SaveNemeses(player->GetGUID(), st);
+    st.nemesisHeads.clear();
+    SaveNemesisHeads(player->GetGUID(), st);
     DespawnHunter(player);
     switch (ChallengeId(run))
     {
@@ -3384,9 +3412,13 @@ void ClasslessMgr::EndRun(Player* player, bool finished)
         gold ? Acore::StringFormat(" and |cffffffff{}|r gold", gold) : std::string());
     if (finished)
     {
-        Msg(player, Acore::StringFormat("|cff00ff00Challenge complete: {}.|r You reached level {} with {} of {} {} left. "
-            "The rule lifts.", ch->name, uint32(level), uint32(livesLeft), uint32(livesMax),
-            livesMax == 1 ? "life" : "lives"));
+        if (unlimited)
+            Msg(player, Acore::StringFormat("|cff00ff00Challenge complete: {}.|r You reached level {} after {} {}. "
+                "The rule lifts.", ch->name, uint32(level), uint32(used), used == 1 ? "death" : "deaths"));
+        else
+            Msg(player, Acore::StringFormat("|cff00ff00Challenge complete: {}.|r You reached level {} with {} of {} {} left. "
+                "The rule lifts.", ch->name, uint32(level), uint32(livesLeft), uint32(livesMax),
+                livesMax == 1 ? "life" : "lives"));
         Msg(player, Acore::StringFormat("You earn {}.{}", earned,
             repeat ? " Gold is paid for the first finish only." : ""));
         if (rewardSpell)
@@ -3395,7 +3427,8 @@ void ClasslessMgr::EndRun(Player* player, bool finished)
         if (!titleText.empty())
             Msg(player, Acore::StringFormat("New title: |cffffd100{}|r.", titleText));
         if (!used)
-            Msg(player, Acore::StringFormat("Not a life lost: a third more shards{}.", unbrokenText.empty() ? ""
+            Msg(player, Acore::StringFormat("{}: a third more shards{}.", unlimited ? "Not a single death" : "Not a life lost",
+                unbrokenText.empty() ? ""
                 : Acore::StringFormat(", and the title |cffffd100{}|r", unbrokenText)));
     }
     else
@@ -3429,14 +3462,19 @@ void CW_ReLevelCreature(Creature* creature, uint8 level, bool elite);
 
 void ClasslessMgr::ApplyNemesisTo(Creature* creature, NemesisMark const& mark)
 {
-    uint8& applied = _nemesisApplied[creature->GetGUID()];
-    if (applied == mark.levels)
+    // levels and deaths already applied to this creature
+    std::pair<uint8, uint8>& applied = _nemesisApplied[creature->GetGUID()];
+    if (applied.first == mark.levels && applied.second == mark.kills)
         return;
-    uint8 const base = creature->GetLevel() > applied ? creature->GetLevel() - applied : 1;
+    uint8 const base = creature->GetLevel() > applied.first ? creature->GetLevel() - applied.first : 1;
     uint8 const level = uint8(std::min<uint32>(uint32(base) + mark.levels, NEMESIS_LEVEL_CAP));
     CW_ReLevelCreature(creature, level, true);
-    creature->SetObjectScale(NEMESIS_SCALE);
-    applied = mark.levels;
+    // larger with every death, against the creature's own size, so a big
+    // kind stays big and a small one grows from small
+    uint32 const deaths = std::max<uint32>(mark.kills, 1);
+    float const grow = std::min(NEMESIS_SCALE_FIRST + NEMESIS_SCALE_PER_DEATH * float(deaths - 1), NEMESIS_SCALE_MAX);
+    creature->SetObjectScale(creature->GetNativeObjectScale() * grow);
+    applied = { mark.levels, mark.kills };
 }
 
 std::string ClasslessMgr::MarkNemesis(Player* player, Creature* killer)
@@ -3447,11 +3485,24 @@ std::string ClasslessMgr::MarkNemesis(Player* player, Creature* killer)
     CharState& st = GetState(player);
     NemesisMark& mark = st.nemeses[killer->GetEntry()];
     mark.levels = uint8(std::min<uint32>(uint32(mark.levels) + NEMESIS_LEVELS_PER_KILL, 30));
-    ++mark.kills;
+    if (mark.kills < 255)
+        ++mark.kills;
+
+    // The bar goes, down to a single point: the level itself is never taken.
+    uint32 const bar = player->GetUInt32Value(PLAYER_XP);
+    uint32 const took = bar > 1 ? bar - 1 : 0;
+    if (took)
+    {
+        player->SetUInt32Value(PLAYER_XP, 1);
+        mark.stolen = uint32(std::min<uint64>(uint64(mark.stolen) + took, 0xFFFFFFFF));
+    }
     SaveNemeses(player->GetGUID(), st);
     ApplyNemesisTo(killer, mark);
-    return Acore::StringFormat("{} is now level {} and elite. It remembers you.",
-                               killer->GetName(), uint32(killer->GetLevel()));
+    if (!took)
+        return Acore::StringFormat("{} is now level {} and elite. It remembers you.",
+                                   killer->GetName(), uint32(killer->GetLevel()));
+    return Acore::StringFormat("{} takes {} experience, and is now level {} and elite. Kill one to take it all back.",
+                               killer->GetName(), took, uint32(killer->GetLevel()));
 }
 
 bool ClasslessMgr::ApplyNemesis(Player* player, Creature* creature)
@@ -3474,15 +3525,41 @@ void ClasslessMgr::NemesisSlain(Player* player, Creature* creature)
     auto itr = st->nemeses.find(creature->GetEntry());
     if (itr == st->nemeses.end())
         return;
-    // the levels come back as XP: a twentieth of a level for each
-    uint32 const xp = player->GetUInt32Value(PLAYER_NEXT_LEVEL_XP) * itr->second.levels / 20;
+    // Everything that kind took comes back, exactly: GiveXP runs none of the
+    // XP hooks (Rebirth's rate is applied by the kill and quest code that
+    // calls it), and with no victim there is no rested bonus either.
+    uint32 const back = itr->second.stolen;
     st->nemeses.erase(itr);
     SaveNemeses(player->GetGUID(), *st);
-    if (xp)
-        player->GiveXP(xp, nullptr);
-    Msg(player, Acore::StringFormat("|cff00ff00Your nemesis is dead.|r {} falls, and {} XP comes back to you.",
-        creature->GetName(), xp));
+    bool const newHead = st->nemesisHeads.insert(creature->GetEntry()).second;
+    if (newHead)
+        SaveNemesisHeads(player->GetGUID(), *st);
+    if (back)
+    {
+        player->GiveXP(back, nullptr);
+        Msg(player, Acore::StringFormat("|cff00ff00Your nemesis is dead.|r {} falls, and the {} experience it took "
+            "comes back to you.", creature->GetName(), back));
+    }
+    else
+        Msg(player, Acore::StringFormat("|cff00ff00Your nemesis is dead.|r {} falls.", creature->GetName()));
+    uint32 const heads = uint32(st->nemesisHeads.size());
+    if (newHead)
+        Msg(player, Acore::StringFormat("You take its head: |cffffd100{} of {}|r.", heads,
+            uint32(NEMESIS_HEADS_TO_FINISH)));
+    else
+        Msg(player, "You already hold a head from this kind of creature.");
     PushRunTracker(player);
+
+    // At the cap already, the last head is what finishes the run.
+    if (player->GetLevel() >= sWorld->getIntConfig(CONFIG_MAX_PLAYER_LEVEL) && RunGoalMet(*st))
+        EndRun(player, true);
+}
+
+bool ClasslessMgr::RunGoalMet(CharState const& st) const
+{
+    if (st.run == uint8(ChallengeId::Nemesis))
+        return st.nemesisHeads.size() >= NEMESIS_HEADS_TO_FINISH;
+    return true;
 }
 
 void ClasslessMgr::ForgetCreature(ObjectGuid guid)
@@ -3861,7 +3938,7 @@ void ClasslessMgr::LoadCharacter(Player* player, CharState& st)
     }
 
     if (QueryResult result = CharacterDatabase.Query(
-        "SELECT creature_entry, levels, kills FROM cw_char_nemeses WHERE guid = {}", guid))
+        "SELECT creature_entry, levels, kills, stolen FROM cw_char_nemeses WHERE guid = {}", guid))
     {
         do
         {
@@ -3869,8 +3946,17 @@ void ClasslessMgr::LoadCharacter(Player* player, CharState& st)
             NemesisMark mark;
             mark.levels = f[1].Get<uint8>();
             mark.kills = f[2].Get<uint8>();
+            mark.stolen = f[3].Get<uint32>();
             st.nemeses[f[0].Get<uint32>()] = mark;
         } while (result->NextRow());
+    }
+
+    if (QueryResult result = CharacterDatabase.Query(
+        "SELECT creature_entry FROM cw_char_nemesis_heads WHERE guid = {}", guid))
+    {
+        do
+            st.nemesisHeads.insert(result->Fetch()[0].Get<uint32>());
+        while (result->NextRow());
     }
 
     // The character's own build, when it follows one. Anything the realm has
@@ -3977,8 +4063,17 @@ void ClasslessMgr::SaveNemeses(ObjectGuid guid, CharState const& st)
     CharacterDatabase.Execute("DELETE FROM cw_char_nemeses WHERE guid = {}", low);
     for (auto const& [entry, mark] : st.nemeses)
         CharacterDatabase.Execute(
-            "INSERT INTO cw_char_nemeses (guid, creature_entry, levels, kills) VALUES ({}, {}, {}, {})",
-            low, entry, uint32(mark.levels), uint32(mark.kills));
+            "INSERT INTO cw_char_nemeses (guid, creature_entry, levels, kills, stolen) VALUES ({}, {}, {}, {}, {})",
+            low, entry, uint32(mark.levels), uint32(mark.kills), mark.stolen);
+}
+
+void ClasslessMgr::SaveNemesisHeads(ObjectGuid guid, CharState const& st)
+{
+    uint32 const low = guid.GetCounter();
+    CharacterDatabase.Execute("DELETE FROM cw_char_nemesis_heads WHERE guid = {}", low);
+    for (uint32 entry : st.nemesisHeads)
+        CharacterDatabase.Execute("INSERT INTO cw_char_nemesis_heads (guid, creature_entry) VALUES ({}, {})",
+            low, entry);
 }
 
 bool ClasslessMgr::SetDisplayPower(Player* player, uint8 powerIdx, std::string* err)
@@ -4847,9 +4942,19 @@ void ClasslessMgr::HandleLevelUp(Player* player, uint8 oldLevel)
     GrantRidingSkill(player);
     GrantRuneforging(player);
 
-    // A run ends the moment the cap is reached with a life in hand.
+    // A run ends the moment the cap is reached with a life in hand, and
+    // Nemesis once its heads are taken as well.
     if (st.run && newLevel >= sWorld->getIntConfig(CONFIG_MAX_PLAYER_LEVEL))
-        EndRun(player, true);
+    {
+        if (RunGoalMet(st))
+            EndRun(player, true);
+        else
+        {
+            uint32 const left = NEMESIS_HEADS_TO_FINISH - uint32(st.nemesisHeads.size());
+            Msg(player, Acore::StringFormat("|cffffd100Nemesis|r: level {} reached. Take {} more nemesis {} to finish.",
+                uint32(newLevel), left, left == 1 ? "head" : "heads"));
+        }
+    }
 
     if (uint32 freed = ClearStaleLocks(player))
         Msg(player, Acore::StringFormat(

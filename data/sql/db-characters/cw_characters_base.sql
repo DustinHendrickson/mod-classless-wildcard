@@ -42,8 +42,15 @@ CREATE TABLE IF NOT EXISTS `cw_char_nemeses` (
   `creature_entry` INT UNSIGNED NOT NULL,
   `levels` TINYINT UNSIGNED NOT NULL DEFAULT 0,
   `kills` TINYINT UNSIGNED NOT NULL DEFAULT 0,
+  `stolen` INT UNSIGNED NOT NULL DEFAULT 0 COMMENT 'experience this kind took, returned when one dies',
   PRIMARY KEY (`guid`, `creature_entry`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='Nemesis marks on the live run';
+
+CREATE TABLE IF NOT EXISTS `cw_char_nemesis_heads` (
+  `guid` INT UNSIGNED NOT NULL,
+  `creature_entry` INT UNSIGNED NOT NULL,
+  PRIMARY KEY (`guid`, `creature_entry`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='Nemesis heads on the live run: kinds slain while marked';
 
 -- (databases created by an older version are upgraded to this shape by
 --  cw_characters_rerolls.sql, which runs after this file)

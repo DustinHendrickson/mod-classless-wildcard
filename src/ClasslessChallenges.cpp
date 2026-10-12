@@ -174,7 +174,8 @@ namespace
 //              the seconds left when the warning comes
 //   Pursued    1 while a hunter is out, its level
 //   Berserker  the low and high health percents, the damage given up above
-//   Nemesis    how many kinds are marked; list "name:levels;..." (the first few)
+//   Nemesis    how many kinds are marked, heads taken, heads needed to finish;
+//              list "name:levels:experience held;..." (the first few)
 // Every other run sends zeros: its rule has nothing that changes.
 void ClasslessMgr::PushRunTracker(Player* player)
 {
@@ -207,11 +208,13 @@ void ClasslessMgr::PushRunTracker(Player* player)
             break;
         case ChallengeId::Nemesis:
             a = uint32(st->nemeses.size());
+            b = uint32(st->nemesisHeads.size());
+            c = NEMESIS_HEADS_TO_FINISH;
             for (auto const& [entry, mark] : st->nemeses)
             {
                 CreatureTemplate const* tmpl = sObjectMgr->GetCreatureTemplate(entry);
-                std::string item = Acore::StringFormat("{}:{};", TrackerText(tmpl ? tmpl->Name : "Unknown"),
-                                                       uint32(mark.levels));
+                std::string item = Acore::StringFormat("{}:{}:{};", TrackerText(tmpl ? tmpl->Name : "Unknown"),
+                                                       uint32(mark.levels), mark.stolen);
                 if (list.size() + item.size() > 140)   // the message's own budget
                     break;
                 list += item;

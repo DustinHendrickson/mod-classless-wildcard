@@ -351,6 +351,21 @@ function CW.SetPip(pip, shown, alive)
     if alive then pip.gem:Show() else pip.gem:Hide() end
 end
 
+-- A run with no limit on lives (Nemesis) carries this number for both its
+-- lives and the lives it started with. It shows as one full heart.
+CW.UNLIMITED_LIVES = 255
+function CW.Unlimited(n) return (n or 0) == CW.UNLIMITED_LIVES end
+-- how many hearts to draw for a run that started with `max`
+function CW.PipCount(max, cap)
+    if CW.Unlimited(max) then return 1 end
+    return math.min(cap, max or 0)
+end
+-- "3 of 5 lives left", or "unlimited lives"
+function CW.LivesLeftText(lives, max)
+    if CW.Unlimited(max) then return "unlimited lives" end
+    return (lives or 0) .. " of " .. (max or 0) .. ((max or 0) == 1 and " life" or " lives") .. " left"
+end
+
 -- The run badge, top-right under the close button: the challenge being run,
 -- its reward ability's icon, and one heart per life it started with. Hover it
 -- for the whole challenge (how it plays, lives, the clock where there is one,
@@ -452,17 +467,24 @@ do
         GameTooltip:AddLine(" ")
         GameTooltip:AddLine(c.detail ~= "" and c.detail or c.rule, 1, 1, 1, true)
         GameTooltip:AddLine(" ")
-        GameTooltip:AddDoubleLine("Lives", (s.lives or 0) .. " of " .. (s.livesMax or 0) .. " left",
+        local unlimited = CW.Unlimited(s.livesMax)
+        GameTooltip:AddDoubleLine("Lives", unlimited and "Unlimited" or ((s.lives or 0) .. " of " .. (s.livesMax or 0) .. " left"),
             1, 0.82, 0, 1, 1, 1)
         if (s.hourglassLeft or 0) > 0 then
             local left = s.hourglassLeft - (GetTime() - (CW.hourglassAt or GetTime()))
             local low = left < 300 and 0.4 or 1   -- red in the last five minutes, as the warning says
             GameTooltip:AddDoubleLine("This level's clock", Minutes(left) .. " left", 1, 0.82, 0, 1, low, low)
         end
-        GameTooltip:AddLine("A death costs one life. Battlegrounds, arenas and duels cost nothing. "
-            .. "Run out and the rule lifts; you keep your level, gear and build.", 0.7, 0.7, 0.7, true)
+        if unlimited then
+            GameTooltip:AddLine("A death never ends this run.", 0.7, 0.7, 0.7, true)
+        else
+            GameTooltip:AddLine("A death costs one life. Battlegrounds, arenas and duels cost nothing. "
+                .. "Run out and the rule lifts; you keep your level, gear and build.", 0.7, 0.7, 0.7, true)
+        end
         GameTooltip:AddLine(" ")
-        GameTooltip:AddLine("Reach level 80 with a life left for", 1, 0.82, 0)
+        local goal = (c.heads or 0) > 0 and ("Reach level 80 with " .. c.heads .. " nemesis heads for")
+            or (unlimited and "Reach level 80 for" or "Reach level 80 with a life left for")
+        GameTooltip:AddLine(goal, 1, 0.82, 0)
         GameTooltip:AddDoubleLine("Gold", "|cffffffff" .. (c.gold or 0)
             .. "|r|TInterface\\MoneyFrame\\UI-GoldIcon:14:14:2:0|t", 0.8, 0.8, 0.8, 1, 1, 1)
         local title = (c.title or ""):gsub("%%s", UnitName("player") or "you")
@@ -511,7 +533,7 @@ function CW.UpdateLives()
     local c = CW.challengesById and CW.challengesById[s.run]
     CW.runText:SetText("|cffff5544" .. (c and c.name or ("Challenge " .. s.run)) .. "|r")
     b.icon:SetTexture(c and (c.reward or 0) > 0 and SpellIcon(c.reward) or "Interface\\Icons\\INV_Misc_Bone_HumanSkull_01")
-    local n = math.min(#icons, s.livesMax)
+    local n = CW.PipCount(s.livesMax, #icons)
     for i = 1, #icons do
         CW.SetPip(icons[i], i <= n, i <= (s.lives or 0))
     end
@@ -1611,7 +1633,11 @@ do
         local iconSpell = reward > 0 and reward or (ch and ch.reward or 0)
 
         local run = { { "Level reached", tostring(level) } }
-        if max > 0 then tinsert(run, { "Lives left", left .. " of " .. max }) end
+        if CW.Unlimited(max) then
+            tinsert(run, { "Lives", "Unlimited" })
+        elseif max > 0 then
+            tinsert(run, { "Lives left", left .. " of " .. max })
+        end
         local rewards = { { "Shards", tostring(shards), GOLD, CW.SHARD_ICON } }
         if gold > 0 then tinsert(rewards, { "Gold", tostring(gold), GOLD, "Interface\\MoneyFrame\\UI-GoldIcon" }) end
         if reward > 0 then
@@ -1767,6 +1793,11 @@ do
             pip:SetPoint("LEFT", r, "LEFT", 136 + (k - 1) * 13, 0)
             r.pips[k] = pip
         end
+        -- beside the one heart of a run with no limit on lives
+        r.unlimited = r:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+        r.unlimited:SetPoint("LEFT", r, "LEFT", 136 + 15, 0)
+        r.unlimited:SetText("|cffaaaaaaunlimited|r")
+        r.unlimited:Hide()
         r.done = r:CreateTexture(nil, "OVERLAY")
         r.done:SetWidth(16); r.done:SetHeight(16)
         r.done:SetPoint("LEFT", r, "LEFT", 218, 0)
@@ -1989,7 +2020,7 @@ do
         local cap = CW.rules.maxLevel
         local status
         local live = CW.challengesById and CW.challengesById[s.run or 0]
-        local lives = (s.lives or 0) .. " of " .. (s.livesMax or 0) .. ((s.livesMax or 0) == 1 and " life" or " lives") .. " left"
+        local lives = CW.LivesLeftText(s.lives, s.livesMax)
         -- Only what the player cannot already tell: whether it can start. When
         -- the run ends is under Lives and Rewards below.
         if (s.run or 0) > 0 and s.run == c.id then
@@ -2009,31 +2040,44 @@ do
 
         -- lives
         y = PlaceHeader(fly.hLives, y)
-        local extra = (s.extraLife or 0) > 0 and 1 or 0
-        local total = math.min(6, c.lives + extra)
+        local unlimited = CW.Unlimited(c.lives)
+        local extra = (s.extraLife or 0) > 0 and not unlimited and 1 or 0
+        local total = unlimited and 1 or math.min(6, c.lives + extra)
         for k = 1, 6 do
             local pip = fly.lifePips[k]
             pip:ClearAllPoints()
             pip:SetPoint("TOPLEFT", C, "TOPLEFT", (k - 1) * 19, -(y + 1))
             CW.SetPip(pip, k <= total, true)
         end
-        fly.livesText:SetText("|cffffffff" .. c.lives .. (c.lives == 1 and " life" or " lives") .. "|r on this challenge"
-            .. (extra > 0 and ", |cff00ff00plus the extra life you hold|r" or "") .. ". "
-            .. "A death costs one. Deaths in battlegrounds, arenas and duels cost nothing. "
-            .. "Run out and the run ends: the rule lifts, and you keep your level, gear and build.")
+        if unlimited then
+            fly.livesText:SetText("|cffffffffUnlimited lives|r on this challenge. A death never ends the run"
+                .. ((s.extraLife or 0) > 0 and ", and the extra life you hold waits for your next run." or "."))
+        else
+            fly.livesText:SetText("|cffffffff" .. c.lives .. (c.lives == 1 and " life" or " lives") .. "|r on this challenge"
+                .. (extra > 0 and ", |cff00ff00plus the extra life you hold|r" or "") .. ". "
+                .. "A death costs one. Deaths in battlegrounds, arenas and duels cost nothing. "
+                .. "Run out and the run ends: the rule lifts, and you keep your level, gear and build.")
+        end
         Place(fly.livesText, 0, y + 24)
         y = y + 24 + H(fly.livesText, 32) + 18
 
         -- rewards: a label column and a value column, every value a sentence
         y = PlaceHeader(fly.hReward, y)
-        fly.rewardIntro:SetText("Paid once, when you reach level " .. CW.rules.maxLevel .. " with at least one life left.")
+        local goal = " with at least one life left."
+        if (c.heads or 0) > 0 then
+            goal = " with " .. c.heads .. " nemesis heads, each from a different kind of creature."
+        elseif CW.Unlimited(c.lives) then
+            goal = "."
+        end
+        fly.rewardIntro:SetText("Paid once, when you reach level " .. CW.rules.maxLevel .. goal)
         Place(fly.rewardIntro, 0, y)
         y = y + H(fly.rewardIntro, 12) + 10
         local title = (c.title or ""):gsub("%%s", player)
         local rows = {
             { "Gold", Coin(c.gold) },
             { "Title", title ~= "" and ("|cffe6cc80" .. title .. "|r") or "None" },
-            { "Flawless run", "Finish without losing a life to also earn |cffe6cc80" .. player
+            { "Flawless run", "Finish without " .. (CW.Unlimited(c.lives) and "dying" or "losing a life")
+                .. " to also earn |cffe6cc80" .. player
                 .. " the Unbroken|r and a third more shards." },
             { "Shards", "Paid whenever the run ends, whether you finish or not. You earn one per level reached, and two per level past 60." },
         }
@@ -2151,7 +2195,9 @@ do
                 r.id = c.id
                 local mark = fly.selected == c.id
                 r.name:SetText((mark and "|cffffd100" or "|cffffffff") .. c.name .. "|r")
-                for k = 1, 6 do CW.SetPip(r.pips[k], k <= c.lives, true) end
+                local pips = CW.PipCount(c.lives, 6)
+                for k = 1, 6 do CW.SetPip(r.pips[k], k <= pips, true) end
+                if CW.Unlimited(c.lives) then r.unlimited:Show() else r.unlimited:Hide() end
                 if c.finished == 1 then r.done:Show() else r.done:Hide() end
                 r.gold:SetText(Coin(c.gold, 12))
                 if mark then
@@ -2174,8 +2220,12 @@ do
             fly.rule:SetText(c.rule)
             FillDetail(c, s)
             fly.scroll:Show()
-            local lives = math.min(6, c.lives + ((s.extraLife or 0) > 0 and 1 or 0))
-            fly.summary:SetText("Starts with |cffffffff" .. lives .. (lives == 1 and " life" or " lives") .. "|r")
+            if CW.Unlimited(c.lives) then
+                fly.summary:SetText("Starts with |cffffffffunlimited lives|r")
+            else
+                local lives = math.min(6, c.lives + ((s.extraLife or 0) > 0 and 1 or 0))
+                fly.summary:SetText("Starts with |cffffffff" .. lives .. (lives == 1 and " life" or " lives") .. "|r")
+            end
             local canStart = (s.run or 0) == 0 and s.runReady == 1 and CW.RunPathFits(c)
             if canStart then fly.start:Enable() else fly.start:Disable() end
         else
@@ -2205,9 +2255,15 @@ do
         local chosen = #CW.challenges > 0 and Selected() or nil
         if not chosen then return end
         fly.pendingId = chosen.id
-        local lives = chosen.lives + ((s.extraLife or 0) > 0 and 1 or 0)
-        StaticPopup_Show("CW_RUN_CONFIRM", "|cffff4444" .. chosen.name .. "|r with " .. lives
-            .. (lives == 1 and " life" or " lives") .. ".\n\n" .. chosen.rule)
+        local livesText
+        if CW.Unlimited(chosen.lives) then
+            livesText = "unlimited lives"
+        else
+            local lives = chosen.lives + ((s.extraLife or 0) > 0 and 1 or 0)
+            livesText = lives .. (lives == 1 and " life" or " lives")
+        end
+        StaticPopup_Show("CW_RUN_CONFIRM", "|cffff4444" .. chosen.name .. "|r with " .. livesText
+            .. ".\n\n" .. chosen.rule)
     end
 
     function fly.Confirm()
@@ -4888,7 +4944,7 @@ local function BuildHelpText()
 "",
 "|cffff4444==  CHALLENGE RUNS: one rule, counted lives  ==|r",
 "A run is a life under one rule, on your own path. Challenge runs start before level " .. (s.deadline or 2) .. ". Pick a challenge, read its rule, go.",
-"   |cffffd100Lives:|r the hearts on the run badge at the top-right of this panel, and on the challenge tracker at the top of your screen. Hover either for your challenge's rule and rewards. The tracker also shows what your challenge is counting: the time left on the level on Hourglass, whether the hunter is on you on Pursued, your nemeses on Nemesis, and your health band on Berserker. Drag it to move it, click it for the challenge page, and hide or show it under Settings or with /cw tracker. Each challenge shows how many lives it gives. A death costs one; battlegrounds, arenas and duels are free.",
+"   |cffffd100Lives:|r the hearts on the run badge at the top-right of this panel, and on the challenge tracker at the top of your screen. Hover either for your challenge's rule and rewards. The tracker also shows what your challenge is counting: the time left on the level on Hourglass, whether the hunter is on you on Pursued, your nemeses on Nemesis, and your health band on Berserker. Drag it to move it, click it for the challenge page, and hide or show it under Settings or with /cw tracker. Each challenge shows how many lives it gives. A death costs one; battlegrounds, arenas and duels are free. Nemesis has unlimited lives: a death there costs the experience in your bar instead, and it finishes at level 80 with five nemesis heads.",
 "   |cffffd100Running out|r ends the run: the rule lifts and you keep everything. |cffffd100Reaching " .. cap .. "|r with a life left finishes it. Your first finish of a challenge pays its gold, its title, and an ability no roll or shop can give, kept as an heirloom. Finish with no life lost for |cffffd100the Unbroken|r.",
 "   |cffffd100Shards:|r every run pays them when it ends, finished or not: one per level reached, two per level past 60, and a third more for a run with no life lost. They buy an |cffffd100extra life|r for your next run, on the challenge page.",
 "",
@@ -8996,6 +9052,7 @@ local function HandleMessage(msg)
             reward = tonumber(p[9]) or 0,   -- the ability it pays, a spell id
             title = p[10] or "",            -- "%s the Nemesis", as the client shows it
             path = tonumber(p[11]) or 255,  -- the path it asks for: 0, 1, or 255 for either
+            heads = tonumber(p[12]) or 0,   -- nemesis heads it asks for besides the level cap
             detail = "",                    -- how it plays, joined from CD pieces
             tips = "",                      -- advice, joined from CT pieces
         }
@@ -9028,8 +9085,9 @@ local function HandleMessage(msg)
     elseif kind == "RD" then
         -- a life lost: lives left, lives at the start, what the rule did
         local lives, max, what = tonumber(p[2]) or 0, tonumber(p[3]) or 0, p[4] or ""
-        StaticPopup_Show("CW_RUN_DEATH", "|cffff4444A life lost.|r " .. lives .. " of " .. max
-            .. (lives == 1 and " life" or " lives") .. " left." .. (what ~= "" and ("\n\n" .. what) or ""))
+        local head = CW.Unlimited(max) and "|cffff4444You died.|r The run goes on."
+            or ("|cffff4444A life lost.|r " .. lives .. " of " .. max .. (lives == 1 and " life" or " lives") .. " left.")
+        StaticPopup_Show("CW_RUN_DEATH", head .. (what ~= "" and ("\n\n" .. what) or ""))
         Send("STATE")
     elseif kind == "RE" then
         -- the run is over: what it paid, and what is new
@@ -9567,7 +9625,7 @@ do
         local c = CW.challengesById and CW.challengesById[RT.run]
         f.name:SetText("|cffff5544" .. (c and c.name or ("Challenge " .. RT.run)) .. "|r")
         f.icon:SetTexture(c and (c.reward or 0) > 0 and SpellIcon(c.reward) or "Interface\\Icons\\INV_Misc_Bone_HumanSkull_01")
-        local n = math.min(#f.pips, RT.livesMax)
+        local n = CW.PipCount(RT.livesMax, #f.pips)
         for i = 1, #f.pips do
             -- right-aligned: the last n slots are this run's lives
             local slot = i - (#f.pips - n)
@@ -9593,8 +9651,10 @@ do
                 or "|cffaaaaaaNo hunter on you. One is coming.|r")
             f.line:Show()
         elseif RT.run == NEMESIS then
-            f.line:SetText(RT.a == 0 and "|cffaaaaaaNo nemesis yet.|r"
-                or ("|cffff8800" .. RT.a .. (RT.a == 1 and " nemesis" or " nemeses") .. "|r  (hover for names)"))
+            -- b heads taken of c needed, from a newer server
+            local heads = RT.c > 0 and ("Heads |cffffd100" .. RT.b .. " of " .. RT.c .. "|r   ") or ""
+            f.line:SetText(heads .. (RT.a == 0 and "|cffaaaaaaNo nemesis yet.|r"
+                or ("|cffff8800" .. RT.a .. (RT.a == 1 and " nemesis" or " nemeses") .. "|r  (hover for names)")))
             f.line:Show()
         elseif RT.run == BERSERKER then
             local band = CW.BerserkerBand()
@@ -9614,11 +9674,19 @@ do
 
     function CW.TrackerTooltip(self)
         CW.RunTooltip(self)
+        if RT.run == NEMESIS and RT.c > 0 then
+            GameTooltip:AddLine(" ")
+            GameTooltip:AddDoubleLine("Nemesis heads", RT.b .. " of " .. RT.c, 1, 0.82, 0, 1, 1, 1)
+            GameTooltip:Show()
+        end
         if RT.run == NEMESIS and #RT.list > 0 then
             GameTooltip:AddLine(" ")
             GameTooltip:AddLine("Your nemeses", 1, 0.53, 0)
             for _, e in ipairs(RT.list) do
                 GameTooltip:AddDoubleLine(e.name, "+" .. e.levels .. " levels", 1, 1, 1, 1, 0.53, 0)
+                if (e.held or 0) > 0 then
+                    GameTooltip:AddDoubleLine("   holds your experience", e.held .. " XP", 0.7, 0.7, 0.7, 0.4, 0.8, 1)
+                end
             end
             if RT.a > #RT.list then
                 GameTooltip:AddLine("and " .. (RT.a - #RT.list) .. " more", 0.7, 0.7, 0.7)
@@ -9647,8 +9715,13 @@ do
         RT.c, RT.d = tonumber(p[7]) or 0, tonumber(p[8]) or 0
         RT.at = GetTime()
         RT.list = {}
-        for name, levels in string.gmatch(p[9] or "", "([^:;]+):(%d+);") do
-            tinsert(RT.list, { name = name, levels = tonumber(levels) })
+        -- Nemesis: "name:levels:experience held;", or "name:levels;" from an
+        -- older server
+        for entry in string.gmatch(p[9] or "", "([^;]+);") do
+            local name, levels, held = string.match(entry, "^([^:]+):(%d+):?(%d*)$")
+            if name then
+                tinsert(RT.list, { name = name, levels = tonumber(levels), held = tonumber(held) or 0 })
+            end
         end
         -- the run is named from the challenge list; a fresh login asks once
         if RT.run > 0 and #CW.challenges == 0 and not CW._askedChallenges then

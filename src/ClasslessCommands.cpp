@@ -373,16 +373,23 @@ public:
         for (Challenge const& ch : ClasslessMgr::Challenges())
         {
             auto best = st.runBest.find(ch.id);
-            handler->SendSysMessage(Acore::StringFormat("  {}. |cffffd100{}|r  {} {}, {} gold.  {}{}",
-                uint32(ch.id), ch.name, uint32(ch.lives), ch.lives == 1 ? "life" : "lives", ch.rewardGold, ch.rule,
+            std::string const lives = ch.lives == UNLIMITED_LIVES ? std::string("unlimited lives")
+                : Acore::StringFormat("{} {}", uint32(ch.lives), ch.lives == 1 ? "life" : "lives");
+            handler->SendSysMessage(Acore::StringFormat("  {}. |cffffd100{}|r  {}, {} gold.  {}{}",
+                uint32(ch.id), ch.name, lives, ch.rewardGold, ch.rule,
                 best == st.runBest.end() ? ""
                     : Acore::StringFormat("  Best: level {}{}", uint32(best->second.first),
                                           best->second.second ? ", finished" : "")));
         }
         if (st.run)
             if (Challenge const* ch = ClasslessMgr::GetChallenge(st.run))
-                handler->SendSysMessage(Acore::StringFormat("Current run: |cffffd100{}|r, {} of {} {} left.",
-                    ch->name, uint32(st.lives), uint32(st.livesMax), st.livesMax == 1 ? "life" : "lives"));
+            {
+                if (st.livesMax == UNLIMITED_LIVES)
+                    handler->SendSysMessage(Acore::StringFormat("Current run: |cffffd100{}|r, unlimited lives.", ch->name));
+                else
+                    handler->SendSysMessage(Acore::StringFormat("Current run: |cffffd100{}|r, {} of {} {} left.",
+                        ch->name, uint32(st.lives), uint32(st.livesMax), st.livesMax == 1 ? "life" : "lives"));
+            }
         handler->SendSysMessage(Acore::StringFormat("Shards: {}.", st.shards));
         return true;
     }

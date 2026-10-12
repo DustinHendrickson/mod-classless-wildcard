@@ -383,7 +383,8 @@ A run is one life under one rule, on the character's own path. Challenge runs st
   and you keep everything.
 - **Finish** by reaching the level cap with a life left. Finishing grants the challenge's title
   and reward ability. Its gold is paid on the first finish only.
-- **Flawless.** Finish without losing a life for the title *the Unbroken* and a third more shards.
+- **Flawless.** Finish without losing a life (on Nemesis, without dying) for the title
+  *the Unbroken* and a third more shards.
 - **Shards.** Paid whenever a run ends: one per level, two per level past 60. 30 shards buy an
   extra life for your next run. You can hold one at a time.
 - **Tracker.** While a run is live, a small frame at the top of the screen shows the challenge,
@@ -393,7 +394,7 @@ A run is one life under one rule, on the character's own path. Challenge runs st
 
 | Challenge       | Lives | Rule                                                                                       | Gold | Title              | Reward           |
 | --------------- | ----- | ------------------------------------------------------------------------------------------ | ---- | ------------------ | ---------------- |
-| Nemesis         | 5     | Your killer gains five levels, becomes elite and grows. Kill it for bonus XP.             | 500  | the Nemesis        | Mark of the Nemesis |
+| Nemesis         | Unlimited | Your killer takes the XP in your bar, gains five levels, becomes elite and grows larger with every death. Kill one of its kind to get the XP back and take its head. Finish at level 80 with five heads, each from a different kind. | 500  | the Nemesis        | Mark of the Nemesis |
 | Elite World     | 5     | Enemies have triple health and double damage.                                              | 750  | Bane of Giants     | Giantsbane       |
 | Legion          | 4     | Each enemy you engage calls two more.                                                      | 650  | the Legionbreaker  | One Against Many |
 | Pursued         | 3     | Every 15 to 30 minutes, a hunter two levels above you tracks you until one of you dies.     | 600  | the Hunted         | Turnabout        |
@@ -667,6 +668,9 @@ through the `classless` strategy, which the module puts on them by itself:
   playerbots resets the bot.
 - A Hero bot ignores `maintenance` and the talent commands, which would replace its talents with a
   chassis class spec.
+- A Classless bot that follows an archetype buys that build's abilities and talents as it levels.
+  One that follows none buys nothing; its essence waits for you to log in and spend it. A Wildcard
+  bot gets its level-up rolls like any Wildcard Hero, and its rerolls wait for you.
 
 ### Difficulty
 

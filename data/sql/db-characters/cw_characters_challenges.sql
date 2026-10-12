@@ -63,5 +63,31 @@ CREATE TABLE IF NOT EXISTS `cw_char_nemeses` (
   `creature_entry` INT UNSIGNED NOT NULL,
   `levels` TINYINT UNSIGNED NOT NULL DEFAULT 0,
   `kills` TINYINT UNSIGNED NOT NULL DEFAULT 0,
+  `stolen` INT UNSIGNED NOT NULL DEFAULT 0 COMMENT 'experience this kind took, returned when one dies',
   PRIMARY KEY (`guid`, `creature_entry`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='Nemesis marks on the live run';
+
+CREATE TABLE IF NOT EXISTS `cw_char_nemesis_heads` (
+  `guid` INT UNSIGNED NOT NULL,
+  `creature_entry` INT UNSIGNED NOT NULL,
+  PRIMARY KEY (`guid`, `creature_entry`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='Nemesis heads on the live run: kinds slain while marked';
+
+-- Nemesis keeps the experience a creature kind took, to hand back when one of
+-- them dies. Tables made before that get the column here; the guard makes
+-- this a no-op where it is already there.
+DROP PROCEDURE IF EXISTS cw_upgrade_char_nemesis_stolen;
+DELIMITER //
+CREATE PROCEDURE cw_upgrade_char_nemesis_stolen()
+BEGIN
+    IF NOT EXISTS (SELECT 1 FROM information_schema.COLUMNS
+                   WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'cw_char_nemeses'
+                     AND COLUMN_NAME = 'stolen') THEN
+        ALTER TABLE `cw_char_nemeses`
+            ADD COLUMN `stolen` INT UNSIGNED NOT NULL DEFAULT 0
+                COMMENT 'experience this kind took, returned when one dies' AFTER `kills`;
+    END IF;
+END//
+DELIMITER ;
+CALL cw_upgrade_char_nemesis_stolen();
+DROP PROCEDURE IF EXISTS cw_upgrade_char_nemesis_stolen;

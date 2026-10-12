@@ -1986,6 +1986,51 @@ def test_challenge_runs(h):
     h.recv(run_state(1, 17, shards=19))
     h.check(CW.runBadge["__shown"] is False and not CW.lifeIcons[1]["__shown"], "no run, no badge, no lives shown")
 
+    # Nemesis has unlimited lives (255 on the wire): one full heart, a death
+    # that says the run goes on, and nemeses that hold the experience taken.
+    h.recv(run_state(1, 17, run=1, lives=255, lives_max=255))
+    h.check(CW.runBadge["__shown"] is True and CW.lifeIcons[1]["gem"]["__shown"] is True
+            and not CW.lifeIcons[2]["__shown"],
+            "an unlimited run is one full heart, not 255 of them")
+    CW.RunTooltip(CW.runBadge)
+    tip = [str(g.TIP[i]) for i in range(1, len(g.TIP) + 1)]
+    h.check("Lives Unlimited" in tip and "A death never ends this run." in tip,
+            "its card says the lives are unlimited: %r" % [t for t in tip if "ives" in t or "death" in t])
+    h.recv("RD|255|255|Timber Wolf takes 300 experience, and is now level 22 and elite.")
+    arg = str(g.LAST_POPUP_ARG)
+    h.check(g.LAST_POPUP == "CW_RUN_DEATH" and "The run goes on." in arg and "255" not in arg,
+            "a death on it says the run goes on, with no count: %r" % arg)
+    h.recv("RT|1|255|255|1|0|0|0|Timber Wolf:5:300;")
+    tr = CW.tracker
+    h.check([bool(tr["pips"][k]["__shown"]) for k in range(1, 7)] == [False, False, False, False, False, True]
+            and tr["pips"][6]["gem"]["__shown"] is True,
+            "the tracker shows the one full heart too")
+    CW.TrackerTooltip(tr)
+    tip = [str(g.TIP[i]) for i in range(1, len(g.TIP) + 1)]
+    h.check("Timber Wolf +5 levels" in tip and any("300 XP" in t for t in tip),
+            "the tracker names the nemesis and the experience it holds: %r" % tip[-3:])
+    h.recv("RT|1|255|255|1|0|0|0|Timber Wolf:5;")
+    CW.TrackerTooltip(tr)
+    tip = [str(g.TIP[i]) for i in range(1, len(g.TIP) + 1)]
+    h.check("Timber Wolf +5 levels" in tip and not any("XP" in t for t in tip)
+            and not any("heads" in t for t in tip),
+            "an older server's list without experience or heads still reads: %r" % tip[-2:])
+
+    # The goal: five heads and the cap. The tracker counts them, and the
+    # badge's card says what finishing asks for.
+    h.recv("RT|1|255|255|1|2|5|0|Timber Wolf:5:300;")
+    h.check("Heads |cffffd1002 of 5|r" in str(tr["line"]["__text"]),
+            "the tracker counts the heads: %r" % str(tr["line"]["__text"]))
+    CW.TrackerTooltip(tr)
+    tip = [str(g.TIP[i]) for i in range(1, len(g.TIP) + 1)]
+    h.check("Nemesis heads 2 of 5" in tip, "and its card does: %r" % tip[-4:])
+    h.rt.execute("ClasslessWildcard_API.challengesById[1].heads = 5")
+    CW.RunTooltip(CW.runBadge)
+    tip = [str(g.TIP[i]) for i in range(1, len(g.TIP) + 1)]
+    h.check("Reach level 80 with 5 nemesis heads for" in tip,
+            "the badge's card names the heads as the goal: %r" % [t for t in tip if "Reach" in t])
+    h.recv(run_state(1, 17, shards=19))
+
     # Challenges have nothing to do with Rebirth: the picker has no way into
     # one, and at the cap a run cannot start.
     h.recv(run_state(1, 80, rebirths=1, ready=1, price=200, heirlooms=2, shards=40, run_ready=0))

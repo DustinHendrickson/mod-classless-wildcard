@@ -206,12 +206,19 @@ namespace ClasslessWildcard
         Legion = 14, Hourglass = 15, Spiteful = 16, Bloodpact = 17,
         Berserker = 18, Ironman = 19, BigGameHunter = 20, DealtHand = 21
     };
+    // A run's lives when it has no limit: a death never ends it. The state
+    // and the client carry this number for both lives and lives at the start.
+    constexpr uint8 UNLIMITED_LIVES = 255;
+    // Nemesis is finished at the level cap with this many heads: different
+    // kinds of creature slain while they were the Hero's nemesis.
+    constexpr uint8 NEMESIS_HEADS_TO_FINISH = 5;
+
     struct Challenge
     {
         uint8 id;
         char const* key;
         char const* name;
-        uint8 lives;
+        uint8 lives;            // UNLIMITED_LIVES: a death never ends the run
         char const* rule;       // player-facing, one sentence or two; no ':' or ';' (the addon splits on them)
         uint32 rewardGold;      // paid once, on finishing
         uint32 titleId;         // CharTitles.dbc, on finishing (0 = none)
@@ -222,11 +229,13 @@ namespace ClasslessWildcard
         // or Unchosen for either. A run never sets or changes a path.
         Mode path = Mode::Unchosen;
     };
-    // Nemesis: a creature kind that has killed this Hero, and how much it grew.
+    // Nemesis: a creature kind that has killed this Hero, how much it grew,
+    // and the experience it took, which comes back when one of them dies.
     struct NemesisMark
     {
         uint8 levels = 0;
         uint8 kills = 0;
+        uint32 stolen = 0;
     };
 
     struct RollBan
@@ -358,6 +367,7 @@ namespace ClasslessWildcard
         uint32 shards = 0;
         uint8  extraLife = 0;
         std::unordered_map<uint32, NemesisMark> nemeses;  // by creature entry
+        std::set<uint32> nemesisHeads;   // kinds slain while marked, by entry: the run's heads
         std::unordered_map<uint8, std::pair<uint8, bool>> runBest;  // challenge -> (level reached, finished)
         uint32 hunterTimerMs = 0;        // runtime: Pursued's clock
         uint32 ruleTickMs = 0;           // runtime: the five-second rule tick
