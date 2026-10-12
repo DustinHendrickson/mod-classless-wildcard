@@ -383,7 +383,7 @@ A run is one life under one rule, on the character's own path. Challenge runs st
   and you keep everything.
 - **Finish** by reaching the level cap with a life left. Finishing grants the challenge's title
   and reward ability. Its gold is paid on the first finish only.
-- **Flawless.** Finish without losing a life (on Nemesis, without dying) for the title
+- **Flawless.** Finish without losing a life (on unlimited runs, without dying) for the title
   *the Unbroken* and a third more shards.
 - **Shards.** Paid whenever a run ends: one per level, two per level past 60. 30 shards buy an
   extra life for your next run. You can hold one at a time.
@@ -405,7 +405,7 @@ A run is one life under one rule, on the character's own path. Challenge runs st
 | Berserker       | 3     | Below 35% health: double damage, and your hits clear slows. Above 75%: 30% less damage.     | 450  | the Berserker      | Brink            |
 | Ironman         | 3     | White and grey gear only.                                                                  | 500  | the Ironclad       | Ironbound        |
 | Big Game Hunter | 3     | Normal enemies give no XP. Elites and bosses give full XP, quests give double.             | 400  | the Big Game Hunter | Trophy Hunt     |
-| Dealt Hand      | 3     | Wildcard only. No rerolls, starting hand included: you play every ability and talent dealt. | 500  | the Fated          | Loaded Die       |
+| Dealt Hand      | Unlimited | Wildcard only. No rerolls, starting hand included: you play every ability and talent dealt. | 500  | the Fated          | Loaded Die       |
 | Hardcore        | 1     | One death ends the run.                                                                    | 1000 | the Deathless      | Last Breath      |
 
 ### Reward abilities

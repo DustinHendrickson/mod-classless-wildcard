@@ -3125,8 +3125,8 @@ namespace
         { 20, "big_game_hunter", "Big Game Hunter", 3, "Normal enemies give no XP. Elites and bosses give full, quests give double.", 400, 197, "trophy_hunt",
           "Normal enemies give no experience at all. Elite and rare enemies and dungeon bosses give their full experience, and quests give double. Hunt the dangerous things, run the dungeons, and do the quests.",
           "Look for elite quest areas and dungeons at your level, and pick up every quest you find, since quests pay double. Group up for elites you cannot take alone." },
-        { 21, "dealt_hand",      "Dealt Hand",      3, "Wildcard Heroes only. No rerolls, starting hand included. You play every ability and talent the Wildcard deals you.", 500, 198, "loaded_die",
-          "This run is for Wildcard Heroes. From the moment it starts nothing can be rerolled. Not the starting hand, not the abilities and talents dealt as you level, and no Reroll Scroll changes that. The reroll charges you earn each level still build up, and they are yours to spend when the run ends.",
+        { 21, "dealt_hand",      "Dealt Hand",      UNLIMITED_LIVES, "Wildcard Heroes only. Unlimited lives. No rerolls, starting hand included. You play every ability and talent the Wildcard deals you.", 500, 198, "loaded_die",
+          "This run is for Wildcard Heroes, and it has unlimited lives, so a death never ends it. From the moment it starts nothing can be rerolled. Not the starting hand, not the abilities and talents dealt as you level, and no Reroll Scroll changes that. The reroll charges you earn each level still build up, and they are yours to spend when the run ends.",
           "Read every ability you are dealt and find the few that work together, then build around them. Talents are dealt too, so look over My Build after each level. Stat points are still yours to place, so use them to cover what the hand is missing.",
           Mode::Wildcard },
         { 3,  "hardcore",        "Hardcore",        1, "One life. A death ends the run.", 1000, 188, "last_breath",
@@ -3313,8 +3313,9 @@ void ClasslessMgr::LoseLife(Player* player, Unit* killer)
     PushAddon(player, Acore::StringFormat("RD|{}|{}|{}", uint32(st->lives), uint32(st->livesMax), what));
     PushRunTracker(player);
     if (unlimited)
-        Msg(player, Acore::StringFormat("|cffff4444You died.|r {}{}{}", ch->name,
-            what.empty() ? "." : ": ", what));
+        Msg(player, what.empty()
+            ? Acore::StringFormat("|cffff4444You died.|r {} goes on.", ch->name)
+            : Acore::StringFormat("|cffff4444You died.|r {}: {}", ch->name, what));
     else
         Msg(player, Acore::StringFormat("|cffff4444A life lost.|r {}: {} of {} {} left.{}{}",
             ch->name, uint32(st->lives), uint32(st->livesMax), st->livesMax == 1 ? "life" : "lives",

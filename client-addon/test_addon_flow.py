@@ -3515,7 +3515,7 @@ def test_dealt_hand(h):
     print("--- Dealt Hand: Wildcard only, and nothing is rerolled")
     CW, g = h.CW, h.g
     runs = CW.runFly
-    h.recv("CH|21|Dealt Hand|3|500|Wildcard Heroes only. No rerolls.|0|0|961472|%s the Fated|1")
+    h.recv("CH|21|Dealt Hand|255|500|Wildcard Heroes only. Unlimited lives. No rerolls.|0|0|961472|%s the Fated|1")
     h.recv("CH|5|Glass|3|400|Half health.|0|0|0||255")
     h.recv("CH|19|Ironman|3|500|White gear only.|0|0|0|")
     h.recv("CHE|")
@@ -3540,6 +3540,15 @@ def test_dealt_hand(h):
     h.recv(run_state(1, 1, run_ready=1))
     req, start = page(21)
     h.check("start this now" in req and start is True, "a Wildcard Hero can start it: %r" % req)
+    # It has unlimited lives: one heart and the word on its row, and the
+    # page and the start button say so.
+    row = next(r for r in runs["rows"].values() if r["id"] == 21)
+    h.check(row["pips"][1]["__shown"] is True and row["pips"][2]["__shown"] is False
+            and row["unlimited"]["__shown"] is True,
+            "its row is one heart and 'unlimited', not 255 hearts")
+    h.check("Starts with |cffffffffunlimited lives|r" == str(runs["summary"]["__text"])
+            and "Unlimited lives" in str(runs["livesText"]["__text"]),
+            "the page says the lives are unlimited: %r" % str(runs["summary"]["__text"]))
     runs["__shown"] = False
 
     # On the run, field 31 says no rerolls: nothing offers one.
