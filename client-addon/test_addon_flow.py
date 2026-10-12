@@ -88,6 +88,7 @@ StubMT.__index = function(self, k)
     if k == "Click" then return function(s, ...) local f = rawget(s, "__scripts").OnClick; if f then f(s, ...) end end end
     if k == "GetName" then return function(s) return rawget(s, "__name") end end
     if k == "GetParent" then return function(s) return rawget(s, "__parent") end end
+    if k == "SetParent" then return function(s, p) rawset(s, "__parent", p) end end
     if k == "GetObjectType" then return function(s) return rawget(s, "__kind") end end
     if k == "SetHeight" then return function(s, v) rawset(s, "__h", v) end end
     if k == "SetWidth" then return function(s, v) rawset(s, "__w", v) end end
@@ -2074,7 +2075,7 @@ def test_reveal_layout(h):
     g = h.rt.globals()
     h.check(g.KEEP_ON_PLATE == 1 and g.ROLL_ON_PLATE == 1,
             "Keep and Reroll both anchor to the plate")
-    h.check(CW.revealKeep["__w"] == 150 and CW.revealKeep["__h"] == 32,
+    h.check(CW.revealKeep["__w"] == 150 and CW.revealKeep["__h"] == 22,
             "and they are big enough to hit (%sx%s)"
             % (CW.revealKeep["__w"], CW.revealKeep["__h"]))
 
@@ -3756,6 +3757,22 @@ def test_custom_builds(h):
             % (wa[1752], wt["1234:2"], wt["1234:3"]))
     E["dirty"] = False
     E["__shown"] = False
+
+    # Build from the first-login wizard: the panel is closed then, so a window
+    # left on the panel would be hidden with it and never seen
+    wiz, panel = g.ClasslessWildcardWizard, g.ClasslessWildcardFrame
+    wiz["__shown"], panel["__shown"] = True, False
+    CW.OpenArchPlan(h.rt.eval("{ id = 3, name = 'Battle Mage', desc = 'Armored caster.' }"))
+    P = CW.archPlan
+    h.check(P["__shown"] is True and P["__parent"]["__name"] == "ClasslessWildcardWizard" and P["__strata"] == "FULLSCREEN_DIALOG",
+            "Build from the wizard opens the build order over the wizard: parent %r, strata %r"
+            % (P["__parent"] and P["__parent"]["__name"], P["__strata"]))
+    P["__shown"], wiz["__shown"], panel["__shown"] = False, False, True
+    CW.OpenArchPlan(h.rt.eval("{ id = 3, name = 'Battle Mage', desc = 'Armored caster.' }"))
+    h.check(P["__parent"]["__name"] == "ClasslessWildcardFrame" and P["__strata"] == "DIALOG",
+            "and from the panel it goes back on the panel: parent %r, strata %r"
+            % (P["__parent"] and P["__parent"]["__name"], P["__strata"]))
+    P["__shown"], panel["__shown"] = False, False
 
     # The editor lives in the My Build column, and the lists beside it are its
     # picker: a click adds, a right-click takes out, nothing is bought.

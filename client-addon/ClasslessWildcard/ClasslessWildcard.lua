@@ -1230,12 +1230,12 @@ do
     fly.next:SetScript("OnClick", function() fly.page = fly.page + 1; CW.RenderRebirth() end)
 
     fly.reborn = CreateFrame("Button", nil, fly, "UIPanelButtonTemplate")
-    fly.reborn:SetWidth(140); fly.reborn:SetHeight(24)
+    fly.reborn:SetWidth(140); fly.reborn:SetHeight(22)
     fly.reborn:SetPoint("BOTTOMLEFT", PAD, 16)
     fly.reborn:SetText("Be reborn")
     fly.reborn:SetScript("OnClick", function() CW.AskRebirth() end)
     fly.cancel = CreateFrame("Button", nil, fly, "UIPanelButtonTemplate")
-    fly.cancel:SetWidth(100); fly.cancel:SetHeight(24)
+    fly.cancel:SetWidth(100); fly.cancel:SetHeight(22)
     fly.cancel:SetPoint("BOTTOMRIGHT", -PAD, 16)
     fly.cancel:SetText("Cancel")
     fly.cancel:SetScript("OnClick", function() fly:Hide() end)
@@ -1460,7 +1460,7 @@ do
     card.subtitle:SetJustifyH("LEFT")
 
     card.button = CreateFrame("Button", nil, card, "UIPanelButtonTemplate")
-    card.button:SetWidth(130); card.button:SetHeight(24)
+    card.button:SetWidth(130); card.button:SetHeight(22)
     card.button:SetScript("OnClick", function() card:Hide() end)
 
     -- pooled pieces, made the first time a card needs that many
@@ -1612,7 +1612,7 @@ do
 
         local run = { { "Level reached", tostring(level) } }
         if max > 0 then tinsert(run, { "Lives left", left .. " of " .. max }) end
-        local rewards = { { "Shards", tostring(shards), GOLD } }
+        local rewards = { { "Shards", tostring(shards), GOLD, CW.SHARD_ICON } }
         if gold > 0 then tinsert(rewards, { "Gold", tostring(gold), GOLD, "Interface\\MoneyFrame\\UI-GoldIcon" }) end
         if reward > 0 then
             tinsert(rewards, { "Heirloom ability", (GetSpellInfo(reward)) or "Reward ability", PURPLE, SpellIcon(reward) })
@@ -1791,7 +1791,7 @@ do
     fly.shards:SetWidth(LEFT_W)
     fly.shards:SetJustifyH("LEFT")
     fly.life = CreateFrame("Button", nil, fly, "UIPanelButtonTemplate")
-    fly.life:SetWidth(200); fly.life:SetHeight(24)
+    fly.life:SetWidth(200); fly.life:SetHeight(22)
     fly.life:SetPoint("BOTTOMLEFT", 12, 10)
     fly.life:SetScript("OnClick", function() StaticPopup_Show("CW_CLASSLESS_BUYLIFE", CW.EXTRA_LIFE_SHARDS) end)
     fly.life:SetScript("OnEnter", function(self)
@@ -1924,7 +1924,7 @@ do
     fly.summary:SetWidth(330)
     fly.summary:SetJustifyH("LEFT")
     fly.start = CreateFrame("Button", nil, fly, "UIPanelButtonTemplate")
-    fly.start:SetWidth(170); fly.start:SetHeight(26)
+    fly.start:SetWidth(170); fly.start:SetHeight(22)
     fly.start:SetPoint("BOTTOMRIGHT", -14, 12)
     fly.start:SetText("Start this run")
     fly.start:SetScript("OnClick", function() CW.AskRun() end)
@@ -2138,9 +2138,10 @@ do
         local list = CW.challenges
         if not fly.selected and list[1] then fly.selected = list[1].id end
 
-        fly.shards:SetText("Shards  |cff00ff00" .. (s.shards or 0) .. "|r"
+        fly.shards:SetText("Shards  |cff00ff00" .. (s.shards or 0) .. "|r" .. CW.ShardTag()
             .. ((s.extraLife or 0) > 0 and "     |cff00ff00extra life held|r" or ""))
-        fly.life:SetText((s.extraLife or 0) > 0 and "Extra life held" or ("Buy an extra life  (" .. CW.EXTRA_LIFE_SHARDS .. " shards)"))
+        fly.life:SetText((s.extraLife or 0) > 0 and "Extra life held"
+            or ("Buy an extra life  (" .. CW.EXTRA_LIFE_SHARDS .. CW.ShardTag() .. ")"))
         if (s.extraLife or 0) > 0 or (s.shards or 0) < CW.EXTRA_LIFE_SHARDS then fly.life:Disable() else fly.life:Enable() end
 
         for i = 1, ROWS do
@@ -2214,6 +2215,13 @@ do
     end
 end
 CW.EXTRA_LIFE_SHARDS = 30   -- what the server charges; the label only
+-- Shards beside a count, the way the gold coin sits beside gold. The client's
+-- own Soul Shard icon.
+CW.SHARD_ICON = "Interface\\Icons\\INV_Misc_Gem_Amethyst_02"
+function CW.ShardTag(size)
+    size = size or 14
+    return "|T" .. CW.SHARD_ICON .. ":" .. size .. ":" .. size .. ":2:0|t"
+end
 
 
 -- Help: opens the "how advancement works" panel (wired to helpFly below).
@@ -2346,12 +2354,12 @@ for i = 1, 5 do
 end
 
 local statApply = CreateFrame("Button", nil, statFly, "UIPanelButtonTemplate")
-statApply:SetWidth(140); statApply:SetHeight(24)
+statApply:SetWidth(140); statApply:SetHeight(22)
 statApply:SetPoint("BOTTOMLEFT", 14, 12)
 statApply:SetText("Apply")
 
 local statReset = CreateFrame("Button", nil, statFly, "UIPanelButtonTemplate")
-statReset:SetWidth(140); statReset:SetHeight(24)
+statReset:SetWidth(140); statReset:SetHeight(22)
 statReset:SetPoint("BOTTOMRIGHT", -14, 12)
 statReset:SetText("Reset edits")
 
@@ -2910,17 +2918,17 @@ do
     P.loading:SetText("Loading...")
 
     P.follow = CreateFrame("Button", nil, P, "UIPanelButtonTemplate")
-    P.follow:SetWidth(110); P.follow:SetHeight(24)
+    P.follow:SetWidth(110); P.follow:SetHeight(22)
     P.follow:SetPoint("BOTTOMLEFT", PAD, 14)
     P.follow:SetText("Follow")
     P.done = CreateFrame("Button", nil, P, "UIPanelButtonTemplate")
-    P.done:SetWidth(100); P.done:SetHeight(24)
+    P.done:SetWidth(100); P.done:SetHeight(22)
     P.done:SetPoint("BOTTOMRIGHT", -PAD, 14)
     P.done:SetText(CLOSE or "Close")
     P.done:SetScript("OnClick", function() P:Hide() end)
     -- a starter build as the start of one of your own
     P.copy = CreateFrame("Button", nil, P, "UIPanelButtonTemplate")
-    P.copy:SetWidth(140); P.copy:SetHeight(24)
+    P.copy:SetWidth(140); P.copy:SetHeight(22)
     P.copy:SetPoint("BOTTOM", P, "BOTTOM", 0, 14)
     P.copy:SetText("Copy to My Builds")
     P.copy:SetScript("OnClick", function()
@@ -3077,7 +3085,17 @@ do
         if CW.archFly and CW.archFly:IsShown() then P.follow:Show() else P.follow:Hide() end
         -- copying is for starter builds on the Classless path; a saved build is edited instead
         if not arch.build and CW.state.mode == 0 then P.copy:Show() else P.copy:Hide() end
-        P:SetFrameLevel((CW.archFly and CW.archFly:GetFrameLevel() or 0) + 20)
+        -- the window lives on whichever host opened it: the first-login wizard
+        -- is up with the panel closed and sits a strata higher, so a window
+        -- left on the panel would be hidden with it
+        local wizard = _G.ClasslessWildcardWizard
+        local host = (wizard and wizard:IsShown()) and wizard or frame
+        local over = (host == wizard) and wizard or CW.archFly
+        P:SetParent(host)
+        P:ClearAllPoints()
+        P:SetPoint("CENTER", host, "CENTER", 0, 0)
+        P:SetFrameStrata(host == wizard and "FULLSCREEN_DIALOG" or "DIALOG")
+        P:SetFrameLevel((over and over:GetFrameLevel() or 0) + 20)
         CW.RenderArchPlan()
         P:Show()
         if arch.build then
@@ -4507,10 +4525,10 @@ do
     S.error:SetJustifyH("LEFT")
 
     S.go = CreateFrame("Button", nil, S, "UIPanelButtonTemplate")
-    S.go:SetWidth(140); S.go:SetHeight(24)
+    S.go:SetWidth(140); S.go:SetHeight(22)
     S.go:SetPoint("BOTTOMLEFT", PAD + 4, 18)
     S.done = CreateFrame("Button", nil, S, "UIPanelButtonTemplate")
-    S.done:SetWidth(100); S.done:SetHeight(24)
+    S.done:SetWidth(100); S.done:SetHeight(22)
     S.done:SetPoint("BOTTOMRIGHT", -PAD - 4, 18)
     S.done:SetScript("OnClick", function() S:Hide() end)
 
@@ -5617,16 +5635,26 @@ function CW.WizPathText()
 end
 wizText:SetText(CW.WizPathText())
 
-local wizClassless = CreateFrame("Button", nil, wizard, "UIPanelButtonTemplate")
-wizClassless:SetWidth(340); wizClassless:SetHeight(30)
-wizClassless:SetPoint("TOP", 0, -108)
-wizClassless:SetText("|cff00ccffClassless|r: pick every ability yourself")
+-- The two paths side by side: a short button with the path's name, and what
+-- it means under it. Stock button art stretched across a whole sentence
+-- looks smeared, so the sentence lives outside the button. Each line hangs
+-- off its button, so it shows and hides with it.
+local function WizPathButton(x, label, line)
+    local b = CreateFrame("Button", nil, wizard, "UIPanelButtonTemplate")
+    b:SetWidth(130); b:SetHeight(22)
+    b:SetPoint("TOP", x, -112)
+    b:SetText(label)
+    b.line = b:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+    b.line:SetPoint("TOP", b, "BOTTOM", 0, -6)
+    b.line:SetWidth(170)
+    b.line:SetText(line)
+    return b
+end
+
+local wizClassless = WizPathButton(-95, "|cff00ccffClassless|r", "Pick every ability yourself.")
 wizClassless:SetScript("OnClick", function() Send("MODE 0"); Send("ARCH") end)
 
-local wizWildcard = CreateFrame("Button", nil, wizard, "UIPanelButtonTemplate")
-wizWildcard:SetWidth(340); wizWildcard:SetHeight(30)
-wizWildcard:SetPoint("TOP", 0, -146)
-wizWildcard:SetText("|cffff8800Wildcard|r: random abilities, reroll the rest")
+local wizWildcard = WizPathButton(95, "|cffff8800Wildcard|r", "Abilities are dealt at random. Reroll the ones you don't want.")
 wizWildcard:SetScript("OnClick", function()
     Send("MODE 1")
     wizard:Hide()
@@ -6471,19 +6499,19 @@ do
     fly.stake:SetPoint("TOP", 0, -96)
 
     fly.minus = CreateFrame("Button", nil, fly, "UIPanelButtonTemplate")
-    fly.minus:SetWidth(26); fly.minus:SetHeight(24)
+    fly.minus:SetWidth(26); fly.minus:SetHeight(22)
     fly.minus:SetPoint("TOP", -110, -92)
     fly.minus:SetText("-")
     fly.plus = CreateFrame("Button", nil, fly, "UIPanelButtonTemplate")
-    fly.plus:SetWidth(26); fly.plus:SetHeight(24)
+    fly.plus:SetWidth(26); fly.plus:SetHeight(22)
     fly.plus:SetPoint("TOP", 110, -92)
     fly.plus:SetText("+")
 
     fly.go = CreateFrame("Button", nil, fly, "UIPanelButtonTemplate")
-    fly.go:SetWidth(150); fly.go:SetHeight(26)
+    fly.go:SetWidth(150); fly.go:SetHeight(22)
     fly.go:SetPoint("BOTTOMLEFT", 16, 14)
     fly.cancel = CreateFrame("Button", nil, fly, "UIPanelButtonTemplate")
-    fly.cancel:SetWidth(150); fly.cancel:SetHeight(26)
+    fly.cancel:SetWidth(150); fly.cancel:SetHeight(22)
     fly.cancel:SetPoint("BOTTOMRIGHT", -16, 14)
     fly.cancel:SetText("Cancel")
     fly.cancel:SetScript("OnClick", function() fly:Hide() end)
@@ -7516,14 +7544,15 @@ function rvFX.HideInfo() rvFX.reveal:Clear() end
 function rvFX.ShowInfo(spellId) return rvFX.reveal:Fill(spellId) end
 
 -- These are the only two things on the reveal you can act on, and they were
--- smaller than the buttons on the panel behind it.
+-- smaller than the buttons on the panel behind it. The large font carries
+-- that; the height stays the stock 22, where the button art is not stretched.
 local rvKeep = CreateFrame("Button", nil, reveal, "UIPanelButtonTemplate")
-rvKeep:SetWidth(150); rvKeep:SetHeight(32)
+rvKeep:SetWidth(150); rvKeep:SetHeight(22)
 rvKeep:SetPoint("BOTTOM", -82, 4)
 rvKeep:SetText("Keep")
 
 local rvReroll = CreateFrame("Button", nil, reveal, "UIPanelButtonTemplate")
-rvReroll:SetWidth(150); rvReroll:SetHeight(32)
+rvReroll:SetWidth(150); rvReroll:SetHeight(22)
 rvReroll:SetPoint("BOTTOM", 82, 4)
 rvReroll:SetText("Reroll")
 
@@ -8260,12 +8289,12 @@ end
 hand.ApplyLayers()
 
 local handRoll = CreateFrame("Button", nil, hand, "UIPanelButtonTemplate")
-handRoll:SetWidth(150); handRoll:SetHeight(26)
+handRoll:SetWidth(150); handRoll:SetHeight(22)
 handRoll:SetPoint("BOTTOMLEFT", 40, 20)
 handRoll:SetText("Roll Abilities")
 
 local handKeep = CreateFrame("Button", nil, hand, "UIPanelButtonTemplate")
-handKeep:SetWidth(150); handKeep:SetHeight(26)
+handKeep:SetWidth(150); handKeep:SetHeight(22)
 handKeep:SetPoint("BOTTOMRIGHT", -40, 20)
 handKeep:SetText("Keep Abilities")
 
