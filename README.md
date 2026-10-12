@@ -633,9 +633,40 @@ delete the `Cache` folder in the WoW directory and log back in.
 
 ### Playerbots
 
-Bots keep their real class, abilities, talents and gear rules, and show as Hero. A bot is any
-character on an account starting with a prefix in `ExemptAccountPrefixes` (default `rndbot`). If
-your bot accounts use another prefix, add it, or the bots become Heroes and lose their abilities.
+Random bots keep their real class, abilities, talents and gear rules, and show as Hero. A random
+bot is any character on an account starting with a prefix in `ExemptAccountPrefixes` (default
+`rndbot`). If your bot accounts use another prefix, add it, or the bots become Heroes and lose
+their abilities.
+
+Your own characters logged in as bots (altbots) are Heroes. They fight with the abilities they own
+through the `classless` strategy, which the module puts on them by itself:
+
+- Each of the Hero's abilities is sorted by what it does: direct damage, damage over time, area
+  damage, heals, heals over time, shields, interrupts, taunts, buffs, debuffs, crowd control,
+  stuns, roots and fears around itself, defensive and offensive cooldowns, pets, and stances or
+  forms. The bot casts from that list, paying from whichever pool each spell uses.
+- Out of combat it buffs everyone in its party and keeps its pet summoned. In combat it buffs only
+  itself.
+- It uses long crowd control such as Polymorph on the enemy marked with the crowd control raid
+  icon, or on an add no tank is holding. A stun or silence stops a cast when no interrupt is ready.
+  A ranged Hero or healer roots or fears enemies that reach it once its health drops. A fear on
+  one enemy is cast only on the enemy marked with the crowd control raid icon, or on an enemy
+  hitting a ranged Hero or healer.
+- In combat it keeps one totem down for each element: one that attacks when an enemy is within its
+  reach, otherwise one that helps the party. A totem left behind is replaced. Tremor, Grounding,
+  Earthbind, the cleansing totems and totems with a long cooldown are left to you.
+- It calls temporary fighters such as Water Elemental or Feral Spirit against an elite, a boss, a
+  player or two or more enemies, and not again while one is out.
+- When its damage spells reach less far than playerbots' spell distance, it walks in until one is
+  in range.
+- The bot takes a role from its abilities: healer when heals are a large share of them, tank when
+  it has a taunt and fights up close, otherwise melee or ranged damage by where most of its damage
+  reaches from. Choose one yourself with `co +classless tank`, `co +classless heal`,
+  `co +classless melee` or `co +classless ranged`. The choice lasts until the bot logs out.
+- The chassis class's own combat strategies are taken off, and taken off again whenever
+  playerbots resets the bot.
+- A Hero bot ignores `maintenance` and the talent commands, which would replace its talents with a
+  chassis class spec.
 
 ### Difficulty
 

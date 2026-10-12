@@ -14,6 +14,7 @@
  */
 
 #include "Chat.h"
+#include "ClasslessBots.h"
 #include "ClasslessMgr.h"
 #include "Containers.h"
 #include "DBCStores.h"
@@ -52,6 +53,7 @@ public:
     void OnStartup() override
     {
         sClasslessMgr->BuildLibrary();
+        ClasslessBots::Register();
     }
 };
 
@@ -900,6 +902,9 @@ public:
         // the one FindState above already answered this, and it created
         // nothing to do it
         CharState& st = *state;
+
+        // a Hero playerbots drives fights with its own kit, not its chassis's
+        ClasslessBots::Tick(player, st);
 
         // A pet that was away when its spell went is not caught by the sweep in
         // RemoveAbilityInternal: mounting temporarily unsummons it, so a Hero

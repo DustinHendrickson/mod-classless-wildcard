@@ -438,6 +438,14 @@ namespace ClasslessWildcard
         // Map::Update. Per-player state belongs on the per-player state, where
         // only that player's map thread can reach it.
         uint32 tickAcc = 0;
+
+        // A Hero driven by mod-playerbots (an altbot). The role ClasslessBots
+        // last put on the bot, and the one its owner chose with
+        // `co +classless <role>`, which outlives playerbots' strategy resets.
+        // 0 is none; otherwise a ClasslessBots role. Runtime only.
+        uint8 botRole = 0;
+        uint8 botRoleOverride = 0;
+
         bool loaded = false;
     };
 
