@@ -9542,6 +9542,17 @@ function CW.ArmorTip()
         return lines
     end
 
+    -- Numbers coloured by what they do to you: red costs, green helps, grey
+    -- nothing. The full set sits after the slash in grey, a reference beside
+    -- the number that counts.
+    local function hue(cost, value)
+        if value == 0 then return "|cff999999" end
+        return cost and "|cffff6666" or "|cff66ff66"
+    end
+    local function pair(nowText, fullText, cost, now)
+        return hue(cost, now) .. nowText .. "|r|cff999999 / " .. fullText .. "|r"
+    end
+
     -- each type: its pieces, and every effect as now / full set
     tinsert(lines, line("Your armor", GREY, "|cff999999now / full set|r"))
     for _, t in ipairs(types) do
@@ -9555,10 +9566,11 @@ function CW.ArmorTip()
                     -- the full set's sign names the direction; both numbers
                     -- read as amounts of it
                     left = label .. (full < 0 and " slower" or " faster")
-                    right = math.abs(now) .. "% / " .. math.abs(full) .. "%"
+                    right = pair(math.abs(now) .. "%", math.abs(full) .. "%", full < 0, now)
                 else
                     left = label
-                    right = (now > 0 and "+" or "") .. now .. "% / " .. (full > 0 and "+" or "") .. full .. "%"
+                    right = pair((now > 0 and "+" or "") .. now .. "%", (full > 0 and "+" or "") .. full .. "%",
+                        full < 0, now)
                 end
                 tinsert(lines, line("  " .. left, WHITE, right))
             end
@@ -9574,10 +9586,12 @@ function CW.ArmorTip()
                 local m = mult[label]
                 local pct = math.floor((m >= 1 and (m - 1) or (1 / m - 1)) * 100 + 0.5)
                 if pct > 0 then
-                    tinsert(lines, line("  " .. label, WHITE, pct .. "% " .. (m >= 1 and "slower" or "faster")))
+                    tinsert(lines, line("  " .. label, WHITE,
+                        hue(m >= 1, pct) .. pct .. "% " .. (m >= 1 and "slower" or "faster") .. "|r"))
                 end
             elseif not speed[label] and (sums[label] or 0) ~= 0 then
-                tinsert(lines, line("  " .. label, WHITE, (sums[label] > 0 and "+" or "") .. sums[label] .. "%"))
+                tinsert(lines, line("  " .. label, WHITE,
+                    hue(sums[label] < 0, sums[label]) .. (sums[label] > 0 and "+" or "") .. sums[label] .. "%|r"))
             end
         end
     end

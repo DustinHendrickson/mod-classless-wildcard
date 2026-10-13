@@ -1630,8 +1630,9 @@ def test_rebirth(h):
     # to 15.4%, attacks 4% and 1% to 5.0%; cloth's crit 1 and regen 2 add
     h.recv("AW|962043:4:-12,-4:-25,-8;962044:2:-3,-1:-12,-4;962045:0:0,0,0:-5,4,4;962046:2:1,2:4,10;")
     h.rt.execute('GameTooltip:SetUnitAura("player", 1, "HELPFUL")')
-    tip = str(h.rt.eval("TipText()"))
-    h.check("Your armor |cff999999now / full set|r" in tip
+    raw = str(h.rt.eval("TipText()"))
+    tip = re.sub(r"\|c[0-9a-fA-F]{8}|\|r", "", raw)
+    h.check("Your armor now / full set" in tip
             and "Plate  4/8 |   Casting slower 12% / 25% |   Attacks slower 4% / 8%" in tip
             and "Mail  2/8 |   Casting slower 3% / 12% |   Attacks slower 1% / 4%" in tip
             and "Cloth  2/8 |   Spell critical strike chance +1% / +4% |   Mana regeneration +2% / +10%" in tip
@@ -1640,17 +1641,23 @@ def test_rebirth(h):
     h.check("All together |   Casting 15% slower |   Attacks 5% slower |   Spell critical strike chance +1%"
             " |   Mana regeneration +2%" in tip and "Dodge" not in tip,
             "then everything added together, speeds multiplied: %r" % tip)
+    h.check("Casting slower |cffff666612%|r|cff999999 / 25%|r" in raw
+            and "Mana regeneration |cff66ff66+2%|r|cff999999 / +10%|r" in raw
+            and "Casting |cffff666615% slower|r" in raw,
+            "a cost reads red, a help green, and the full set grey after the slash")
     # leather's faster attacks offset plate's slower ones
     h.recv("AW|962043:4:-12,-4:-25,-8;962044:0:0,0:-12,-4;962045:4:-2,2,2:-5,4,4;962046:0:0,0:4,10;")
     h.rt.execute('GameTooltip:SetUnitAura("player", 1, "HELPFUL")')
-    tip = str(h.rt.eval("TipText()"))
+    raw = str(h.rt.eval("TipText()"))
+    tip = re.sub(r"\|c[0-9a-fA-F]{8}|\|r", "", raw)
     h.check("Leather  4/8 |   Casting slower 2% / 5% |   Attacks faster 2% / 4% |   Dodge +2% / +4%" in tip
             and "All together |   Casting 14% slower |   Attacks 2% slower |   Dodge +2%" in tip,
             "leather's faster attacks offset plate's slower ones: %r" % tip)
     # a conf override is what the full set shows: the server reports it
     h.recv("AW|962043:8:-30,-10:-30,-10;962044:0:0,0:-12,-4;962045:0:0,0,0:-5,4,4;962046:0:0,0:4,10;")
     h.rt.execute('GameTooltip:SetUnitAura("player", 1, "HELPFUL")')
-    tip = str(h.rt.eval("TipText()"))
+    raw = str(h.rt.eval("TipText()"))
+    tip = re.sub(r"\|c[0-9a-fA-F]{8}|\|r", "", raw)
     h.check("Plate  8/8 |   Casting slower 30% / 30% |   Attacks slower 10% / 10%" in tip
             and "All together" not in tip,
             "a full plate set under a conf override: now equals the overridden full set, "
