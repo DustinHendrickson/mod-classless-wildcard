@@ -181,7 +181,8 @@ with your build on the right. Lock or reroll anything you own from the same wind
   | Cloth | Spell critical strike chance 4% higher, mana regeneration 10% faster |
 
   One **Armor Weight** aura on the buff bar stands for all of it; with the addon, hovering it
-  lists the pieces of each type worn and every effect summed across them. It cannot be cancelled
+  shows each type worn with its pieces of 8, every effect as what you have now beside what a full
+  set gives, and everything added together. It cannot be cancelled
   or dispelled. The numbers live in the auras' own spell rows (`ARMOR_WEIGHTS` in
   `gen_forged_spells.py`), and each can be set in the conf (`ArmorWeight.Plate.CastSpeed` and so
   on). `ArmorWeight.Enable = 0` turns it off.

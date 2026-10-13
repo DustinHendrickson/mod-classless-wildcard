@@ -1631,17 +1631,30 @@ def test_rebirth(h):
     h.recv("AW|962043:4:-12,-4:-25,-8;962044:2:-3,-1:-12,-4;962045:0:0,0,0:-5,4,4;962046:2:1,2:4,10;")
     h.rt.execute('GameTooltip:SetUnitAura("player", 1, "HELPFUL")')
     tip = str(h.rt.eval("TipText()"))
-    h.check("You wear 4 plate, 2 mail, 2 cloth." in tip and "Casting: 15% slower" in tip
-            and "Attacks: 5% slower" in tip and "Spell critical strike chance: +1%" in tip
-            and "Mana regeneration: +2%" in tip and "Dodge" not in tip and "the row's own text" not in tip,
-            "one tooltip sums every type worn: %r" % tip)
+    h.check("Your armor |cff999999now / full set|r" in tip
+            and "Plate  4/8 |   Casting slower 12% / 25% |   Attacks slower 4% / 8%" in tip
+            and "Mail  2/8 |   Casting slower 3% / 12% |   Attacks slower 1% / 4%" in tip
+            and "Cloth  2/8 |   Spell critical strike chance +1% / +4% |   Mana regeneration +2% / +10%" in tip
+            and "Leather" not in tip and "the row's own text" not in tip,
+            "each type worn, every effect as now beside full set: %r" % tip)
+    h.check("All together |   Casting 15% slower |   Attacks 5% slower |   Spell critical strike chance +1%"
+            " |   Mana regeneration +2%" in tip and "Dodge" not in tip,
+            "then everything added together, speeds multiplied: %r" % tip)
     # leather's faster attacks offset plate's slower ones
     h.recv("AW|962043:4:-12,-4:-25,-8;962044:0:0,0:-12,-4;962045:4:-2,2,2:-5,4,4;962046:0:0,0:4,10;")
     h.rt.execute('GameTooltip:SetUnitAura("player", 1, "HELPFUL")')
     tip = str(h.rt.eval("TipText()"))
-    h.check("You wear 4 plate, 4 leather." in tip and "Casting: 14% slower" in tip
-            and "Attacks: 2% slower" in tip and "Dodge: +2%" in tip,
+    h.check("Leather  4/8 |   Casting slower 2% / 5% |   Attacks faster 2% / 4% |   Dodge +2% / +4%" in tip
+            and "All together |   Casting 14% slower |   Attacks 2% slower |   Dodge +2%" in tip,
             "leather's faster attacks offset plate's slower ones: %r" % tip)
+    # a conf override is what the full set shows: the server reports it
+    h.recv("AW|962043:8:-30,-10:-30,-10;962044:0:0,0:-12,-4;962045:0:0,0,0:-5,4,4;962046:0:0,0:4,10;")
+    h.rt.execute('GameTooltip:SetUnitAura("player", 1, "HELPFUL")')
+    tip = str(h.rt.eval("TipText()"))
+    h.check("Plate  8/8 |   Casting slower 30% / 30% |   Attacks slower 10% / 10%" in tip
+            and "All together" not in tip,
+            "a full plate set under a conf override: now equals the overridden full set, "
+            "and one type needs no total: %r" % tip)
     # someone else's: their gear is not ours, so the row's text stands
     h.rt.execute('UNIT_AURAS.target = { { "Armor", 1, %d } }' % CW.ARMOR_DISPLAY)
     h.rt.execute('GameTooltip:SetUnitAura("target", 1, "HELPFUL")')

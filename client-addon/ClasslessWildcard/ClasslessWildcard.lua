@@ -9449,10 +9449,13 @@ do
                 local lines = unit and UnitIsUnit(unit, "player") and CW.ArmorTip()
                 if lines then
                     self:ClearLines()
-                    self:AddLine(lines[1], 1, 1, 1)
-                    self:AddLine(lines[2], 1, 0.82, 0)
-                    for i = 3, #lines - 1 do self:AddLine(lines[i], 1, 1, 1, true) end
-                    self:AddLine(lines[#lines], 0.6, 0.6, 0.6, true)
+                    for _, l in ipairs(lines) do
+                        if l.right then
+                            self:AddDoubleLine(l[1], l.right, l[2], l[3], l[4], 1, 1, 1)
+                        else
+                            self:AddLine(l[1], l[2], l[3], l[4], true)
+                        end
+                    end
                     self:Show()
                 end
                 return
@@ -9504,17 +9507,22 @@ function CW.ReadArmorWeight(list)
     end
 end
 
--- The Armor aura's hover text: the pieces of each type worn, then every
--- effect summed across them. Speeds from different types multiply, as they
--- do in game; the rest add. nil until the server has reported.
+-- The Armor aura's hover text, as lines { text, r, g, b, right = text }:
+-- each armor type worn with its pieces of eight, every effect of it as what
+-- the pieces give now beside what a full set gives, then (when more than one
+-- type is worn) everything added together. Speeds from different types
+-- multiply, as they do in game; the rest add. Every number is the server's,
+-- conf overrides included. nil until the server has reported.
 function CW.ArmorTip()
-    local worn, sums, mult = {}, {}, {}
+    local speed = {}
+    for _, e in ipairs(CW.ARMOR_EFFECTS) do speed[e[1]] = e[2] or false end
+    local types, sums, mult = {}, {}, {}
     local reported = false
     for _, aura in ipairs({ 962043, 962044, 962045, 962046 }) do
         local data, text = CW.armorWeight[aura], CW.ARMOR_WEIGHT_TEXT[aura]
         if data and text then
             reported = true
-            if data.pieces > 0 then tinsert(worn, data.pieces .. " " .. text.armor) end
+            if data.pieces > 0 then tinsert(types, { data = data, text = text }) end
             for i, label in ipairs(text.effects) do
                 local v = data.now[i] or 0
                 sums[label] = (sums[label] or 0) + v
@@ -9525,22 +9533,54 @@ function CW.ArmorTip()
         end
     end
     if not reported then return nil end
-    local lines = { GetSpellInfo(CW.ARMOR_DISPLAY) or "Armor Weight",
-        #worn > 0 and ("You wear " .. table.concat(worn, ", ") .. ".") or "You wear no armor that counts." }
-    for _, e in ipairs(CW.ARMOR_EFFECTS) do
-        local label, speed = e[1], e[2]
-        if speed and mult[label] then
-            local m = mult[label]
-            local pct = math.floor((m >= 1 and (m - 1) or (1 / m - 1)) * 100 + 0.5)
-            if pct > 0 then
-                tinsert(lines, label .. ": " .. pct .. "% " .. (m >= 1 and "slower" or "faster"))
+
+    local WHITE, GOLD, GREY = { 1, 1, 1 }, { 1, 0.82, 0 }, { 0.6, 0.6, 0.6 }
+    local function line(t, c, right) return { t, c[1], c[2], c[3], right = right } end
+    local lines = { line(GetSpellInfo(CW.ARMOR_DISPLAY) or "Armor Weight", WHITE) }
+    if #types == 0 then
+        tinsert(lines, line("You wear no armor that counts.", GREY))
+        return lines
+    end
+
+    -- each type: its pieces, and every effect as now / full set
+    tinsert(lines, line("Your armor", GREY, "|cff999999now / full set|r"))
+    for _, t in ipairs(types) do
+        local name = string.upper(string.sub(t.text.armor, 1, 1)) .. string.sub(t.text.armor, 2)
+        tinsert(lines, line(name .. "  " .. t.data.pieces .. "/8", GOLD))
+        for i, label in ipairs(t.text.effects) do
+            local now, full = t.data.now[i] or 0, t.data.full[i] or 0
+            if full ~= 0 then
+                local left, right
+                if speed[label] then
+                    -- the full set's sign names the direction; both numbers
+                    -- read as amounts of it
+                    left = label .. (full < 0 and " slower" or " faster")
+                    right = math.abs(now) .. "% / " .. math.abs(full) .. "%"
+                else
+                    left = label
+                    right = (now > 0 and "+" or "") .. now .. "% / " .. (full > 0 and "+" or "") .. full .. "%"
+                end
+                tinsert(lines, line("  " .. left, WHITE, right))
             end
-        elseif not speed and (sums[label] or 0) ~= 0 then
-            tinsert(lines, label .. ": " .. (sums[label] > 0 and "+" or "") .. sums[label] .. "%")
         end
     end
-    if #lines == 2 then tinsert(lines, "No effect yet: a piece is an eighth of a full set.") end
-    tinsert(lines, "Each piece counts toward its armor type; a full set of eight gives the type's full values.")
+
+    -- together, when more than one type adds into the same effects
+    if #types > 1 then
+        tinsert(lines, line("All together", GOLD))
+        for _, e in ipairs(CW.ARMOR_EFFECTS) do
+            local label = e[1]
+            if speed[label] and mult[label] then
+                local m = mult[label]
+                local pct = math.floor((m >= 1 and (m - 1) or (1 / m - 1)) * 100 + 0.5)
+                if pct > 0 then
+                    tinsert(lines, line("  " .. label, WHITE, pct .. "% " .. (m >= 1 and "slower" or "faster")))
+                end
+            elseif not speed[label] and (sums[label] or 0) ~= 0 then
+                tinsert(lines, line("  " .. label, WHITE, (sums[label] > 0 and "+" or "") .. sums[label] .. "%"))
+            end
+        end
+    end
     return lines
 end
 
