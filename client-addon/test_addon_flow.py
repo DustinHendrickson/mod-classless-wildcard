@@ -1647,6 +1647,25 @@ def test_rebirth(h):
     h.rt.execute('GameTooltip:SetUnitAura("target", 1, "HARMFUL")')
     tip = str(h.rt.eval("TipText()"))
     h.check("You wear" not in tip, "someone else's is left as it is, since their gear is not ours: %r" % tip)
+
+    # Once the server has reported, the hover text is what the pieces give
+    # now, the full set beside it: the numbers are the server's, as applied.
+    h.recv("AW|962043:4:-12,-4:-25,-8;962044:1:-1,0:-12,-4;962045:0:0,0,0:-5,4,4;962046:1:0,1:4,10;")
+    h.rt.execute('GameTooltip:SetUnitAura("player", 1, "HARMFUL")')
+    tip = str(h.rt.eval("TipText()"))
+    h.check("You wear 4 of 8 pieces of plate." in tip and "Casting: 12% slower" in tip
+            and "(full set: 25% slower)" in tip and "Attacks: 4% slower" in tip
+            and "the row's own text" not in tip,
+            "the plate tooltip shows what four pieces cost, and a full set beside it: %r" % tip)
+    h.rt.execute('GameTooltip:SetUnitAura("player", 2, "HARMFUL")')
+    tip = str(h.rt.eval("TipText()"))
+    h.check("Attacks: unchanged" in tip and "(full set: 4% slower)" in tip,
+            "one mail piece leaves attacks unchanged, and says so: %r" % tip)
+    h.rt.execute('GameTooltip:SetUnitAura("player", 3, "HELPFUL")')
+    tip = str(h.rt.eval("TipText()"))
+    h.check("Spell critical strike chance: +0%" in tip and "Mana regeneration: +1%" in tip
+            and "(full set: +10%)" in tip,
+            "and the one cloth piece gives +1%% mana regeneration of a full set's +10%%: %r" % tip)
     h.rt.execute("GetItemInfo = ARMOR_TEST_SAVED.GetItemInfo")
 
     # My Build shows the heirloom for what it is, with nothing to lock or reroll.

@@ -1681,6 +1681,34 @@ def main():
           len(weight_gen) == 4 and not weight_bad,
           "%d aura(s); %s" % (len(weight_gen), weight_bad))
 
+    # Each ArmorWeight.<key> in the conf overrides one effect slot of its aura,
+    # by position: C++ must name one key per filled slot, and the defaults the
+    # conf's comment quotes must be the rows' own values.
+    by_id = {sp["id"]: sp["values"] for sp in spells}
+    conf_text = io.open(os.path.join(os.path.dirname(os.path.abspath(__file__)), os.pardir, "conf",
+                                     "classless_wildcard.conf.dist"), encoding="utf-8").read()
+    quoted = {k: int(v) for k, v in re.findall(r"([A-Z][a-z]+\.[A-Za-z]+)\s+(-?\d+)", conf_text)}
+    key_bad = []
+    keys_seen = 0
+    for m in re.finditer(r"ITEM_SUBCLASS_ARMOR_[A-Z]+,\s*(\d+),\s*\{([^}]*)\}", weight_tbl):
+        sid, keys = int(m.group(1)), re.findall(r'"([^"]+)"', m.group(2))
+        row = by_id.get(sid)
+        if row is None:
+            key_bad.append("%d has no row" % sid)
+            continue
+        slots = [i for i in range(3) if row[F["Effect"] + i]]
+        if len(keys) != len(slots):
+            key_bad.append("%d: %d key(s) for %d effect(s)" % (sid, len(keys), len(slots)))
+        for key, i in zip(keys, slots):
+            keys_seen += 1
+            value = row[F["EffectBasePoints"] + i] + 1
+            if quoted.get(key) != value:
+                key_bad.append("%s: the conf quotes %s, the row holds %d" % (key, quoted.get(key), value))
+            if ("ClasslessWildcard.ArmorWeight.%s = " % key) not in conf_text:
+                key_bad.append("%s: no line in the conf" % key)
+    check("every armor weight conf key overrides a real effect, and the conf quotes the rows' values",
+          keys_seen == 9 and not key_bad, "%d key(s); %s" % (keys_seen, key_bad))
+
     # ---- the Reborn aura -------------------------------------------------------
     # The C++ puts it on a reborn Hero by id and the addon writes its hover
     # text by id, so both have to name the row the generator built. And it has

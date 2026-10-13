@@ -160,6 +160,10 @@ ClasslessMgr* ClasslessMgr::instance()
 // Config
 // -------------------------------------------------------------------------
 
+// Reads the ArmorWeight.<Armor>.<Effect> values; defined beside the table of
+// armor weights below, which is what names the keys.
+static void LoadArmorWeightValues(Config& cfg);
+
 void ClasslessMgr::LoadConfig(bool /*reload*/)
 {
     cfg.enabled = sConfigMgr->GetOption<bool>("ClasslessWildcard.Enable", true);
@@ -236,6 +240,7 @@ void ClasslessMgr::LoadConfig(bool /*reload*/)
 
     cfg.teachProficiencies = sConfigMgr->GetOption<bool>("ClasslessWildcard.TeachProficiencies", true);
     cfg.armorWeight = sConfigMgr->GetOption<bool>("ClasslessWildcard.ArmorWeight.Enable", true);
+    LoadArmorWeightValues(cfg);
     cfg.proficiencySpells = ParseUintList(sConfigMgr->GetOption<std::string>(
         "ClasslessWildcard.ProficiencySpells",
         // cloth, leather, mail, plate, shield, swords 1h/2h, axes 1h/2h, maces 1h/2h,
@@ -2833,13 +2838,17 @@ void ClasslessMgr::SyncRebirthAura(Player* player, uint32 rank)
 // tick puts back anything that removes it anyway.
 namespace
 {
-    struct ArmorWeight { uint32 subclass; uint32 aura; };
+    // The conf key for each effect, in the row's order: ArmorWeight.<key>.
+    struct ArmorWeight { uint32 subclass; uint32 aura; std::array<char const*, MAX_SPELL_EFFECTS> keys; };
     constexpr ArmorWeight ARMOR_WEIGHTS[] = {
-        { ITEM_SUBCLASS_ARMOR_PLATE,   962043 },
-        { ITEM_SUBCLASS_ARMOR_MAIL,    962044 },
-        { ITEM_SUBCLASS_ARMOR_LEATHER, 962045 },
-        { ITEM_SUBCLASS_ARMOR_CLOTH,   962046 },
+        { ITEM_SUBCLASS_ARMOR_PLATE,   962043, { "Plate.CastSpeed", "Plate.AttackSpeed", nullptr } },
+        { ITEM_SUBCLASS_ARMOR_MAIL,    962044, { "Mail.CastSpeed", "Mail.AttackSpeed", nullptr } },
+        { ITEM_SUBCLASS_ARMOR_LEATHER, 962045, { "Leather.CastSpeed", "Leather.AttackSpeed", "Leather.Dodge" } },
+        { ITEM_SUBCLASS_ARMOR_CLOTH,   962046, { "Cloth.SpellCrit", "Cloth.ManaRegen", nullptr } },
     };
+    // Beyond this a value is a typo, not a choice: a speed past +-100% stops a
+    // swing or a cast altogether.
+    constexpr int32 ARMOR_WEIGHT_VALUE_LIMIT = 100;
     // the slots armor weight counts: the cloak is cloth for everyone, and
     // shirts and tabards weigh nothing
     constexpr uint8 ARMOR_SLOTS[] = {
@@ -2848,7 +2857,30 @@ namespace
     };
 }
 
-void ClasslessMgr::SyncArmorWeight(Player* player)
+static void LoadArmorWeightValues(Config& cfg)
+{
+    cfg.armorWeightValues.clear();
+    for (ArmorWeight const& w : ARMOR_WEIGHTS)
+        for (char const* key : w.keys)
+        {
+            if (!key)
+                continue;
+            std::string const name = std::string("ClasslessWildcard.ArmorWeight.") + key;
+            std::string const text = sConfigMgr->GetOption<std::string>(name, "", false);
+            if (text.empty())
+                continue;   // the spell row decides
+            Optional<int32> value = Acore::StringTo<int32>(text);
+            if (!value || std::abs(*value) > ARMOR_WEIGHT_VALUE_LIMIT)
+            {
+                LOG_ERROR("module.classless", "mod-classless-wildcard: {} = \"{}\" is not a whole number from {} to {}; "
+                          "using the spell's own value", name, text, -ARMOR_WEIGHT_VALUE_LIMIT, ARMOR_WEIGHT_VALUE_LIMIT);
+                continue;
+            }
+            cfg.armorWeightValues[key] = *value;
+        }
+}
+
+void ClasslessMgr::SyncArmorWeight(Player* player, bool push)
 {
     CharState* st = FindState(player);
     // Off in the conf: nobody carries it, so the next tick takes the auras
@@ -2863,6 +2895,10 @@ void ClasslessMgr::SyncArmorWeight(Player* player)
                     if (proto->Class == ITEM_CLASS_ARMOR)
                         ++worn[proto->SubClass];
 
+    // "AW|aura:pieces:in force,...:full set,...;" for every weight, the
+    // amounts exactly as applied, so the addon's hover text shows what the
+    // pieces worn really give rather than only the full-set numbers
+    std::string report = "AW|";
     for (ArmorWeight const& w : ARMOR_WEIGHTS)
     {
         SpellInfo const* info = sSpellMgr->GetSpellInfo(w.aura);
@@ -2872,12 +2908,24 @@ void ClasslessMgr::SyncArmorWeight(Player* player)
         // each effect's share of its full-set value, for the pieces worn
         std::array<int32, MAX_SPELL_EFFECTS> amount = {};
         bool any = false;
+        std::string now, full;
         for (uint8 i = 0; i < MAX_SPELL_EFFECTS; ++i)
             if (info->Effects[i].IsAura())
             {
-                amount[i] = info->Effects[i].CalcValue() * worn[w.subclass] / int32(std::size(ARMOR_SLOTS));
+                // the conf's value when it sets one, else the row's
+                int32 fullSet = info->Effects[i].CalcValue();
+                if (w.keys[i])
+                {
+                    auto set = cfg.armorWeightValues.find(w.keys[i]);
+                    if (set != cfg.armorWeightValues.end())
+                        fullSet = set->second;
+                }
+                amount[i] = fullSet * worn[w.subclass] / int32(std::size(ARMOR_SLOTS));
                 any = any || amount[i] != 0;
+                now += Acore::StringFormat("{}{}", now.empty() ? "" : ",", amount[i]);
+                full += Acore::StringFormat("{}{}", full.empty() ? "" : ",", fullSet);
             }
+        report += Acore::StringFormat("{}:{}:{}:{};", w.aura, worn[w.subclass], now, full);
         if (!any)
         {
             player->RemoveAurasDueToSpell(w.aura);
@@ -2897,6 +2945,12 @@ void ClasslessMgr::SyncArmorWeight(Player* player)
                 if (eff->GetAmount() != amount[i])
                     eff->ChangeAmount(amount[i]);
             }
+    }
+
+    if (st && (push || st->armorWeightSent != report))
+    {
+        st->armorWeightSent = report;
+        PushAddon(player, report);
     }
 }
 

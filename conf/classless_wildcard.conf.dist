@@ -599,6 +599,64 @@ ClasslessWildcard.TeachProficiencies = 1
 #        Default: 1
 ClasslessWildcard.ArmorWeight.Enable = 1
 
+#    ClasslessWildcard.ArmorWeight.<Armor>.<Effect>
+#        What each armor type gives at a FULL SET, in percent.
+#
+#        Which pieces count: the eight armor slots, which are head, shoulders,
+#        chest, waist, legs, feet, wrists and hands. The cloak, shirt, tabard,
+#        shield and jewelry never count.
+#
+#        How a value spreads across the set: every type is counted on its own,
+#        and each piece is one eighth of the full-set value. The effect in
+#        force is the value times the pieces of that type worn, divided by
+#        eight, cut down to a whole percent. With the plate casting value at
+#        -25: one piece gives 3% slower casting (25 x 1 / 8 = 3.1), four give
+#        12% (12.5), eight give 25%. Small values lose the most to the cut: one
+#        leather piece gives nothing at all, two give 1% on each effect.
+#
+#        Mixed sets: each type worn shows as its own aura, and they all apply
+#        together. 4 plate, 2 mail and 2 cloth carry Plate Armor at half
+#        strength, Mail Armor and Cloth Armor at a quarter each. Speeds from
+#        different auras multiply: plate's 12% and mail's 3% slower casting
+#        make casts about 15% longer, and leather's faster attacks offset part
+#        of a heavier type's slower ones.
+#
+#        What each effect touches:
+#            CastSpeed      cast times, and the global cooldown of spells
+#            AttackSpeed    melee and ranged swings, main and off hand; not
+#                           the global cooldown of melee abilities
+#            Dodge          dodge chance
+#            SpellCrit      spell critical strike chance
+#            ManaRegen      mana regeneration
+#
+#        Signs: for the two speeds, negative is slower and positive faster; for
+#        the rest, positive raises and negative lowers. Whole numbers from -100
+#        to 100; anything else is ignored with a line in the server log.
+#
+#        Left empty, the aura's own spell row decides, and these are its
+#        values (ARMOR_WEIGHTS in data/sql/generators/gen_forged_spells.py):
+#            Plate.CastSpeed    -25    Plate.AttackSpeed    -8
+#            Mail.CastSpeed     -12    Mail.AttackSpeed     -4
+#            Leather.CastSpeed   -5    Leather.AttackSpeed   4    Leather.Dodge  4
+#            Cloth.SpellCrit      4    Cloth.ManaRegen      10
+#        Set only the ones you mean to change: an empty one follows the spell
+#        row if a later version changes it, a set one stays as you set it.
+#
+#        The addon's hover text on each aura shows the pieces worn, what they
+#        give now and the full set, from the values in force here. A player
+#        without the addon sees the spell row's numbers in the aura's own text.
+#        Changes take effect within two seconds of a .reload config.
+#        Default: "" (the spell row)
+ClasslessWildcard.ArmorWeight.Plate.CastSpeed = ""
+ClasslessWildcard.ArmorWeight.Plate.AttackSpeed = ""
+ClasslessWildcard.ArmorWeight.Mail.CastSpeed = ""
+ClasslessWildcard.ArmorWeight.Mail.AttackSpeed = ""
+ClasslessWildcard.ArmorWeight.Leather.CastSpeed = ""
+ClasslessWildcard.ArmorWeight.Leather.AttackSpeed = ""
+ClasslessWildcard.ArmorWeight.Leather.Dodge = ""
+ClasslessWildcard.ArmorWeight.Cloth.SpellCrit = ""
+ClasslessWildcard.ArmorWeight.Cloth.ManaRegen = ""
+
 #    ClasslessWildcard.ProficiencySpells
 #        The proficiency spells taught, plus the ranged use-abilities: Shoot
 #        5019 fires WANDS only, bows/guns/crossbows need Shoot 3018 and thrown

@@ -130,6 +130,8 @@ namespace
         // the on-screen challenge tracker, which every state refresh keeps
         // honest (a login, a /reload, the panel opening)
         sClasslessMgr->PushRunTracker(player);
+        // and what the armor worn costs or gives, for the auras' hover text
+        sClasslessMgr->SyncArmorWeight(player, true);
 
         // Talent pricing, so the browser can label what a talent actually
         // costs instead of assuming. Sent as its own message rather than more

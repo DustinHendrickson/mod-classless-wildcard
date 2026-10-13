@@ -459,6 +459,10 @@ namespace ClasslessWildcard
         // The player asked not to be taught Auto Shot (Settings). Saved.
         bool noAutoShot = false;
 
+        // The armor weight amounts last sent to the addon ("AW|..."), so the
+        // 2-second tick only sends when they change. Runtime only.
+        std::string armorWeightSent;
+
         bool loaded = false;
     };
 
@@ -493,6 +497,10 @@ namespace ClasslessWildcard
         // proficiencies
         bool   teachProficiencies = true;
         bool   armorWeight = true;      // ArmorWeight.Enable: each armor type's aura
+        // ArmorWeight.<Armor>.<Effect>: full-set values set in the conf, by
+        // key ("Plate.CastSpeed"). A key left empty is absent here, and the
+        // aura's own spell row decides.
+        std::map<std::string, int32> armorWeightValues;
         std::vector<uint32> proficiencySpells;
 
         // clean-slate start: strip the chassis class's default spells at

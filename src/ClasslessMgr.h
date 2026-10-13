@@ -200,7 +200,9 @@ public:
     void ApplyRebirthMods(Player* player);
     // What heavy armor costs a Hero: one harmful aura per weight worn, scaled
     // by the pieces of it. Cheap; called on the 2-second tick and at login.
-    void SyncArmorWeight(Player* player);
+    // Tells the addon the amounts in force and at a full set whenever they
+    // change, or always with `push` (a state request after a /reload).
+    void SyncArmorWeight(Player* player, bool push = false);
     void SyncRebirthAura(Player* player, uint32 rank);
     uint32 GrantRebirthTitles(Player* player);   // the title granted just now, 0 if none
 

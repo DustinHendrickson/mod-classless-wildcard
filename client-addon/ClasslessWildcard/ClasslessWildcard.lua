@@ -9114,6 +9114,9 @@ local function HandleMessage(msg)
         local text, r, g, b = CW.LoadedDieText(tonumber(p[2]) or 0, tonumber(p[3]) or 20, tonumber(p[4]) == 1)
         UIErrorsFrame:AddMessage(text, r, g, b)
         if (tonumber(p[2]) or 0) == (tonumber(p[3]) or 20) and PlaySound then pcall(PlaySound, "LEVELUPSOUND") end
+    elseif kind == "AW" then
+        -- the armor weight in force, for the auras' hover text
+        CW.ReadArmorWeight(p[2])
     elseif kind == "RD" then
         -- a life lost: lives left, lives at the start, what the rule did
         local lives, max, what = tonumber(p[2]) or 0, tonumber(p[3]) or 0, p[4] or ""
@@ -9439,10 +9442,20 @@ do
         -- same formulas as RebirthXpPct and ApplyRebirthMods.
         local function rebornTip(self, unit, index, filter)
             local _, _, _, count, _, _, _, _, _, _, id = UnitAura(unit, index, filter)
-            -- an armor weight debuff on the player: say how many pieces count
+            -- an armor weight aura on the player: what the pieces worn give
+            -- now, from the server's AW report, beside the full-set numbers
             if CW.ARMOR_WEIGHT[id] and unit and UnitIsUnit(unit, "player") then
-                local worn = CW.ArmorPiecesWorn(CW.ARMOR_WEIGHT[id])
-                self:AddLine("You wear " .. worn .. " of " .. #CW.ARMOR_SLOTS .. " pieces.", 1, 0.82, 0)
+                local lines = CW.ArmorWeightTip(id)
+                if lines then
+                    self:ClearLines()
+                    self:AddLine(lines[1], 1, 1, 1)
+                    self:AddLine(lines[2], 1, 0.82, 0)
+                    for i = 3, #lines do self:AddLine(lines[i], 1, 1, 1, true) end
+                else
+                    -- no report yet: the row's own text, and the pieces counted here
+                    local worn = CW.ArmorPiecesWorn(CW.ARMOR_WEIGHT[id])
+                    self:AddLine("You wear " .. worn .. " of " .. #CW.ARMOR_SLOTS .. " pieces.", 1, 0.82, 0)
+                end
                 self:Show()
                 return
             end
@@ -9472,6 +9485,54 @@ CW.ARMOR_WEIGHT = { [962043] = 5, [962044] = 4, [962045] = 3, [962046] = 2 }
 -- the slots the server counts: head, shoulders, chest, waist, legs, feet,
 -- wrists, hands
 CW.ARMOR_SLOTS = { 1, 3, 5, 6, 7, 8, 9, 10 }
+-- What each aura's effects are, in its row's order, for the hover text: a
+-- speed reads "% slower" or "% faster", anything else "+%". Words only; every
+-- number comes from the server's AW report.
+CW.ARMOR_WEIGHT_TEXT = {
+    [962043] = { armor = "plate",   effects = { { "Casting", "speed" }, { "Attacks", "speed" } } },
+    [962044] = { armor = "mail",    effects = { { "Casting", "speed" }, { "Attacks", "speed" } } },
+    [962045] = { armor = "leather", effects = { { "Casting", "speed" }, { "Attacks", "speed" }, { "Dodge", "plus" } } },
+    [962046] = { armor = "cloth",   effects = { { "Spell critical strike chance", "plus" }, { "Mana regeneration", "plus" } } },
+}
+CW.armorWeight = {}   -- aura id -> { pieces, now = {...}, full = {...} }, from "AW"
+
+-- "AW|aura:pieces:in force,...:full set,...;..."
+function CW.ReadArmorWeight(list)
+    CW.armorWeight = {}
+    for aura, pieces, now, full in string.gmatch(list or "", "(%d+):(%d+):([^:;]*):([^:;]*);") do
+        local entry = { pieces = tonumber(pieces), now = {}, full = {} }
+        for v in string.gmatch(now, "[^,]+") do tinsert(entry.now, tonumber(v)) end
+        for v in string.gmatch(full, "[^,]+") do tinsert(entry.full, tonumber(v)) end
+        CW.armorWeight[tonumber(aura)] = entry
+    end
+end
+
+function CW.ArmorAmount(value, kind)
+    if kind == "speed" then
+        if value == 0 then return "unchanged" end
+        return math.abs(value) .. "% " .. (value < 0 and "slower" or "faster")
+    end
+    return "+" .. value .. "%"
+end
+
+-- The hover text for an armor weight aura: its name, the pieces worn, then
+-- each effect as it stands now with the full-set value beside it. nil until
+-- the server has reported.
+function CW.ArmorWeightTip(aura)
+    local data, text = CW.armorWeight[aura], CW.ARMOR_WEIGHT_TEXT[aura]
+    if not data or not text then return nil end
+    local name = GetSpellInfo(aura) or (text.armor .. " armor")
+    local lines = { name, "You wear " .. data.pieces .. " of " .. #CW.ARMOR_SLOTS .. " pieces of " .. text.armor .. "." }
+    for i, e in ipairs(text.effects) do
+        local now, full = data.now[i], data.full[i]
+        if now and full then
+            tinsert(lines, e[1] .. ": " .. CW.ArmorAmount(now, e[2]) .. "  |cff999999(full set: "
+                .. CW.ArmorAmount(full, e[2]) .. ")|r")
+        end
+    end
+    return lines
+end
+
 function CW.ArmorPiecesWorn(subclassIndex)
     local want = select(subclassIndex, GetAuctionItemSubClasses(2))
     local n = 0

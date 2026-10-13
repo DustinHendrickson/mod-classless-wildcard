@@ -182,7 +182,8 @@ with your build on the right. Lock or reroll anything you own from the same wind
 
   Each type shows as one aura (plate and mail as debuffs), which cannot be cancelled or
   dispelled. The numbers live in the auras' own spell rows (`ARMOR_WEIGHTS` in
-  `gen_forged_spells.py`). `ArmorWeight.Enable = 0` turns it off.
+  `gen_forged_spells.py`), and each can be set in the conf (`ArmorWeight.Plate.CastSpeed` and so
+  on). `ArmorWeight.Enable = 0` turns it off.
 - **Every item for every Hero.** Class armour sets, all 353 glyphs, rogue poisons, soul bags,
   quivers and relics. Sons of Hodir satchels give a random armour type.
 - **Starter kit.** A neutral outfit, a bag, a spread of basic weapons (dagger, one- and two-hand
@@ -754,6 +755,7 @@ documented inline and prefixed `ClasslessWildcard.`. The common ones:
 | `UniversalStats.MeleeAPPerAgility` / `RangedAPPerAgility` | `1` / `1` | Attack power per Agility |
 | `Stats.Enable` / `Stats.StartingPoints` / `Stats.PointsPerLevel` | `1` / `4` / `2` | Stat allocation |
 | `ArmorWeight.Enable` | `1` | Each armor type's aura (see Armor weight). `0` takes them away |
+| `ArmorWeight.<Armor>.<Effect>` | empty | A full set's value, in percent; empty uses the aura's spell row |
 | `Riding.Enable` / `Riding.Grants` | `1` / the table above | Free riding, as `spell:level` pairs |
 | `Runeforging.Enable` / `Runeforging.Grants` | `1` / the table above | Free runeforging, as `spell:level` pairs |
 | `WorldDrops.Enable` / `Chance` | `1` / `1.0` | Classless gear drops, % per kill |
