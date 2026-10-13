@@ -230,8 +230,9 @@ nothing for that part; items, XP, gold and reputation are paid as normal.
 - **Hero Advancement NPC.** In every capital, Dalaran and Shattrath. Advancement menu, gear
   vendor and Reroll Scrolls.
 - **ClasslessWildcard addon.** The Hero Advancement panel (`N` by default), Wildcard roll UI,
-  resource mini-bars, a first-login wizard and a Help guide. Everything it does is also a chat
-  command.
+  resource mini-bars, a first-login intro and path wizard (`/cw intro` replays the intro), and a
+  Hero Guide in sections that quotes the realm's own numbers, armor weights included. Everything
+  it does is also a chat command.
 
 ### Known limits
 

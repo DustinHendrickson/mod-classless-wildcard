@@ -174,18 +174,22 @@ CW.PANEL_BACKDROP = {
 }
 CW.PANEL_ART = "Interface\\AddOns\\ClasslessWildcard\\panel_bg"
 frame:SetBackdrop(CW.PANEL_BACKDROP)
--- Opaque backing UNDER the baked art: panel_bg has transparent regions, so
--- without this the world shows through the gaps between the painted panes.
--- Both live on the frame itself (not as locals): the main chunk sits at Lua
--- 5.1's limit of 200 active locals.
-frame.bg = frame:CreateTexture(nil, "BACKGROUND", nil, -8)
-frame.bg:SetPoint("TOPLEFT", 6, -6)
-frame.bg:SetPoint("BOTTOMRIGHT", -6, 6)
-frame.bg:SetTexture(0.04, 0.045, 0.06, 1)
--- The art, exactly where the backdrop's bgFile sat (the full frame, insets 0;
--- the border overlaps its edge as before). One sublevel above the backing,
--- below everything the panes draw.
-frame.art = frame:CreateTexture(nil, "BACKGROUND", nil, -7)
+-- The art, exactly where the backdrop's bgFile sat (the full frame, insets 0),
+-- and the ONLY region the panel has on BACKGROUND. The backdrop's border draws
+-- on BORDER, over it.
+--
+-- One texture on purpose. panel_bg.tga is fully opaque: the dark glaze inside
+-- the panes is baked onto the panel's backing colour (10, 11, 15) in the file
+-- itself. It used to be a translucent image over a separate opaque backing
+-- texture, and 3.3.5 cannot order two regions on one layer: it has no draw
+-- sublevels (CreateTexture never reads a fourth argument and SetDrawLayer only
+-- the layer, read out of Wow.exe 2026-10-13). Whenever the backing drew last,
+-- the panel came up flat. Raising the art to BORDER instead put it level with
+-- the backdrop's border, and the border went. With nothing under the art there
+-- is nothing to order.
+-- On the frame itself, not a local: the main chunk sits at Lua 5.1's limit of
+-- 200 active locals.
+frame.art = frame:CreateTexture(nil, "BACKGROUND")
 frame.art:SetAllPoints(frame)
 frame.art:SetTexture(CW.PANEL_ART)
 
@@ -730,8 +734,12 @@ local function MakeEntry(x, y, width, index)
     e.slot:SetPoint("CENTER", e.icon, "CENTER", 0, -1)
     e.slot:SetTexture("Interface\\Buttons\\UI-Quickslot2")
 
-    -- drawn above the slot frame: on the same layer the frame covered it
-    e.check = e:CreateTexture(nil, "OVERLAY", nil, 7)
+    -- drawn above the slot frame. Both want OVERLAY and 3.3.5 has no
+    -- sublevels to order them, so the tick lives on a child frame, which
+    -- draws over every layer of its parent.
+    e.checkLayer = CreateFrame("Frame", nil, e)
+    e.checkLayer:SetAllPoints(e)
+    e.check = e.checkLayer:CreateTexture(nil, "OVERLAY")
     e.check:SetWidth(18); e.check:SetHeight(18)
     e.check:SetPoint("BOTTOMRIGHT", e.icon, "BOTTOMRIGHT", 4, -3)
     e.check:SetTexture("Interface\\RaidFrame\\ReadyCheck-Ready")
@@ -2351,8 +2359,8 @@ CW.statFly = statFly
 -- that stat and everything the stat is doing at that total, not just how many
 -- points were spent on it. "Intellect 30 pts = +30" said nothing about the 28
 -- Intellect the character actually had, nor about the mana and crit it gave.
-statFly:SetWidth(372); statFly:SetHeight(286)
-statFly:SetPoint("BOTTOMRIGHT", frame, "BOTTOMRIGHT", -20, 56)
+statFly:SetWidth(frame:GetWidth()); statFly:SetHeight(frame:GetHeight())
+statFly:SetPoint("CENTER", frame, "CENTER", 0, 0)
 statFly:SetFrameStrata("DIALOG")
 statFly:SetBackdrop({
     bgFile = "Interface\\Buttons\\WHITE8X8",
@@ -2369,63 +2377,121 @@ statFly:SetBackdropColor(0.03, 0.03, 0.05, 0.97) -- solid: the panes underneath 
 statFly:EnableMouse(true)
 statFly:Hide()
 
-local statTitle = statFly:CreateFontString(nil, "OVERLAY", "GameFontNormal")
-statTitle:SetPoint("TOP", 0, -12)
+-- The page: a heading, a banner with the points left to place, then a card
+-- per stat. A card is the stat's icon, its name and live total with what that
+-- total is doing, and on the right the points placed in it with - and +.
+statFly.close = CreateFrame("Button", nil, statFly, "UIPanelCloseButton")
+statFly.close:SetPoint("TOPRIGHT", -6, -6)
+statFly.close:SetScript("OnClick", function() statFly:Hide() end)
+statFly.header = statFly:CreateFontString(nil, "OVERLAY", "GameFontNormalLarge")
+statFly.header:SetPoint("TOP", 0, -16)
+statFly.header:SetText("Primary Stats")
+
+CW.CARD_BACKDROP = {
+    bgFile = "Interface\\Tooltips\\UI-Tooltip-Background",
+    edgeFile = "Interface\\Tooltips\\UI-Tooltip-Border",
+    tile = true, tileSize = 16, edgeSize = 14,
+    insets = { left = 3, right = 3, top = 3, bottom = 3 },
+}
+statFly.banner = CreateFrame("Frame", nil, statFly)
+statFly.banner:SetWidth(380); statFly.banner:SetHeight(58)
+statFly.banner:SetPoint("TOP", 0, -42)
+statFly.banner:SetBackdrop(CW.CARD_BACKDROP)
+statFly.banner:SetBackdropColor(0.1, 0.08, 0.02, 0.9)
+statFly.banner:SetBackdropBorderColor(0.8, 0.65, 0.2)
+-- Both lines belong to the banner. A child frame draws over every layer of
+-- its parent, text included, so on the page they sat UNDER the banner's fill
+-- and came out dim and muddy.
+local statTitle = statFly.banner:CreateFontString(nil, "OVERLAY", "GameFontNormalHuge")
 CW.statTitle = statTitle
+statTitle:SetTextColor(1, 1, 1)      -- white, so the green count stands out
+statTitle:SetPoint("CENTER", statFly.banner, "CENTER", 0, 7)
+statFly.bannerSub = statFly.banner:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+statFly.bannerSub:SetPoint("TOP", statTitle, "BOTTOM", 0, -3)
+statFly.bannerSub:SetTextColor(0.75, 0.75, 0.75)
+statFly.bannerSub:SetText("points to place")
+statFly.hint = statFly:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+statFly.hint:SetPoint("TOP", statFly.banner, "BOTTOM", 0, -8)
+statFly.hint:SetWidth(700)
+statFly.hint:SetTextColor(0.65, 0.65, 0.65)
+statFly.hint:SetText("Points arrive every level, and moving them is free at any time. Hover a stat for everything it does for you.")
 
 local statRows = {}
 CW.statRows = statRows
+CW.STAT_ICONS = { "Spell_Nature_Strength", "Spell_Holy_BlessingOfAgility", "Spell_Holy_WordFortitude",
+                  "Spell_Holy_MagicalSentry", "Spell_Holy_DivineSpirit" }
 for i = 1, 5 do
     local r = CreateFrame("Frame", nil, statFly)
-    r:SetWidth(344); r:SetHeight(36)
-    r:SetPoint("TOPLEFT", 14, -36 - (i - 1) * 38)
-    -- a faint band per row, so five two-line entries do not run together
-    r.bg = r:CreateTexture(nil, "BACKGROUND")
-    r.bg:SetAllPoints(r)
-    r.bg:SetTexture(1, 1, 1, 0.03)
+    r:SetWidth(820); r:SetHeight(70)
+    r:SetPoint("TOP", 0, -130 - (i - 1) * 78)
+    r:SetBackdrop(CW.CARD_BACKDROP)
+    r:SetBackdropColor(0.07, 0.07, 0.1, 0.9)
+    r:SetBackdropBorderColor(0.4, 0.4, 0.45)
 
-    -- line 1: the stat, its total, and what Apply would make it
-    r.label = r:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
-    r.label:SetPoint("TOPLEFT", 4, -3)
+    r.icon = r:CreateTexture(nil, "ARTWORK")
+    r.icon:SetWidth(42); r.icon:SetHeight(42)
+    r.icon:SetPoint("LEFT", 18, 0)
+    r.icon:SetTexCoord(0.07, 0.93, 0.07, 0.93)
+    r.icon:SetTexture("Interface\\Icons\\" .. CW.STAT_ICONS[i])
+    r.iconBorder = r:CreateTexture(nil, "OVERLAY")
+    r.iconBorder:SetWidth(71); r.iconBorder:SetHeight(71)
+    r.iconBorder:SetPoint("CENTER", r.icon, "CENTER", 0, 0)
+    r.iconBorder:SetTexture("Interface\\Buttons\\UI-Quickslot2")
+
+    -- line 1: the stat, its live total, the Rebirth share, what Apply makes it
+    r.label = r:CreateFontString(nil, "OVERLAY", "GameFontNormalLarge")
+    r.label:SetPoint("TOPLEFT", 78, -14)
+    r.label:SetWidth(570)
     r.label:SetJustifyH("LEFT")
-    r.label:SetWidth(276)
-    -- line 2: everything that total is worth, from the server's own rates
-    -- the full row width: at level 80 the effects line is long ("+8550 mana,
-    -- +142 spell power, +2.31% spell critical strike"), so the buttons sit on
-    -- the line above it rather than stealing 70px from it
-    r.sub = r:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
-    r.sub:SetPoint("TOPLEFT", 4, -20)
+    -- line 2: everything that total is worth, from the realm's own rates
+    r.sub = r:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
+    r.sub:SetPoint("TOPLEFT", 78, -40)
+    r.sub:SetWidth(580)
     r.sub:SetJustifyH("LEFT")
-    r.sub:SetWidth(336)
 
-    r.minus = CreateFrame("Button", nil, r, "UIPanelButtonTemplate")
-    r.minus:SetWidth(24); r.minus:SetHeight(20)
-    r.minus:SetPoint("TOPRIGHT", -28, -1)
-    r.minus:SetText("-")
+    -- the points placed here, between - and +
     r.plus = CreateFrame("Button", nil, r, "UIPanelButtonTemplate")
-    r.plus:SetWidth(24); r.plus:SetHeight(20)
-    r.plus:SetPoint("TOPRIGHT", 0, -1)
+    r.plus:SetWidth(30); r.plus:SetHeight(26)
+    r.plus:SetPoint("RIGHT", -18, 0)
     r.plus:SetText("+")
+    r.count = r:CreateFontString(nil, "OVERLAY", "GameFontHighlightLarge")
+    r.count:SetPoint("CENTER", r, "RIGHT", -80, 6)
+    r.countLabel = r:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")
+    r.countLabel:SetPoint("CENTER", r, "RIGHT", -80, -12)
+    r.countLabel:SetText("points")
+    r.minus = CreateFrame("Button", nil, r, "UIPanelButtonTemplate")
+    r.minus:SetWidth(30); r.minus:SetHeight(26)
+    r.minus:SetPoint("RIGHT", -112, 0)
+    r.minus:SetText("-")
     statRows[i] = r
 end
+-- the client drops textures it loaded before a cinematic: set them on show
+statFly:HookScript("OnShow", function()
+    for i, r in ipairs(statRows) do
+        r.icon:SetTexture(nil)
+        r.icon:SetTexture("Interface\\Icons\\" .. CW.STAT_ICONS[i])
+    end
+end)
 
 local statApply = CreateFrame("Button", nil, statFly, "UIPanelButtonTemplate")
-statApply:SetWidth(140); statApply:SetHeight(22)
-statApply:SetPoint("BOTTOMLEFT", 14, 12)
+statApply:SetWidth(150); statApply:SetHeight(24)
+statApply:SetPoint("BOTTOM", -82, 20)
 statApply:SetText("Apply")
+CW.statApply = statApply
 
 local statReset = CreateFrame("Button", nil, statFly, "UIPanelButtonTemplate")
-statReset:SetWidth(140); statReset:SetHeight(22)
-statReset:SetPoint("BOTTOMRIGHT", -14, 12)
+statReset:SetWidth(150); statReset:SetHeight(24)
+statReset:SetPoint("BOTTOM", 82, 20)
 statReset:SetText("Reset edits")
+CW.statReset = statReset
 
 -- archetype flyout ----------------------------------------------------------
 -- The same starter builds the Hero Advancement NPC lists, applied with one
 -- click. Classless only: the server refuses ARCHAPPLY on any other path, and
 -- UpdateStatus hides the button and this panel outside that mode.
 local archFly = CreateFrame("Frame", "ClasslessWildcardArchetypes", frame)
-archFly:SetWidth(520); archFly:SetHeight(120)
-archFly:SetPoint("BOTTOMLEFT", frame, "BOTTOMLEFT", 20, 56)
+archFly:SetWidth(frame:GetWidth()); archFly:SetHeight(frame:GetHeight())
+archFly:SetPoint("CENTER", frame, "CENTER", 0, 0)
 archFly:SetFrameStrata("DIALOG")
 archFly:SetBackdrop({
     bgFile = "Interface\\Buttons\\WHITE8X8",
@@ -2437,6 +2503,9 @@ archFly:SetBackdropColor(0.03, 0.03, 0.05, 0.97) -- solid: the panes underneath 
 archFly:EnableMouse(true)
 archFly:Hide()
 CW.archFly = archFly
+archFly.close = CreateFrame("Button", nil, archFly, "UIPanelCloseButton")
+archFly.close:SetPoint("TOPRIGHT", -6, -6)
+archFly.close:SetScript("OnClick", function() archFly:Hide() end)
 
 -- Laid out like the panel's other cards: an icon and a large title, then
 -- three short labelled lines in place of a paragraph, then the builds.
@@ -2466,7 +2535,7 @@ end
 archFly.INTRO = archFly.IntroText()
 archFly.intro = archFly:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
 archFly.intro:SetPoint("TOPLEFT", 18, -62)
-archFly.intro:SetWidth(484)
+archFly.intro:SetWidth(900)
 archFly.intro:SetJustifyH("LEFT")
 archFly.intro:SetTextColor(0.8, 0.8, 0.8)
 archFly.intro:SetText(archFly.INTRO)
@@ -2596,7 +2665,7 @@ local function FillArchRows(L, list, onChoose, x, top, key)
         end
     end
     if #list > 0 then y = y - 4 end   -- and none after the last
-    local visible = math.min(y, ARCH_LIST_MAX_H)
+    local visible = math.min(y, L.maxH or ARCH_LIST_MAX_H)
     L.child:SetHeight(math.max(y, 1))
     L.scroll:ClearAllPoints()
     L.scroll:SetPoint("TOPLEFT", x, -top)
@@ -2614,7 +2683,7 @@ local function FillArchRows(L, list, onChoose, x, top, key)
     return #list, visible
 end
 
-archFly.list = MakeArchList(archFly, "ClasslessWildcardArchetypeList", 488, "Follow")
+archFly.list = MakeArchList(archFly, "ClasslessWildcardArchetypeList", 914, "Follow")
 archFly.rows = archFly.list.rows
 
 -- Fills the flyout from CW.archetypes (cached from the last AR/ARE reply):
@@ -2639,6 +2708,8 @@ local function RenderArchFly()
         archFly.intro:SetText("Loading...")
     end
     local top = 62 + TextHeight(archFly.intro) + 14
+    -- the list takes whatever the page has left under the header
+    archFly.list.maxH = archFly:GetHeight() - top - 24
     local shown, used = FillArchRows(archFly.list, list, function(arch)
         archFly:Hide()
         if arch.following then
@@ -2648,11 +2719,11 @@ local function RenderArchFly()
             if dlg then dlg.data = arch.id end
         end
     end, 18, top, "STARTER")
-    archFly:SetHeight(top + math.max(used, ARCH_ROW_H) + 14)
 end
 CW.RenderArchFly = RenderArchFly
 -- the flyout's own list, filled from any list of rows (My Builds uses it)
 function CW.FillArchRowsFor(list, onChoose, top, key)
+    archFly.list.maxH = archFly:GetHeight() - top - 24
     return FillArchRows(archFly.list, list, onChoose, 18, top, key)
 end
 
@@ -3259,7 +3330,7 @@ do
     CW.archTab = "STARTER"
     fly.tabMine = CreateFrame("Button", nil, fly, "UIPanelButtonTemplate")
     fly.tabMine:SetWidth(124); fly.tabMine:SetHeight(22)
-    fly.tabMine:SetPoint("TOPRIGHT", -16, -17)
+    fly.tabMine:SetPoint("TOPRIGHT", -44, -17)   -- left of the close button
     fly.tabMine:SetScript("OnClick", function()
         CW.archTab = CW.archTab == "MINE" and "STARTER" or "MINE"
         CW.RenderArchFly()
@@ -3350,7 +3421,6 @@ do
                 CW.FollowBuild(arch.build)
             end
         end, top, "MINE")
-        fly:SetHeight(top + math.max(used, 46) + 14)
     end
 
     -- the small actions a saved build's row carries, made on first use
@@ -4681,8 +4751,9 @@ end
 -- A scrollable "how it works" panel covering both systems. Static text, so it
 -- is built once here; the Help button toggles it.
 local helpFly = CreateFrame("Frame", "ClasslessWildcardHelp", frame)
-helpFly:SetWidth(600); helpFly:SetHeight(468)
-helpFly:SetPoint("CENTER", frame, "CENTER", 0, -8)
+-- the panel's own size and place: every flyout is a page over the panel
+helpFly:SetWidth(frame:GetWidth()); helpFly:SetHeight(frame:GetHeight())
+helpFly:SetPoint("CENTER", frame, "CENTER", 0, 0)
 helpFly:SetFrameStrata("DIALOG")
 helpFly:SetBackdrop({
     edgeFile = "Interface\\Tooltips\\UI-Tooltip-Border",
@@ -4700,7 +4771,7 @@ helpBg:SetTexture(0.035, 0.045, 0.07, 1)
 
 local helpTitle = helpFly:CreateFontString(nil, "OVERLAY", "GameFontNormalLarge")
 helpTitle:SetPoint("TOP", 0, -14)
-helpTitle:SetText("How Advancement Works")
+helpTitle:SetText("Hero Guide")
 
 local helpCloseBtn = CreateFrame("Button", nil, helpFly, "UIPanelCloseButton")
 helpCloseBtn:SetPoint("TOPRIGHT", -6, -6)
@@ -4711,7 +4782,7 @@ helpScroll:SetPoint("TOPLEFT", 16, -44)
 helpScroll:SetPoint("BOTTOMRIGHT", -34, 16)
 
 local helpContent = CreateFrame("Frame", nil, helpScroll)
-helpContent:SetWidth(540); helpContent:SetHeight(1)
+helpContent:SetWidth(880); helpContent:SetHeight(1)
 helpScroll:SetScrollChild(helpContent)
 
 -- Trim a rate for display: 2 not 2.0, 0.5 not 0.50.
@@ -4881,7 +4952,46 @@ local function HelpKey()
     return ""
 end
 
-local function BuildHelpText()
+-- Armor weight for the guide: a line per armor type with what a FULL set
+-- gives, worded the way the Armor Weight buff's hover text words it. Every
+-- number is the realm's own, from its armor report; until that has arrived
+-- the guide points at the buff instead of guessing.
+function CW.ArmorWeightHelp()
+    local out = {}
+    local speed = {}
+    for _, e in ipairs(CW.ARMOR_EFFECTS or {}) do speed[e[1]] = e[2] or false end
+    for _, aura in ipairs({ 962043, 962044, 962045, 962046 }) do
+        local data, text = (CW.armorWeight or {})[aura], (CW.ARMOR_WEIGHT_TEXT or {})[aura]
+        if data and text then
+            local parts = {}
+            for i, label in ipairs(text.effects) do
+                local full = data.full[i] or 0
+                if full ~= 0 then
+                    local word = string.lower(label)
+                    if speed[label] then
+                        parts[#parts + 1] = word .. " " .. math.abs(full) .. "% " .. (full < 0 and "slower" or "faster")
+                    else
+                        parts[#parts + 1] = word .. " " .. (full > 0 and "+" or "") .. full .. "%"
+                    end
+                end
+            end
+            if #parts > 0 then
+                local name = string.upper(string.sub(text.armor, 1, 1)) .. string.sub(text.armor, 2)
+                out[#out + 1] = "   |cffffd100" .. name .. ":|r " .. table.concat(parts, ", ") .. "."
+            end
+        end
+    end
+    if #out == 0 then
+        out[1] = "   Hover the |cffffd100Armor Weight|r buff on your buff bar for this realm's numbers."
+    end
+    return out
+end
+
+-- The guide, as pages. Each page has an icon, a title, one line on what it
+-- covers, and its blocks: a short heading and a paragraph under it, or a
+-- grey note. Every number comes from the realm (CFG, S and the armor
+-- report), never from here.
+function CW.HelpSections()
     local r, s = CW.rules, CW.state
     local free = s.freeReroll or 10
     local cap = r.maxLevel
@@ -4891,81 +5001,251 @@ local function BuildHelpText()
         and ("Each talent costs " .. (CW.talentCost or 1) .. " TE, whatever rank you take it to.")
         or ("Each talent rank costs " .. (CW.talentCost or 1) .. " TE, so a 5-rank talent costs " .. 5 * (CW.talentCost or 1) .. " TE in full.")
     local cooldown = math.max(0, r.banRolls - 1)
-    return table.concat({
-"|cffffd100You are a Hero.|r Your race keeps its racial traits. Every ability and talent you earn yourself, and you can take it from |cffffffffany class in the game|r.",
-"",
-"You gain that power one of two ways, chosen per character, and a character keeps the path it chooses. At level " .. cap .. ", |cffffd100Rebirth|r starts a new life with a permanent rank, and a |cffffd100Challenge run|r is a life under one rule. Both are explained at the bottom.",
-"",
-"|cff00ccff==  CLASSLESS: you choose  ==|r",
-"Spend two currencies to buy exactly what you want:",
-"   |cffffd100Ability Essence (AE)|r buys abilities.",
-"   |cffffd100Talent Essence (TE)|r buys talent ranks.",
-"You start with |cff00ff00" .. r.startAE .. " AE|r and earn |cff00ff00+" .. r.aePer .. " AE every level from " .. r.aeStart .. "|r. |cff00ff00Talent Essence arrives from level " .. r.teStart .. ", +" .. r.tePer .. " a level|r: " .. teByCap .. " by level " .. cap .. ".",
-"Abilities are priced by rarity: |cffffffff" .. c[1] .. "|r / |cff1eff00" .. c[2] .. "|r / |cff0070dd" .. c[3] .. "|r / |cffa335ee" .. c[4] .. "|r / |cffff8000" .. c[5] .. "|r AE from common to legendary. " .. talentPrice .. " Talents follow their tree's prerequisites, and each tier opens at its level.",
-"Unlearning an ability refunds what you paid. |cffffd100Respec|r unlearns everything at once, free. Every ability line you own |cff00ff00ranks up on its own|r as you level. Talents that teach a spell (Pyroblast, Mortal Strike, Mangle) are in the Abilities list instead, with every rank, and owning one counts as that talent for prerequisites.",
-"|cffffd100Archetypes|r are builds you follow from level 1 to " .. cap .. ". Pick one from the |cffffd100Archetypes|r button on this panel or at the Hero Advancement NPC. It replaces your build (abilities and talents refunded, free), then buys its abilities and talents for you as each becomes available. Everything it buys is a normal purchase, and you can stop following it at any time.",
-"",
-"|cffff8800==  WILDCARD: the dice choose  ==|r",
-"The dice deal you abilities and talents on a fixed schedule:",
-"   |cff00ff00Level 1:|r " .. r.wcStart .. " random abilities to begin.",
-"   |cff00ff00From level " .. r.wcRollStart .. ":|r one roll every level, alternating between an ability and a talent.",
-"Rolls are weighted by rarity: a legendary is weighted " .. r.weightLegendary .. " against a common's " .. r.weightCommon .. ", so most of what you are dealt is common and a legendary is a real find.",
-"A talent roll also rolls the |cffffd100rank|r you land on, and the rank is its rarity: rank 1 common, rank 2 uncommon, rank 3 rare, rank 4 epic, |cffff8000rank 5 legendary|r. A talent you have never had can arrive at any rank up to its top one, for free. A roll only ever gives you something you do not already own, and it never replaces anything you have.",
-"   |cffffd100Deepening a talent:|r a roll never raises a rank you already hold. To push a talent higher, reroll it and stake |cffffd100Reroll Scrolls|r on it. The reroll costs its charge as usual and trades the talent for a new one; every extra scroll you stake buys a chance to keep it and raise its rank instead, possibly by more than one. If the stake fails the scrolls are spent and the talent is traded away. Use the circular arrow beside a talent in |cffffd100My Build|r.",
-"You steer your luck:",
-"   |cffffd100Rerolls:|r free below level " .. free .. ". From level " .. r.wcRollStart .. ", every level grants " .. r.rerollsPerLevel .. " reroll charges, spent on abilities or talents alike. Reroll from the roll reveal, or later from |cffffd100My Build|r with the circular arrow next to anything you own.",
-"   |cffffd100Lock:|r while your Starting Hand is open, a padlock holds an ability back from |cffffd100Roll Abilities|r, which rerolls everything unlocked at once. At level " .. free .. " the padlocks come off: from then on you reroll one ability at a time, and only the one you choose.",
-"   |cffffd100Synergy:|r some rolls only offer abilities that share a class with something you already own. The chance starts at " .. r.synBase .. "% and climbs " .. r.synInc .. " points every time you reroll, then resets when a synergy roll lands.",
-"   |cffffd100Reroll cooldown:|r anything you reroll cannot come back for the next " .. cooldown .. " rolls, about " .. cooldown .. " levels. If everything you could use is owned or on cooldown, the cooldowns lift so you always get something usable.",
-"   |cffffd100Reroll Scrolls:|r one scroll rerolls an ability or a talent once your charges run out. Buy them from level " .. free .. " at the Hero Advancement NPC or with |cffffd100Buy Scroll|r on this panel; the price rises with level.",
-"Below level " .. free .. ", the |cffffd100dice crest|r at the top-left of this window reopens your Starting Hand.",
-"",
-"|cff40ff40==  Shared by both paths  ==|r",
-"   |cffffd100Universal resources:|r you carry mana, rage and energy at once, and each spell draws its own. The extra bars sit under your player frame and remember where you drag them. |cffffd100Settings|r on this panel picks which to show, including runes, runic power and combo points; |cffffd100/cwbars|r toggles them all.",
-"   |cffffd100Primary stats:|r you get points every level to spend across Strength, Agility, Stamina, Intellect and Spirit, and reallocating them is free at any time. Open |cffffd100Stats|r and hover a stat to see what it is doing for you right now. Each point gives:",
-"      |cffffd100Strength:|r " .. StatPerPoint(1) .. ".",
-"      |cffffd100Agility:|r " .. StatPerPoint(2) .. ".",
-"      |cffffd100Stamina:|r " .. StatPerPoint(3) .. ".",
-"      |cffffd100Intellect:|r " .. StatPerPoint(4) .. ".",
-"      |cffffd100Spirit:|r " .. StatPerPoint(5) .. ". Mana regeneration pauses for 5 seconds after you cast; Meditation, Arcane Meditation and Intensity let some of it continue.",
-"   |cffffd100Proficiencies:|r every armor and weapon type, dual wield included, is yours from level 1.",
-"   |cffffd100Riding:|r trained for you, free: Apprentice at 20, Journeyman at 40, flying at 60, Northrend flying at 68 and epic flying at 70. Mounts are bought and earned as normal. The class mounts (Warhorse, Charger, Felsteed, Dreadsteed, Acherus Deathcharger) are abilities, so they come from a roll or from Ability Essence.",
-"   |cffffd100Abilities that come as a set:|r an ability that only works in a stance or form brings that form, and one that needs others brings those: Rend and Charge bring Battle Stance, Cat Form brings Claw and Prowl, Tame Beast brings Call Pet, Revive Pet, Feed Pet and Dismiss Pet. These extras are free, are not one of your rolls, and leave when nothing you own needs them.",
-"   |cffffd100No class tools:|r spells that ask for a class item, such as Stoneskin Totem asking for an Earth Totem, cast without it. Reagents still apply.",
-"",
-"|cffff8800==  REBIRTH: a new life at level " .. cap .. "  ==|r",
-"At level " .. cap .. " the |cffffd100Rebirth|r button starts you over at level 1. You choose whether your quest progress is wiped, so every quest pays XP again, or kept; worn gear goes into your bags, or to your mailbox if they are full; your gold, bank, reputation, riding and flight paths stay. You start at your race's starting area, on the same path.",
-"Each Rebirth raises a |cffffd100rank|r that is yours for good:",
-"   |cff00ff00+" .. r.xpFirst .. "% kill and dungeon XP|r for the first, +" .. r.xpPerRank .. "% more for each after, up to +" .. r.xpMax .. "%. Quest XP rises more gently.",
-"   |cff00ff00+" .. r.statPct .. "% to every primary stat|r per rank, up to +" .. r.statMax .. "%.",
-"   |cffffd100Heirlooms:|r carry one ability through, usable from level 1 and never rerolled or refunded. Each rank lets you carry one more.",
-"   Classless Heroes start the new life with bonus Ability and Talent Essence per rank. A title per rank: the Reborn, the Twice Reborn, and so on.",
-"The price rises with each rank.",
-"",
-"|cffff4444==  CHALLENGE RUNS: one rule, counted lives  ==|r",
-"A run is a life under one rule, on your own path. Challenge runs start before level " .. (s.deadline or 2) .. ". Pick a challenge, read its rule, go.",
-"   |cffffd100Lives:|r the hearts on the run badge at the top-right of this panel, and on the challenge tracker at the top of your screen. Hover either for your challenge's rule and rewards. The tracker also shows what your challenge is counting: the time left on the level on Hourglass, whether the hunter is on you on Pursued, your nemeses on Nemesis, and your health band on Berserker. Drag it to move it, click it for the challenge page, and hide or show it under Settings or with /cw tracker. Each challenge shows how many lives it gives. A death costs one; battlegrounds, arenas and duels are free. Nemesis and Dealt Hand have unlimited lives. On Nemesis a death costs the experience in your bar instead, and the run finishes at level 80 with five nemesis heads.",
-"   |cffffd100Running out|r ends the run: the rule lifts and you keep everything. |cffffd100Reaching " .. cap .. "|r with a life left finishes it. Your first finish of a challenge pays its gold, its title, and an ability no roll or shop can give, kept as an heirloom. Finish with no life lost for |cffffd100the Unbroken|r.",
-"   |cffffd100Shards:|r every run pays them when it ends, finished or not: one per level reached, two per level past 60, and a third more for a run with no life lost. They buy an |cffffd100extra life|r for your next run, on the challenge page.",
-"",
-"|cffaaaaaaEverything here can also be done at the Hero Advancement NPC in every capital city, Dalaran and Shattrath. Open this panel with |r" .. HelpKey() .. "|cffffff00/cw|r|cffaaaaaa, or the dice button on your minimap. Rebind the key under Key Bindings > Hero Advancement.|r",
-}, "\n")
+    local deadline = s.deadline or 2
+    local defaultPath = r.defaultMode == 1 and "Wildcard" or "Classless"
+    local ICON = "Interface\\Icons\\"
+    local sections = {}
+    local function page(key, title, icon, summary, blocks)
+        sections[#sections + 1] = { key = key, title = title, icon = icon, summary = summary, blocks = blocks }
+    end
+    local function b(head, text) return { head = head, text = text } end
+    local function note(text) return { text = text, note = true } end
+
+    page("start", "Start", "Interface\\AddOns\\ClasslessWildcard\\icon", "What a Hero is, and your first steps.", {
+        b("You are a Hero", "Your race keeps its racial traits. Every ability and talent you earn yourself, and you can take it from |cffffffffany class in the game|r."),
+        b("Two paths", "There are two ways to earn them, chosen once per character: |cff00ccffClassless|r, where you choose every ability, and |cffff8800Wildcard|r, where the dice deal them. Choose before level " .. deadline .. ", or you start on the " .. defaultPath .. " path. A character keeps the path it chooses."),
+        b("Past the level cap", "At level " .. cap .. ", |cffffd100Rebirth|r starts a new life with a permanent rank, and a |cffffd100Challenge run|r is a life under one rule."),
+        b("1.  Choose your path", "Choose when the choice appears, or later with the |cffffd100Choose path|r button on this panel."),
+        b("2.  Place your stats", "Open |cffffd100Stats|r and place your first points. More arrive every level, and moving them is free."),
+        b("3.  Get your first abilities", "|cff00ccffClassless:|r spend the |cff00ff00" .. r.startAE .. " Ability Essence|r you start with in the Abilities list.\n|cffff8800Wildcard:|r your |cffffd100Starting Hand|r of " .. r.wcStart .. " is dealt. Lock what you like and roll the rest, free until level " .. free .. "."),
+        b("4.  Play", "Everything you own is in |cffffd100My Build|r and in your spellbook, and ranks up on its own as you level."),
+        note("Everything here can also be done at the Hero Advancement NPC in every capital city, Dalaran and Shattrath. Open this panel with " .. HelpKey() .. "|cffffff00/cw|r|cffaaaaaa, or the dice button on your minimap. Rebind the key under Key Bindings > Hero Advancement.|r"),
+    })
+
+    page("classless", "Classless", ICON .. "INV_Misc_Book_11", "You choose every ability and talent, and pay with essence.", {
+        b("Two currencies", "|cffffd100Ability Essence (AE)|r buys abilities. |cffffd100Talent Essence (TE)|r buys talent ranks.\nYou start with |cff00ff00" .. r.startAE .. " AE|r and earn |cff00ff00+" .. r.aePer .. " AE every level from " .. r.aeStart .. "|r. |cff00ff00Talent Essence arrives from level " .. r.teStart .. ", +" .. r.tePer .. " a level|r: " .. teByCap .. " by level " .. cap .. "."),
+        b("Prices", "Abilities are priced by rarity: |cffffffff" .. c[1] .. "|r / |cff1eff00" .. c[2] .. "|r / |cff0070dd" .. c[3] .. "|r / |cffa335ee" .. c[4] .. "|r / |cffff8000" .. c[5] .. "|r AE from common to legendary. " .. talentPrice .. " Talents follow their tree's prerequisites, and each tier opens at its level."),
+        b("Changing your mind", "Unlearning an ability refunds what you paid. |cffffd100Respec|r unlearns everything at once, free."),
+        b("Ranks", "Every ability line you own |cff00ff00ranks up on its own|r as you level. Talents that teach a spell (Pyroblast, Mortal Strike, Mangle) are in the Abilities list instead, with every rank, and owning one counts as that talent for prerequisites."),
+        b("Archetypes", "Builds you follow from level 1 to " .. cap .. ". Pick one from the |cffffd100Archetypes|r button on this panel or at the Hero Advancement NPC. It replaces your build (abilities and talents refunded, free), then buys its abilities and talents for you as each becomes available. Everything it buys is a normal purchase, and you can stop following it at any time."),
+        b("My Builds", "On the same page, |cffffd100My Builds|r keeps builds of your own, to follow yourself or to share with a friend as a code."),
+    })
+
+    page("wildcard", "Wildcard", ICON .. "INV_Misc_Dice_01", "The dice deal your abilities and talents. You steer your luck.", {
+        b("The schedule", "|cff00ff00Level 1:|r " .. r.wcStart .. " random abilities to begin.\n|cff00ff00From level " .. r.wcRollStart .. ":|r one roll every level, alternating between an ability and a talent."),
+        b("Rarity", "Rolls are weighted by rarity: a legendary is weighted " .. r.weightLegendary .. " against a common's " .. r.weightCommon .. ", so most of what you are dealt is common and a legendary is a real find. A roll only ever gives you something you do not already own, and it never replaces anything you have."),
+        b("Talent ranks", "A talent roll also rolls the |cffffd100rank|r you land on, and the rank is its rarity: rank 1 common, rank 2 uncommon, rank 3 rare, rank 4 epic, |cffff8000rank 5 legendary|r. A talent you have never had can arrive at any rank up to its top one, for free."),
+        b("Deepening a talent", "A roll never raises a rank you already hold. To push a talent higher, reroll it and stake |cffffd100Reroll Scrolls|r on it. The reroll costs its charge as usual and trades the talent for a new one; every extra scroll you stake buys a chance to keep it and raise its rank instead, possibly by more than one. If the stake fails the scrolls are spent and the talent is traded away. Use the circular arrow beside a talent in |cffffd100My Build|r."),
+        b("Rerolls", "Rerolls are free below level " .. free .. ". From level " .. r.wcRollStart .. ", every level grants " .. r.rerollsPerLevel .. " reroll charges, spent on abilities or talents alike. Reroll from the roll reveal, or later from |cffffd100My Build|r with the circular arrow next to anything you own."),
+        b("Locks", "While your Starting Hand is open, a padlock holds an ability back from |cffffd100Roll Abilities|r, which rerolls everything unlocked at once. At level " .. free .. " the padlocks come off: from then on you reroll one ability at a time, and only the one you choose."),
+        b("Synergy", "Some rolls only offer abilities that share a class with something you already own. The chance starts at " .. r.synBase .. "% and climbs " .. r.synInc .. " points every time you reroll, then resets when a synergy roll lands."),
+        b("Reroll cooldown", "Anything you reroll cannot come back for the next " .. cooldown .. " rolls, about " .. cooldown .. " levels. If everything you could use is owned or on cooldown, the cooldowns lift so you always get something usable."),
+        b("Reroll Scrolls", "One scroll rerolls an ability or a talent once your charges run out. Buy them from level " .. free .. " at the Hero Advancement NPC or with |cffffd100Buy Scroll|r on this panel; the price rises with level."),
+        note("Below level " .. free .. ", the dice crest at the top-left of this window reopens your Starting Hand."),
+    })
+
+    page("both", "Both paths", ICON .. "Spell_Arcane_ArcaneResilience", "What every Hero has, whichever path they walk.", {
+        b("Universal resources", "You carry mana, rage and energy at once, and each spell draws its own. The extra bars sit under your player frame and remember where you drag them. |cffffd100Settings|r on this panel picks which to show, including runes, runic power and combo points; |cffffd100/cwbars|r toggles them all."),
+        b("Primary stats", "You get points every level to spend across Strength, Agility, Stamina, Intellect and Spirit, and moving them is free at any time. Open |cffffd100Stats|r and hover a stat to see what it is doing for you right now. Each point gives:\n"
+            .. "   |cffffd100Strength:|r " .. StatPerPoint(1) .. ".\n"
+            .. "   |cffffd100Agility:|r " .. StatPerPoint(2) .. ".\n"
+            .. "   |cffffd100Stamina:|r " .. StatPerPoint(3) .. ".\n"
+            .. "   |cffffd100Intellect:|r " .. StatPerPoint(4) .. ".\n"
+            .. "   |cffffd100Spirit:|r " .. StatPerPoint(5) .. ".\n"
+            .. "Mana regeneration pauses for 5 seconds after you cast; Meditation, Arcane Meditation and Intensity let some of it continue."),
+        b("Abilities that come as a set", "An ability that only works in a stance or form brings that form, and one that needs others brings those: Rend and Charge bring Battle Stance, Cat Form brings Claw and Prowl, Tame Beast brings Call Pet, Revive Pet, Feed Pet and Dismiss Pet. These extras are free, are not one of your rolls, and leave when nothing you own needs them."),
+        b("Passives come with their abilities", "Death Knight spells strike for double on a critical, Flame Shock and Immolate can crit over time, Chaos Bolt goes through absorbs, and feral attack power works in Cat and Bear form. Nothing to buy or roll for."),
+        b("Tooltips count your talents", "Cost, cooldown, cast time, range, duration and values show what your build gives, talents from other classes included. An action button lights up only when you can pay what it costs."),
+        b("Summons leave with their spell", "Reroll or unlearn Summon Imp and the imp is dismissed. Reroll Tame Beast away and the beast is stabled; own it again and the same beast returns. A tamed beast's pet talents open from the stock Talents button."),
+        b("The Hero line", "Abilities that belong to no class, and a Hero talent tree of their own, in the pool beside everything else. The |cffffd100elemental variants|r are the physical strikes in seven elements, Fiery Heroic Strike to Holy Aimed Shot, each an ability of its own."),
+        b("No class tools", "Spells that ask for a class item, such as Stoneskin Totem asking for an Earth Totem, cast without it. Reagents still apply."),
+        b("Riding", "Trained for you, free: Apprentice at 20, Journeyman at 40, flying at 60, Northrend flying at 68 and epic flying at 70. Mounts are bought and earned as normal. The class mounts (Warhorse, Charger, Felsteed, Dreadsteed, Acherus Deathcharger) are abilities, so they come from a roll or from Ability Essence."),
+    })
+
+    local armor = CW.ArmorWeightHelp()
+    page("gear", "Gear", ICON .. "INV_Chest_Plate04", "Wear anything. Each armor type is a trade.", {
+        b("Proficiencies", "Every armor and weapon type, dual wield and Parry, from level 1. Weapon skills rise by use."),
+        b("Armor weight", "Any Hero may wear any armor, and each type is a trade. Each piece in the eight armor slots counts toward its type, so a mixed set gets a share of each. A full set of:\n"
+            .. table.concat(armor, "\n")
+            .. "\nOne |cffffd100Armor Weight|r buff on your buff bar stands for all of it. Hover it to see each type you wear, what it gives now beside a full set, and everything added together."),
+        b("Auto Shot", "Auto Shot is taught while a bow, gun or crossbow is equipped, and taken back when it comes off. While you know it, Attack switches to Auto Shot whenever your target is out of melee reach, so a bow worn only for its stats would hold your swings back. Shoot and Throw are always yours, and |cffffd100Settings|r can keep Auto Shot off whatever you wear."),
+        b("Items", "Every item is open to every Hero: class armor sets, every glyph, poisons, soul bags, quivers and relics. The Hero Advancement NPC also sells classless items with stat mixes no class had, by level, and Hero heirlooms that grow with you from 1 to " .. cap .. ". Both drop in the world as well."),
+        b("Starter kit", "A new Hero begins with a neutral outfit, a bag, a spread of basic weapons with ammunition, a shield, and food and water."),
+        b("Class quests", "Every class quest chain is open to you. A reward that would teach a class ability gives nothing for that part; items, gold and reputation are paid as normal."),
+    })
+
+    page("rebirth", "Rebirth", ICON .. "Spell_Holy_Resurrection", "At level " .. cap .. ", start a new life with a rank that stays.", {
+        b("Starting over", "At level " .. cap .. " the |cffffd100Rebirth|r button starts you over at level 1, at your race's starting area, on the same path."),
+        b("What stays and what goes", "You choose whether your quest progress is wiped, so every quest pays XP again, or kept. Worn gear goes into your bags, or to your mailbox if they are full. Your gold, bank, reputation, riding and flight paths stay."),
+        b("Your rank", "Each Rebirth raises a |cffffd100rank|r that is yours for good:\n   |cff00ff00+" .. r.xpFirst .. "% kill and dungeon XP|r for the first, +" .. r.xpPerRank .. "% more for each after, up to +" .. r.xpMax .. "%. Quest XP rises more gently.\n   |cff00ff00+" .. r.statPct .. "% to every primary stat|r per rank, up to +" .. r.statMax .. "%."),
+        b("Heirlooms", "Carry one ability through, usable from level 1 and never rerolled or refunded. Each rank lets you carry one more."),
+        b("Titles and essence", "A title per rank: the Reborn, the Twice Reborn, and so on. Classless Heroes start the new life with bonus Ability and Talent Essence per rank."),
+        note("The price rises with each rank."),
+    })
+
+    page("challenges", "Challenges", ICON .. "Ability_Warrior_Challange", "A life under one rule, with counted lives.", {
+        b("How a run works", "A run is a life under one rule, on your own path. Challenge runs start before level " .. deadline .. ". Pick a challenge, read its rule, go."),
+        b("Lives", "Each challenge shows how many lives it gives. A death costs one; battlegrounds, arenas and duels are free. Nemesis and Dealt Hand have unlimited lives. On Nemesis a death costs the experience in your bar instead, and the run finishes at level 80 with five nemesis heads."),
+        b("Where to see them", "The hearts on the run badge at the top-right of this panel, and on the challenge tracker at the top of your screen. Hover either for your challenge's rule and rewards. The tracker also shows what your challenge is counting: the time left on the level on Hourglass, whether the hunter is on you on Pursued, your nemeses on Nemesis, and your health band on Berserker. Drag it to move it, click it for the challenge page, and hide or show it under Settings or with /cw tracker."),
+        b("Ending a run", "|cffffd100Running out|r ends the run: the rule lifts and you keep everything. |cffffd100Reaching " .. cap .. "|r with a life left finishes it. Your first finish of a challenge pays its gold, its title, and an ability no roll or shop can give, kept as an heirloom. Finish with no life lost for |cffffd100the Unbroken|r."),
+        b("Shards", "Every run pays them when it ends, finished or not: one per level reached, two per level past 60, and a third more for a run with no life lost. They buy an |cffffd100extra life|r for your next run, on the challenge page."),
+    })
+    return sections
 end
 
-local helpText = helpContent:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
-helpText:SetPoint("TOPLEFT", 0, 0)
-helpText:SetWidth(540)
-helpText:SetJustifyH("LEFT")
-helpText:SetJustifyV("TOP")
-helpText:SetSpacing(3)
-local function RefreshHelpText()
-    helpText:SetText(BuildHelpText())
-    helpContent:SetHeight(helpText:GetStringHeight() + 20)
+-- Rendering. The page's list of sections runs down the left like the stock
+-- Interface Options; the chosen one fills the right: its icon and title, a
+-- line on what it covers, a rule, then its blocks in a scroll. Rebuilt
+-- whenever the numbers it quotes arrive (CFG, the state, the armor report).
+do
+    local H = { heads = {}, bodies = {}, buttons = {}, sections = {}, current = 1 }
+    CW.help = H
+    helpFly:SetWidth(frame:GetWidth()); helpFly:SetHeight(frame:GetHeight())
+    helpTitle:ClearAllPoints()
+    helpTitle:SetPoint("TOP", 0, -16)
+    helpTitle:SetText("Hero Guide")
+
+    local NAV_X, NAV_W, TOP_Y = 18, 206, 48
+    local CONTENT_X, CONTENT_W = NAV_X + NAV_W + 26, 610
+
+    H.nav = CreateFrame("Frame", nil, helpFly)
+    H.nav:SetWidth(NAV_W); H.nav:SetHeight(helpFly:GetHeight() - TOP_Y - 18)
+    H.nav:SetPoint("TOPLEFT", NAV_X, -TOP_Y)
+    H.nav:SetBackdrop(CW.CARD_BACKDROP)
+    H.nav:SetBackdropColor(0.06, 0.06, 0.09, 0.9)
+    H.nav:SetBackdropBorderColor(0.4, 0.4, 0.45)
+
+    -- the chosen section's header
+    H.icon = helpFly:CreateTexture(nil, "ARTWORK")
+    H.icon:SetWidth(40); H.icon:SetHeight(40)
+    H.icon:SetPoint("TOPLEFT", CONTENT_X + 6, -TOP_Y - 4)
+    H.iconBorder = helpFly:CreateTexture(nil, "OVERLAY")
+    H.iconBorder:SetWidth(68); H.iconBorder:SetHeight(68)
+    H.iconBorder:SetPoint("CENTER", H.icon, "CENTER", 0, 0)
+    H.iconBorder:SetTexture("Interface\\Buttons\\UI-Quickslot2")
+    H.title = helpFly:CreateFontString(nil, "OVERLAY", "GameFontNormalHuge")
+    H.title:SetPoint("TOPLEFT", H.icon, "TOPRIGHT", 14, 0)
+    H.summary = helpFly:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
+    H.summary:SetPoint("TOPLEFT", H.title, "BOTTOMLEFT", 0, -4)
+    H.summary:SetTextColor(0.75, 0.75, 0.75)
+    H.rule = helpFly:CreateTexture(nil, "ARTWORK")
+    H.rule:SetHeight(1)
+    H.rule:SetPoint("TOPLEFT", CONTENT_X, -TOP_Y - 58)
+    H.rule:SetWidth(CONTENT_W + 30)
+    H.rule:SetTexture(1, 0.82, 0, 0.35)
+
+    helpScroll:ClearAllPoints()
+    helpScroll:SetPoint("TOPLEFT", CONTENT_X, -TOP_Y - 70)
+    helpScroll:SetPoint("BOTTOMRIGHT", -40, 20)
+    helpContent:SetWidth(CONTENT_W)
+
+    -- the whole guide as one string, for anything that wants to read it
+    function CW.HelpText()
+        local out = {}
+        for _, sec in ipairs(H.sections) do
+            for _, blk in ipairs(sec.blocks) do
+                if blk.head then out[#out + 1] = blk.head end
+                out[#out + 1] = blk.text
+            end
+        end
+        return table.concat(out, "\n")
+    end
+
+    -- one section onto the right-hand side
+    function H.Show(index)
+        local sec = H.sections[index]
+        if not sec then return end
+        H.current = index
+        H.icon:SetTexture(nil)
+        H.icon:SetTexture(sec.icon)
+        if string.find(sec.icon, "\\Icons\\", 1, true) then
+            H.icon:SetTexCoord(0.07, 0.93, 0.07, 0.93)
+        else
+            H.icon:SetTexCoord(0, 1, 0, 1)
+        end
+        H.title:SetText(sec.title)
+        H.summary:SetText(sec.summary)
+        local y = 0
+        for i, blk in ipairs(sec.blocks) do
+            local head, body = H.heads[i], H.bodies[i]
+            if not head then
+                head = helpContent:CreateFontString(nil, "OVERLAY", "GameFontNormalLarge")
+                head:SetWidth(CONTENT_W); head:SetJustifyH("LEFT")
+                body = helpContent:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
+                body:SetWidth(CONTENT_W); body:SetJustifyH("LEFT"); body:SetJustifyV("TOP")
+                body:SetSpacing(4)
+                H.heads[i], H.bodies[i] = head, body
+            end
+            if blk.head then
+                head:SetPoint("TOPLEFT", 0, -y)
+                head:SetText(blk.head)
+                head:Show()
+                y = y + TextHeight(head) + 6
+            else
+                head:Hide()
+            end
+            body:SetPoint("TOPLEFT", 0, -y)
+            if blk.note then
+                body:SetTextColor(0.6, 0.6, 0.6)
+            else
+                body:SetTextColor(0.92, 0.92, 0.92)
+            end
+            body:SetText(blk.text)
+            body:Show()
+            y = y + TextHeight(body) + 20
+        end
+        for i = #sec.blocks + 1, #H.bodies do H.heads[i]:Hide(); H.bodies[i]:Hide() end
+        helpContent:SetHeight(y + 8)
+        helpScroll:SetVerticalScroll(0)
+        for i, btn in ipairs(H.buttons) do
+            if i == index then btn.selected:Show() else btn.selected:Hide() end
+        end
+    end
+
+    function CW.RefreshHelpText()
+        H.sections = CW.HelpSections()
+        for i, sec in ipairs(H.sections) do
+            local btn = H.buttons[i]
+            if not btn then
+                btn = CreateFrame("Button", nil, H.nav)
+                btn:SetWidth(NAV_W - 16); btn:SetHeight(34)
+                btn:SetPoint("TOPLEFT", 8, -10 - (i - 1) * 38)
+                btn.selected = btn:CreateTexture(nil, "BACKGROUND")
+                btn.selected:SetAllPoints(btn)
+                btn.selected:SetTexture("Interface\\QuestFrame\\UI-QuestTitleHighlight")
+                btn.selected:SetBlendMode("ADD")
+                btn.selected:SetVertexColor(1, 0.82, 0.2, 0.9)
+                btn.selected:Hide()
+                btn:SetHighlightTexture("Interface\\QuestFrame\\UI-QuestTitleHighlight", "ADD")
+                btn.icon = btn:CreateTexture(nil, "ARTWORK")
+                btn.icon:SetWidth(24); btn.icon:SetHeight(24)
+                btn.icon:SetPoint("LEFT", 6, 0)
+                btn.label = btn:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+                btn.label:SetPoint("LEFT", btn.icon, "RIGHT", 10, 0)
+                btn:SetScript("OnClick", function(self)
+                    if PlaySound then pcall(PlaySound, "igMainMenuOptionCheckBoxOn") end
+                    H.Show(self.index)
+                end)
+                H.buttons[i] = btn
+            end
+            btn.index = i
+            btn.icon:SetTexture(sec.icon)
+            if string.find(sec.icon, "\\Icons\\", 1, true) then
+                btn.icon:SetTexCoord(0.07, 0.93, 0.07, 0.93)
+            else
+                btn.icon:SetTexCoord(0, 1, 0, 1)
+            end
+            btn.label:SetText(sec.title)
+            btn:Show()
+        end
+        for i = #H.sections + 1, #H.buttons do H.buttons[i]:Hide() end
+        H.Show(math.min(H.current, #H.sections))
+    end
+    CW.RefreshHelpText()
+    -- the client drops textures it loaded before a cinematic: set them on show
+    helpFly:HookScript("OnShow", function() CW.RefreshHelpText() end)
 end
-CW.RefreshHelpText = RefreshHelpText
-RefreshHelpText()
 CW.helpFly = helpFly
-CW.helpText = helpText
 
 helpBtn:SetScript("OnClick", function()
     statFly:Hide(); archFly:Hide(); CW.setFly:Hide()
@@ -5530,28 +5810,35 @@ local function RenderStats()
     local pending = PendingAlloc()
     local spent = PendingSpent()
     local unspent = CW.stats.budget - spent
-    statTitle:SetText("Primary Stats: |cff00ff00" .. unspent .. "|r of " .. CW.stats.budget .. " unspent")
+    statTitle:SetText("|cff00ff00" .. unspent .. "|r of " .. CW.stats.budget .. " unspent")
+    local changed = false
     for i = 1, 5 do
         local r = statRows[i]
         local total, after, delta = CW.StatTotals(i)
         -- the total is the number the player cares about; the points they put
-        -- in are the smaller half of the story and read as such
+        -- in sit on the right, beside the buttons that move them
         local head = "|cffffd100" .. STAT_NAMES[i] .. "|r  |cffffffff" .. total .. "|r"
         -- the part of it the Rebirth bonus gives
         local reborn = CW.stats.rebirth and CW.stats.rebirth[i] or 0
         if reborn > 0 then head = head .. "  |cffff8800+" .. reborn .. " Rebirth|r" end
         if delta ~= 0 then
-            head = head .. "  |cffffd100> " .. after .. "|r"
-        end
-        if pending[i] > 0 then
-            head = head .. "  |cff888888(" .. pending[i] .. " pt"
-                .. (pending[i] == 1 and "" or "s") .. ")|r"
+            head = head .. "  |cffffd100becomes " .. after .. "|r"
         end
         r.label:SetText(head)
         -- and what that total is worth, projected to the pending value so the
         -- numbers move while you are spending
         local effects = table.concat(CW.StatEffects(i, after, true), ", ")
-        r.sub:SetText((delta ~= 0 and "|cffffd100" or "|cffaaaaaa") .. effects .. "|r")
+        r.sub:SetText((delta ~= 0 and "|cffffd100" or "|cffcccccc") .. effects .. "|r")
+        r.count:SetText(tostring(pending[i] or 0))
+        -- a card with an edit waiting is picked out in gold
+        if (pending[i] or 0) ~= (CW.stats.alloc[i] or 0) then
+            changed = true
+            r:SetBackdropBorderColor(1, 0.82, 0)
+        else
+            r:SetBackdropBorderColor(0.4, 0.4, 0.45)
+        end
+        if unspent > 0 then r.plus:Enable() else r.plus:Disable() end
+        if (pending[i] or 0) > 0 then r.minus:Enable() else r.minus:Disable() end
         r.plus:SetScript("OnClick", function()
             if PendingSpent() < CW.stats.budget then
                 PendingAlloc()[i] = PendingAlloc()[i] + 1
@@ -5567,13 +5854,15 @@ local function RenderStats()
         r:EnableMouse(true)
         r:SetScript("OnEnter", function(self) ShowStatTooltip(self, i) end)
         r:SetScript("OnLeave", function() GameTooltip:Hide() end)
-        -- the +/- buttons sit on top of the row and would otherwise swallow the
-        -- hover, leaving most of the row tooltip-less
+        -- the +/- buttons sit on top of the card and would otherwise swallow
+        -- the hover, leaving part of it tooltip-less
         r.plus:SetScript("OnEnter", function() ShowStatTooltip(r, i) end)
         r.plus:SetScript("OnLeave", function() GameTooltip:Hide() end)
         r.minus:SetScript("OnEnter", function() ShowStatTooltip(r, i) end)
         r.minus:SetScript("OnLeave", function() GameTooltip:Hide() end)
     end
+    -- nothing to apply or undo until something has moved
+    if changed then statApply:Enable(); statReset:Enable() else statApply:Disable(); statReset:Disable() end
     UpdateStatsButton()   -- the count moves as the points are spent
 end
 
@@ -5656,128 +5945,639 @@ buildNext:SetScript("OnClick", function()
 end)
 
 -- ---------------------------------------------------------------------------
--- onboarding wizard
+-- onboarding: the intro, then the path wizard
 -- ---------------------------------------------------------------------------
+-- Two top-level names only (the chunk sits at Lua 5.1's ceiling of 200
+-- active locals): the wizard frame, read by the state handler, and
+-- ShowPathChoice. Everything else lives on a table inside its block.
 local wizard = CreateFrame("Frame", "ClasslessWildcardWizard", UIParent)
-wizard:SetWidth(420); wizard:SetHeight(300)
-wizard:SetPoint("CENTER")
--- own clean dialog backdrop (NOT the main panel's baked pane art)
-wizard:SetBackdrop({
-    bgFile = "Interface\\DialogFrame\\UI-DialogBox-Background",
-    edgeFile = "Interface\\DialogFrame\\UI-DialogBox-Border",
-    tile = true, tileSize = 32, edgeSize = 32,
-    insets = { left = 11, right = 12, top = 12, bottom = 11 },
-})
-wizard:SetFrameStrata("FULLSCREEN_DIALOG")
-wizard:EnableMouse(true)
-wizard:Hide()
-
-local wizCrest = wizard:CreateTexture(nil, "ARTWORK")
-wizCrest:SetWidth(30); wizCrest:SetHeight(30)
-wizCrest:SetPoint("TOPLEFT", 16, -14)
-wizCrest:SetTexture("Interface\\AddOns\\ClasslessWildcard\\icon")
-
-local wizTitle = wizard:CreateFontString(nil, "OVERLAY", "GameFontNormalLarge")
-wizTitle:SetPoint("TOP", 0, -20)
-wizTitle:SetText("Choose Your Path, Hero")
-
-local wizText = wizard:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
-wizText:SetPoint("TOP", 0, -46)
-wizText:SetWidth(370)
-function CW.WizPathText()
-    return "Every spell and talent of every class is open to you. Will you choose each ability yourself, "
-        .. "or let the Wildcard deal them?\n\nChoose before level " .. (CW.state.deadline or 2)
-        .. ", or you start on the " .. (CW.rules.defaultMode == 1 and "Wildcard" or "Classless") .. " path."
-end
-wizText:SetText(CW.WizPathText())
-
--- The two paths side by side: a short button with the path's name, and what
--- it means under it. Stock button art stretched across a whole sentence
--- looks smeared, so the sentence lives outside the button. Each line hangs
--- off its button, so it shows and hides with it.
-local function WizPathButton(x, label, line)
-    local b = CreateFrame("Button", nil, wizard, "UIPanelButtonTemplate")
-    b:SetWidth(130); b:SetHeight(22)
-    b:SetPoint("TOP", x, -112)
-    b:SetText(label)
-    b.line = b:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
-    b.line:SetPoint("TOP", b, "BOTTOM", 0, -6)
-    b.line:SetWidth(170)
-    b.line:SetText(line)
-    return b
-end
-
-local wizClassless = WizPathButton(-95, "|cff00ccffClassless|r", "Pick every ability yourself.")
-wizClassless:SetScript("OnClick", function() Send("MODE 0"); Send("ARCH") end)
-
-local wizWildcard = WizPathButton(95, "|cffff8800Wildcard|r", "Abilities are dealt at random. Reroll the ones you don't want.")
-wizWildcard:SetScript("OnClick", function()
-    Send("MODE 1")
+local ShowPathChoice
+do
+    local W = {}
+    CW.wiz = W
+    W.W, W.H = 560, 440          -- page 1: the two path cards
+    W.ARCH_W = 560               -- page 2: two buttons per row beside the text
+    wizard:SetWidth(W.W); wizard:SetHeight(W.H)
+    wizard:SetPoint("CENTER")
+    -- own clean dialog backdrop (NOT the main panel's baked pane art)
+    wizard:SetBackdrop({
+        bgFile = "Interface\\DialogFrame\\UI-DialogBox-Background",
+        edgeFile = "Interface\\DialogFrame\\UI-DialogBox-Border",
+        tile = true, tileSize = 32, edgeSize = 32,
+        insets = { left = 11, right = 12, top = 12, bottom = 11 },
+    })
+    wizard:SetFrameStrata("FULLSCREEN_DIALOG")
+    wizard:EnableMouse(true)
     wizard:Hide()
-    -- the STARTING HAND opens next (pendingHand); the main panel waits
-    -- until the player keeps their hand
-end)
 
-local wizLater = CreateFrame("Button", nil, wizard, "UIPanelButtonTemplate")
-wizLater:SetWidth(120); wizLater:SetHeight(22)
-wizLater:SetPoint("BOTTOM", 0, 14)
-wizLater:SetText("Decide later")
-wizLater:SetScript("OnClick", function() wizard:Hide() end)
-
--- Page 2: archetype rows (shown after choosing Classless). The wizard grows
--- to fit them and shrinks back when page 1 is shown again.
-local WIZ_W, WIZ_H = 420, 300
-local WIZ_ARCH_W = 560   -- two buttons per row (Build, Choose) beside the text
-local wizList = MakeArchList(wizard, "ClasslessWildcardWizardArchetypes", WIZ_ARCH_W - 40, "Choose")
-local archSkip = CreateFrame("Button", nil, wizard, "UIPanelButtonTemplate")
-archSkip:SetWidth(180); archSkip:SetHeight(22)
-archSkip:SetPoint("BOTTOM", 0, 14)
-archSkip:SetText("Start with an empty slate")
-archSkip:Hide()
-archSkip:SetScript("OnClick", function()
-    wizard:Hide()
-    frame:Show()
-    CW.SetTab("ABIL")
-end)
-
-local function ShowPathChoice()
-    wizard:SetWidth(WIZ_W); wizard:SetHeight(WIZ_H)
-    wizTitle:SetText("Choose Your Path, Hero")
-    wizText:SetWidth(370)
-    wizText:SetText(CW.WizPathText())
-    wizClassless:Show(); wizWildcard:Show(); wizLater:Show()
-    wizList.scroll:Hide()
-    for _, r in ipairs(wizList.rows) do r:Hide() end
-    archSkip:Hide()
-    wizard:Show()
-end
-
-local function ShowArchetypeChoices()
-    wizTitle:SetText("Pick a Starter Archetype")
-    wizText:SetWidth(WIZ_ARCH_W - 50)
-    wizClassless:Hide(); wizWildcard:Hide(); wizLater:Hide()
-    local list = CW.archetypes or {}
-    if #list > 0 then
-        wizText:SetText("An archetype is a build you follow: its abilities and talents are bought for you as you level, all the way to 80. Change or stop it later from the Archetypes button.")
-    else
-        wizText:SetText("No archetypes are available.")
+    -- The crest at the top, with the same soft glow the panel's title wears.
+    -- Set on Show rather than once: the client purges every texture it loaded
+    -- before a cinematic, and a new character's first sight of this is right
+    -- after one.
+    W.glow = wizard:CreateTexture(nil, "BORDER")      -- under the crest
+    W.glow:SetWidth(96); W.glow:SetHeight(96)
+    W.glow:SetPoint("TOP", 0, -2)
+    W.glow:SetBlendMode("ADD")
+    W.glow:SetVertexColor(1, 0.82, 0.3)
+    W.glow:SetAlpha(0.7)
+    W.crest = wizard:CreateTexture(nil, "ARTWORK")
+    W.crest:SetWidth(46); W.crest:SetHeight(46)
+    W.crest:SetPoint("TOP", 0, -24)
+    function W.SetArt()
+        W.crest:SetTexture(nil); W.glow:SetTexture(nil)
+        W.crest:SetTexture("Interface\\AddOns\\ClasslessWildcard\\icon")
+        W.glow:SetTexture("Interface\\AddOns\\ClasslessWildcard\\glow")
+        for _, card in ipairs(W.cards or {}) do
+            card.icon:SetTexture(nil)
+            card.icon:SetTexture(card.iconPath)
+            card.icon:SetTexCoord(unpack(card.iconCoords))
+        end
     end
-    wizard:SetWidth(WIZ_ARCH_W)
-    local top = 46 + TextHeight(wizText) + 14
-    local shown, used = FillArchRows(wizList, list, function(arch)
-        Send("ARCHAPPLY " .. arch.id)
+    wizard:SetScript("OnShow", W.SetArt)
+
+    W.title = wizard:CreateFontString(nil, "OVERLAY", "GameFontNormalLarge")
+    W.title:SetPoint("TOP", 0, -78)
+    W.title:SetText("Choose Your Path, Hero")
+
+    W.text = wizard:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
+    W.text:SetPoint("TOP", 0, -104)
+    W.text:SetWidth(500)
+    function CW.WizPathText()
+        return "Every spell and talent of every class is open to you. Will you choose each ability yourself, "
+            .. "or let the Wildcard deal them?"
+    end
+    W.text:SetText(CW.WizPathText())
+
+    -- A path as a card: its icon and name, three lines on what it means, and
+    -- the button that chooses it. The card lights up under the mouse so the
+    -- two read as choices, not as paragraphs. `coords` crops the icon to the
+    -- part worth showing: a spell icon's baked border, or the die in the
+    -- lower half of the micro-menu button art (128 by 256, the die drawn at
+    -- 18..112 across and 125..222 down).
+    local function PathCard(side, name, rgb, iconPath, coords, lines, label)
+        local card = CreateFrame("Button", nil, wizard)
+        card:SetWidth(248); card:SetHeight(180)
+        card:SetPoint(side == 1 and "TOPLEFT" or "TOPRIGHT", side == 1 and 24 or -24, -154)
+        card:SetBackdrop({
+            bgFile = "Interface\\Tooltips\\UI-Tooltip-Background",
+            edgeFile = "Interface\\Tooltips\\UI-Tooltip-Border",
+            tile = true, tileSize = 16, edgeSize = 14,
+            insets = { left = 3, right = 3, top = 3, bottom = 3 },
+        })
+        card:SetBackdropColor(0.05, 0.05, 0.08, 0.9)
+        card:SetBackdropBorderColor(0.5, 0.5, 0.5)
+        card.iconPath, card.iconCoords = iconPath, coords
+        card.icon = card:CreateTexture(nil, "ARTWORK")
+        card.icon:SetWidth(34); card.icon:SetHeight(34)
+        card.icon:SetPoint("TOPLEFT", 16, -14)
+        card.icon:SetTexture(iconPath)
+        card.icon:SetTexCoord(unpack(coords))
+        card.name = card:CreateFontString(nil, "OVERLAY", "GameFontNormalLarge")
+        card.name:SetPoint("LEFT", card.icon, "RIGHT", 8, 0)
+        card.name:SetText(string.format("|cff%02x%02x%02x%s|r", math.floor(rgb[1] * 255), math.floor(rgb[2] * 255), math.floor(rgb[3] * 255), name))
+        card.body = card:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+        card.body:SetPoint("TOPLEFT", 16, -60)
+        card.body:SetWidth(216)
+        card.body:SetJustifyH("LEFT")
+        card.body:SetSpacing(2)
+        card.body:SetText(table.concat(lines, "\n"))
+        card.button = CreateFrame("Button", nil, card, "UIPanelButtonTemplate")
+        card.button:SetWidth(150); card.button:SetHeight(22)
+        card.button:SetPoint("BOTTOM", 0, 14)
+        card.button:SetText(label)
+        local function lit(on)
+            if on then card:SetBackdropBorderColor(rgb[1], rgb[2], rgb[3]) else card:SetBackdropBorderColor(0.5, 0.5, 0.5) end
+        end
+        card:SetScript("OnEnter", function() lit(true) end)
+        card:SetScript("OnLeave", function() lit(false) end)
+        card.button:SetScript("OnEnter", function() lit(true) end)
+        card.button:SetScript("OnLeave", function() lit(false) end)
+        card:SetScript("OnClick", function() card.button:Click() end)
+        return card
+    end
+    W.cards = {
+        PathCard(1, "Classless", { 0, 0.8, 1 }, "Interface\\Icons\\INV_Misc_Book_11", { 0.07, 0.93, 0.07, 0.93 }, {
+            "You choose every ability and talent.",
+            "Pay with the essence you earn each level.",
+            "Follow a starter build, or make your own.",
+        }, "Choose Classless"),
+        PathCard(2, "Wildcard", { 1, 0.53, 0 }, "Interface\\AddOns\\ClasslessWildcard\\micro_die",
+            { 18 / 128, 112 / 128, 125 / 256, 222 / 256 }, {
+            "The dice deal your abilities and talents.",
+            "Start with a hand of cards and reroll the ones you do not want.",
+            "A rare roll is a real find.",
+        }, "Choose Wildcard"),
+    }
+    W.classless, W.wildcard = W.cards[1].button, W.cards[2].button
+    W.classless:SetScript("OnClick", function() Send("MODE 0"); Send("ARCH") end)
+    W.wildcard:SetScript("OnClick", function()
+        Send("MODE 1")
+        wizard:Hide()
+        -- the STARTING HAND opens next (pendingHand); the main panel waits
+        -- until the player keeps their hand
+    end)
+
+    -- the window this has to be decided in, and what happens if it is not
+    W.deadline = wizard:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+    W.deadline:SetPoint("BOTTOM", 0, 54)
+    W.deadline:SetWidth(500)
+    W.deadline:SetTextColor(0.75, 0.75, 0.75)
+    function W.DeadlineText()
+        return "Choose before level " .. (CW.state.deadline or 2) .. ", or you start on the "
+            .. (CW.rules.defaultMode == 1 and "Wildcard" or "Classless")
+            .. " path. This character keeps the path it chooses."
+    end
+
+    W.later = CreateFrame("Button", nil, wizard, "UIPanelButtonTemplate")
+    W.later:SetWidth(120); W.later:SetHeight(22)
+    W.later:SetPoint("BOTTOM", 0, 18)
+    W.later:SetText("Decide later")
+    W.later:SetScript("OnClick", function() wizard:Hide() end)
+    W.later:SetScript("OnEnter", function(self)
+        GameTooltip:SetOwner(self, "ANCHOR_TOP")
+        GameTooltip:SetText("Decide later")
+        GameTooltip:AddLine("Close this for now. Open it again with the Choose path button on the Hero Advancement panel, "
+            .. "or at the Hero Advancement NPC in any capital city.", 0.8, 0.8, 0.8, true)
+        GameTooltip:Show()
+    end)
+    W.later:SetScript("OnLeave", function() GameTooltip:Hide() end)
+
+    -- Page 2: archetype rows (shown after choosing Classless). The wizard grows
+    -- to fit them and shrinks back when page 1 is shown again.
+    W.list = MakeArchList(wizard, "ClasslessWildcardWizardArchetypes", W.ARCH_W - 40, "Choose")
+    W.skip = CreateFrame("Button", nil, wizard, "UIPanelButtonTemplate")
+    W.skip:SetWidth(180); W.skip:SetHeight(22)
+    W.skip:SetPoint("BOTTOM", 0, 14)
+    W.skip:SetText("Start with an empty slate")
+    W.skip:Hide()
+    W.skip:SetScript("OnClick", function()
         wizard:Hide()
         frame:Show()
-        CW.SetTab("HERO")
-    end, 20, top)
-    wizard:SetHeight(top + math.max(used, ARCH_ROW_H) + 52)
-    archSkip:Show()
-    wizard:Show()
+        CW.SetTab("ABIL")
+    end)
+
+    function ShowPathChoice()
+        wizard:SetWidth(W.W); wizard:SetHeight(W.H)
+        W.title:ClearAllPoints(); W.title:SetPoint("TOP", 0, -78)
+        W.text:ClearAllPoints(); W.text:SetPoint("TOP", 0, -104)
+        W.title:SetText("Choose Your Path, Hero")
+        W.text:SetWidth(500)
+        W.text:SetText(CW.WizPathText())
+        W.deadline:SetText(W.DeadlineText())
+        W.deadline:Show()
+        W.crest:Show(); W.glow:Show()
+        for _, card in ipairs(W.cards) do card:Show() end
+        W.later:Show()
+        W.list.scroll:Hide()
+        for _, r in ipairs(W.list.rows) do r:Hide() end
+        W.skip:Hide()
+        wizard:Show()
+        if PlaySound then pcall(PlaySound, "igMainMenuOpen") end
+    end
+
+    function W.ShowArchetypeChoices()
+        W.title:ClearAllPoints(); W.title:SetPoint("TOP", 0, -20)
+        W.text:ClearAllPoints(); W.text:SetPoint("TOP", 0, -46)
+        W.title:SetText("Pick a Starter Archetype")
+        W.text:SetWidth(W.ARCH_W - 50)
+        W.deadline:Hide()
+        W.crest:Hide(); W.glow:Hide()
+        for _, card in ipairs(W.cards) do card:Hide() end
+        W.later:Hide()
+        local list = CW.archetypes or {}
+        if #list > 0 then
+            W.text:SetText("An archetype is a build you follow: its abilities and talents are bought for you as you level, all the way to 80. Change or stop it later from the Archetypes button.")
+        else
+            W.text:SetText("No archetypes are available.")
+        end
+        wizard:SetWidth(W.ARCH_W)
+        local top = 46 + TextHeight(W.text) + 14
+        local shown, used = FillArchRows(W.list, list, function(arch)
+            Send("ARCHAPPLY " .. arch.id)
+            wizard:Hide()
+            frame:Show()
+            CW.SetTab("HERO")
+        end, 20, top)
+        wizard:SetHeight(top + math.max(used, ARCH_ROW_H) + 52)
+        W.skip:Show()
+        wizard:Show()
+    end
+    CW.wizard, CW.wizArchRows, CW.wizArchList, CW.wizArchSkip = wizard, W.list.rows, W.list, W.skip
+    CW.wizClassless, CW.wizWildcard, CW.wizLater = W.classless, W.wildcard, W.later
+    CW.wizTitle, CW.wizText, CW.wizDeadline, CW.wizCards = W.title, W.text, W.deadline, W.cards
+    CW.ShowPathChoice = ShowPathChoice
+    CW.ShowArchetypeChoices = W.ShowArchetypeChoices
 end
-CW.wizard, CW.wizArchRows, CW.wizArchList, CW.wizArchSkip = wizard, wizList.rows, wizList, archSkip
-CW.wizClassless, CW.wizWildcard, CW.wizLater = wizClassless, wizWildcard, wizLater
-CW.wizTitle, CW.wizText = wizTitle, wizText
-CW.ShowPathChoice = ShowPathChoice
+
+-- The intro: what a brand-new Hero sees once, before the path wizard.
+--
+-- Staged like a cinematic. Letterbox bars close in over a darkened world and
+-- three lines of narration come and go one at a time in the quest-book face.
+-- Then the crest slams down: a flash, a kick, the starburst, rising embers and
+-- the level-up chord. "You are a Hero" punches in with the achievement shine
+-- swept across it, the scroll rule unrolls beneath, and the line that leads
+-- into the path choice settles under that. The art and the font are the
+-- client's own (Morpheus, the quest frame's rule, the achievement alert's
+-- shine) beside the addon's crest, rays and glow.
+--
+-- A click during the narration skips to the crest; a click after the title
+-- ends it, as does Escape at any point, and it ends on its own after the
+-- timeline. Shown once per character; /cw intro replays it. A new character
+-- arrives in the world inside the race cinematic, so the state packet that
+-- would open the wizard waits for CINEMATIC_STOP, and the art is set at show
+-- time: the client purges every texture it loaded before a cinematic.
+do
+    local I = {}
+    CW.intro = I
+    I.f = CreateFrame("Frame", "ClasslessWildcardIntro", UIParent)
+    I.f:SetAllPoints(UIParent)
+    I.f:SetFrameStrata("FULLSCREEN_DIALOG")
+    I.f:EnableMouse(true)
+    I.f:EnableKeyboard(true)
+    I.f:Hide()
+
+    I.MORPHEUS = "Fonts\\MORPHEUS.ttf"
+    I.FRIZ = "Fonts\\FRIZQT__.TTF"
+    I.ART = "Interface\\AddOns\\ClasslessWildcard\\"
+
+    -- the world darkens, and the letterbox closes in over it
+    I.dim = I.f:CreateTexture(nil, "BACKGROUND")
+    I.dim:SetAllPoints(I.f)
+    I.dim:SetTexture(0, 0, 0, 1)
+    I.bars = {}
+    for i, side in ipairs({ "TOP", "BOTTOM" }) do
+        local bar = I.f:CreateTexture(nil, "BORDER")
+        bar:SetTexture(0, 0, 0, 1)
+        bar:SetPoint(side .. "LEFT", I.f, side .. "LEFT", 0, 0)
+        bar:SetPoint(side .. "RIGHT", I.f, side .. "RIGHT", 0, 0)
+        bar:SetHeight(1)
+        I.bars[i] = bar
+    end
+    -- the flash of the landing, between the bars
+    I.flash = I.f:CreateTexture(nil, "ARTWORK")
+    I.flash:SetPoint("TOPLEFT", I.bars[1], "BOTTOMLEFT", 0, 0)
+    I.flash:SetPoint("BOTTOMRIGHT", I.bars[2], "TOPRIGHT", 0, 0)
+    I.flash:SetTexture(1, 0.85, 0.5, 1)
+    I.flash:SetBlendMode("ADD")
+
+    -- Everything that kicks on the landing rides this frame; the bars and the
+    -- dark stay put. A child frame draws over all of its parent's layers.
+    I.stage = CreateFrame("Frame", nil, I.f)
+    I.stage:SetWidth(1); I.stage:SetHeight(1)
+    I.stage:SetPoint("CENTER", I.f, "CENTER", 0, 0)
+
+    local function Text(parent, face, size, r, g, b, y)
+        local fs = parent:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+        fs:SetFont(face, size, "OUTLINE")
+        fs:SetShadowColor(0, 0, 0, 1)
+        fs:SetShadowOffset(2, -2)
+        fs:SetTextColor(r, g, b)
+        fs:SetPoint("CENTER", parent, "CENTER", 0, y)
+        fs:SetWidth(1000)
+        return fs
+    end
+
+    -- the narration, one line at a time
+    I.BEATS = {
+        { text = "Azeroth has known many champions.", t0 = 2.6, t1 = 6.0 },
+        { text = "Each was bound to a single calling: warrior, mage, priest, rogue.", t0 = 6.4, t1 = 10.0 },
+        { text = "You are bound to none.", t0 = 10.4, t1 = 12.6 },
+    }
+    I.beats = {}
+    for i, beat in ipairs(I.BEATS) do
+        local fs = Text(I.stage, I.MORPHEUS, i == 3 and 34 or 28, 1, 0.92, 0.75, 20)
+        fs:SetText(beat.text)
+        I.beats[i] = fs
+    end
+
+    -- the crest and its light
+    local CREST_Y = 96
+    local function Light(size, r, g, b)
+        local t = I.stage:CreateTexture(nil, "ARTWORK")
+        t:SetWidth(size); t:SetHeight(size)
+        t:SetPoint("CENTER", I.stage, "CENTER", 0, CREST_Y)
+        t:SetBlendMode("ADD")
+        t:SetVertexColor(r, g, b)
+        return t
+    end
+    -- all additive, so their order on the layer changes nothing
+    I.rays = Light(220, 1, 0.82, 0.3)
+    I.rays2 = Light(155, 1, 0.9, 0.6)
+    I.glow = Light(75, 1, 0.85, 0.4)
+    I.crest = I.stage:CreateTexture(nil, "OVERLAY")
+    I.crest:SetPoint("CENTER", I.stage, "CENTER", 0, CREST_Y)
+    I.CREST = 64             -- the crest at rest: icon.tga is 64x64, so this draws it 1:1
+
+    -- embers rising from below the crest once it has landed
+    I.EMBERS = 28
+    I.embers = {}
+    for i = 1, I.EMBERS do
+        local e = I.stage:CreateTexture(nil, "ARTWORK")
+        e:SetBlendMode("ADD")
+        e:SetVertexColor(1, 0.7 + math.random() * 0.2, 0.3)
+        I.embers[i] = e
+    end
+
+    -- the title punches in on a frame of its own, so it can be scaled
+    I.TITLE_Y = 6
+    I.titleFrame = CreateFrame("Frame", nil, I.stage)
+    I.titleFrame:SetWidth(1); I.titleFrame:SetHeight(1)
+    I.titleFrame:SetPoint("CENTER", I.stage, "CENTER", 0, I.TITLE_Y)
+    I.title = Text(I.titleFrame, I.MORPHEUS, 58, 1, 0.82, 0.1, 0)
+    I.title:SetText("You are a Hero")
+    -- the achievement alert's shine, swept across the title once
+    I.shine = I.titleFrame:CreateTexture(nil, "OVERLAY")
+    I.shine:SetWidth(64); I.shine:SetHeight(78)
+    I.shine:SetBlendMode("ADD")
+    I.shine:SetTexCoord(0.78125, 0.912109375, 0, 0.28125)
+
+    -- the quest frame's scroll rule, unrolled from the middle; drawn twice,
+    -- the second copy in gold light, because the art itself is a dark bronze
+    I.RULE_W, I.RULE_H = 420, 36
+    I.RULE_COORD = { 23 / 256, 232 / 256, 7 / 32, 25 / 32 }
+    I.rule, I.ruleLight = I.stage:CreateTexture(nil, "ARTWORK"), I.stage:CreateTexture(nil, "OVERLAY")
+    for _, t in ipairs({ I.rule, I.ruleLight }) do
+        t:SetPoint("CENTER", I.stage, "CENTER", 0, -32)
+        t:SetHeight(I.RULE_H)
+    end
+    I.ruleLight:SetBlendMode("ADD")
+    I.ruleLight:SetVertexColor(1, 0.8, 0.35)
+
+    I.sub = Text(I.stage, I.FRIZ, 20, 1, 1, 1, -62)
+    I.sub:SetText("Every class. Every spell. Every talent. Yours to claim.")
+    I.question = Text(I.stage, I.MORPHEUS, 26, 1, 0.92, 0.75, -110)
+    I.question:SetText("Will you forge your own power, or let the dice decide your fate?")
+
+    -- in the bottom bar, the way a cinematic carries its subtitles
+    I.hint = Text(I.f, I.FRIZ, 14, 0.75, 0.75, 0.75, 0)
+    I.hint:ClearAllPoints()
+    I.hint:SetPoint("CENTER", I.bars[2], "CENTER", 0, 0)
+
+    -- the timeline, in seconds from the start
+    I.T = {
+        DIM = 1.6,          -- the world darkens and the bars close in, then a beat of quiet
+        CREST = 12.3,       -- the crest starts its fall
+        LAND = 12.75,       -- and lands: flash, kick, starburst, embers, sound
+        KICK = 0.35,        -- how long the landing shakes the stage
+        TITLE = 12.95,      -- "You are a Hero" punches in
+        SHINE = 13.45,      -- the shine crosses it
+        RULE = 13.9,        -- the rule unrolls
+        SUB = 14.2,         -- the line under the rule
+        QUESTION = 15.1,    -- and the question that leads to the choice
+        HINT = 16.2,        -- the prompt changes from skip to continue
+        AUTO = 30,          -- it ends on its own
+        OUT = 0.8,          -- the fade to the wizard
+    }
+    I.SPIN = 0.04           -- turns per second
+    I.rot = 0
+
+    -- 3.3.5 has no Texture:SetRotation: a rotation is a rotated quad handed
+    -- to SetTexCoord (rays.tga is transparent to its border, so the corners
+    -- that sample outside it clamp to nothing).
+    function I.Spin(tex, angle)
+        local c, s = math.cos(angle), math.sin(angle)
+        local function r(x, y) return 0.5 + x * c - y * s, 0.5 + x * s + y * c end
+        local ax, ay = r(-0.5, -0.5)
+        local bx, by = r(-0.5,  0.5)
+        local cx, cy = r( 0.5, -0.5)
+        local dx, dy = r( 0.5,  0.5)
+        tex:SetTexCoord(ax, ay, bx, by, cx, cy, dx, dy)
+    end
+
+    function I.SetArt()
+        for _, tex in ipairs({ I.rays, I.rays2, I.glow, I.crest, I.shine, I.rule, I.ruleLight }) do tex:SetTexture(nil) end
+        I.rays:SetTexture(I.ART .. "rays")
+        I.rays2:SetTexture(I.ART .. "rays")
+        I.glow:SetTexture(I.ART .. "glow")
+        I.crest:SetTexture(I.ART .. "icon")
+        I.shine:SetTexture("Interface\\AchievementFrame\\UI-Achievement-Alert-Glow")
+        I.shine:SetTexCoord(0.78125, 0.912109375, 0, 0.28125)
+        I.rule:SetTexture("Interface\\QuestFrame\\UI-HorizontalBreak")
+        I.ruleLight:SetTexture("Interface\\QuestFrame\\UI-HorizontalBreak")
+        for _, e in ipairs(I.embers) do
+            e:SetTexture(nil)
+            e:SetTexture(I.ART .. "glow")
+        end
+    end
+
+    -- 0 before t0, 1 after t0 + len, eased in between
+    local function ramp(t, t0, len)
+        if t <= t0 then return 0 end
+        if t >= t0 + len then return 1 end
+        local p = (t - t0) / len
+        return p * p * (3 - 2 * p)
+    end
+    I.ramp = ramp
+
+    -- an ember starts low and to one side of the crest, and rises
+    local function Respawn(e, now)
+        e.x = (math.random() * 2 - 1) * 260
+        e.y = -170 + math.random() * 60
+        e.speed = 26 + math.random() * 40
+        e.sway = 6 + math.random() * 14
+        e.phase = math.random() * 6.28
+        e.life = 3 + math.random() * 3
+        e.born = now
+        local size = 5 + math.random() * 9
+        e:SetWidth(size); e:SetHeight(size)
+    end
+
+    function I.Play(replay)
+        if I.f:IsShown() then return end
+        I.SetArt()
+        I.phase = "in"
+        I.t0 = GetTime()
+        I.landed = nil
+        I.replay = replay
+        -- the bars are a share of the screen; a frame not laid out yet reads 0
+        local height = I.f:GetHeight()
+        if not height or height < 100 then height = 768 end
+        I.BAR = math.floor(height * 0.11)
+        I.f:SetAlpha(1)
+        I.dim:SetAlpha(0)
+        for _, bar in ipairs(I.bars) do bar:SetHeight(1) end
+        I.flash:SetAlpha(0)
+        I.rays:SetAlpha(0); I.rays2:SetAlpha(0); I.glow:SetAlpha(0)
+        I.crest:SetAlpha(0); I.crest:SetWidth(I.CREST); I.crest:SetHeight(I.CREST)
+        for _, fs in ipairs(I.beats) do fs:SetAlpha(0) end
+        for _, e in ipairs(I.embers) do e:SetAlpha(0); e.born = nil end
+        I.title:SetAlpha(0); I.shine:SetAlpha(0)
+        I.titleFrame:SetScale(1)
+        I.rule:SetAlpha(0); I.ruleLight:SetAlpha(0)
+        I.sub:SetAlpha(0); I.question:SetAlpha(0)
+        I.hint:SetText("Click to skip")
+        I.hint:SetAlpha(0)
+        I.f:Show()
+    end
+
+    -- the fade out; the wizard follows unless this was a replay
+    function I.Finish()
+        if I.phase ~= "in" then return end
+        I.phase = "out"
+        I.t0 = GetTime()
+    end
+    I.Skip = I.Finish
+
+    -- a click in the narration jumps to the crest's fall, so the landing
+    -- still plays; a click once the title is up ends it
+    function I.Advance()
+        local t = GetTime() - (I.t0 or GetTime())
+        if t < 0.3 then return end          -- the click that opened the world
+        if not I.landed then
+            if t < I.T.CREST then I.t0 = GetTime() - I.T.CREST end
+        elseif t >= I.T.TITLE then
+            I.Finish()
+        end
+    end
+
+    function I.Done()
+        I.phase = nil
+        I.f:Hide()
+        I.f:SetAlpha(1)
+        ClasslessWildcardCharDB = ClasslessWildcardCharDB or {}
+        ClasslessWildcardCharDB.introSeen = true
+        if not I.replay and CW.state.mode == 255 then ShowPathChoice() end
+    end
+
+    I.f:SetScript("OnUpdate", function(self, elapsed)
+        local T = I.T
+        local now = GetTime()
+        local t = now - (I.t0 or now)
+        if I.phase == "out" then
+            self:SetAlpha(1 - ramp(t, 0, T.OUT))
+            if t >= T.OUT then I.Done() end
+            return
+        end
+        if I.phase ~= "in" then return end
+
+        -- the dark and the letterbox
+        local inn = ramp(t, 0, T.DIM)
+        I.dim:SetAlpha(0.82 * inn)
+        for _, bar in ipairs(I.bars) do bar:SetHeight(math.max(1, I.BAR * inn)) end
+
+        -- the narration: each line rises a touch while it is up
+        for i, beat in ipairs(I.BEATS) do
+            local a = ramp(t, beat.t0, 1.0) * (1 - ramp(t, beat.t1 - 0.6, 0.6))
+            local fs = I.beats[i]
+            fs:SetAlpha(a)
+            if a > 0 then
+                fs:SetPoint("CENTER", I.stage, "CENTER", 0, 14 + 10 * ramp(t, beat.t0, beat.t1 - beat.t0))
+            end
+        end
+
+        -- the fall: from high and large, accelerating into the landing
+        if t >= T.CREST and not I.landed then
+            local p = math.min(1, (t - T.CREST) / (T.LAND - T.CREST))
+            local size = I.CREST + (1 - p * p * p) * 260
+            I.crest:SetWidth(size); I.crest:SetHeight(size)
+            I.crest:SetAlpha(math.min(1, p * 2))
+        end
+        if t >= T.LAND and not I.landed then
+            I.landed = t
+            I.crest:SetWidth(I.CREST); I.crest:SetHeight(I.CREST); I.crest:SetAlpha(1)
+            if PlaySound then pcall(PlaySound, "LEVELUPSOUND") end
+            if PlaySoundFile then pcall(PlaySoundFile, "Sound\\Spells\\Resurrection.wav") end
+            for _, e in ipairs(I.embers) do
+                Respawn(e, now)
+                e.born = now - math.random() * e.life   -- already mid-flight, not all at once
+            end
+        end
+
+        if I.landed then
+            local since = t - T.LAND
+            -- flash and kick
+            I.flash:SetAlpha(0.45 * math.max(0, 1 - since / 0.6))
+            if since < T.KICK then
+                local k = 7 * (1 - since / T.KICK)
+                I.stage:SetPoint("CENTER", I.f, "CENTER", (math.random() * 2 - 1) * k, (math.random() * 2 - 1) * k)
+            else
+                I.stage:SetPoint("CENTER", I.f, "CENTER", 0, 0)
+            end
+            -- the starburst, swelling in and breathing
+            local up = ramp(since, 0, 0.5)
+            local breathe = 1 + math.sin(now * 2.2) * 0.08
+            I.rot = I.rot + (elapsed or 0) * I.SPIN * math.pi * 2
+            I.Spin(I.rays, I.rot)
+            I.Spin(I.rays2, -I.rot * 0.6)
+            I.rays:SetAlpha(0.38 * breathe * up)
+            I.rays2:SetAlpha(0.2 * (2 - breathe) * up)
+            I.glow:SetAlpha(0.25 * up + 0.5 * math.max(0, 1 - since / 0.4))
+            -- the embers
+            for _, e in ipairs(I.embers) do
+                local age = now - (e.born or now)
+                if age > e.life then Respawn(e, now); age = 0 end
+                local f = age / e.life
+                e:SetPoint("CENTER", I.stage, "CENTER", e.x + math.sin(e.phase + age * 1.3) * e.sway, e.y + age * e.speed)
+                e:SetAlpha(0.7 * math.sin(math.pi * f) * up)
+            end
+        end
+
+        -- the title: punched in from large
+        local tp = ramp(t, T.TITLE, 0.45)
+        I.title:SetAlpha(tp)
+        local scale = 1 + (1 - tp) * 0.35
+        I.titleFrame:SetScale(scale)
+        I.titleFrame:SetPoint("CENTER", I.stage, "CENTER", 0, I.TITLE_Y / scale)
+        -- the shine crossing it
+        local sp = (t - T.SHINE) / 0.8
+        if sp > 0 and sp < 1 then
+            local half = (I.title:GetStringWidth() or 300) / 2 + 30
+            I.shine:SetPoint("CENTER", I.titleFrame, "CENTER", -half + 2 * half * sp, 0)
+            I.shine:SetAlpha(math.sin(math.pi * sp))
+        else
+            I.shine:SetAlpha(0)
+        end
+        -- the rule, unrolled from its middle
+        local rp = ramp(t, T.RULE, 0.6)
+        if rp > 0 then
+            local c = I.RULE_COORD
+            local l, r = 0.5 - (0.5 - c[1]) * rp, 0.5 + (c[2] - 0.5) * rp
+            for _, tex in ipairs({ I.rule, I.ruleLight }) do
+                tex:SetWidth(math.max(1, I.RULE_W * rp))
+                tex:SetTexCoord(l, r, c[3], c[4])
+            end
+            I.rule:SetAlpha(rp)
+            I.ruleLight:SetAlpha(0.7 * rp)
+        end
+        I.sub:SetAlpha(ramp(t, T.SUB, 0.6))
+        I.question:SetAlpha(ramp(t, T.QUESTION, 0.8))
+
+        -- the prompt in the bottom bar
+        if t >= T.HINT then
+            if I.hint:GetText() ~= "Click to begin" then I.hint:SetText("Click to begin") end
+            I.hint:SetAlpha(0.6 + 0.4 * math.sin((t - T.HINT) * 2.5))
+        else
+            I.hint:SetAlpha(0.6 * ramp(t, 3.2, 0.8) * (1 - ramp(t, T.CREST, 0.3)))
+        end
+        if t >= T.AUTO then I.Finish() end
+    end)
+    I.f:SetScript("OnMouseDown", function() I.Advance() end)
+    I.f:SetScript("OnKeyDown", function(_, key) if key == "ESCAPE" then I.Finish() end end)
+
+    -- the state packet arrived during the race cinematic: play when it ends
+    function I.OnCinematicStop()
+        if I.pending then
+            I.pending = nil
+            I.Play()
+        end
+    end
+
+    -- What the state handler calls for an unchosen Hero inside the choosing
+    -- window: the intro the first time, the wizard straight away after that.
+    function CW.BeginOnboarding()
+        ClasslessWildcardCharDB = ClasslessWildcardCharDB or {}
+        if ClasslessWildcardCharDB.introSeen then
+            ShowPathChoice()
+            return
+        end
+        if I.f:IsShown() or I.pending then return end
+        if CinematicFrame and CinematicFrame:IsShown() then
+            I.pending = true
+            return
+        end
+        I.Play()
+    end
+end
 
 -- ---------------------------------------------------------------------------
 -- universal resource bars: the client tracks mana/rage/energy for every
@@ -6677,8 +7477,8 @@ do
     end
 
     local fly = CreateFrame("Frame", "ClasslessWildcardSettings", frame)
-    fly:SetWidth(240)
-    fly:SetPoint("BOTTOMLEFT", frame, "BOTTOMLEFT", 20, 56)
+    fly:SetWidth(frame:GetWidth()); fly:SetHeight(frame:GetHeight())
+    fly:SetPoint("CENTER", frame, "CENTER", 0, 0)
     fly:SetFrameStrata("DIALOG")
     fly:SetBackdrop({
         bgFile = "Interface\\Buttons\\WHITE8X8",
@@ -6691,28 +7491,98 @@ do
     fly:Hide()
     CW.setFly = fly
 
-    fly.title = fly:CreateFontString(nil, "OVERLAY", "GameFontNormal")
-    fly.title:SetPoint("TOP", 0, -12)
+    fly.title = fly:CreateFontString(nil, "OVERLAY", "GameFontNormalLarge")
+    fly.title:SetPoint("TOP", 0, -16)
     fly.title:SetText("Settings")
+    fly.close = CreateFrame("Button", nil, fly, "UIPanelCloseButton")
+    fly.close:SetPoint("TOPRIGHT", -6, -6)
+    fly.close:SetScript("OnClick", function() fly:Hide() end)
 
+    -- Laid out as boxed groups on two columns: the resource bars on the
+    -- left, the tracker and abilities stacked on the right. Each group says
+    -- where it is kept, since some settings follow the character and some
+    -- the computer. A group's box is sized once its contents are placed.
+    local LEFT, RIGHT, COL_W, TOP = 60, 490, 400, 64
+    local function Group(x, y, title, note)
+        local g = CreateFrame("Frame", nil, fly)
+        g:SetWidth(COL_W)
+        g:SetPoint("TOPLEFT", x, -y)
+        g:SetBackdrop({
+            bgFile = "Interface\\Tooltips\\UI-Tooltip-Background",
+            edgeFile = "Interface\\Tooltips\\UI-Tooltip-Border",
+            tile = true, tileSize = 16, edgeSize = 14,
+            insets = { left = 3, right = 3, top = 3, bottom = 3 },
+        })
+        g:SetBackdropColor(0.08, 0.08, 0.12, 0.85)
+        g:SetBackdropBorderColor(0.45, 0.45, 0.5)
+        g.title = g:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+        g.title:SetPoint("TOPLEFT", 16, -14)
+        g.title:SetText(title)
+        g.note = g:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+        g.note:SetPoint("TOPLEFT", 16, -32)
+        g.note:SetTextColor(0.6, 0.6, 0.6)
+        g.note:SetText(note)
+        return g
+    end
+    -- a checkbox inside a group at (x, y) from the group's top-left
+    local function Check(g, name, x, y, label, tip, onClick)
+        local cb = CreateFrame("CheckButton", name, g, "UICheckButtonTemplate")
+        cb:SetWidth(24); cb:SetHeight(24)
+        cb:SetPoint("TOPLEFT", x, -y)
+        local text = _G[name .. "Text"]
+        if text then text:SetText(label) end
+        cb:SetScript("OnClick", onClick)
+        cb:SetScript("OnEnter", function(self)
+            GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
+            GameTooltip:AddLine(label)
+            GameTooltip:AddLine(tip, 1, 1, 1, true)
+            GameTooltip:Show()
+        end)
+        cb:SetScript("OnLeave", function() GameTooltip:Hide() end)
+        return cb
+    end
+    local function Button(g, x, y, text, tip, onClick)
+        local b = CreateFrame("Button", nil, g, "UIPanelButtonTemplate")
+        b:SetWidth(180); b:SetHeight(22)
+        b:SetPoint("TOPLEFT", x, -y)
+        b:SetText(text)
+        b:SetScript("OnClick", onClick)
+        b:SetScript("OnEnter", function(self)
+            GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
+            GameTooltip:AddLine(text)
+            GameTooltip:AddLine(tip, 1, 1, 1, true)
+            GameTooltip:Show()
+        end)
+        b:SetScript("OnLeave", function() GameTooltip:Hide() end)
+        return b
+    end
+
+    fly.subtitle = fly:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+    fly.subtitle:SetPoint("TOP", 0, -40)
+    fly.subtitle:SetTextColor(0.7, 0.7, 0.7)
+    fly.subtitle:SetText("Hover any setting for what it does.")
+
+    -- Resource bars: the frame itself, then a row per pool in two columns
     local checks = {}
-    local y = 34
+    local bars = Group(LEFT, TOP, "Resource bars", "Saved on this computer, for every character.")
+    fly.barsGroup = bars
+    local y, pools = 56, 0
     for i, row in ipairs(ROWS) do
-        if row.head then
-            if i > 1 then y = y + 6 end   -- a heading needs air above it
-            local h = fly:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+        if row.head == "Show a bar for" then
+            y = y + 8
+            local h = bars:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
             h:SetPoint("TOPLEFT", 16, -y)
             h:SetText("|cffffd100" .. row.head .. "|r")
-            y = y + 19
-        else
-            local name = "ClasslessWildcardSetting" .. i
-            local cb = CreateFrame("CheckButton", name, fly, "UICheckButtonTemplate")
-            cb:SetWidth(24); cb:SetHeight(24)
-            cb:SetPoint("TOPLEFT", 18, -y)
-            local label = _G[name .. "Text"]
-            if label then label:SetText(row.label) end
-            cb.rowKey = row.key
-            cb:SetScript("OnClick", function(self)
+            y = y + 20
+        elseif not row.head then
+            local x, at = 18, y
+            if row.key ~= "frame" and row.key ~= "lock" then
+                -- the pools sit two to a line, so six rows take three lines
+                x = 18 + (pools % 2) * 180
+                at = y + math.floor(pools / 2) * 26
+                pools = pools + 1
+            end
+            local cb = Check(bars, "ClasslessWildcardSetting" .. i, x, at, row.label, row.tip, function(self)
                 local on = self:GetChecked() and true or false
                 ClasslessWildcardDB = ClasslessWildcardDB or {}
                 if self.rowKey == "frame" then
@@ -6725,100 +7595,36 @@ do
                 end
                 CW.RenderSettings()
             end)
-            cb:SetScript("OnEnter", function(self)
-                GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
-                GameTooltip:AddLine(row.label)
-                GameTooltip:AddLine(row.tip, 1, 1, 1, true)
-                GameTooltip:Show()
-            end)
-            cb:SetScript("OnLeave", function() GameTooltip:Hide() end)
+            cb.rowKey = row.key
             checks[#checks + 1] = cb
-            y = y + 24
+            if row.key == "frame" or row.key == "lock" then y = y + 26 end
         end
     end
+    y = y + math.ceil(pools / 2) * 26 + 12
+    Button(bars, 18, y, "Reset bar position", "Puts the bars back under the player frame.",
+        function() CW.ResetBarsPosition() end)
+    bars:SetHeight(y + 22 + 18)
 
-    local reset = CreateFrame("Button", nil, fly, "UIPanelButtonTemplate")
-    reset:SetWidth(170); reset:SetHeight(22)
-    reset:SetPoint("TOPLEFT", 18, -y - 8)
-    reset:SetText("Reset bar position")
-    reset:SetScript("OnClick", function() CW.ResetBarsPosition() end)
-    reset:SetScript("OnEnter", function(self)
-        GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
-        GameTooltip:AddLine("Reset bar position")
-        GameTooltip:AddLine("Puts the bars back under the player frame.", 1, 1, 1, true)
-        GameTooltip:Show()
-    end)
-    reset:SetScript("OnLeave", function() GameTooltip:Hide() end)
-    y = y + 8 + 22
+    -- Challenge tracker
+    local tracker = Group(RIGHT, TOP, "Challenge tracker", "Saved on this computer, for every character.")
+    fly.trackerGroup = tracker
+    fly.trackerCheck = Check(tracker, "ClasslessWildcardSettingTracker", 18, 56, "Show the tracker",
+        "The frame at the top of the screen during a challenge run: your lives, and what the "
+            .. "rule is counting. Drag it anywhere you like.",
+        function(self) CW.SetTrackerShown(self:GetChecked() and true or false) end)
+    fly.trackerReset = Button(tracker, 18, 94, "Reset tracker position", "Puts the tracker back at the top of the screen.",
+        function() if CW.ResetTrackerPosition then CW.ResetTrackerPosition() end end)
+    tracker:SetHeight(94 + 22 + 18)
 
-    -- The challenge tracker: whether it is drawn, and where it goes back to.
-    y = y + 14
-    local th = fly:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
-    th:SetPoint("TOPLEFT", 16, -y)
-    th:SetText("|cffffd100Challenge tracker|r")
-    y = y + 19
-    local tcb = CreateFrame("CheckButton", "ClasslessWildcardSettingTracker", fly, "UICheckButtonTemplate")
-    tcb:SetWidth(24); tcb:SetHeight(24)
-    tcb:SetPoint("TOPLEFT", 18, -y)
-    if _G["ClasslessWildcardSettingTrackerText"] then
-        _G["ClasslessWildcardSettingTrackerText"]:SetText("Show the tracker")
-    end
-    tcb:SetScript("OnClick", function(self)
-        CW.SetTrackerShown(self:GetChecked() and true or false)
-    end)
-    tcb:SetScript("OnEnter", function(self)
-        GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
-        GameTooltip:AddLine("Show the tracker")
-        GameTooltip:AddLine("The frame at the top of the screen during a challenge run: your lives, and what the "
-            .. "rule is counting. Drag it anywhere you like.", 1, 1, 1, true)
-        GameTooltip:Show()
-    end)
-    tcb:SetScript("OnLeave", function() GameTooltip:Hide() end)
-    fly.trackerCheck = tcb
-    y = y + 24
-    local treset = CreateFrame("Button", nil, fly, "UIPanelButtonTemplate")
-    treset:SetWidth(170); treset:SetHeight(22)
-    treset:SetPoint("TOPLEFT", 18, -y - 8)
-    treset:SetText("Reset tracker position")
-    treset:SetScript("OnClick", function() if CW.ResetTrackerPosition then CW.ResetTrackerPosition() end end)
-    treset:SetScript("OnEnter", function(self)
-        GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
-        GameTooltip:AddLine("Reset tracker position")
-        GameTooltip:AddLine("Puts the tracker back at the top of the screen.", 1, 1, 1, true)
-        GameTooltip:Show()
-    end)
-    treset:SetScript("OnLeave", function() GameTooltip:Hide() end)
-    fly.trackerReset = treset
-    y = y + 8 + 22
-
-    -- Abilities: Auto Shot, which some players find fires when they did not
-    -- mean it to. Kept on the server for this character, so the box shows
-    -- what the server says and a click asks it to change.
-    y = y + 14
-    local ah = fly:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
-    ah:SetPoint("TOPLEFT", 16, -y)
-    ah:SetText("|cffffd100Abilities|r")
-    y = y + 19
-    local acb = CreateFrame("CheckButton", "ClasslessWildcardSettingAutoShot", fly, "UICheckButtonTemplate")
-    acb:SetWidth(24); acb:SetHeight(24)
-    acb:SetPoint("TOPLEFT", 18, -y)
-    if _G["ClasslessWildcardSettingAutoShotText"] then
-        _G["ClasslessWildcardSettingAutoShotText"]:SetText("Disable Auto Shot")
-    end
-    acb:SetScript("OnClick", function(self)
-        Send("AUTOSHOT " .. (self:GetChecked() and 1 or 0))
-    end)
-    acb:SetScript("OnEnter", function(self)
-        GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
-        GameTooltip:AddLine("Disable Auto Shot")
-        GameTooltip:AddLine("Auto Shot is taught while a bow, gun or crossbow is equipped. "
-            .. "Tick to keep it off whatever is equipped. Shoot still fires a bow, gun or crossbow.", 1, 1, 1, true)
-        GameTooltip:Show()
-    end)
-    acb:SetScript("OnLeave", function() GameTooltip:Hide() end)
-    fly.autoShotCheck = acb
-    y = y + 24
-    fly:SetHeight(y + 14)
+    -- Abilities: kept on the server for this character, so the box shows what
+    -- the server says and a click asks it to change
+    local abilities = Group(RIGHT, TOP + 134 + 16, "Abilities", "Saved for this character.")
+    fly.abilitiesGroup = abilities
+    fly.autoShotCheck = Check(abilities, "ClasslessWildcardSettingAutoShot", 18, 56, "Disable Auto Shot",
+        "Auto Shot is taught while a bow, gun or crossbow is equipped. "
+            .. "Tick to keep it off whatever is equipped. Shoot still fires a bow, gun or crossbow.",
+        function(self) Send("AUTOSHOT " .. (self:GetChecked() and 1 or 0)) end)
+    abilities:SetHeight(56 + 24 + 18)
 
     -- The panel is the one place these live, so it reads them back rather than
     -- remembering what it drew: /cwbars and the minimap button change the same
@@ -7338,7 +8144,23 @@ reveal:SetFrameStrata("FULLSCREEN_DIALOG") -- always clearly above the panel
 reveal:EnableMouse(true)                   -- and never leaks clicks through
 reveal:Hide()
 
-local rvShadow = reveal:CreateTexture(nil, "BACKGROUND")
+-- The shadow and the text scrims sit on a frame of their own BENEATH the
+-- reveal. 3.3.5 has no draw sublevels, so on the reveal's BACKGROUND they had
+-- no order against the starburst, and a shadow drawn last dimmed the beams.
+-- A frame one level down is under every layer the reveal draws. It follows
+-- the reveal: anchored to it, shown and hidden with it.
+reveal.under = CreateFrame("Frame", nil, UIParent)
+reveal.under:SetFrameStrata("FULLSCREEN_DIALOG")
+reveal.under:SetAllPoints(reveal)
+reveal.under:Hide()
+reveal:SetFrameLevel(reveal.under:GetFrameLevel() + 2)
+reveal:HookScript("OnShow", function(self)
+    self.under:SetFrameLevel(math.max(0, self:GetFrameLevel() - 1))
+    self.under:Show()
+end)
+reveal:HookScript("OnHide", function(self) self.under:Hide() end)
+
+local rvShadow = reveal.under:CreateTexture(nil, "BACKGROUND")
 rvShadow:SetWidth(470); rvShadow:SetHeight(470)
 rvShadow:SetPoint("CENTER", 0, 0)
 rvShadow:SetTexture("Interface\\AddOns\\ClasslessWildcard\\shadow")
@@ -7347,15 +8169,15 @@ rvShadow:SetTexture("Interface\\AddOns\\ClasslessWildcard\\shadow")
 -- behind the title and the name/rarity lines. Two soft bars rather than a panel:
 -- the reveal is meant to float, not become a dialog box.
 local function TextScrim(parent, y, height, alpha)
-    local t = parent:CreateTexture(nil, "BACKGROUND", nil, -6)
+    local t = parent:CreateTexture(nil, "BACKGROUND")
     t:SetTexture("Interface\\AddOns\\ClasslessWildcard\\shadow")
     t:SetWidth(360); t:SetHeight(height)
     t:SetPoint("CENTER", 0, y)
     t:SetAlpha(alpha)
     return t
 end
-TextScrim(reveal, 176, 96, 0.85)
-local rvTextScrim = TextScrim(reveal, -148, 122, 0.9)
+TextScrim(reveal.under, 176, 96, 0.85)
+local rvTextScrim = TextScrim(reveal.under, -148, 122, 0.9)
 
 local rvTitle = reveal:CreateFontString(nil, "OVERLAY", "GameFontNormalHuge")
 rvTitle:SetPoint("TOP", 0, -8)
@@ -7370,21 +8192,25 @@ local REVEAL_ATLAS = "Interface\\AddOns\\ClasslessWildcard\\die_reveal"
 -- One table, not five file-level locals: the main chunk is close to Lua 5.1's
 -- 200-local ceiling and five more went over it.
 local rvFX = { rot = 0, INFO_LINES = 9 }   -- INFO_LINES here: the rows are built below, before the scanner
-rvFX.rays = reveal:CreateTexture(nil, "BACKGROUND", nil, 2)
+-- The reveal's own layers, bottom up: BACKGROUND the starbursts and the glow
+-- (all additive, so their order among themselves changes nothing), BORDER the
+-- info plate, ARTWORK the plate's edge and the icon (which never overlap),
+-- OVERLAY the die and the text.
+rvFX.rays = reveal:CreateTexture(nil, "BACKGROUND")
 rvFX.rays:SetWidth(372); rvFX.rays:SetHeight(372)
 rvFX.rays:SetPoint("CENTER", 0, 26)
 rvFX.rays:SetTexture("Interface\\AddOns\\ClasslessWildcard\\rays")
 rvFX.rays:SetBlendMode("ADD")
 rvFX.rays:Hide()
 
-rvFX.rays2 = reveal:CreateTexture(nil, "BACKGROUND", nil, 3)
+rvFX.rays2 = reveal:CreateTexture(nil, "BACKGROUND")
 rvFX.rays2:SetWidth(268); rvFX.rays2:SetHeight(268)
 rvFX.rays2:SetPoint("CENTER", 0, 26)
 rvFX.rays2:SetTexture("Interface\\AddOns\\ClasslessWildcard\\rays")
 rvFX.rays2:SetBlendMode("ADD")
 rvFX.rays2:Hide()
 
-local rvGlow = reveal:CreateTexture(nil, "BORDER")
+local rvGlow = reveal:CreateTexture(nil, "BACKGROUND")
 rvGlow:SetWidth(310); rvGlow:SetHeight(310)
 rvGlow:SetPoint("CENTER", 0, 26)
 rvGlow:SetTexture("Interface\\AddOns\\ClasslessWildcard\\glow")
@@ -7490,17 +8316,18 @@ function rvFX.MakeInfo(parent, anchor)
     -- A real panel behind the text. Both frames float over the world, and a
     -- shadow alone is not a background: small text on grass is unreadable
     -- however hard its shadow is. This is the tooltip treatment -- near-black
-    -- plate, hairline border in the rarity's colour -- drawn on BACKGROUND and
-    -- BORDER so the OVERLAY font strings of the same frame stay on top of it
-    -- without any reparenting.
-    info.panel = parent:CreateTexture(nil, "BACKGROUND", nil, 5)
+    -- plate, hairline border in the rarity's colour -- drawn on BORDER and
+    -- ARTWORK so the OVERLAY font strings of the same frame stay on top of it
+    -- without any reparenting, and the additive glow and starburst on
+    -- BACKGROUND stay under it.
+    info.panel = parent:CreateTexture(nil, "BORDER")
     info.panel:SetTexture(0, 0, 0)
     info.panel:SetAlpha(0.86)
     info.panel:SetWidth(344)
     info.panel:Hide()
 
     for i = 1, 4 do
-        local e = parent:CreateTexture(nil, "BORDER")
+        local e = parent:CreateTexture(nil, "ARTWORK")   -- over the plate
         e:SetTexture(1, 1, 1)
         e:Hide()
         info.edges[i] = e
@@ -8169,7 +8996,8 @@ handShadow:SetTexture("Interface\\AddOns\\ClasslessWildcard\\shadow")
 
 -- extra darkening under the title and the instruction line: over bright ground
 -- the shadow alone was not enough to read them against
-local handTextScrim = hand:CreateTexture(nil, "BACKGROUND", nil, -6)
+-- (both dark, so which of the two draws first makes no difference)
+local handTextScrim = hand:CreateTexture(nil, "BACKGROUND")
 handTextScrim:SetWidth(980); handTextScrim:SetHeight(140)
 handTextScrim:SetPoint("TOP", 0, 22)
 handTextScrim:SetTexture("Interface\\AddOns\\ClasslessWildcard\\shadow")
@@ -8247,13 +9075,13 @@ for i = 1, HAND_SLOTS do
     -- Tier dressing (see rvFX.CardFX). It lives on the shared layer under all
     -- the cards, not on this card, but stays anchored to this one so it
     -- follows the card as it rises into place.
-    slot.rays = hand.fxLayer:CreateTexture(nil, "ARTWORK", nil, 0)
+    slot.rays = hand.fxLayer:CreateTexture(nil, "ARTWORK")   -- additive, as is the glow
     slot.rays:SetWidth(HG.die * 1.35); slot.rays:SetHeight(HG.die * 1.35)
     slot.rays:SetPoint("CENTER", slot, "CENTER", 0, 0)
     slot.rays:SetTexture("Interface\\AddOns\\ClasslessWildcard\\rays")
     slot.rays:SetBlendMode("ADD")
     slot.rays:Hide()
-    slot.glow = hand.fxLayer:CreateTexture(nil, "ARTWORK", nil, 1)
+    slot.glow = hand.fxLayer:CreateTexture(nil, "ARTWORK")
     -- Sized off the reveal's own proportion (310 of glow around a 280 die),
     -- not the old 44px card's 3x: at 150 the die no longer swallows the bright
     -- middle of glow.tga, and anything wider reaches into the next column.
@@ -8265,7 +9093,7 @@ for i = 1, HAND_SLOTS do
 
     -- gold halo = LOCKED IN, said in light rather than in a border that would
     -- fight the die's own frame
-    slot.ring = slot:CreateTexture(nil, "BACKGROUND", nil, 2)
+    slot.ring = slot:CreateTexture(nil, "BACKGROUND")   -- the card's only BACKGROUND region
     slot.ring:SetWidth(HG.die * 1.25); slot.ring:SetHeight(HG.die * 1.25)
     slot.ring:SetPoint("CENTER", 0, 0)
     slot.ring:SetTexture("Interface\\AddOns\\ClasslessWildcard\\glow")
@@ -8284,7 +9112,11 @@ for i = 1, HAND_SLOTS do
     slot.die:SetTexture(REVEAL_ATLAS)
 
     -- big padlock over the die: gold CLOSED = kept, grey OPEN = will reroll
-    slot.lock = slot:CreateTexture(nil, "OVERLAY", nil, 2)
+    -- The die is OVERLAY too, and 3.3.5 has no sublevel to put the lock above
+    -- it, so the lock rides a child frame, which draws over the whole card.
+    slot.lockLayer = CreateFrame("Frame", nil, slot)
+    slot.lockLayer:SetAllPoints(slot)
+    slot.lock = slot.lockLayer:CreateTexture(nil, "OVERLAY")
     slot.lock:SetWidth(28); slot.lock:SetHeight(28)
     slot.lock:SetPoint("BOTTOM", slot, "TOP", 0, -6)
     slot.lock:SetTexture("Interface\\AddOns\\ClasslessWildcard\\lock_open")
@@ -8832,7 +9664,7 @@ local function HandleMessage(msg)
         end
         -- first-login onboarding: unchosen mode and still inside the window
         if s.mode == 255 and s.level < s.deadline and not frame:IsShown() and not wizard:IsShown() then
-            ShowPathChoice()
+            CW.BeginOnboarding()
         end
 
     elseif kind == "RU" then
@@ -8974,7 +9806,7 @@ local function HandleMessage(msg)
         collectingArch = false
         CW.archetypesLoaded = true
         if wizard:IsShown() then
-            ShowArchetypeChoices()
+            CW.ShowArchetypeChoices()
         elseif archFly:IsShown() then
             RenderArchFly()
         end
@@ -9117,6 +9949,7 @@ local function HandleMessage(msg)
     elseif kind == "AW" then
         -- the armor weight in force, for the auras' hover text
         CW.ReadArmorWeight(p[2])
+        if CW.RefreshHelpText then CW.RefreshHelpText() end   -- the guide quotes the full-set numbers
     elseif kind == "RD" then
         -- a life lost: lives left, lives at the start, what the rule did
         local lives, max, what = tonumber(p[2]) or 0, tonumber(p[3]) or 0, p[4] or ""
@@ -9995,6 +10828,7 @@ events:SetScript("OnEvent", function(self, event, arg1, arg2, arg3, arg4)
         end
     elseif event == "CINEMATIC_STOP" then
         CW.RefreshPanelArt()
+        if CW.intro then CW.intro.OnCinematicStop() end
     elseif event == "PLAYER_ENTERING_WORLD" then
         -- the server strips the chassis's free class spells about now
         if CW.QuietUnlearnsForLogin then CW.QuietUnlearnsForLogin() end
@@ -10051,6 +10885,9 @@ SlashCmdList["CLASSLESSWILDCARD"] = function(msg)
         return
     elseif msg == "tracker" then
         CW.ToggleTracker()
+        return
+    elseif msg == "intro" then
+        CW.intro.Play(true)   -- see it again; the path wizard does not follow a replay
         return
     elseif msg == "builds" or msg == "import" then
         -- My Builds, or straight to pasting a code; Classless Heroes only

@@ -24,7 +24,7 @@ ADDON = os.path.join(HERE, "ClasslessWildcard", "ClasslessWildcard.lua")
 # The two functions under test, lifted verbatim so the test cannot drift from
 # the shipped source.
 START = "-- Trim a rate for display"
-END = "local function BuildHelpText()"
+END = "-- Armor weight for the guide"
 
 # Chassis rates as the server computes them in ChassisAPRates, paired with the
 # UniversalStats defaults.

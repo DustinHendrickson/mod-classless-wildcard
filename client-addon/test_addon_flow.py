@@ -93,6 +93,7 @@ StubMT.__index = function(self, k)
     if k == "SetHeight" then return function(s, v) rawset(s, "__h", v) end end
     if k == "SetWidth" then return function(s, v) rawset(s, "__w", v) end end
     if k == "SetAlpha" then return function(s, v) rawset(s, "__alpha", v) end end
+    if k == "SetScale" then return function(s, v) rawset(s, "__scale", v) end end
     if k == "GetAlpha" then return function(s) return rawget(s, "__alpha") or 1 end end
     if k == "SetFrameLevel" then return function(s, v) rawset(s, "__level", v) end end
     if k == "SetID" then return function(s, v) rawset(s, "__id", v) end end
@@ -541,7 +542,7 @@ def test_archetypes(h):
     h.check("ARCHAPPLY 0" in h.sent(), "Stop sends ARCHAPPLY 0")
     h.click(btn)
     h.check(str(rows[2].desc["__text"]).startswith("Armored caster"), "row shows the description")
-    h.check(fly["__h"] == 88 + (2 * 62 - 4) + 14, "flyout sized to header, intro and two rows (%s)" % fly["__h"])
+    h.check(fly["__w"] == 950 and fly["__h"] == 600, "flyout is the panel's size, whatever the list (%sx%s)" % (fly["__w"], fly["__h"]))
     h.check(str(fly.intro["__text"]) == str(fly.INTRO), "intro text restored once the list arrives")
     h.check(wizard["__shown"] is False, "wizard stays closed (reply went to the flyout)")
 
@@ -606,8 +607,8 @@ def test_archetypes(h):
             "eighteen rows exist and show, no nineteenth")
     h.check("Build 18" in str(rows[18].name["__text"]), "row 18 is the last archetype")
     h.check(fly.list.child["__h"] == 18 * 62 - 4, "scroll child holds all eighteen (%s)" % fly.list.child["__h"])
-    h.check(fly.list.scroll["__h"] == 440, "visible list capped at 440 (%s)" % fly.list.scroll["__h"])
-    h.check(fly["__h"] == 88 + 440 + 14, "flyout sized to the capped list (%s)" % fly["__h"])
+    h.check(fly.list.scroll["__h"] == 600 - 88 - 24, "visible list fills the page under the header (%s)" % fly.list.scroll["__h"])
+    h.check(fly["__h"] == 600, "and the flyout stays the panel's size (%s)" % fly["__h"])
     h.clear_sent()
     h.click(rows[13].apply)
     g.StaticPopupDialogs["CW_CLASSLESS_ARCHETYPE"]["OnAccept"](g.LAST_POPUP_FRAME)
@@ -618,7 +619,7 @@ def test_archetypes(h):
     h.recv("ARE|")
     h.check(rows[1]["__shown"] is False, "a reply with no rows clears the list")
     h.check("No archetypes" in str(fly.intro["__text"]), "empty list says so instead of Loading...")
-    h.check(fly["__h"] == 88 + 46 + 14, "flyout keeps one row of height when empty (%s)" % fly["__h"])
+    h.check(fly["__h"] == 600 and fly.list.scroll["__h"] == 46, "empty: one row of list, the flyout unchanged (%s)" % fly.list.scroll["__h"])
 
     # the other flyouts close it and it closes them
     h.click(CW.helpBtn)
@@ -640,14 +641,198 @@ def test_archetypes(h):
     h.check(btn["__shown"] is True, "back on Classless: button returns")
 
 
+def intro_step(h, dt):
+    """Advance the clock and run the intro's frame handler once."""
+    f = h.CW.intro.f
+    h.rt.execute("NOW = NOW + %r" % dt)
+    f["__scripts"]["OnUpdate"](f, dt)
+
+
+SUBLEVEL_RE = re.compile(
+    r':CreateTexture\(\s*[^,()]+,\s*"[A-Z]+"\s*,\s*[^,()]+,\s*-?\d+\s*\)'   # a fourth argument
+    r'|:SetDrawLayer\(\s*"[A-Z]+"\s*,')                                      # a second argument
+
+
+def sublevel_lines(text):
+    return [n for n, line in enumerate(text.split("\n"), 1)
+            if SUBLEVEL_RE.search(line) and not line.lstrip().startswith("--")]
+
+
+def test_draw_layers(h):
+    """3.3.5 has no draw sublevels: CreateTexture never reads a fourth argument
+    and SetDrawLayer reads only the layer (Wow.exe, 2026-10-13). A sublevel
+    asked for is silently dropped, and two regions on one layer then draw in
+    no fixed order. That is how the panel's opaque backing covered its art."""
+    print("--- draw layers: nothing relies on a sublevel the client ignores")
+    src = io.open(ADDON, encoding="utf-8").read()
+    hits = sublevel_lines(src)
+    h.check(not hits, "no CreateTexture or SetDrawLayer asks for a sublevel (lines %s)" % hits)
+    # the rule is live: it catches both shapes, and not a plain call
+    h.check(sublevel_lines('x = f:CreateTexture(nil, "BACKGROUND", nil, -8)\n'
+                           'y:SetDrawLayer("ARTWORK", 2)\n'
+                           'z = f:CreateTexture(nil, "BORDER")') == [1, 2],
+            "the rule flags a fourth argument and a two-argument SetDrawLayer, nothing else")
+    # The panel's art is the only thing on its BACKGROUND, under the
+    # backdrop's border on BORDER. Nothing may sit under it: the file itself
+    # is opaque, so there is no backing texture to fight it for the layer.
+    panel_regions = re.findall(r'\nframe\.(\w+) = frame:CreateTexture\(nil, "(\w+)"', src)
+    h.check(panel_regions == [("art", "BACKGROUND")],
+            "the panel draws one texture, its art, on BACKGROUND (%s)" % panel_regions)
+    try:
+        from PIL import Image
+        alpha = Image.open(os.path.join(HERE, "ClasslessWildcard", "panel_bg.tga")).convert("RGBA").getchannel("A")
+        lo = alpha.getextrema()[0]
+        h.check(lo == 255, "panel_bg.tga is opaque everywhere, so it needs no backing (lowest alpha %s)" % lo)
+    except ImportError:
+        h.check(False, "Pillow is needed to read panel_bg.tga: python3 -m pip install --user pillow")
+
+    # the reveal's shadow frame goes where the reveal goes, one level under it
+    reveal = h.CW.revealFrame
+    under = reveal.under
+    reveal["__scripts"]["OnShow"](reveal)
+    h.check(under["__shown"] is True and under["__level"] < reveal["__level"],
+            "the reveal's shadow frame shows with it, beneath it (%s < %s)" % (under["__level"], reveal["__level"]))
+    reveal["__scripts"]["OnHide"](reveal)
+    h.check(under["__shown"] is False, "and hides with it")
+
+
+def test_intro(h):
+    """A brand-new Hero sees the intro once, after the race cinematic, and
+    the path wizard follows it. Narration first, then the crest lands and
+    the title, rule, line and question come up."""
+    print("--- intro: a staged sequence, once, before the wizard")
+    CW, g = h.CW, h.g
+    I, wizard, frame = CW.intro, CW.wizard, g.ClasslessWildcardFrame
+    f, T = I.f, I.T
+    frame["__shown"] = False
+    wizard["__shown"] = False
+    h.rt.execute("ClasslessWildcardCharDB = {}")
+
+    def at(t):
+        """Step the clock to t seconds into the sequence, frame by frame."""
+        now = float(g.NOW) - float(I.t0)
+        while now < t - 1e-9:
+            dt = min(0.05, t - now)
+            intro_step(h, dt)
+            now += dt
+
+    # the state packet lands while the race cinematic is still playing
+    h.rt.execute('CinematicFrame = CreateFrame("Frame"); CinematicFrame:Show()')
+    h.recv(state(255, level=1))
+    h.check(f["__shown"] is not True and wizard["__shown"] is False and I.pending is True,
+            "during the cinematic nothing shows; the intro is pending")
+    h.rt.execute("CinematicFrame:Hide()")
+    h.events["__scripts"]["OnEvent"](h.events, "CINEMATIC_STOP")
+    h.check(f["__shown"] is True and str(I.phase) == "in", "the cinematic ending starts the intro")
+    h.check(I.dim["__alpha"] == 0 and I.crest["__alpha"] == 0 and I.bars[1]["__h"] == 1,
+            "it starts clear: no dark, no bars, no crest")
+
+    # a click in the first instant is ignored: it is the click that opened the world
+    f["__scripts"]["OnMouseDown"](f)
+    h.check(str(I.phase) == "in" and I.landed is None, "an instant click does nothing")
+
+    B = [I.BEATS[k] for k in (1, 2, 3)]
+    at(T.DIM + 0.1)
+    h.check(I.dim["__alpha"] > 0.7 and I.bars[1]["__h"] == I.BAR and I.bars[2]["__h"] == I.BAR,
+            "the world darkens and the letterbox closes in (%s of %s)" % (I.bars[1]["__h"], I.BAR))
+    h.check(I.beats[1]["__alpha"] == 0, "a beat of quiet before the first line (%s)" % I.beats[1]["__alpha"])
+    at(B[0].t0 + 1.2)
+    h.check(I.beats[1]["__alpha"] == 1 and I.beats[2]["__alpha"] == 0, "the first line of narration is up, alone")
+    h.check(str(I.hint["__text"]) == "Click to skip" and I.hint["__alpha"] > 0, "the bar offers a skip")
+    at(B[1].t0 + 1.2)
+    h.check(I.beats[1]["__alpha"] == 0 and I.beats[2]["__alpha"] == 1, "then the second, the first gone")
+    at(B[2].t0 + 1.2)
+    h.check(I.beats[3]["__alpha"] == 1 and "bound to none" in str(I.beats[3]["__text"]), "then the third")
+    h.check(I.crest["__alpha"] == 0 and I.title["__alpha"] == 0, "no crest and no title during the narration")
+
+    at(T.CREST + 0.2)
+    h.check(I.crest["__alpha"] > 0 and I.crest["__w"] > I.CREST and I.landed is None,
+            "the crest falls in, still large (%s)" % I.crest["__w"])
+    at(T.LAND + 0.05)
+    h.check(I.landed is not None and I.crest["__w"] == I.CREST, "it lands at its size")
+    h.check(I.flash["__alpha"] > 0.3, "with a flash (%s)" % I.flash["__alpha"])
+    pt = I.stage["__point"]
+    h.check(pt[4] != 0 or pt[5] != 0, "and a kick of the stage (%s, %s)" % (pt[4], pt[5]))
+    at(T.TITLE + 0.5)
+    pt = I.stage["__point"]
+    h.check(pt[4] == 0 and pt[5] == 0, "the kick settles")
+    h.check(I.rays["__alpha"] > 0 and any(e["__alpha"] > 0 for e in I.embers.values()),
+            "the starburst is up and embers are rising")
+    h.check(I.title["__alpha"] == 1 and I.titleFrame["__scale"] == 1, "the title has punched in and settled")
+    at(T.SHINE + 0.4)
+    h.check(I.shine["__alpha"] > 0, "the shine is crossing the title")
+    at(max(T.SHINE + 0.85, T.RULE + 0.65))
+    h.check(I.shine["__alpha"] == 0, "and has passed")
+    h.check(I.rule["__alpha"] == 1 and I.rule["__w"] == I.RULE_W, "the rule has unrolled to full width")
+    at(T.SUB + 0.7)
+    h.check(I.sub["__alpha"] == 1, "the line under it is up")
+    at(max(T.QUESTION + 0.9, T.HINT + 0.1))
+    h.check(I.question["__alpha"] == 1, "and the question that leads to the choice")
+    h.check(str(I.hint["__text"]) == "Click to begin" and I.hint["__alpha"] > 0, "the bar now says begin")
+    h.check(wizard["__shown"] is False, "the wizard has not opened yet")
+
+    # a click now ends it: fade out, then the wizard
+    f["__scripts"]["OnMouseDown"](f)
+    h.check(str(I.phase) == "out", "a click starts the fade out")
+    intro_step(h, 0.3)
+    h.check(f["__shown"] is True and f["__alpha"] < 1, "mid-fade it is still up and dimming (%s)" % f["__alpha"])
+    intro_step(h, 0.6)
+    h.check(f["__shown"] is False and wizard["__shown"] is True, "when the fade ends the wizard opens")
+    h.check(h.g.ClasslessWildcardCharDB.introSeen is True, "and the character is marked as having seen it")
+
+    # next login: straight to the wizard
+    wizard["__shown"] = False
+    h.recv(state(255, level=1))
+    h.check(f["__shown"] is False and wizard["__shown"] is True, "a Hero who has seen it goes straight to the wizard")
+
+    # a click during the narration skips to the crest, and the landing still plays
+    wizard["__shown"] = False
+    I.Play(True)
+    h.check(f["__shown"] is True, "/cw intro replays it")
+    at(B[0].t0 + 1.2)
+    f["__scripts"]["OnMouseDown"](f)
+    h.check(str(I.phase) == "in", "a click in the narration does not end it")
+    intro_step(h, 0.05)
+    h.check(I.beats[1]["__alpha"] == 0, "the narration is gone")
+    at(T.LAND + 0.1)
+    h.check(I.landed is not None, "the crest falls and lands straight away")
+
+    # Escape ends it at any point, and a replay never opens the wizard
+    f["__scripts"]["OnKeyDown"](f, "ESCAPE")
+    intro_step(h, 1.0)
+    h.check(f["__shown"] is False and wizard["__shown"] is False, "Escape ends a replay without the wizard")
+
+    # left alone it ends by itself
+    I.Play(True)
+    at(T.AUTO + 0.1)
+    h.check(str(I.phase) == "out", "it ends on its own after the timeline")
+    intro_step(h, 1.0)
+    h.check(f["__shown"] is False, "and is gone")
+
+
 def test_wizard(h):
     print("--- first-login wizard: path page, then archetype page")
     CW, g = h.CW, h.g
     wizard, frame, rows = CW.wizard, g.ClasslessWildcardFrame, CW.wizArchRows
     frame["__shown"] = False
+    h.rt.execute("ClasslessWildcardCharDB = {}")
     h.recv(state(255, level=1))
-    h.check(wizard["__shown"] is True, "no path chosen at level 1: wizard opens")
-    h.check(wizard["__w"] == 420 and str(CW.wizTitle["__text"]) == "Choose Your Path, Hero", "page 1: path choice, 420 wide")
+    h.check(CW.intro.f["__shown"] is True and wizard["__shown"] is False, "no path chosen at level 1: the intro plays first")
+    CW.intro.Finish()
+    intro_step(h, 1.0)
+    h.check(wizard["__shown"] is True, "then the wizard opens")
+    h.check(wizard["__w"] == 560 and str(CW.wizTitle["__text"]) == "Choose Your Path, Hero", "page 1: path choice, 560 wide")
+    h.check(CW.wizCards[1]["__shown"] is True and CW.wizCards[2]["__shown"] is True, "both path cards are up")
+    # the die lives in the lower half of a 128x256 micro-button texture; the
+    # whole canvas squeezed into a square drew it squashed in a corner
+    die = list(CW.wizCards[2].icon["__coord"].values())
+    h.check([round(v, 4) for v in die] == [round(18 / 128, 4), round(112 / 128, 4), round(125 / 256, 4), round(222 / 256, 4)],
+            "the Wildcard icon is cropped to the die: %s" % [round(v, 3) for v in die])
+    CW.wizCards[2].icon["__coord"] = None
+    wizard["__scripts"]["OnShow"](wizard)
+    h.check(CW.wizCards[2].icon["__coord"] is not None, "and the crop is put back when the art is reloaded")
+    h.check("Choose before level" in str(CW.wizDeadline["__text"]) and "keeps the path" in str(CW.wizDeadline["__text"]),
+            "the deadline line quotes the window: %s" % CW.wizDeadline["__text"])
 
     h.clear_sent()
     h.click(CW.wizClassless)
@@ -659,8 +844,8 @@ def test_wizard(h):
     h.check(rows[1]["__shown"] is True and rows[2]["__shown"] is True and rows[3]["__shown"] is False, "two rows shown, the rest hidden")
     h.check(":" in str(rows[1].desc["__text"]), "description keeps its colon: %r" % str(rows[1].desc["__text"]))
     h.check(wizard["__w"] == 560 and wizard["__h"] == 72 + (2 * 62 - 4) + 52, "wizard resized to fit (%sx%s)" % (wizard["__w"], wizard["__h"]))
-    h.check(CW.wizClassless["__shown"] is False and CW.wizLater["__shown"] is False and CW.wizArchSkip["__shown"] is True,
-            "path buttons hidden, empty-slate button shown")
+    h.check(CW.wizCards[1]["__shown"] is False and CW.wizLater["__shown"] is False and CW.wizArchSkip["__shown"] is True,
+            "path cards hidden, empty-slate button shown")
     h.check(CW.archFly["__shown"] is False, "panel flyout stays closed")
 
     h.clear_sent()
@@ -669,10 +854,10 @@ def test_wizard(h):
     h.check(wizard["__shown"] is False and frame["__shown"] is True and str(CW.tab) == "HERO", "wizard closes, panel opens on Hero")
 
     CW.ShowPathChoice()
-    h.check(wizard["__w"] == 420 and wizard["__h"] == 300 and str(CW.wizTitle["__text"]) == "Choose Your Path, Hero",
+    h.check(wizard["__w"] == 560 and wizard["__h"] == 440 and str(CW.wizTitle["__text"]) == "Choose Your Path, Hero",
             "page 1 again restores size and title")
-    h.check(rows[1]["__shown"] is False and CW.wizArchSkip["__shown"] is False and CW.wizClassless["__shown"] is True,
-            "page 1 again hides rows and shows the path buttons")
+    h.check(rows[1]["__shown"] is False and CW.wizArchSkip["__shown"] is False and CW.wizCards[1]["__shown"] is True,
+            "page 1 again hides rows and shows the path cards")
     h.check(CW.wizArchList.scroll["__shown"] is False, "page 1 again hides the list")
 
     # eighteen archetypes: the wizard stops growing at the list cap and scrolls
@@ -2850,6 +3035,21 @@ def test_stats(h):
             "and it follows a point being spent (%s)" % CW.statsBtn["__text"])
     h.check("|cff00ff002|r of 162 unspent" in str(CW.statTitle["__text"]),
             "agreeing with the panel's own line (%s)" % CW.statTitle["__text"])
+    # a child frame draws over its parent's text, so the banner's lines must
+    # be the banner's own or its fill covers them
+    on_banner = h.rt.eval("(function(C) return rawget(C.statTitle, '__parent') == C.statFly.banner "
+                          "and rawget(C.statFly.bannerSub, '__parent') == C.statFly.banner end)(ClasslessWildcard_API)")
+    h.check(on_banner is True,
+            "the unspent count and its caption belong to the banner, so its fill is under them")
+    h.check(str(row.count["__text"]) == "41", "the card shows the points placed in it (%s)" % row.count["__text"])
+    h.check("becomes" in str(row.label["__text"]), "and what the stat becomes on Apply")
+    h.check(CW.statApply["__enabled"] is True and CW.statReset["__enabled"] is True, "an edit enables Apply and Reset")
+    CW.statReset["__scripts"]["OnClick"](CW.statReset)
+    h.check(str(row.count["__text"]) == "40" and CW.statApply["__enabled"] is False and CW.statReset["__enabled"] is False,
+            "Reset puts the points back and greys both buttons out")
+    h.check(CW.statRows[1].minus["__enabled"] is True and CW.statRows[1].plus["__enabled"] is True,
+            "with points to place, every card can move up or down")
+    row.plus["__scripts"]["OnClick"](row.plus)
 
     # all of them spent reads as (0), not as a bare "Stats"
     h.rt.execute("ClasslessWildcard_API.stats.budget = 1")
@@ -2928,9 +3128,44 @@ def test_help_text(h):
     """The Help guide quotes the realm's own numbers and keeps the house style."""
     print("--- help: the guide follows the realm's config")
     CW = h.CW
-    text = lambda: str(CW.helpText["__text"])
+    text = lambda: str(CW.HelpText())
     h.check(" -- " not in text() and "class to pick" not in text() and "chassis" not in text() and "server" not in text().lower(),
             "no dashes, no class talk, no mention of the server")
+    titles = [str(s.title) for s in CW.help.sections.values()]
+    h.check(titles == ["Start", "Classless", "Wildcard", "Both paths", "Gear", "Rebirth", "Challenges"],
+            "seven sections in reading order: %s" % titles)
+    h.check(len([b for b in CW.help.buttons.values() if b["__shown"]]) == 7, "an index button per section")
+    h.check("taught while a bow, gun or crossbow is equipped" in text() and "Armor weight" in text(),
+            "the gear section covers Auto Shot and armor weight")
+    h.rt.execute("ClasslessWildcard_API.armorWeight = {}")   # an earlier flow may have reported already
+    CW.RefreshHelpText()
+    h.check("Hover the |cffffd100Armor Weight|r buff" in text(), "before the armor report the guide points at the buff")
+    h.recv("AW|962043:0:0,0:-25,-8;962044:0:0,0:-12,-4;962045:0:0,0,0:-5,4,4;962046:0:0,0:4,10;")
+    t = text()
+    h.check("|cffffd100Plate:|r casting 25% slower, attacks 8% slower." in t, "plate's full set from the report")
+    h.check("|cffffd100Leather:|r casting 5% slower, attacks 4% faster, dodge +4%." in t, "leather's full set from the report")
+    h.check("|cffffd100Cloth:|r spell critical strike chance +4%, mana regeneration +10%." in t, "cloth's full set from the report")
+    h.check("Hover the |cffffd100Armor Weight|r buff" not in t, "and the pointer line is gone")
+    # one section at a time: the list on the left picks which
+    H = CW.help
+    h.check(H.current == 1 and str(H.title["__text"]) == "Start", "the guide opens on Start")
+    h.check(H.buttons[1].selected["__shown"] is True and H.buttons[2].selected["__shown"] is False,
+            "and the list marks it")
+    scroll = h.g.ClasslessWildcardHelpScroll
+    scroll["__vscroll"] = 120
+    h.click(H.buttons[5])
+    h.check(H.current == 5 and str(H.title["__text"]) == "Gear", "the Gear entry shows the gear section")
+    h.check(H.buttons[5].selected["__shown"] is True and H.buttons[1].selected["__shown"] is False,
+            "the list moves its mark")
+    h.check(scroll["__vscroll"] == 0, "a new section starts at its top")
+    shown_heads = [str(H.heads[i]["__text"]) for i in range(1, 7) if H.heads[i]["__shown"]]
+    h.check(shown_heads[:3] == ["Proficiencies", "Armor weight", "Auto Shot"],
+            "each block has its own heading: %s" % shown_heads)
+    h.check(H.bodies[7]["__shown"] is not True or len(H.sections[5].blocks) >= 7,
+            "blocks left over from a longer section are hidden")
+    h.recv("CFG|1|0|1|1|3|4|1|10|1|1|2|3|5|8|4|10|3|10|10|25|100|25|100|50|300|3|15|80")
+    h.check(H.current == 5, "new numbers from the realm keep the reader on their section")
+    h.click(H.buttons[1])
     # CFG: cost, flat, dk, forged, then the rules the guide quotes
     h.recv("CFG|2|0|1|1|5|3|2|12|1|2|3|4|6|9|3|12|4|15|5|30|100|20|150|60|400|4|20|70")
     h.recv(state(1, level=20, free_reroll=12))
@@ -4338,6 +4573,8 @@ def main():
         return 1
     print("addon loaded: %d frames" % len(h.g.FRAMES))
     test_archetypes(h)
+    test_draw_layers(h)
+    test_intro(h)
     test_wizard(h)
     test_browser(h)
     test_state_packet(h)
