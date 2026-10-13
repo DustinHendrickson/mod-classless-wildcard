@@ -1661,22 +1661,30 @@ def main():
                   for m in re.finditer(r"ITEM_SUBCLASS_ARMOR_([A-Z]+),\s*(\d+)", weight_tbl)]
     addon_lua = io.open(os.path.join(os.path.dirname(os.path.abspath(__file__)), os.pardir, "client-addon",
                                      "ClasslessWildcard", "ClasslessWildcard.lua"), encoding="utf-8").read()
-    weight_map = re.search(r"CW\.ARMOR_WEIGHT = \{([^}]*)\}", addon_lua)
-    weight_lua = {int(k): int(v) for k, v in re.findall(r"\[(\d+)\]\s*=\s*(\d+)", weight_map.group(1))} \
-        if weight_map else {}
-    # the client's armor subclass list: 2 Cloth, 3 Leather, 4 Mail, 5 Plate
-    lua_index = {"CLOTH": 2, "LEATHER": 3, "MAIL": 4, "PLATE": 5}
+    weight_lua = {int(k): v for k, v in
+                  re.findall(r'\[(\d+)\]\s*=\s*\{\s*armor\s*=\s*"([a-z]+)"', addon_lua)}
     weight_bad = []
     if [i for _, i in weight_cpp] != weight_gen:
         weight_bad.append("C++ %s vs generator %s" % ([i for _, i in weight_cpp], weight_gen))
     for (armor, sid), key in zip(weight_cpp, weight_keys):
         if key != "aura_weight_" + armor.lower():
             weight_bad.append("%d is %s in the generator, %s in C++" % (sid, key, armor))
-        if weight_lua.get(sid) != lua_index.get(armor):
-            weight_bad.append("%d (%s): addon index %s, wants %s" % (sid, armor, weight_lua.get(sid),
-                                                                    lua_index.get(armor)))
+        if weight_lua.get(sid) != armor.lower():
+            weight_bad.append("%d (%s): the addon calls it %s" % (sid, armor, weight_lua.get(sid)))
     if set(weight_lua) != set(weight_gen):
         weight_bad.append("addon ids %s vs generator %s" % (sorted(weight_lua), weight_gen))
+    # and the one Armor aura that stands for them on the buff bar
+    shown = [sp["id"] for sp in spells if sp.get("key") == "aura_armor"]
+    shown_cpp = re.search(r"ARMOR_DISPLAY_AURA = (\d+);", mgr_cpp)
+    shown_lua = re.search(r"CW\.ARMOR_DISPLAY = (\d+)", addon_lua)
+    if len(shown) != 1 or not shown_cpp or not shown_lua \
+            or {int(shown_cpp.group(1)), int(shown_lua.group(1))} != set(shown):
+        weight_bad.append("the Armor aura: generator %s, C++ %s, addon %s" % (
+            shown, shown_cpp and shown_cpp.group(1), shown_lua and shown_lua.group(1)))
+    hidden = [sp["id"] for sp in spells if str(sp.get("key", "")).startswith("aura_weight_")
+              and not sp["values"][4] & 0x80]
+    if hidden:
+        weight_bad.append("shown, though the Armor aura stands for them: %s" % hidden)
     check("the armor weight auras are the same ids for the same armor in the generator, C++ and addon",
           len(weight_gen) == 4 and not weight_bad,
           "%d aura(s); %s" % (len(weight_gen), weight_bad))

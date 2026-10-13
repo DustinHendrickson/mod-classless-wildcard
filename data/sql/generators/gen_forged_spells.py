@@ -2029,8 +2029,8 @@ REBIRTH_AURA_RECIPE = dict(
 
 
 def build_rebirth_aura(spell):
-    assert TALENT_SPELL_BASE + len(TALENTS) * TALENT_SPELL_STRIDE <= ARMOR_WEIGHT_FIRST_ID, \
-        "the talent ranks have grown into the armor weight and Rebirth auras' ids"
+    assert TALENT_SPELL_BASE + len(TALENTS) * TALENT_SPELL_STRIDE <= ARMOR_DISPLAY_ID, \
+        "the talent ranks have grown into the armor and Rebirth auras' ids"
     rec = REBIRTH_AURA_RECIPE
     row, donor = build_row(spell, rec, 0, 1, REBIRTH_AURA_ID, None, None)
     # Shown, never clicked off, and kept through death: the rank is for good.
@@ -2051,10 +2051,13 @@ def build_rebirth_aura(spell):
 # holds the FULL-SET value, which is what the text quotes;
 # ClasslessMgr::SyncArmorWeight scales each by the pieces of that weight worn
 # (of the eight armor slots) and takes the aura away when none are. Plate and
-# mail are debuffs; leather and cloth show as buffs. All are never cancelled
-# and kept through death. The ids sit just below the Rebirth aura;
-# ClasslessMgr.cpp and the addon name the same four, in this order.
+# mail are debuffs; leather and cloth buffs. None of the four is shown: one
+# "Armor" aura (ARMOR_DISPLAY) stands for all of them on the buff bar, and the
+# addon writes its hover text from what the server reports is in force. All
+# are never cancelled and kept through death. The ids sit just below the
+# Rebirth aura; ClasslessMgr.cpp and the addon name the same ones.
 ARMOR_WEIGHT_FIRST_ID = REBIRTH_AURA_ID - 4
+ARMOR_DISPLAY_ID = ARMOR_WEIGHT_FIRST_ID - 1
 A_MOD_DODGE_PERCENT = 49             # dodge chance, percent
 A_MOD_POWER_REGEN_PERCENT = 110      # misc is the power: regeneration of it, percent
 ARMOR_WEIGHTS = [
@@ -2104,15 +2107,37 @@ def build_armor_weights(spell):
             desc=w["desc"], tooltip=w["tooltip"],
         )
         row, donor = build_row(spell, rec, 0, 1, sid, None, None)
-        row[4] &= ~ATTR0_DO_NOT_DISPLAY
-        # never cancelled; plate and mail forced harmful, onto the debuff bar
-        row[4] |= ATTR0_CANT_CANCEL
+        # hidden (the Armor aura stands for it) and never cancelled; plate and
+        # mail forced harmful
+        row[4] |= ATTR0_DO_NOT_DISPLAY | ATTR0_CANT_CANCEL
         if w["debuff"]:
             row[4] |= ATTR0_AURA_IS_DEBUFF
         row[7] |= ATTR3_DEATH_PERSISTENT
         out.append(dict(id=sid, first=sid, rank=1, level=1, key=rec["key"], values=row,
                         base=TALENT_DONOR, fields=overrides_of(row, donor), visual=0, icon=w["icon"],
                         sla=None))
+
+    # The one shown: a marker with no effect of its own, there while any of the
+    # four is. Its own text is what a player without the addon reads.
+    rec = dict(
+        key="aura_armor", name="Armor Weight", ranks=1, donor=TALENT_DONOR, school=1,
+        icon=326, visual=0, power=("mana", 0),                  # INV_Misc_ArmorKit_17
+        range_idx=RANGE_SELF, cast_idx=CAST_INSTANT, cooldown_ms=0,
+        duration_idx=DUR_PERMANENT,
+        effects=[dict(eff=E_APPLY_AURA, aura=A_DUMMY, base=0, tgt=T_SELF)],
+        desc=("What the armor you wear gives and costs. Plate and mail slow casting a lot and "
+              "attacks a little, leather quickens attacks and dodging and slows casting a little, "
+              "cloth sharpens spells and mana. Each piece counts toward its type."),
+        tooltip=("The armor you wear. Plate and mail slow casting and attacks, leather quickens "
+                 "attacks and dodging, cloth sharpens spells and mana. Each piece counts."),
+    )
+    row, donor = build_row(spell, rec, 0, 1, ARMOR_DISPLAY_ID, None, None)
+    row[4] &= ~ATTR0_DO_NOT_DISPLAY
+    row[4] |= ATTR0_CANT_CANCEL
+    row[7] |= ATTR3_DEATH_PERSISTENT
+    out.append(dict(id=ARMOR_DISPLAY_ID, first=ARMOR_DISPLAY_ID, rank=1, level=1, key=rec["key"],
+                    values=row, base=TALENT_DONOR, fields=overrides_of(row, donor), visual=0, icon=326,
+                    sla=None))
     return out
 
 

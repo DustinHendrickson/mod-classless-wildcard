@@ -1618,55 +1618,35 @@ def test_rebirth(h):
     h.check("Rebirth 9." in tip and "+400% experience from kills" in tip and "+100% experience from quests" in tip
             and "+20% to every primary stat" in tip, "a target's rank is read off its aura, capped: %r" % tip)
 
-    # An armor weight debuff on the player keeps its own text and adds how many
-    # pieces of that armor count, matched by the client's localized subtype.
-    h.rt.execute('''
-        local saved = { GetItemInfo = GetItemInfo }
-        ARMOR_TEST_SAVED = saved
-        UnitIsUnit = function(a, b) return a == b end
-        GetAuctionItemSubClasses = function() return "Misc", "Cloth", "Leather", "Mail", "Plate" end
-        local worn = { [1] = "Plate", [3] = "Plate", [5] = "Plate", [6] = "Mail", [7] = "Plate", [10] = "Cloth" }
-        GetInventoryItemLink = function(unit, slot) return worn[slot] and ("item:" .. slot) or nil end
-        GetItemInfo = function(link)
-            local slot = tonumber(string.match(link or "", "item:(%d+)"))
-            return "x", link, 4, 80, 80, "Armor", worn[slot]
-        end
-    ''')
-    h.rt.execute('UNIT_AURAS.player = { { "Plate Armor", 1, 962043 }, { "Mail Armor", 1, 962044 }, { "Cloth Armor", 1, 962046 } }')
-    h.rt.execute('GameTooltip:SetUnitAura("player", 1, "HARMFUL")')
+    # The Armor aura stands for every armor type worn. Before the server has
+    # reported, its own row's text stands; after, the hover text is the pieces
+    # of each type and every effect summed: speeds multiply, the rest add.
+    h.rt.execute('UnitIsUnit = function(a, b) return a == b end')
+    h.rt.execute('UNIT_AURAS.player = { { "Armor", 1, %d } }' % CW.ARMOR_DISPLAY)
+    h.rt.execute('GameTooltip:SetUnitAura("player", 1, "HELPFUL")')
     tip = str(h.rt.eval("TipText()"))
-    h.check("the row's own text" in tip and "You wear 4 of 8 pieces." in tip,
-            "the Plate Armor debuff keeps its text and counts four plate pieces: %r" % tip)
-    h.rt.execute('GameTooltip:SetUnitAura("player", 2, "HARMFUL")')
+    h.check(tip == "Armor | the row's own text", "before any report the Armor aura keeps its own text: %r" % tip)
+    # 4 plate, 2 mail, 2 cloth: plate casting 12% and mail 3% slower multiply
+    # to 15.4%, attacks 4% and 1% to 5.0%; cloth's crit 1 and regen 2 add
+    h.recv("AW|962043:4:-12,-4:-25,-8;962044:2:-3,-1:-12,-4;962045:0:0,0,0:-5,4,4;962046:2:1,2:4,10;")
+    h.rt.execute('GameTooltip:SetUnitAura("player", 1, "HELPFUL")')
     tip = str(h.rt.eval("TipText()"))
-    h.check("You wear 1 of 8 pieces." in tip, "and Mail Armor counts the one mail belt: %r" % tip)
-    h.rt.execute('GameTooltip:SetUnitAura("player", 3, "HELPFUL")')
+    h.check("You wear 4 plate, 2 mail, 2 cloth." in tip and "Casting: 15% slower" in tip
+            and "Attacks: 5% slower" in tip and "Spell critical strike chance: +1%" in tip
+            and "Mana regeneration: +2%" in tip and "Dodge" not in tip and "the row's own text" not in tip,
+            "one tooltip sums every type worn: %r" % tip)
+    # leather's faster attacks offset plate's slower ones
+    h.recv("AW|962043:4:-12,-4:-25,-8;962044:0:0,0:-12,-4;962045:4:-2,2,2:-5,4,4;962046:0:0,0:4,10;")
+    h.rt.execute('GameTooltip:SetUnitAura("player", 1, "HELPFUL")')
     tip = str(h.rt.eval("TipText()"))
-    h.check("You wear 1 of 8 pieces." in tip, "and the Cloth Armor buff counts the cloth gloves: %r" % tip)
-    h.rt.execute('UNIT_AURAS.target = { { "Plate Armor", 1, 962043 } }')
-    h.rt.execute('GameTooltip:SetUnitAura("target", 1, "HARMFUL")')
+    h.check("You wear 4 plate, 4 leather." in tip and "Casting: 14% slower" in tip
+            and "Attacks: 2% slower" in tip and "Dodge: +2%" in tip,
+            "leather's faster attacks offset plate's slower ones: %r" % tip)
+    # someone else's: their gear is not ours, so the row's text stands
+    h.rt.execute('UNIT_AURAS.target = { { "Armor", 1, %d } }' % CW.ARMOR_DISPLAY)
+    h.rt.execute('GameTooltip:SetUnitAura("target", 1, "HELPFUL")')
     tip = str(h.rt.eval("TipText()"))
-    h.check("You wear" not in tip, "someone else's is left as it is, since their gear is not ours: %r" % tip)
-
-    # Once the server has reported, the hover text is what the pieces give
-    # now, the full set beside it: the numbers are the server's, as applied.
-    h.recv("AW|962043:4:-12,-4:-25,-8;962044:1:-1,0:-12,-4;962045:0:0,0,0:-5,4,4;962046:1:0,1:4,10;")
-    h.rt.execute('GameTooltip:SetUnitAura("player", 1, "HARMFUL")')
-    tip = str(h.rt.eval("TipText()"))
-    h.check("You wear 4 of 8 pieces of plate." in tip and "Casting: 12% slower" in tip
-            and "(full set: 25% slower)" in tip and "Attacks: 4% slower" in tip
-            and "the row's own text" not in tip,
-            "the plate tooltip shows what four pieces cost, and a full set beside it: %r" % tip)
-    h.rt.execute('GameTooltip:SetUnitAura("player", 2, "HARMFUL")')
-    tip = str(h.rt.eval("TipText()"))
-    h.check("Attacks: unchanged" in tip and "(full set: 4% slower)" in tip,
-            "one mail piece leaves attacks unchanged, and says so: %r" % tip)
-    h.rt.execute('GameTooltip:SetUnitAura("player", 3, "HELPFUL")')
-    tip = str(h.rt.eval("TipText()"))
-    h.check("Spell critical strike chance: +0%" in tip and "Mana regeneration: +1%" in tip
-            and "(full set: +10%)" in tip,
-            "and the one cloth piece gives +1%% mana regeneration of a full set's +10%%: %r" % tip)
-    h.rt.execute("GetItemInfo = ARMOR_TEST_SAVED.GetItemInfo")
+    h.check(tip == "Armor | the row's own text", "someone else's Armor aura is left as it is: %r" % tip)
 
     # My Build shows the heirloom for what it is, with nothing to lock or reroll.
     h.recv(rebirth_state(1, 1, 2, 0, 300, 3))

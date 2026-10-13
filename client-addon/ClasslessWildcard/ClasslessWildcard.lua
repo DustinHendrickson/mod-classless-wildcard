@@ -9442,21 +9442,19 @@ do
         -- same formulas as RebirthXpPct and ApplyRebirthMods.
         local function rebornTip(self, unit, index, filter)
             local _, _, _, count, _, _, _, _, _, _, id = UnitAura(unit, index, filter)
-            -- an armor weight aura on the player: what the pieces worn give
-            -- now, from the server's AW report, beside the full-set numbers
-            if CW.ARMOR_WEIGHT[id] and unit and UnitIsUnit(unit, "player") then
-                local lines = CW.ArmorWeightTip(id)
+            -- the Armor aura on the player: everything the armor worn gives
+            -- now, summed from the server's AW report. Before the first
+            -- report, and on anyone else, the row's own text stands.
+            if id == CW.ARMOR_DISPLAY then
+                local lines = unit and UnitIsUnit(unit, "player") and CW.ArmorTip()
                 if lines then
                     self:ClearLines()
                     self:AddLine(lines[1], 1, 1, 1)
                     self:AddLine(lines[2], 1, 0.82, 0)
-                    for i = 3, #lines do self:AddLine(lines[i], 1, 1, 1, true) end
-                else
-                    -- no report yet: the row's own text, and the pieces counted here
-                    local worn = CW.ArmorPiecesWorn(CW.ARMOR_WEIGHT[id])
-                    self:AddLine("You wear " .. worn .. " of " .. #CW.ARMOR_SLOTS .. " pieces.", 1, 0.82, 0)
+                    for i = 3, #lines - 1 do self:AddLine(lines[i], 1, 1, 1, true) end
+                    self:AddLine(lines[#lines], 0.6, 0.6, 0.6, true)
+                    self:Show()
                 end
-                self:Show()
                 return
             end
             if id ~= CW.REBIRTH_AURA then return end
@@ -9476,23 +9474,22 @@ do
     end
 end
 
--- The armor weight auras (gen_forged_spells.py's ARMOR_WEIGHTS): plate and
--- mail debuffs, leather and cloth buffs. Each with the place of its armor type
--- in the client's own list of armor subclasses (GetAuctionItemSubClasses(2):
--- Miscellaneous, Cloth, Leather, Mail, Plate), localized the same way
--- GetItemInfo's subtype is.
-CW.ARMOR_WEIGHT = { [962043] = 5, [962044] = 4, [962045] = 3, [962046] = 2 }
--- the slots the server counts: head, shoulders, chest, waist, legs, feet,
--- wrists, hands
-CW.ARMOR_SLOTS = { 1, 3, 5, 6, 7, 8, 9, 10 }
--- What each aura's effects are, in its row's order, for the hover text: a
--- speed reads "% slower" or "% faster", anything else "+%". Words only; every
--- number comes from the server's AW report.
+-- Armor weight (gen_forged_spells.py's ARMOR_WEIGHTS): four hidden auras do
+-- the work, one per armor type, and the one Armor aura (ARMOR_DISPLAY) is what
+-- the buff bar shows. Each type's effects in its row's order, named for the
+-- hover text; a speed reads "% slower" or "% faster", anything else "+%".
+-- Words only: every number comes from the server's AW report.
+CW.ARMOR_DISPLAY = 962042
 CW.ARMOR_WEIGHT_TEXT = {
-    [962043] = { armor = "plate",   effects = { { "Casting", "speed" }, { "Attacks", "speed" } } },
-    [962044] = { armor = "mail",    effects = { { "Casting", "speed" }, { "Attacks", "speed" } } },
-    [962045] = { armor = "leather", effects = { { "Casting", "speed" }, { "Attacks", "speed" }, { "Dodge", "plus" } } },
-    [962046] = { armor = "cloth",   effects = { { "Spell critical strike chance", "plus" }, { "Mana regeneration", "plus" } } },
+    [962043] = { armor = "plate",   effects = { "Casting", "Attacks" } },
+    [962044] = { armor = "mail",    effects = { "Casting", "Attacks" } },
+    [962045] = { armor = "leather", effects = { "Casting", "Attacks", "Dodge" } },
+    [962046] = { armor = "cloth",   effects = { "Spell critical strike chance", "Mana regeneration" } },
+}
+-- the order the summed effects are listed in, and which of them are speeds
+CW.ARMOR_EFFECTS = {
+    { "Casting", true }, { "Attacks", true }, { "Dodge" },
+    { "Spell critical strike chance" }, { "Mana regeneration" },
 }
 CW.armorWeight = {}   -- aura id -> { pieces, now = {...}, full = {...} }, from "AW"
 
@@ -9507,40 +9504,44 @@ function CW.ReadArmorWeight(list)
     end
 end
 
-function CW.ArmorAmount(value, kind)
-    if kind == "speed" then
-        if value == 0 then return "unchanged" end
-        return math.abs(value) .. "% " .. (value < 0 and "slower" or "faster")
-    end
-    return "+" .. value .. "%"
-end
-
--- The hover text for an armor weight aura: its name, the pieces worn, then
--- each effect as it stands now with the full-set value beside it. nil until
--- the server has reported.
-function CW.ArmorWeightTip(aura)
-    local data, text = CW.armorWeight[aura], CW.ARMOR_WEIGHT_TEXT[aura]
-    if not data or not text then return nil end
-    local name = GetSpellInfo(aura) or (text.armor .. " armor")
-    local lines = { name, "You wear " .. data.pieces .. " of " .. #CW.ARMOR_SLOTS .. " pieces of " .. text.armor .. "." }
-    for i, e in ipairs(text.effects) do
-        local now, full = data.now[i], data.full[i]
-        if now and full then
-            tinsert(lines, e[1] .. ": " .. CW.ArmorAmount(now, e[2]) .. "  |cff999999(full set: "
-                .. CW.ArmorAmount(full, e[2]) .. ")|r")
+-- The Armor aura's hover text: the pieces of each type worn, then every
+-- effect summed across them. Speeds from different types multiply, as they
+-- do in game; the rest add. nil until the server has reported.
+function CW.ArmorTip()
+    local worn, sums, mult = {}, {}, {}
+    local reported = false
+    for _, aura in ipairs({ 962043, 962044, 962045, 962046 }) do
+        local data, text = CW.armorWeight[aura], CW.ARMOR_WEIGHT_TEXT[aura]
+        if data and text then
+            reported = true
+            if data.pieces > 0 then tinsert(worn, data.pieces .. " " .. text.armor) end
+            for i, label in ipairs(text.effects) do
+                local v = data.now[i] or 0
+                sums[label] = (sums[label] or 0) + v
+                -- a slow lengthens by (1 + v), a haste shortens by 1 / (1 + v)
+                local f = v < 0 and (1 - v / 100) or 1 / (1 + v / 100)
+                mult[label] = (mult[label] or 1) * f
+            end
         end
     end
-    return lines
-end
-
-function CW.ArmorPiecesWorn(subclassIndex)
-    local want = select(subclassIndex, GetAuctionItemSubClasses(2))
-    local n = 0
-    for _, slot in ipairs(CW.ARMOR_SLOTS) do
-        local link = GetInventoryItemLink("player", slot)
-        if link and want and select(7, GetItemInfo(link)) == want then n = n + 1 end
+    if not reported then return nil end
+    local lines = { GetSpellInfo(CW.ARMOR_DISPLAY) or "Armor Weight",
+        #worn > 0 and ("You wear " .. table.concat(worn, ", ") .. ".") or "You wear no armor that counts." }
+    for _, e in ipairs(CW.ARMOR_EFFECTS) do
+        local label, speed = e[1], e[2]
+        if speed and mult[label] then
+            local m = mult[label]
+            local pct = math.floor((m >= 1 and (m - 1) or (1 / m - 1)) * 100 + 0.5)
+            if pct > 0 then
+                tinsert(lines, label .. ": " .. pct .. "% " .. (m >= 1 and "slower" or "faster"))
+            end
+        elseif not speed and (sums[label] or 0) ~= 0 then
+            tinsert(lines, label .. ": " .. (sums[label] > 0 and "+" or "") .. sums[label] .. "%")
+        end
     end
-    return n
+    if #lines == 2 then tinsert(lines, "No effect yet: a piece is an eighth of a full set.") end
+    tinsert(lines, "Each piece counts toward its armor type; a full set of eight gives the type's full values.")
+    return lines
 end
 
 -- The Reborn aura (gen_forged_spells.py's REBIRTH_AURA_ID) and its hover text

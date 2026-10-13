@@ -2849,6 +2849,10 @@ namespace
     // Beyond this a value is a typo, not a choice: a speed past +-100% stops a
     // swing or a cast altogether.
     constexpr int32 ARMOR_WEIGHT_VALUE_LIMIT = 100;
+    // The four above are hidden; this one "Armor" aura is what the buff bar
+    // shows, there while any of them is, and the addon writes its hover text
+    // from the AW report.
+    constexpr uint32 ARMOR_DISPLAY_AURA = 962042;
     // the slots armor weight counts: the cloak is cloth for everyone, and
     // shirts and tabards weigh nothing
     constexpr uint8 ARMOR_SLOTS[] = {
@@ -2899,6 +2903,7 @@ void ClasslessMgr::SyncArmorWeight(Player* player, bool push)
     // amounts exactly as applied, so the addon's hover text shows what the
     // pieces worn really give rather than only the full-set numbers
     std::string report = "AW|";
+    bool anyWorn = false;
     for (ArmorWeight const& w : ARMOR_WEIGHTS)
     {
         SpellInfo const* info = sSpellMgr->GetSpellInfo(w.aura);
@@ -2931,6 +2936,7 @@ void ClasslessMgr::SyncArmorWeight(Player* player, bool push)
             player->RemoveAurasDueToSpell(w.aura);
             continue;
         }
+        anyWorn = true;
         Aura* aura = player->GetAura(w.aura);
         if (!aura)
             aura = player->AddAura(w.aura, player);
@@ -2946,6 +2952,11 @@ void ClasslessMgr::SyncArmorWeight(Player* player, bool push)
                     eff->ChangeAmount(amount[i]);
             }
     }
+
+    if (!anyWorn)
+        player->RemoveAurasDueToSpell(ARMOR_DISPLAY_AURA);
+    else if (!player->HasAura(ARMOR_DISPLAY_AURA) && sSpellMgr->GetSpellInfo(ARMOR_DISPLAY_AURA))
+        player->AddAura(ARMOR_DISPLAY_AURA, player);
 
     if (st && (push || st->armorWeightSent != report))
     {
