@@ -5852,6 +5852,10 @@ void ClasslessMgr::OpenOverpowerWindow(Player* player)
     if (!st)
         return;
     uint32 const until = uint32(GameTime::GetGameTimeMS().count()) + OVERPOWER_WINDOW_MS;
+    // the same dodge reported again in the same tick (once per equipped item,
+    // and by the class question as well): already open until then
+    if (st->overpowerUntil == until && player->HasAuraState(AuraStateType(OVERPOWER_AURA_STATE)))
+        return;
     st->overpowerUntil = until;
     player->ModifyAuraState(AuraStateType(OVERPOWER_AURA_STATE), true);
     // closes it unless a later dodge has pushed it out since

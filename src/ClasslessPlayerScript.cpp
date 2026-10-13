@@ -91,7 +91,8 @@ public:
         PLAYERHOOK_ON_BEFORE_GUARDIAN_INIT_STATS_FOR_LEVEL,
         PLAYERHOOK_ON_UPDATE,
         PLAYERHOOK_ON_SPELL_CAST,
-        PLAYERHOOK_ON_AFTER_SET_VISIBLE_ITEM_SLOT   // Auto Shot follows the ranged slot
+        PLAYERHOOK_ON_AFTER_SET_VISIBLE_ITEM_SLOT,  // Auto Shot follows the ranged slot
+        PLAYERHOOK_CAN_CAST_ITEM_COMBAT_SPELL       // sees every swing's result: a dodge opens Overpower
     }) { }
 
     // A cooldown the client holds short of the server's, for two reasons.
@@ -349,15 +350,25 @@ public:
                     // places: when a target dodges the player, when its
                     // Overpower timer runs out, and in ClearAllReactives (death
                     // and a dual-spec switch). The timer never starts, because
-                    // the answer is no, so only the other two reach here, and
-                    // a real dodge is the one that happens in combat to a
-                    // living player. That opens the window; anything else
-                    // closes it.
+                    // the answer is no, so only the other two reach here. Death
+                    // has already set the dead state when it asks, so a living
+                    // player not mid-teleport is the dodge; a dead one closes
+                    // the window.
+                    //
+                    // Not "in combat": the combat manager never puts a game
+                    // master with .gm on into combat, and requiring it closed
+                    // the window on every dodge a GM landed. A spec switch can
+                    // open a five-second window out of combat, which costs
+                    // nothing.
+                    //
+                    // This is the signal for a dodged special attack. A dodged
+                    // swing also arrives through OnPlayerCanCastItemCombatSpell
+                    // below, which does not depend on this module being the
+                    // one that answers the class question.
                     Player* self = const_cast<Player*>(player);
                     if (sClasslessMgr->OwnsOverpower(player))
                     {
-                        if (player->IsInCombat() && player->IsAlive() && player->GetHealth() > 0
-                            && !player->IsBeingTeleported())
+                        if (player->IsAlive() && player->GetHealth() > 0 && !player->IsBeingTeleported())
                             sClasslessMgr->OpenOverpowerWindow(self);
                         else
                             sClasslessMgr->CloseOverpowerWindow(self);
@@ -699,6 +710,24 @@ public:
         // is where its guid lives
         sClasslessMgr->DespawnHunter(player);
         sClasslessMgr->UnloadState(player->GetGUID());
+    }
+
+    // A dodged swing opens Overpower.
+    //
+    // Player::CastItemCombatSpell runs after every melee swing, dodged or not,
+    // and asks this once per equipped item with the swing's hit mask. That is
+    // a dodge signal the module owns outright: unlike the class question
+    // above, no other module's answer can stand in front of it. Asked once
+    // per item, so OpenOverpowerWindow treats repeats in one tick as one.
+    // Always lets the item's own spell go ahead.
+    bool OnPlayerCanCastItemCombatSpell(Player* player, Unit* /*target*/, WeaponAttackType /*attType*/,
+                                        uint32 /*procVictim*/, uint32 procEx, Item* /*item*/,
+                                        ItemTemplate const* /*proto*/) override
+    {
+        if ((procEx & PROC_HIT_DODGE) && sClasslessMgr->cfg.enabled && player->IsAlive()
+            && sClasslessMgr->OwnsOverpower(player))
+            sClasslessMgr->OpenOverpowerWindow(player);
+        return true;
     }
 
     // Auto Shot follows the ranged slot (ClasslessMgr::SyncAutoShot).
