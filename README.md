@@ -142,7 +142,8 @@ with your build on the right. Lock or reroll anything you own from the same wind
   through absorbs.
 - **Everything works together.** Any relic equips, shields work, Overpower, Revenge, Riposte and
   Counterattack all fire, feral attack power works in Cat and Bear form, and pets inherit your
-  hit and expertise. Item and set bonuses that pick their effect by class (Eye of Gruul, Soul
+  hit and expertise. Overpower opens for 5 seconds when your target dodges and uses no combo
+  points, so a rogue or cat build's points are never lit up by it or spent on it. Item and set bonuses that pick their effect by class (Eye of Gruul, Soul
   Preserver, Flask of the North, the T3 six-piece bonuses) treat a Hero as every class.
 - **Tooltips count your talents.** Cost, cooldown, cast time, range, duration and values show what
   your build gives, including talents from other classes, and talent-reduced costs can be paid.

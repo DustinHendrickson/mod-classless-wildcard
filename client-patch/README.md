@@ -44,6 +44,11 @@ Required for every player on a Classless Wildcard realm. The
   left Shield Block grey for the full minute on a 40 second cooldown. Its copy
   of every cooldown a talent can shorten is lowered the same way the costs are,
   and the addon writes the true cooldown onto the tooltip
+- **Overpower opens on a dodge, not on a combo point**: the client lights it
+  when your target has dodged, the same way the server allows it, so combo
+  points from Sinister Strike or Claw never light Overpower and Overpower never
+  spends them. Without this patch the client keeps asking for a combo point and
+  Overpower cannot be cast
 - **one class no longer locks out another's reactive abilities**: Blizzard files
   Mongoose Bite, Wolverine Bite, Overpower and Revenge in one five second
   cooldown group, and 25 other groups mix classes the same way -- Aspects with

@@ -474,6 +474,51 @@ def main(argv):
                   after_tools is not None and not any(after_tools),
                   "%d class spell(s) cleared" % tools_cleared)
 
+            # --- Overpower on a dodge, not a combo point -------------------
+            # The server opens Overpower with aura state 21 and has taken its
+            # finishing-move flag off; the client copy must agree or it asks for
+            # a combo point the server no longer gives. Sinister Strike, and the
+            # NPC copies of Overpower (not class spells), stay as they were.
+            gated_dbc, gated = dbc.gate_overpower_on_dodge(spell_dbc, class_spells)
+
+            def overpower_cols(blob, spell_id):
+                for index in range(sc):
+                    row = struct.unpack_from("<%dI" % sf, blob, 20 + index * sr)
+                    if row[0] == spell_id:
+                        return (row[5] & dbc.SPELL_ATTR1_FINISHING_MOVE_DAMAGE, row[20])
+                return None
+
+            op_before, op_after = overpower_cols(spell_dbc, 7384), overpower_cols(gated_dbc, 7384)
+            check("Overpower was a finishing move with no aura state before",
+                  op_before == (dbc.SPELL_ATTR1_FINISHING_MOVE_DAMAGE, 0), "%s" % (op_before,))
+            check("Overpower needs no combo point and waits on aura state 21 after",
+                  op_after == (0, dbc.OVERPOWER_AURA_STATE) == (0, 21), "%s, %d row(s) changed" % (op_after, gated))
+            # the state must be one nothing else has ever used: no spell names it
+            used_by = []
+            for index in range(sc):
+                row = struct.unpack_from("<%dI" % sf, spell_dbc, 20 + index * sr)
+                if dbc.OVERPOWER_AURA_STATE in (row[20], row[21], row[22], row[23]):
+                    used_by.append(row[0])
+            check("no stock spell uses Overpower's aura state in any aura-state column",
+                  not used_by, "used by %s" % used_by[:5])
+            # 3.3.5 Overpower has one rank. 7887, 11584 and 11585 are pre-3.0
+            # rows no class line teaches, so like the NPC copies they are left be.
+            check("the old pre-3.0 Overpower ranks are not class spells and stay as they were",
+                  all(r not in class_spells and overpower_cols(gated_dbc, r) == overpower_cols(spell_dbc, r)
+                      for r in (7887, 11584, 11585)))
+            check("Sinister Strike is untouched",
+                  overpower_cols(gated_dbc, 1752) == overpower_cols(spell_dbc, 1752))
+            npc_rows = []
+            for index in range(sc):
+                row = struct.unpack_from("<%dI" % sf, spell_dbc, 20 + index * sr)
+                if row[208] == 4 and row[209] & 4 and row[0] not in class_spells:
+                    npc_rows.append(row[0])
+            check("NPC copies of Overpower keep their combo point",
+                  npc_rows and all(overpower_cols(gated_dbc, r) == overpower_cols(spell_dbc, r) for r in npc_rows),
+                  "%d NPC row(s)" % len(npc_rows))
+            check("the Overpower pass is idempotent",
+                  dbc.gate_overpower_on_dodge(gated_dbc, class_spells)[1] == 0)
+
             # The cost floor: the client refuses to SEND a cast it thinks you
             # cannot afford, and it cannot count a cross-class talent any more
             # than it can in a tooltip. Lowering its copy hands the decision to

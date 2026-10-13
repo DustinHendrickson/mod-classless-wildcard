@@ -24,6 +24,7 @@
 #include "Item.h"
 #include "Optional.h"
 #include "Pet.h"
+#include <algorithm>
 #include <mutex>
 #include <vector>
 #include "Player.h"
@@ -128,7 +129,16 @@ public:
         if (!sClasslessMgr->cfg.enabled || !player || !spell || spell->IsTriggered())
             return;
         SpellInfo const* info = spell->GetSpellInfo();
-        if (!info || (!info->RecoveryTime && !info->CategoryRecoveryTime))
+        if (!info)
+            return;
+        // One Overpower per dodge, as the stock combo point gave: casting it
+        // closes the window the dodge opened.
+        {
+            auto const& overpowers = sClasslessMgr->OverpowerSpells();
+            if (std::find(overpowers.begin(), overpowers.end(), info->Id) != overpowers.end())
+                sClasslessMgr->CloseOverpowerWindow(player);
+        }
+        if (!info->RecoveryTime && !info->CategoryRecoveryTime)
             return;
         CharState* st = sClasslessMgr->FindState(player);
         if (!st || st->exempt)
@@ -196,11 +206,6 @@ public:
     // Hero is a hunter for the parry question exactly when they hold it.
     // Ranks, oldest first; HasSpell is a hash lookup and this runs only on a
     // parry.
-    // Overpower's bit in the warrior family's 96-bit class mask, column 209 of
-    // Spell.dbc. Every rank of Overpower carries it and nothing else in the
-    // family does.
-    static constexpr uint32 OVERPOWER_FAMILY_FLAG = 0x00000004;
-
     static bool IsDruidForm(ShapeshiftForm form)
     {
         switch (form)
@@ -225,59 +230,6 @@ public:
         static constexpr uint32 COUNTERATTACK_RANKS[] =
             { 19306, 20909, 20910, 27067, 48998, 48999 };
         for (uint32 id : COUNTERATTACK_RANKS)
-            if (player->HasSpell(id))
-                return true;
-        return false;
-    }
-
-    // And the same question for Overpower, which is what the WARRIOR answer
-    // drives -- all of it, in three places and both directions.
-    //
-    // "Only useable after the target dodges" is not a state of its own. The
-    // core grants the warrior a COMBO POINT on the dodge (Unit.cpp, the
-    // PROC_EX_DODGE attacker branch) and Overpower carries
-    // SPELL_ATTR1_FINISHING_MOVE_DAMAGE, so NeedsComboPoints() gates it. The
-    // window is closed again by ClearComboPoints() when REACTIVE_OVERPOWER
-    // expires, and once more in ClearAllReactives.
-    //
-    // Answering yes for every Hero, as this used to, did both halves to
-    // everyone: any Hero got a combo point whenever a target dodged, which
-    // fires Overpower with no dodge of its own for anyone holding a rogue
-    // build's points -- and, five seconds after any dodge at all, wiped the
-    // combo points that build had spent its global cooldowns earning.
-    //
-    // So answer it the way the hunter question is answered: from what the Hero
-    // actually owns. A Hero who bought an Overpower line lives with warrior
-    // combo-point rules, including the wipe -- that is the ability they chose.
-    // A Hero who did not is left alone, and their points are their own.
-    //
-    // Discovered rather than listed, because the elemental variants are
-    // Overpower too: Holy Overpower and its siblings are generated into
-    // spell_dbc carrying the warrior family and Overpower's own class bit, and
-    // a hardcoded list of the four stock ranks would miss every one of them.
-    // Within SPELLFAMILY_WARRIOR that bit belongs to Overpower alone -- the
-    // only other holders in the client's table are Overpower's own NPC copies.
-    static std::vector<uint32> const& OverpowerSpells()
-    {
-        // Built once, on the first dodge a Hero lands, which is long after the
-        // spell store and spell_dbc are loaded. A `.reload spell_dbc` will not
-        // refresh it; a restart will.
-        static std::vector<uint32> const ids = []
-        {
-            std::vector<uint32> found;
-            for (uint32 id = 0; id < sSpellMgr->GetSpellInfoStoreSize(); ++id)
-                if (SpellInfo const* info = sSpellMgr->GetSpellInfo(id))
-                    if (info->SpellFamilyName == SPELLFAMILY_WARRIOR
-                        && (info->SpellFamilyFlags[0] & OVERPOWER_FAMILY_FLAG))
-                        found.push_back(id);
-            return found;
-        }();
-        return ids;
-    }
-
-    static bool OwnsOverpower(Player const* player)
-    {
-        for (uint32 id : OverpowerSpells())
             if (player->HasSpell(id))
                 return true;
         return false;
@@ -372,19 +324,14 @@ public:
             //
             // So answer from what the Hero actually owns. A Hero holding
             // Counterattack is a hunter for the parry question and gets
-            // HUNTER_PARRY; everyone else gets DEFENSE and Revenge works. A
-            // Hero holding an Overpower is a warrior for the dodge question and
-            // gets the combo point and the wipe that goes with it; everyone
-            // else keeps the points they earned.
+            // HUNTER_PARRY; everyone else gets DEFENSE and Revenge works. No
+            // Hero is a warrior for the dodge question: Overpower waits on an
+            // aura state of its own (see the warrior branch below), so combo
+            // points belong to whatever builds them.
             // Nobody is a rogue here: the rogue answer exists only to DENY
             // the defense state on a dodge, and Riposte reads that same state,
             // so saying no costs a Riposte holder nothing and hands Revenge
             // back to everyone.
-            //
-            // One thing this cannot fix: a Hero who buys BOTH an Overpower and
-            // a rogue finisher shares one combo-point pool, because the core
-            // has one. Overpower's window closes by clearing it, so it clears
-            // theirs. Separating the two would mean a second pool.
             case CLASS_CONTEXT_ABILITY_REACTIVE:
                 if (playerClass == CLASS_ROGUE)
                     return false;
@@ -396,9 +343,32 @@ public:
                 }
                 if (playerClass == CLASS_WARRIOR)
                 {
-                    if (sClasslessMgr->IsExempt(const_cast<Player*>(player)))
+                    // Overpower no longer runs on combo points (see
+                    // ClasslessMgr::GateOverpowerOnDodge); it waits on an aura
+                    // state of its own. The core asks this question in three
+                    // places: when a target dodges the player, when its
+                    // Overpower timer runs out, and in ClearAllReactives (death
+                    // and a dual-spec switch). The timer never starts, because
+                    // the answer is no, so only the other two reach here, and
+                    // a real dodge is the one that happens in combat to a
+                    // living player. That opens the window; anything else
+                    // closes it.
+                    Player* self = const_cast<Player*>(player);
+                    if (sClasslessMgr->OwnsOverpower(player))
+                    {
+                        if (player->IsInCombat() && player->IsAlive() && player->GetHealth() > 0
+                            && !player->IsBeingTeleported())
+                            sClasslessMgr->OpenOverpowerWindow(self);
+                        else
+                            sClasslessMgr->CloseOverpowerWindow(self);
+                    }
+                    // No combo point and no combo-point wipe for a Hero, so a
+                    // rogue or cat build's points are its own. A real warrior
+                    // (an exempt account) keeps the core's answer; its combo
+                    // point is harmless now that Overpower does not read it.
+                    if (sClasslessMgr->IsExempt(self))
                         return std::nullopt;
-                    return OwnsOverpower(player);
+                    return false;
                 }
                 break;
             // Stats are the chassis's, deliberately: the module adds its own

@@ -685,6 +685,75 @@ def clear_spell_tools(data: bytes, class_spells):
     return header + bytes(records) + data[strings_off:], cleared
 
 
+# Overpower on an aura state of its own, matching the server
+# (ClasslessMgr::GateOverpowerOnDodge). Spell.dbc columns: 5 AttributesEx,
+# 20 CasterAuraState, 208 SpellFamilyName, 209 the first SpellFamilyFlags word.
+SPELL_ATTRIBUTES_EX_COLUMN = 5
+SPELL_CASTER_AURA_STATE_COLUMN = 20
+SPELL_FAMILY_NAME_COLUMN = 208
+SPELL_FAMILY_FLAGS0_COLUMN = 209
+SPELLFAMILY_WARRIOR = 4
+OVERPOWER_FAMILY_FLAG = 0x00000004
+SPELL_ATTR1_FINISHING_MOVE_DAMAGE = 0x00100000
+OVERPOWER_AURA_STATE = 21   # never used by any spell or by the core
+
+
+def gate_overpower_on_dodge(data: bytes, class_spells):
+    """Take Overpower off combo points in the client's Spell.dbc.
+
+    The stock "only useable after the target dodges" is a combo point: the
+    server hands a warrior one on the dodge, Overpower is flagged a finishing
+    move, and the client lights the button when there is a point on the target.
+    A Hero with a rogue builder shares that one pool, so Sinister Strike lit
+    Overpower and Overpower spent the rogue's points. The server now opens
+    Overpower with aura state 21 on a dodge instead and has cleared the
+    finishing-move flag; the client needs both changes too, or it keeps asking
+    for a combo point the server no longer gives and never lights the button.
+
+    Every row in `class_spells` with the warrior family and Overpower's class
+    bit: the stock ranks and, once the generated rows are filed under their
+    base's tab, the elemental variants.
+
+    Returns (new_dbc_bytes, rows_changed).
+    """
+    record_count, field_count, record_size, string_size = parse_header(data)
+    if field_count != SPELL_FIELDS or record_size != SPELL_FIELDS * 4:
+        raise DbcError(
+            "Spell.dbc has %d fields of %d bytes, expected %d of %d. "
+            "This client build is not the 3.3.5a layout this patch understands."
+            % (field_count, record_size, SPELL_FIELDS, SPELL_FIELDS * 4))
+
+    records_off = 20
+    strings_off = records_off + record_count * record_size
+    records = bytearray(data[records_off:strings_off])
+
+    def col(base, column):
+        return base + column * 4
+
+    changed = 0
+    for index in range(record_count):
+        base = index * record_size
+        spell_id = struct.unpack_from("<I", records, base)[0]
+        if spell_id not in class_spells:
+            continue
+        family = struct.unpack_from("<I", records, col(base, SPELL_FAMILY_NAME_COLUMN))[0]
+        flags0 = struct.unpack_from("<I", records, col(base, SPELL_FAMILY_FLAGS0_COLUMN))[0]
+        if family != SPELLFAMILY_WARRIOR or not (flags0 & OVERPOWER_FAMILY_FLAG):
+            continue
+        attr_ex = struct.unpack_from("<I", records, col(base, SPELL_ATTRIBUTES_EX_COLUMN))[0]
+        state = struct.unpack_from("<I", records, col(base, SPELL_CASTER_AURA_STATE_COLUMN))[0]
+        new_attr = attr_ex & ~SPELL_ATTR1_FINISHING_MOVE_DAMAGE
+        if new_attr == attr_ex and state == OVERPOWER_AURA_STATE:
+            continue
+        struct.pack_into("<I", records, col(base, SPELL_ATTRIBUTES_EX_COLUMN), new_attr)
+        struct.pack_into("<I", records, col(base, SPELL_CASTER_AURA_STATE_COLUMN), OVERPOWER_AURA_STATE)
+        changed += 1
+
+    header = WDBC_MAGIC + struct.pack("<4I", record_count, field_count,
+                                      record_size, string_size)
+    return header + bytes(records) + data[strings_off:], changed
+
+
 # Spell.dbc column 133 is SpellIconID, a row id in SpellIcon.dbc (ID, path).
 SPELL_ICON_COLUMN = 133
 

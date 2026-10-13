@@ -462,6 +462,10 @@ namespace ClasslessWildcard
         // a bow-to-gun swap (one removal, one equip) is one sync, not an
         // unlearn and a relearn. Runtime only.
         bool autoShotSyncPending = false;
+        // When the open Overpower window closes, in game-time ms; 0 when shut.
+        // A later dodge pushes it out, so the timer that closes it checks this
+        // rather than closing a window a newer dodge reopened. Runtime only.
+        uint32 overpowerUntil = 0;
 
         // The armor weight amounts last sent to the addon ("AW|..."), so the
         // 2-second tick only sends when they change. Runtime only.

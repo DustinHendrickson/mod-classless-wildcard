@@ -19,6 +19,7 @@
 #include "Creature.h"
 #include "CreatureAI.h"
 #include "DBCStores.h"
+#include "GameTime.h"
 #include "ObjectAccessor.h"
 #include "TemporarySummon.h"
 #include "DatabaseEnv.h"
@@ -1123,6 +1124,7 @@ void ClasslessMgr::BuildLibrary()
     BuildClassPassives();
     LoadArchetypes();
     StripSpellTools();
+    GateOverpowerOnDodge();
     _libraryBuilt = true;
 
     LOG_INFO("module", "mod-classless-wildcard: library built — {} ability lines, {} talents.",
@@ -5779,6 +5781,94 @@ void ClasslessMgr::StripSpellTools()
                 strip(t.rankSpells[r]);
 
     LOG_INFO("module.classless", "mod-classless-wildcard: tool requirement cleared from {} spells", cleared);
+}
+
+// Overpower, taken off combo points.
+//
+// "Only useable after the target dodges" is built from a combo point in the
+// stock game: the core hands a warrior one on the dodging target and starts a
+// five-second timer that clears every combo point, and Overpower carries
+// SPELL_ATTR1_FINISHING_MOVE_DAMAGE, so it needs a combo point and spends them
+// all. The client lights the button the same way. A Hero who also owns a rogue
+// or cat builder shares that one pool: Sinister Strike's points lit Overpower
+// with no dodge at all, Overpower then spent every point, and an Eviscerate
+// closed the Overpower window (issue 19).
+//
+// So Overpower gets a gate of its own, an aura state, the same way Revenge
+// waits on AURA_STATE_DEFENSE. The finishing-move flag comes off, so it neither
+// needs nor spends combo points, and OVERPOWER_AURA_STATE becomes its caster
+// aura state. The player script opens that state on a dodge (it is told of
+// one through the CLASS_CONTEXT_ABILITY_REACTIVE warrior question) and the
+// core's CheckCast does the rest. Taste for Blood still works: its aura (262,
+// SPELL_AURA_ABILITY_IGNORE_AURASTATE) lifts an aura state the same way it
+// lifted the combo point, in Unit::HasAuraState and in the client.
+//
+// Library Overpowers only: the four stock ranks and the elemental variants.
+// NPC copies of Overpower carry the same class bit and keep their stock combo
+// point, since a creature of class warrior still gets one on a dodge.
+void ClasslessMgr::GateOverpowerOnDodge()
+{
+    static constexpr uint32 OVERPOWER_FAMILY_FLAG = 0x00000004;   // Spell.dbc column 209
+
+    // The state is only safe while nothing else uses it. Stock data never has,
+    // but a realm's spell_dbc rows from another module could: say so loudly
+    // rather than let Overpower share a gate with something unrelated.
+    for (uint32 id = 0; id < sSpellMgr->GetSpellInfoStoreSize(); ++id)
+        if (SpellInfo const* info = sSpellMgr->GetSpellInfo(id))
+            if (info->CasterAuraState == OVERPOWER_AURA_STATE || info->TargetAuraState == OVERPOWER_AURA_STATE
+                || info->CasterAuraStateNot == OVERPOWER_AURA_STATE || info->TargetAuraStateNot == OVERPOWER_AURA_STATE)
+                LOG_ERROR("module.classless", "mod-classless-wildcard: spell {} already uses aura state {}, which "
+                          "Overpower relies on being unused; that spell will see Overpower's window",
+                          id, OVERPOWER_AURA_STATE);
+
+    _overpowerSpells.clear();
+    for (auto const& [firstSpell, e] : _abilities)
+        for (uint32 rankSpell : e.ranks)
+        {
+            SpellInfo const* info = sSpellMgr->GetSpellInfo(rankSpell);
+            if (!info || info->SpellFamilyName != SPELLFAMILY_WARRIOR
+                || !(info->SpellFamilyFlags[0] & OVERPOWER_FAMILY_FLAG))
+                continue;
+            SpellInfo* editable = const_cast<SpellInfo*>(info);
+            editable->AttributesEx &= ~uint32(SPELL_ATTR1_FINISHING_MOVE_DAMAGE);
+            editable->CasterAuraState = OVERPOWER_AURA_STATE;
+            _overpowerSpells.push_back(rankSpell);
+        }
+    LOG_INFO("module.classless", "mod-classless-wildcard: {} Overpower spells open on a dodge, not on combo points",
+             _overpowerSpells.size());
+}
+
+bool ClasslessMgr::OwnsOverpower(Player const* player) const
+{
+    for (uint32 id : _overpowerSpells)
+        if (player->HasSpell(id))
+            return true;
+    return false;
+}
+
+void ClasslessMgr::OpenOverpowerWindow(Player* player)
+{
+    CharState* st = FindState(player);
+    if (!st)
+        return;
+    uint32 const until = uint32(GameTime::GetGameTimeMS().count()) + OVERPOWER_WINDOW_MS;
+    st->overpowerUntil = until;
+    player->ModifyAuraState(AuraStateType(OVERPOWER_AURA_STATE), true);
+    // closes it unless a later dodge has pushed it out since
+    player->m_Events.AddEventAtOffset([player, until]()
+    {
+        CharState* now = sClasslessMgr->FindState(player);
+        if (now && now->overpowerUntil == until)
+            sClasslessMgr->CloseOverpowerWindow(player);
+    }, std::chrono::milliseconds(OVERPOWER_WINDOW_MS));
+}
+
+void ClasslessMgr::CloseOverpowerWindow(Player* player)
+{
+    if (CharState* st = FindState(player))
+        st->overpowerUntil = 0;
+    if (player->HasAuraState(AuraStateType(OVERPOWER_AURA_STATE)))
+        player->ModifyAuraState(AuraStateType(OVERPOWER_AURA_STATE), false);
 }
 
 void ClasslessMgr::RemoveAbilityInternal(Player* player, AbilityEntry const& e, bool persist)

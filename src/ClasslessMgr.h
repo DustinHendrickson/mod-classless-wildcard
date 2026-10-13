@@ -278,6 +278,24 @@ public:
     // true while the module itself is teaching spells (lets the learn-spell
     // hook distinguish module grants from trainers/quests)
     bool IsApplyingGrant() const { return _applyingGrant; }
+    // Overpower's "only usable after the target dodges", on an aura state of
+    // its own instead of the warrior combo point (see GateOverpowerOnDodge).
+    // 21 has never been used: no spell in Spell.dbc names it in any of its
+    // four aura-state columns, nothing in the core, its scripts or the other
+    // modules sets or reads it, SpellInfo::LoadAuraState never maps an aura to
+    // it, and SharedDefines.h lists it only as a commented-out "not used". It
+    // means this and nothing else.
+    static constexpr uint32 OVERPOWER_AURA_STATE = 21;
+    // How long a dodge leaves Overpower open: the core's own reactive window.
+    static constexpr uint32 OVERPOWER_WINDOW_MS = 5000;
+    // Every Overpower in the library: the stock ranks and the elemental
+    // variants. Filled when the library is built.
+    std::vector<uint32> const& OverpowerSpells() const { return _overpowerSpells; }
+    bool OwnsOverpower(Player const* player) const;
+    // A dodge opens the window (or holds it open another five seconds); casting
+    // Overpower, dying or leaving combat closes it.
+    void OpenOverpowerWindow(Player* player);
+    void CloseOverpowerWindow(Player* player);
     // A summoned pet outlives the spell that summoned it: losing Summon Imp
     // left the imp standing there for good. Send home anything whose summoning
     // spell the Hero no longer knows. Public because the maintenance tick calls
@@ -393,6 +411,10 @@ private:
     // spell. The client patch clears the same two columns and the two must
     // agree, so this is not conditional.
     void StripSpellTools();
+    // Take Overpower off combo points: no finishing-move flag, and the
+    // OVERPOWER_AURA_STATE as its caster aura state. The client patch makes the
+    // same two changes, so this is not conditional.
+    void GateOverpowerOnDodge();
     // The deadline has passed with no path chosen: put the Hero on the realm
     // default and deal a starting hand if that is Wildcard. Returns true if it
     // did anything. Runs at login AND on level-up -- see the comment there.
@@ -483,6 +505,7 @@ private:
     std::unordered_map<ObjectGuid::LowType, ClasslessWildcard::CharState> _states;
     bool _libraryBuilt = false;
     bool _applyingGrant = false;
+    std::vector<uint32> _overpowerSpells;   // see OverpowerSpells()
     // true while handing out a form's starter kit, so a kit spell that is
     // itself a form cannot start the whole thing over
     bool _grantingKit = false;

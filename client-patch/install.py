@@ -409,6 +409,13 @@ def apply_client_floors(files, payload, report, hero_talents=()):
     report.append("  Spell.dbc        %d spell(s) moved into %d new cooldown "
                   "categor(ies) so one class no longer locks out another"
                   % (moved, added))
+
+    # Overpower opens on a dodge through an aura state, not a combo point, so
+    # a rogue's combo points no longer light it and it no longer spends them.
+    # After the append, so the elemental Overpowers are in class_spells too.
+    payload[SPELL], gated = dbc.gate_overpower_on_dodge(payload[SPELL], class_spells)
+    report.append("  Spell.dbc        %d Overpower spell(s) open on a dodge, "
+                  "not on combo points" % gated)
     return payload
 
 
