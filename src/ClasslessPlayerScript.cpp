@@ -89,7 +89,8 @@ public:
         PLAYERHOOK_ON_PLAYER_HAS_ACTIVE_POWER_TYPE,
         PLAYERHOOK_ON_BEFORE_GUARDIAN_INIT_STATS_FOR_LEVEL,
         PLAYERHOOK_ON_UPDATE,
-        PLAYERHOOK_ON_SPELL_CAST
+        PLAYERHOOK_ON_SPELL_CAST,
+        PLAYERHOOK_ON_AFTER_SET_VISIBLE_ITEM_SLOT   // Auto Shot follows the ranged slot
     }) { }
 
     // A cooldown the client holds short of the server's, for two reasons.
