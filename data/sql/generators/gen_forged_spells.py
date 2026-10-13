@@ -295,6 +295,7 @@ A_MOD_POWER_COST_PCT = 72            # misc is a school mask; negative is cheape
 A_MOD_INCREASE_HEALTH_PCT = 133      # Last Stand
 A_MOD_ATTACK_SPEED_PCT = 138         # Thunder Clap: negative slows melee swings
 A_HASTE_SPELLS = 216                 # Curse of Tongues, Slow: negative slows casting
+A_MELEE_SLOW = 193                   # casting AND every attack, one percent: negative slows
 A_MOD_COOLDOWN = 196                 # flat SECONDS added to a cooldown as it starts;
                                      # its only stock users add time, so this subtracts
 
@@ -2013,6 +2014,7 @@ REBIRTH_AURA_ID = BLOCK_END
 REBIRTH_AURA_ICON = 24                # Spell_Nature_Reincarnation, the druid's Rebirth
 ATTR0_DO_NOT_DISPLAY = 0x00000080
 ATTR0_CANT_CANCEL = 0x80000000
+ATTR0_AURA_IS_DEBUFF = 0x04000000     # forces the aura harmful: the debuff bar
 ATTR3_DEATH_PERSISTENT = 0x00100000
 
 
@@ -2027,8 +2029,8 @@ REBIRTH_AURA_RECIPE = dict(
 
 
 def build_rebirth_aura(spell):
-    assert TALENT_SPELL_BASE + len(TALENTS) * TALENT_SPELL_STRIDE <= REBIRTH_AURA_ID, \
-        "the talent ranks have grown into the Rebirth aura's id"
+    assert TALENT_SPELL_BASE + len(TALENTS) * TALENT_SPELL_STRIDE <= ARMOR_WEIGHT_FIRST_ID, \
+        "the talent ranks have grown into the armor weight and Rebirth auras' ids"
     rec = REBIRTH_AURA_RECIPE
     row, donor = build_row(spell, rec, 0, 1, REBIRTH_AURA_ID, None, None)
     # Shown, never clicked off, and kept through death: the rank is for good.
@@ -2040,6 +2042,78 @@ def build_rebirth_aura(spell):
     return dict(id=REBIRTH_AURA_ID, first=REBIRTH_AURA_ID, rank=1, level=1,
                 key=rec["key"], values=row, base=TALENT_DONOR,
                 fields=overrides_of(row, donor), visual=0, icon=REBIRTH_AURA_ICON, sla=None)
+
+
+# Armor weight. Any Hero may wear any armor, so each weight carries its own
+# trade: plate and mail slow casting a lot and attacks a little (they are for
+# fighting up close), leather slows casting a little and quickens attacks and
+# dodging, cloth sharpens spells and mana. One aura per weight. Every slot
+# holds the FULL-SET value, which is what the text quotes;
+# ClasslessMgr::SyncArmorWeight scales each by the pieces of that weight worn
+# (of the eight armor slots) and takes the aura away when none are. Plate and
+# mail are debuffs; leather and cloth show as buffs. All are never cancelled
+# and kept through death. The ids sit just below the Rebirth aura;
+# ClasslessMgr.cpp and the addon name the same four, in this order.
+ARMOR_WEIGHT_FIRST_ID = REBIRTH_AURA_ID - 4
+A_MOD_DODGE_PERCENT = 49             # dodge chance, percent
+A_MOD_POWER_REGEN_PERCENT = 110      # misc is the power: regeneration of it, percent
+ARMOR_WEIGHTS = [
+    dict(key="plate", name="Plate Armor", icon=1731, debuff=True,        # INV_Chest_Plate16
+         effects=[dict(aura=A_HASTE_SPELLS, base=-25), dict(aura=A_MOD_MELEE_HASTE, base=-8)],
+         desc=("Plate is made for fighting up close. Each piece you wear slows your casting a lot "
+               "and your attacks a little. A full set of eight: casting $s1% slower, attacks "
+               "$s2% slower."),
+         tooltip="Your plate slows casting and attacks. A full set: casting $s1% slower, attacks $s2% slower."),
+    dict(key="mail", name="Mail Armor", icon=796, debuff=True,           # INV_Chest_Chain_05
+         effects=[dict(aura=A_HASTE_SPELLS, base=-12), dict(aura=A_MOD_MELEE_HASTE, base=-4)],
+         desc=("Mail weighs on spellcasting. Each piece you wear slows your casting and, a little, "
+               "your attacks. A full set of eight: casting $s1% slower, attacks $s2% slower."),
+         tooltip="Your mail slows casting and attacks. A full set: casting $s1% slower, attacks $s2% slower."),
+    dict(key="leather", name="Leather Armor", icon=896, debuff=False,    # INV_Chest_Leather_09
+         effects=[dict(aura=A_HASTE_SPELLS, base=-5), dict(aura=A_MOD_MELEE_HASTE, base=4),
+                  dict(aura=A_MOD_DODGE_PERCENT, base=4)],
+         desc=("Leather lets you move freely. Each piece you wear quickens your attacks and your "
+               "dodging and slows your casting a little. A full set of eight: attacks $s2% faster, "
+               "dodge $s3% higher, casting $s1% slower."),
+         tooltip="Your leather: attacks $s2% faster, dodge $s3% higher, casting $s1% slower with a full set."),
+    dict(key="cloth", name="Cloth Armor", icon=897, debuff=False,        # INV_Chest_Cloth_21
+         effects=[dict(aura=A_MOD_SPELL_CRIT, base=4),
+                  dict(aura=A_MOD_POWER_REGEN_PERCENT, base=10, misc=POWER["mana"])],
+         desc=("Cloth weighs nothing and leaves the hands free for spells. Each piece you wear "
+               "sharpens your spells and your mana. A full set of eight: spell critical strike "
+               "chance $s1% higher, mana regeneration $s2% faster."),
+         tooltip="Your cloth: spell critical strike chance $s1% higher, mana regeneration $s2% faster with a full set."),
+]
+
+
+def build_armor_weights(spell):
+    out = []
+    for n, w in enumerate(ARMOR_WEIGHTS):
+        sid = ARMOR_WEIGHT_FIRST_ID + n
+        effects = []
+        for e in w["effects"]:
+            eff = dict(eff=E_APPLY_AURA, aura=e["aura"], base=e["base"], tgt=T_SELF)
+            if "misc" in e:
+                eff["misc"] = e["misc"]
+            effects.append(eff)
+        rec = dict(
+            key="aura_weight_" + w["key"], name=w["name"], ranks=1, donor=TALENT_DONOR, school=1,
+            icon=w["icon"], visual=0, power=("mana", 0),
+            range_idx=RANGE_SELF, cast_idx=CAST_INSTANT, cooldown_ms=0,
+            duration_idx=DUR_PERMANENT, effects=effects,
+            desc=w["desc"], tooltip=w["tooltip"],
+        )
+        row, donor = build_row(spell, rec, 0, 1, sid, None, None)
+        row[4] &= ~ATTR0_DO_NOT_DISPLAY
+        # never cancelled; plate and mail forced harmful, onto the debuff bar
+        row[4] |= ATTR0_CANT_CANCEL
+        if w["debuff"]:
+            row[4] |= ATTR0_AURA_IS_DEBUFF
+        row[7] |= ATTR3_DEATH_PERSISTENT
+        out.append(dict(id=sid, first=sid, rank=1, level=1, key=rec["key"], values=row,
+                        base=TALENT_DONOR, fields=overrides_of(row, donor), visual=0, icon=w["icon"],
+                        sla=None))
+    return out
 
 
 TEXT_TOKEN = re.compile(r"\$(?:/\d+;)?(\d*)([sSoOtTaAdDuU])(\d?)")
@@ -2472,6 +2546,7 @@ def build(spell, only=None):
     if not only:
         trows, tmeta = build_talents(spell)
         spells.extend(trows)
+        spells.extend(build_armor_weights(spell))
         spells.append(build_rebirth_aura(spell))
     else:
         tmeta = []

@@ -198,6 +198,9 @@ public:
     uint32 RebirthXpPct(Player* player, bool kill) const;
     // The rank's stat percent and titles, applied at login and after a Rebirth.
     void ApplyRebirthMods(Player* player);
+    // What heavy armor costs a Hero: one harmful aura per weight worn, scaled
+    // by the pieces of it. Cheap; called on the 2-second tick and at login.
+    void SyncArmorWeight(Player* player);
     void SyncRebirthAura(Player* player, uint32 rank);
     uint32 GrantRebirthTitles(Player* player);   // the title granted just now, 0 if none
 
@@ -248,6 +251,8 @@ public:
     // SaveToDB, so the caller must re-save for the change to persist.
     bool ApplyStarterGear(Player* player);
     void TeachProficiencies(Player* player);
+    // Settings: stop teaching Auto Shot and take it away, or teach it again.
+    bool SetAutoShotOff(Player* player, bool off, std::string* err);
     // Riding ranks the Hero has reached the level for. Returns how many were
     // newly taught, so the caller can stay quiet when there is nothing to say.
     uint32 GrantRidingSkill(Player* player);
@@ -324,7 +329,9 @@ private:
     // Mortal Strike, Mangle); taking the talent grants those lines.
     void ResolveTalentAbilityLines();
     void DropUnresolvablePrerequisites();
-    std::vector<uint32> TaughtSpells() const;
+    // With a character's state, what that character is taught: the same list
+    // less Auto Shot when they turned it off. Without one, the realm's list.
+    std::vector<uint32> TaughtSpells(ClasslessWildcard::CharState const* st = nullptr) const;
     // Push the addon's tooltip corrections, unless a bulk operation is running
     // and will push once when it finishes.
     void PushCorrectionsUnlessBulk(Player* player);

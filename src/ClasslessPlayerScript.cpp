@@ -661,6 +661,7 @@ public:
         sClasslessMgr->EnforceChassis(player);
 
         sClasslessMgr->HandleLogin(player);
+        sClasslessMgr->SyncArmorWeight(player);
 
         // InitTalentForLevel hands out (ceiling - used) free points whenever the
         // core recalculates, and it recalculates on login. Spending them is
@@ -906,6 +907,9 @@ public:
 
         // a Hero playerbots drives fights with its own kit, not its chassis's
         ClasslessBots::Tick(player, st);
+
+        // heavy armor slows casting and attacks; follows gear changes here
+        sClasslessMgr->SyncArmorWeight(player);
 
         // A pet that was away when its spell went is not caught by the sweep in
         // RemoveAbilityInternal: mounting temporarily unsummons it, so a Hero

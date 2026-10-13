@@ -6789,7 +6789,36 @@ do
     end)
     treset:SetScript("OnLeave", function() GameTooltip:Hide() end)
     fly.trackerReset = treset
-    fly:SetHeight(y + 8 + 22 + 14)
+    y = y + 8 + 22
+
+    -- Abilities: Auto Shot, which some players find fires when they did not
+    -- mean it to. Kept on the server for this character, so the box shows
+    -- what the server says and a click asks it to change.
+    y = y + 14
+    local ah = fly:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+    ah:SetPoint("TOPLEFT", 16, -y)
+    ah:SetText("|cffffd100Abilities|r")
+    y = y + 19
+    local acb = CreateFrame("CheckButton", "ClasslessWildcardSettingAutoShot", fly, "UICheckButtonTemplate")
+    acb:SetWidth(24); acb:SetHeight(24)
+    acb:SetPoint("TOPLEFT", 18, -y)
+    if _G["ClasslessWildcardSettingAutoShotText"] then
+        _G["ClasslessWildcardSettingAutoShotText"]:SetText("Disable Auto Shot")
+    end
+    acb:SetScript("OnClick", function(self)
+        Send("AUTOSHOT " .. (self:GetChecked() and 1 or 0))
+    end)
+    acb:SetScript("OnEnter", function(self)
+        GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
+        GameTooltip:AddLine("Disable Auto Shot")
+        GameTooltip:AddLine("Removes Auto Shot from this character, and it is not taught again. "
+            .. "Shoot still fires a bow, gun or crossbow. Untick to get Auto Shot back.", 1, 1, 1, true)
+        GameTooltip:Show()
+    end)
+    acb:SetScript("OnLeave", function() GameTooltip:Hide() end)
+    fly.autoShotCheck = acb
+    y = y + 24
+    fly:SetHeight(y + 14)
 
     -- The panel is the one place these live, so it reads them back rather than
     -- remembering what it drew: /cwbars and the minimap button change the same
@@ -6809,6 +6838,7 @@ do
             cb:SetChecked(on and 1 or nil)
         end
         fly.trackerCheck:SetChecked((not CW.TrackerShown or CW.TrackerShown()) and 1 or nil)
+        fly.autoShotCheck:SetChecked((CW.state.autoShotOff or 0) == 1 and 1 or nil)
     end
     CW.settingsChecks = checks
 
@@ -8757,6 +8787,8 @@ local function HandleMessage(msg)
         s.hourglassLeft = tonumber(p[30]) or 0   -- Hourglass: seconds left on this level
         s.noRerolls = tonumber(p[31]) or 0        -- Dealt Hand: nothing may be rerolled
         s.customName = p[32] or ""                -- the player's own build, while it is followed
+        s.autoShotOff = tonumber(p[33]) or 0      -- Settings: Auto Shot turned off for this character
+        if CW.setFly and CW.setFly:IsShown() and CW.RenderSettings then CW.RenderSettings() end
         CW.hourglassAt = GetTime()
         -- the live run is named from the challenge list, which a fresh login
         -- has not fetched yet: ask once, so the header does not say "Challenge 3"
@@ -9407,6 +9439,13 @@ do
         -- same formulas as RebirthXpPct and ApplyRebirthMods.
         local function rebornTip(self, unit, index, filter)
             local _, _, _, count, _, _, _, _, _, _, id = UnitAura(unit, index, filter)
+            -- an armor weight debuff on the player: say how many pieces count
+            if CW.ARMOR_WEIGHT[id] and unit and UnitIsUnit(unit, "player") then
+                local worn = CW.ArmorPiecesWorn(CW.ARMOR_WEIGHT[id])
+                self:AddLine("You wear " .. worn .. " of " .. #CW.ARMOR_SLOTS .. " pieces.", 1, 0.82, 0)
+                self:Show()
+                return
+            end
             if id ~= CW.REBIRTH_AURA then return end
             local lines = CW.RebirthAuraTip(math.max(1, tonumber(count) or 1))
             self:ClearLines()
@@ -9418,7 +9457,29 @@ do
         hooksecurefunc(GameTooltip, "SetUnitBuff", function(self, unit, index, filter)
             rebornTip(self, unit, index, filter and ("HELPFUL " .. filter) or "HELPFUL")
         end)
+        hooksecurefunc(GameTooltip, "SetUnitDebuff", function(self, unit, index, filter)
+            rebornTip(self, unit, index, filter and ("HARMFUL " .. filter) or "HARMFUL")
+        end)
     end
+end
+
+-- The armor weight auras (gen_forged_spells.py's ARMOR_WEIGHTS): plate and
+-- mail debuffs, leather and cloth buffs. Each with the place of its armor type
+-- in the client's own list of armor subclasses (GetAuctionItemSubClasses(2):
+-- Miscellaneous, Cloth, Leather, Mail, Plate), localized the same way
+-- GetItemInfo's subtype is.
+CW.ARMOR_WEIGHT = { [962043] = 5, [962044] = 4, [962045] = 3, [962046] = 2 }
+-- the slots the server counts: head, shoulders, chest, waist, legs, feet,
+-- wrists, hands
+CW.ARMOR_SLOTS = { 1, 3, 5, 6, 7, 8, 9, 10 }
+function CW.ArmorPiecesWorn(subclassIndex)
+    local want = select(subclassIndex, GetAuctionItemSubClasses(2))
+    local n = 0
+    for _, slot in ipairs(CW.ARMOR_SLOTS) do
+        local link = GetInventoryItemLink("player", slot)
+        if link and want and select(7, GetItemInfo(link)) == want then n = n + 1 end
+    end
+    return n
 end
 
 -- The Reborn aura (gen_forged_spells.py's REBIRTH_AURA_ID) and its hover text

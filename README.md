@@ -168,7 +168,21 @@ with your build on the right. Lock or reroll anything you own from the same wind
 ### Gear and items
 
 - **Every proficiency at level 1.** All armour, all weapons, dual wield and Parry, with Shoot,
-  Auto Shot and Throw. Weapon skills level by use.
+  Auto Shot and Throw. Weapon skills level by use. **Disable Auto Shot** in the panel's Settings
+  removes Auto Shot from that character until it is unticked; Shoot still fires a bow.
+- **Armor weight.** Any Hero may wear any armor, and each type is a trade. Each piece worn in
+  the eight armor slots counts toward its type, so a mixed set gets a share of each. A full set:
+
+  | Armor | Effect |
+  | --- | --- |
+  | Plate | Casting 25% slower, attacks 8% slower |
+  | Mail | Casting 12% slower, attacks 4% slower |
+  | Leather | Attacks 4% faster, dodge 4% higher, casting 5% slower |
+  | Cloth | Spell critical strike chance 4% higher, mana regeneration 10% faster |
+
+  Each type shows as one aura (plate and mail as debuffs), which cannot be cancelled or
+  dispelled. The numbers live in the auras' own spell rows (`ARMOR_WEIGHTS` in
+  `gen_forged_spells.py`). `ArmorWeight.Enable = 0` turns it off.
 - **Every item for every Hero.** Class armour sets, all 353 glyphs, rogue poisons, soul bags,
   quivers and relics. Sons of Hodir satchels give a random armour type.
 - **Starter kit.** A neutral outfit, a bag, a spread of basic weapons (dagger, one- and two-hand
@@ -566,7 +580,8 @@ On first run the addon binds the panel to `N`, the stock Talents key. If `N` hol
 else, it takes the first free key of `Y`, `G`, `K`. If the stock Talents window is left with no key,
 it gets `J`; that window shows a tamed beast's pet talents. Rebind under **Key Bindings > Hero
 Advancement**, which also has keys for the Help guide and the mini-bars. The panel's **Settings**
-button shows, locks and resets the mini-bars and toggles each row. Right-click the minimap button
+button shows, locks and resets the mini-bars and toggles each row, shows or hides the challenge
+tracker, and can disable Auto Shot for the character. Right-click the minimap button
 to toggle the mini-bars.
 
 ---
@@ -738,6 +753,7 @@ documented inline and prefixed `ClasslessWildcard.`. The common ones:
 | `UniversalStats.SpellPowerPerIntellect` | `0.5` | Spell power per Intellect |
 | `UniversalStats.MeleeAPPerAgility` / `RangedAPPerAgility` | `1` / `1` | Attack power per Agility |
 | `Stats.Enable` / `Stats.StartingPoints` / `Stats.PointsPerLevel` | `1` / `4` / `2` | Stat allocation |
+| `ArmorWeight.Enable` | `1` | Each armor type's aura (see Armor weight). `0` takes them away |
 | `Riding.Enable` / `Riding.Grants` | `1` / the table above | Free riding, as `spell:level` pairs |
 | `Runeforging.Enable` / `Runeforging.Grants` | `1` / the table above | Free runeforging, as `spell:level` pairs |
 | `WorldDrops.Enable` / `Chance` | `1` / `1.0` | Classless gear drops, % per kill |

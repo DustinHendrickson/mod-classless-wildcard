@@ -1618,6 +1618,37 @@ def test_rebirth(h):
     h.check("Rebirth 9." in tip and "+400% experience from kills" in tip and "+100% experience from quests" in tip
             and "+20% to every primary stat" in tip, "a target's rank is read off its aura, capped: %r" % tip)
 
+    # An armor weight debuff on the player keeps its own text and adds how many
+    # pieces of that armor count, matched by the client's localized subtype.
+    h.rt.execute('''
+        local saved = { GetItemInfo = GetItemInfo }
+        ARMOR_TEST_SAVED = saved
+        UnitIsUnit = function(a, b) return a == b end
+        GetAuctionItemSubClasses = function() return "Misc", "Cloth", "Leather", "Mail", "Plate" end
+        local worn = { [1] = "Plate", [3] = "Plate", [5] = "Plate", [6] = "Mail", [7] = "Plate", [10] = "Cloth" }
+        GetInventoryItemLink = function(unit, slot) return worn[slot] and ("item:" .. slot) or nil end
+        GetItemInfo = function(link)
+            local slot = tonumber(string.match(link or "", "item:(%d+)"))
+            return "x", link, 4, 80, 80, "Armor", worn[slot]
+        end
+    ''')
+    h.rt.execute('UNIT_AURAS.player = { { "Plate Armor", 1, 962043 }, { "Mail Armor", 1, 962044 }, { "Cloth Armor", 1, 962046 } }')
+    h.rt.execute('GameTooltip:SetUnitAura("player", 1, "HARMFUL")')
+    tip = str(h.rt.eval("TipText()"))
+    h.check("the row's own text" in tip and "You wear 4 of 8 pieces." in tip,
+            "the Plate Armor debuff keeps its text and counts four plate pieces: %r" % tip)
+    h.rt.execute('GameTooltip:SetUnitAura("player", 2, "HARMFUL")')
+    tip = str(h.rt.eval("TipText()"))
+    h.check("You wear 1 of 8 pieces." in tip, "and Mail Armor counts the one mail belt: %r" % tip)
+    h.rt.execute('GameTooltip:SetUnitAura("player", 3, "HELPFUL")')
+    tip = str(h.rt.eval("TipText()"))
+    h.check("You wear 1 of 8 pieces." in tip, "and the Cloth Armor buff counts the cloth gloves: %r" % tip)
+    h.rt.execute('UNIT_AURAS.target = { { "Plate Armor", 1, 962043 } }')
+    h.rt.execute('GameTooltip:SetUnitAura("target", 1, "HARMFUL")')
+    tip = str(h.rt.eval("TipText()"))
+    h.check("You wear" not in tip, "someone else's is left as it is, since their gear is not ours: %r" % tip)
+    h.rt.execute("GetItemInfo = ARMOR_TEST_SAVED.GetItemInfo")
+
     # My Build shows the heirloom for what it is, with nothing to lock or reroll.
     h.recv(rebirth_state(1, 1, 2, 0, 300, 3))
     h.recv("OA|133:0:0:1;686:0:0:4;")
@@ -2608,6 +2639,22 @@ def test_settings(h):
     h.check(box("lock")["__checked"] is True, "a lock set by /cwbars shows up ticked here")
     h.rt.execute('SlashCmdList["CLASSLESSWILDCARDBARS"]("unlock"); ClasslessWildcard_API.RenderSettings()')
     h.check(box("lock")["__checked"] is False, "and unticked again")
+
+    # ---- Disable Auto Shot: the server keeps it, the box shows what it says
+    auto = CW.setFly["autoShotCheck"]
+    h.check(auto["__checked"] is not True, "Auto Shot is on by default, the box is clear")
+    h.clear_sent()
+    auto["__checked"] = True
+    h.click(auto)
+    h.check(h.sent()[-1] == "AUTOSHOT 1", "ticking it asks the server to take Auto Shot away: %r" % h.sent()[-1:])
+    # field 33 of the state is the server's answer; the open panel follows it
+    h.recv(run_state(0, 20) + "|0||1")
+    h.check(auto["__checked"] is True, "the server's state ticks the box")
+    auto["__checked"] = False
+    h.click(auto)
+    h.check(h.sent()[-1] == "AUTOSHOT 0", "unticking it asks for Auto Shot back: %r" % h.sent()[-1:])
+    h.recv(run_state(0, 20) + "|0||0")
+    h.check(auto["__checked"] is not True, "and the state clears the box")
 
     h.click(CW.settingsBtn)
     h.check(CW.setFly["__shown"] is False, "clicking Settings again closes it")

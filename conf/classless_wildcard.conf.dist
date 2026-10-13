@@ -587,6 +587,18 @@ ClasslessWildcard.StarterKit.Items = "2092:2,36:1,1194:1,2361:1,12282:1,35:1,250
 #        Default: 1
 ClasslessWildcard.TeachProficiencies = 1
 
+#    ClasslessWildcard.ArmorWeight.Enable
+#        Give each armor type its own trade, since every Hero may wear any of
+#        it: plate and mail slow casting a lot and attacks a little, leather
+#        quickens attacks and dodging and slows casting a little, cloth raises
+#        spell critical strike chance and mana regeneration. Each piece worn
+#        counts toward its type. The numbers are in the auras' spell rows
+#        (ARMOR_WEIGHTS in data/sql/generators/gen_forged_spells.py).
+#        0 turns it off: the auras are taken away within two seconds,
+#        .reload config included.
+#        Default: 1
+ClasslessWildcard.ArmorWeight.Enable = 1
+
 #    ClasslessWildcard.ProficiencySpells
 #        The proficiency spells taught, plus the ranged use-abilities: Shoot
 #        5019 fires WANDS only, bows/guns/crossbows need Shoot 3018 and thrown

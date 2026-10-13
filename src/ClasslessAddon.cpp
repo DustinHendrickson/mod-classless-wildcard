@@ -87,7 +87,7 @@ namespace
         // realm that tuned Wildcard.FreeRerollLevel got an addon that disagreed
         // with its own server. Fields are read by position now, and anything the
         // addon does not know about is ignored, so the packet can simply grow.
-        SendAddon(player, Acore::StringFormat("S|{}|{}|{}|{}|{}|{}|{}|{}|{}|{}|{}|{}|{}|{}|{}|{}|{}|{}|{}|{}|{}|{}|{}|{}|{}|{}|{}|{}|{}|{}|{}",
+        SendAddon(player, Acore::StringFormat("S|{}|{}|{}|{}|{}|{}|{}|{}|{}|{}|{}|{}|{}|{}|{}|{}|{}|{}|{}|{}|{}|{}|{}|{}|{}|{}|{}|{}|{}|{}|{}|{}",
             uint32(st.mode), st.abilityEssence, st.talentEssence, st.pity, chance,
             scrolls, player->GetLevel(), cfg.modeChoiceDeadline,
             cfg.rebirthEnable ? 1 : 0, cfg.rebirthCostGold,
@@ -123,7 +123,9 @@ namespace
             sClasslessMgr->OnRun(player, ChallengeId::DealtHand) ? 1 : 0,
             // field 32: the name of the player's own build while it is the
             // one followed ("" otherwise), for My Builds to mark it
-            st.archetype == CUSTOM_ARCHETYPE ? SanitizeText(st.custom.name) : std::string()));
+            st.archetype == CUSTOM_ARCHETYPE ? SanitizeText(st.custom.name) : std::string(),
+            // field 33: 1 when this character turned Auto Shot off in Settings
+            st.noAutoShot ? 1 : 0));
 
         // the on-screen challenge tracker, which every state refresh keeps
         // honest (a login, a /reload, the panel opening)
@@ -928,6 +930,17 @@ namespace
             sClasslessMgr->UnlearnTalent(player, argNum(1), &err) ? SendOk(player, "TALUNL") : SendErr(player, err);
         else if (cmd == "RESPEC")
             sClasslessMgr->Respec(player, &err) ? SendOk(player, "RESPEC") : SendErr(player, err);
+        else if (cmd == "AUTOSHOT")
+        {
+            // "AUTOSHOT 1" turns it off, "AUTOSHOT 0" turns it back on
+            if (sClasslessMgr->SetAutoShotOff(player, argNum(1) != 0, &err))
+            {
+                SendOk(player, "AUTOSHOT");
+                SendState(player);
+            }
+            else
+                SendErr(player, err);
+        }
         else if (cmd == "BAR")
             sClasslessMgr->SetDisplayPower(player, uint8(argNum(1)), &err) ? SendOk(player, "BAR") : SendErr(player, err);
         else if (cmd == "MODE")

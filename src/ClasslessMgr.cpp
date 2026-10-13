@@ -31,6 +31,7 @@
 #include "Random.h"
 #include "World.h"
 #include "SharedDefines.h"
+#include "SpellAuraEffects.h"
 #include "SpellAuras.h"
 #include "SpellInfo.h"
 #include "SpellMgr.h"
@@ -234,6 +235,7 @@ void ClasslessMgr::LoadConfig(bool /*reload*/)
         "53344:70,62158:72,70164:72"), cfg.runeforgingGrants);
 
     cfg.teachProficiencies = sConfigMgr->GetOption<bool>("ClasslessWildcard.TeachProficiencies", true);
+    cfg.armorWeight = sConfigMgr->GetOption<bool>("ClasslessWildcard.ArmorWeight.Enable", true);
     cfg.proficiencySpells = ParseUintList(sConfigMgr->GetOption<std::string>(
         "ClasslessWildcard.ProficiencySpells",
         // cloth, leather, mail, plate, shield, swords 1h/2h, axes 1h/2h, maces 1h/2h,
@@ -2821,6 +2823,83 @@ void ClasslessMgr::SyncRebirthAura(Player* player, uint32 rank)
         aura->SetStackAmount(uint8(std::min<uint32>(rank, 255)));
 }
 
+// Armor weight. Every Hero may wear any armor, so each weight carries its own
+// trade: an aura per weight (gen_forged_spells.py ARMOR_WEIGHTS). Plate and
+// mail slow casting a lot and attacks a little; leather slows casting a little
+// and quickens attacks and dodging; cloth sharpens spells and mana. Every
+// effect holds the FULL-SET value, which the tooltip quotes; this scales each
+// by how many of the eight armor slots carry that weight, and takes the aura
+// away when none do. Never cancelled and kept through death; the 2-second
+// tick puts back anything that removes it anyway.
+namespace
+{
+    struct ArmorWeight { uint32 subclass; uint32 aura; };
+    constexpr ArmorWeight ARMOR_WEIGHTS[] = {
+        { ITEM_SUBCLASS_ARMOR_PLATE,   962043 },
+        { ITEM_SUBCLASS_ARMOR_MAIL,    962044 },
+        { ITEM_SUBCLASS_ARMOR_LEATHER, 962045 },
+        { ITEM_SUBCLASS_ARMOR_CLOTH,   962046 },
+    };
+    // the slots armor weight counts: the cloak is cloth for everyone, and
+    // shirts and tabards weigh nothing
+    constexpr uint8 ARMOR_SLOTS[] = {
+        EQUIPMENT_SLOT_HEAD, EQUIPMENT_SLOT_SHOULDERS, EQUIPMENT_SLOT_CHEST, EQUIPMENT_SLOT_WAIST,
+        EQUIPMENT_SLOT_LEGS, EQUIPMENT_SLOT_FEET, EQUIPMENT_SLOT_WRISTS, EQUIPMENT_SLOT_HANDS,
+    };
+}
+
+void ClasslessMgr::SyncArmorWeight(Player* player)
+{
+    CharState* st = FindState(player);
+    // Off in the conf: nobody carries it, so the next tick takes the auras
+    // away, after a .reload config as well as at startup.
+    bool const hero = cfg.armorWeight && st && !st->exempt;
+
+    std::map<uint32, int32> worn;   // armor subclass -> pieces
+    if (hero)
+        for (uint8 slot : ARMOR_SLOTS)
+            if (Item* item = player->GetItemByPos(INVENTORY_SLOT_BAG_0, slot))
+                if (ItemTemplate const* proto = item->GetTemplate())
+                    if (proto->Class == ITEM_CLASS_ARMOR)
+                        ++worn[proto->SubClass];
+
+    for (ArmorWeight const& w : ARMOR_WEIGHTS)
+    {
+        SpellInfo const* info = sSpellMgr->GetSpellInfo(w.aura);
+        if (!info)
+            continue;   // the world SQL is older than this build
+
+        // each effect's share of its full-set value, for the pieces worn
+        std::array<int32, MAX_SPELL_EFFECTS> amount = {};
+        bool any = false;
+        for (uint8 i = 0; i < MAX_SPELL_EFFECTS; ++i)
+            if (info->Effects[i].IsAura())
+            {
+                amount[i] = info->Effects[i].CalcValue() * worn[w.subclass] / int32(std::size(ARMOR_SLOTS));
+                any = any || amount[i] != 0;
+            }
+        if (!any)
+        {
+            player->RemoveAurasDueToSpell(w.aura);
+            continue;
+        }
+        Aura* aura = player->GetAura(w.aura);
+        if (!aura)
+            aura = player->AddAura(w.aura, player);
+        if (!aura)
+            continue;
+        for (uint8 i = 0; i < MAX_SPELL_EFFECTS; ++i)
+            if (AuraEffect* eff = aura->GetEffect(i))
+            {
+                // the amount is the pieces worn, not the row's value: nothing
+                // else may recalculate it back
+                eff->SetCanBeRecalculated(false);
+                if (eff->GetAmount() != amount[i])
+                    eff->ChangeAmount(amount[i]);
+            }
+    }
+}
+
 // The rank's stat percent, as a modifier on the five primary stats -- not an
 // aura, which a player could right-click off and which a cinematic or a
 // death could drop. Reapplied at login and after every Rebirth.
@@ -3914,7 +3993,7 @@ void ClasslessMgr::LoadCharacter(Player* player, CharState& st)
     if (QueryResult result = CharacterDatabase.Query(
         "SELECT mode, ability_essence, talent_essence, pity, rerolls, last_level, "
         "stat_str, stat_agi, stat_sta, stat_int, stat_spi, display_power, archetype, rebirths, "
-        "run, lives, lives_max, run_data, shards, extra_life FROM cw_char_state WHERE guid = {}", guid))
+        "run, lives, lives_max, run_data, shards, extra_life, no_auto_shot FROM cw_char_state WHERE guid = {}", guid))
     {
         Field* f = result->Fetch();
         st.mode = Mode(f[0].Get<uint8>());
@@ -3936,6 +4015,7 @@ void ClasslessMgr::LoadCharacter(Player* player, CharState& st)
             st.runData = HUNTER_LOGIN_GRACE_S;    // logged out with a hunter due or on them
         st.shards = f[18].Get<uint32>();
         st.extraLife = f[19].Get<uint8>();
+        st.noAutoShot = f[20].Get<uint8>() != 0;
     }
 
     if (QueryResult result = CharacterDatabase.Query(
@@ -4049,13 +4129,14 @@ void ClasslessMgr::SaveState(Player* player)
     CharacterDatabase.Execute(
         "REPLACE INTO cw_char_state (guid, mode, ability_essence, talent_essence, pity, rerolls, last_level, "
         "stat_str, stat_agi, stat_sta, stat_int, stat_spi, display_power, archetype, rebirths, "
-        "run, lives, lives_max, run_data, shards, extra_life) "
-        "VALUES ({}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {})",
+        "run, lives, lives_max, run_data, shards, extra_life, no_auto_shot) "
+        "VALUES ({}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {})",
         player->GetGUID().GetCounter(), uint32(st.mode), st.abilityEssence, st.talentEssence, st.pity,
         st.rerolls, st.lastProcessedLevel,
         st.statAlloc[0], st.statAlloc[1], st.statAlloc[2], st.statAlloc[3], st.statAlloc[4],
         uint32(st.displayPower), st.archetype, st.rebirths,
-        uint32(st.run), uint32(st.lives), uint32(st.livesMax), st.runData, st.shards, uint32(st.extraLife));
+        uint32(st.run), uint32(st.lives), uint32(st.livesMax), st.runData, st.shards, uint32(st.extraLife),
+        st.noAutoShot ? 1 : 0);
 }
 
 void ClasslessMgr::SaveNemeses(ObjectGuid guid, CharState const& st)
@@ -4236,7 +4317,7 @@ void ClasslessMgr::TeachProficiencies(Player* player)
 
     GrantGuard guard(_applyingGrant);
 
-    for (uint32 spellId : TaughtSpells())
+    for (uint32 spellId : TaughtSpells(FindState(player)))
         if (sSpellMgr->GetSpellInfo(spellId) && !player->HasSpell(spellId))
             player->learnSpell(spellId);
 
@@ -4271,7 +4352,7 @@ void ClasslessMgr::PushCorrectionsUnlessBulk(Player* player)
         PushSpellCorrections(player);
 }
 
-std::vector<uint32> ClasslessMgr::TaughtSpells() const
+std::vector<uint32> ClasslessMgr::TaughtSpells(CharState const* st) const
 {
     std::vector<uint32> out;
     if (!cfg.teachProficiencies)
@@ -4293,7 +4374,10 @@ std::vector<uint32> ClasslessMgr::TaughtSpells() const
     if (listed(264) || listed(266) || listed(5011))
     {
         out.push_back(3018);   // Shoot (bow / gun / crossbow)
-        out.push_back(75);     // Auto Shot
+        // Some players find it fires when they did not mean it to, so it can
+        // be turned off in Settings. Shoot still fires a bow.
+        if (!st || !st->noAutoShot)
+            out.push_back(75);     // Auto Shot
     }
     if (listed(2567))
         out.push_back(2764);   // Throw
@@ -4309,6 +4393,33 @@ std::vector<uint32> ClasslessMgr::TaughtSpells() const
     out.push_back(3127);
 
     return out;
+}
+
+bool ClasslessMgr::SetAutoShotOff(Player* player, bool off, std::string* err)
+{
+    CharState& st = GetState(player);
+    if (st.exempt)
+    {
+        if (err) *err = "This character does not walk the Hero's path.";
+        return false;
+    }
+    st.noAutoShot = off;
+    SaveState(player);
+    {
+        GrantGuard guard(_applyingGrant);
+        if (off)
+        {
+            if (player->HasSpell(75))
+                player->removeSpell(75, SPEC_MASK_ALL, false);
+        }
+        else
+            TeachProficiencies(player);
+    }
+    // a Marksmanship tab that held nothing else goes with it
+    SyncSpellbookTabs(player, true);
+    Msg(player, off ? "Auto Shot is off. You will not be taught it again until you turn it back on in Settings."
+                    : "Auto Shot is back.");
+    return true;
 }
 
 // Force every Hero onto the single configured chassis class.
@@ -5747,8 +5858,9 @@ uint32 ClasslessMgr::StripUnearnedSpells(Player* player)
 
     // And what the module teaches everyone. Auto Shot is AcquireMethod 2 on
     // Marksmanship, so it sits in _skillLearnedClassSpells and the sweep below
-    // would take it back on the same login that taught it.
-    for (uint32 spellId : TaughtSpells())
+    // would take it back on the same login that taught it -- which is exactly
+    // what should happen when this character turned it off.
+    for (uint32 spellId : TaughtSpells(&st))
         earned.insert(spellId);
 
     GrantGuard guard(_applyingGrant);
@@ -5870,7 +5982,7 @@ void ClasslessMgr::SyncSpellbookTabs(Player* player, bool clearChassisLines)
     // land on real skill lines and SetSkill unlearns everything on a line it
     // removes, so leaving them out of `want` cancelled the grant -- which is
     // exactly what happened to Auto Shot on the Marksmanship line.
-    for (uint32 spellId : TaughtSpells())
+    for (uint32 spellId : TaughtSpells(&st))
         add(spellId);
 
     // The Hero line is nobody's class line: no chassis learns it, and a forged

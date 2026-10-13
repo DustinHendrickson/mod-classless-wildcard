@@ -22,6 +22,7 @@ CREATE TABLE IF NOT EXISTS `cw_char_state` (
   `run_data` INT UNSIGNED NOT NULL DEFAULT 0 COMMENT 'what the live rule remembers',
   `shards` INT UNSIGNED NOT NULL DEFAULT 0 COMMENT 'paid out by runs, spent at the panel',
   `extra_life` TINYINT UNSIGNED NOT NULL DEFAULT 0 COMMENT 'a life bought for the next run',
+  `no_auto_shot` TINYINT UNSIGNED NOT NULL DEFAULT 0 COMMENT '1: the player turned Auto Shot off in Settings',
   PRIMARY KEY (`guid`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='Classless/Wildcard character state';
 

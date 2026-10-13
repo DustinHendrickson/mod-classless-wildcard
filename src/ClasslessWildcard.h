@@ -456,6 +456,9 @@ namespace ClasslessWildcard
         uint8 botRole = 0;
         uint8 botRoleOverride = 0;
 
+        // The player asked not to be taught Auto Shot (Settings). Saved.
+        bool noAutoShot = false;
+
         bool loaded = false;
     };
 
@@ -489,6 +492,7 @@ namespace ClasslessWildcard
 
         // proficiencies
         bool   teachProficiencies = true;
+        bool   armorWeight = true;      // ArmorWeight.Enable: each armor type's aura
         std::vector<uint32> proficiencySpells;
 
         // clean-slate start: strip the chassis class's default spells at

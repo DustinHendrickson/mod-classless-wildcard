@@ -1591,7 +1591,8 @@ def main():
                       encoding="utf-8").read()
     table = mgr_cpp[mgr_cpp.index("CHALLENGES = {"):mgr_cpp.index("};", mgr_cpp.index("CHALLENGES = {"))]
     paid = set()
-    for m in re.finditer(r'\{\s*\d+,\s*"[a-z_]+",\s*"[^"]*",\s*\d+,\s*"[^"]*",\s*\d+,\s*\d+,\s*"([a-z_0-9]*)"', table):
+    # lives is a number or UNLIMITED_LIVES (Nemesis, Dealt Hand)
+    for m in re.finditer(r'\{\s*\d+,\s*"[a-z_]+",\s*"[^"]*",\s*(?:\d+|UNLIMITED_LIVES),\s*"[^"]*",\s*\d+,\s*\d+,\s*"([a-z_0-9]*)"', table):
         if m.group(1):
             paid.add(m.group(1))
     reward_bad = []
@@ -1619,7 +1620,7 @@ def main():
     sql_title_ids = {int(m.group(1)) for m in re.finditer(r"^\((\d+), 0, '", sqltext, re.M)}
     named = set(int(x) for x in re.findall(r"^\s+(\d+),\s*// ", mgr_cpp[mgr_cpp.index("GrantRebirthTitles"):], re.M)[:5])
     named.add(int(re.search(r"UNBROKEN_TITLE = (\d+)", mgr_cpp).group(1)))
-    for m in re.finditer(r'\{\s*\d+,\s*"[a-z_]+",\s*"[^"]*",\s*\d+,\s*"[^"]*",\s*\d+,\s*(\d+),', table):
+    for m in re.finditer(r'\{\s*\d+,\s*"[a-z_]+",\s*"[^"]*",\s*(?:\d+|UNLIMITED_LIVES),\s*"[^"]*",\s*\d+,\s*(\d+),', table):
         named.add(int(m.group(1)))
     title_bad = []
     if len(title_ids) != len(titles) or len(set(title_bits)) != len(title_bits):
@@ -1645,6 +1646,40 @@ def main():
     check("every title the C++ grants is a manifest row with a server row and a free bit",
           titles and not title_bad,
           "%d title(s), %d named in C++, stock bits end at %d; %s" % (len(titles), len(named), stock_max_bit, title_bad))
+
+    # Armor weight: the generator's aura rows, ClasslessMgr.cpp's table and the
+    # addon's tooltip map name the same ids for the same armor, in the same
+    # order (plate, mail, leather, cloth). A drift leaves an aura nobody
+    # applies, or an armor type applying nothing.
+    weight_gen = [sp["id"] for sp in sorted(spells, key=lambda sp: sp["id"])
+                  if str(sp.get("key", "")).startswith("aura_weight_")]
+    weight_keys = [sp["key"] for sp in sorted(spells, key=lambda sp: sp["id"])
+                   if str(sp.get("key", "")).startswith("aura_weight_")]
+    weight_tbl = mgr_cpp[mgr_cpp.index("ARMOR_WEIGHTS[] = {"):]
+    weight_tbl = weight_tbl[:weight_tbl.index("};")]
+    weight_cpp = [(m.group(1), int(m.group(2)))
+                  for m in re.finditer(r"ITEM_SUBCLASS_ARMOR_([A-Z]+),\s*(\d+)", weight_tbl)]
+    addon_lua = io.open(os.path.join(os.path.dirname(os.path.abspath(__file__)), os.pardir, "client-addon",
+                                     "ClasslessWildcard", "ClasslessWildcard.lua"), encoding="utf-8").read()
+    weight_map = re.search(r"CW\.ARMOR_WEIGHT = \{([^}]*)\}", addon_lua)
+    weight_lua = {int(k): int(v) for k, v in re.findall(r"\[(\d+)\]\s*=\s*(\d+)", weight_map.group(1))} \
+        if weight_map else {}
+    # the client's armor subclass list: 2 Cloth, 3 Leather, 4 Mail, 5 Plate
+    lua_index = {"CLOTH": 2, "LEATHER": 3, "MAIL": 4, "PLATE": 5}
+    weight_bad = []
+    if [i for _, i in weight_cpp] != weight_gen:
+        weight_bad.append("C++ %s vs generator %s" % ([i for _, i in weight_cpp], weight_gen))
+    for (armor, sid), key in zip(weight_cpp, weight_keys):
+        if key != "aura_weight_" + armor.lower():
+            weight_bad.append("%d is %s in the generator, %s in C++" % (sid, key, armor))
+        if weight_lua.get(sid) != lua_index.get(armor):
+            weight_bad.append("%d (%s): addon index %s, wants %s" % (sid, armor, weight_lua.get(sid),
+                                                                    lua_index.get(armor)))
+    if set(weight_lua) != set(weight_gen):
+        weight_bad.append("addon ids %s vs generator %s" % (sorted(weight_lua), weight_gen))
+    check("the armor weight auras are the same ids for the same armor in the generator, C++ and addon",
+          len(weight_gen) == 4 and not weight_bad,
+          "%d aura(s); %s" % (len(weight_gen), weight_bad))
 
     # ---- the Reborn aura -------------------------------------------------------
     # The C++ puts it on a reborn Hero by id and the addon writes its hover
