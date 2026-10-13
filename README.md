@@ -643,6 +643,10 @@ Give players the `client-patch` and `client-addon` folders. With WoW **closed**,
 `install.bat` on Windows or `./install.sh "/path/to/WoW"` on Linux and macOS. See
 [`client-patch/README.md`](client-patch/README.md).
 
+After that, updates are two steps: `update.bat` (or `./update.sh`) fetches the latest
+patch and addon from this repository into those two folders, then `install.bat` installs
+them. Players never need a fresh download.
+
 It installs the addon, shows every class as **Hero**, replaces the class picker with one Hero
 entry per race, adds names, tooltips and icons for the new spells and items, clears the client
 cache, and patches `Wow.exe` to allow custom interface files (backed up first). Your original

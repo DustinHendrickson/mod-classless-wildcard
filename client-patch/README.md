@@ -189,6 +189,25 @@ Then just start the game.
 
 ---
 
+## Update
+
+Once you have these folders you never need a new download. When the realm
+announces a client update, with WoW **closed**:
+
+1. Run `update.bat` (Windows) or `./update.sh` (macOS / Linux) in `client-patch`.
+   It fetches the latest `client-patch` and `client-addon` from GitHub and
+   replaces the copies on your PC. About 30 MB.
+2. Run `install.bat` or `./install.sh` as before.
+
+`update.bat --check` only says whether there is anything new. The folder you
+typed into `install.bat` is kept, so it does not ask again. `version.txt` beside
+the scripts records which commit you are on.
+
+If `update.bat` itself changed, the new copy is swapped in the next time you run
+it; the script says so when that happens.
+
+---
+
 ## Uninstall
 
 ```bash

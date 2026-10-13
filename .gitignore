@@ -17,6 +17,11 @@ client-patch/*.mpq
 client-patch/out/
 # The WoW folder install.bat remembers: one player's own path, not ours
 client-patch/install_path.txt
+# What update.py wrote down on a player's PC: the commit it fetched, the files
+# it placed, and a wrapper waiting to be swapped in
+client-patch/version.txt
+client-patch/update_manifest.txt
+client-patch/*.new
 
 # Editor / OS
 .vscode/
