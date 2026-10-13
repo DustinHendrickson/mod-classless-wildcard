@@ -255,6 +255,11 @@ public:
     void TeachProficiencies(Player* player);
     // Settings: stop teaching Auto Shot and take it away, or teach it again.
     bool SetAutoShotOff(Player* player, bool off, std::string* err);
+    // A bow, gun or crossbow in the ranged slot: the weapons Auto Shot fires.
+    static bool HasAutoShotWeapon(Player const* player);
+    // Teach Auto Shot or take it back so it matches the ranged slot and the
+    // Settings choice. Runs when the ranged slot changes.
+    void SyncAutoShot(Player* player);
     // Riding ranks the Hero has reached the level for. Returns how many were
     // newly taught, so the caller can stay quiet when there is nothing to say.
     uint32 GrantRidingSkill(Player* player);
@@ -331,9 +336,11 @@ private:
     // Mortal Strike, Mangle); taking the talent grants those lines.
     void ResolveTalentAbilityLines();
     void DropUnresolvablePrerequisites();
-    // With a character's state, what that character is taught: the same list
-    // less Auto Shot when they turned it off. Without one, the realm's list.
-    std::vector<uint32> TaughtSpells(ClasslessWildcard::CharState const* st = nullptr) const;
+    // With a character's state and the character, what that character is
+    // taught: the same list less Auto Shot when they turned it off or hold no
+    // bow, gun or crossbow. Without them, the realm's list.
+    std::vector<uint32> TaughtSpells(ClasslessWildcard::CharState const* st = nullptr,
+                                     Player const* player = nullptr) const;
     // Push the addon's tooltip corrections, unless a bulk operation is running
     // and will push once when it finishes.
     void PushCorrectionsUnlessBulk(Player* player);

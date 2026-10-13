@@ -458,6 +458,10 @@ namespace ClasslessWildcard
 
         // The player asked not to be taught Auto Shot (Settings). Saved.
         bool noAutoShot = false;
+        // A ranged-slot change has queued SyncAutoShot for the next tick, so
+        // a bow-to-gun swap (one removal, one equip) is one sync, not an
+        // unlearn and a relearn. Runtime only.
+        bool autoShotSyncPending = false;
 
         // The armor weight amounts last sent to the addon ("AW|..."), so the
         // 2-second tick only sends when they change. Runtime only.

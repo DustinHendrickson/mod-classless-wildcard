@@ -730,6 +730,33 @@ public:
         sClasslessMgr->UnloadState(player->GetGUID());
     }
 
+    // Auto Shot follows the ranged slot (ClasslessMgr::SyncAutoShot).
+    //
+    // SetVisibleItemSlot is the one place both directions pass through:
+    // EquipItem calls it with the item and RemoveItem with null, so a swap, an
+    // unequip to the bag, a sale or a destroy off the paper doll all land
+    // here. Deferred a tick because a swap is a removal followed by an equip,
+    // and syncing on each would unlearn and relearn the spell in one frame.
+    // Login loads the inventory before the character is in the world; the
+    // login grant and sweep cover that case.
+    void OnPlayerAfterSetVisibleItemSlot(Player* player, uint8 slot, Item* /*item*/) override
+    {
+        if (slot != EQUIPMENT_SLOT_RANGED || !sClasslessMgr->cfg.enabled)
+            return;
+        if (!player->IsInWorld() || player->isBeingLoaded())
+            return;
+        CharState* st = sClasslessMgr->FindState(player);
+        if (!st || st->exempt || st->autoShotSyncPending)
+            return;
+        st->autoShotSyncPending = true;
+        player->m_Events.AddEventAtOffset([player]()
+        {
+            if (CharState* pending = sClasslessMgr->FindState(player))
+                pending->autoShotSyncPending = false;
+            sClasslessMgr->SyncAutoShot(player);
+        }, 1ms);
+    }
+
     // 2-second maintenance tick:
     //  * universal STAT layer — fills the gaps the chassis math leaves so
     //    every allocatable stat matters on a classless Hero:

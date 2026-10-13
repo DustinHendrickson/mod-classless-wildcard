@@ -167,9 +167,11 @@ with your build on the right. Lock or reroll anything you own from the same wind
 
 ### Gear and items
 
-- **Every proficiency at level 1.** All armour, all weapons, dual wield and Parry, with Shoot,
-  Auto Shot and Throw. Weapon skills level by use. **Disable Auto Shot** in the panel's Settings
-  removes Auto Shot from that character until it is unticked; Shoot still fires a bow.
+- **Every proficiency at level 1.** All armour, all weapons, dual wield and Parry, with Shoot
+  and Throw. Weapon skills level by use. **Auto Shot** is taught while a bow, gun or crossbow is
+  equipped and taken back when it comes off, because the client switches any character that
+  knows Auto Shot into hunter mode on Attack. **Disable Auto Shot** in the panel's Settings
+  keeps it off whatever is equipped; Shoot still fires a bow.
 - **Armor weight.** Any Hero may wear any armor, and each type is a trade. Each piece worn in
   the eight armor slots counts toward its type, so a mixed set gets a share of each. A full set:
 

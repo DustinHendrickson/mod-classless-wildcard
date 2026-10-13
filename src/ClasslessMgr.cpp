@@ -4382,7 +4382,7 @@ void ClasslessMgr::TeachProficiencies(Player* player)
 
     GrantGuard guard(_applyingGrant);
 
-    for (uint32 spellId : TaughtSpells(FindState(player)))
+    for (uint32 spellId : TaughtSpells(FindState(player), player))
         if (sSpellMgr->GetSpellInfo(spellId) && !player->HasSpell(spellId))
             player->learnSpell(spellId);
 
@@ -4417,7 +4417,7 @@ void ClasslessMgr::PushCorrectionsUnlessBulk(Player* player)
         PushSpellCorrections(player);
 }
 
-std::vector<uint32> ClasslessMgr::TaughtSpells(CharState const* st) const
+std::vector<uint32> ClasslessMgr::TaughtSpells(CharState const* st, Player const* player) const
 {
     std::vector<uint32> out;
     if (!cfg.teachProficiencies)
@@ -4439,9 +4439,17 @@ std::vector<uint32> ClasslessMgr::TaughtSpells(CharState const* st) const
     if (listed(264) || listed(266) || listed(5011))
     {
         out.push_back(3018);   // Shoot (bow / gun / crossbow)
-        // Some players find it fires when they did not mean it to, so it can
-        // be turned off in Settings. Shoot still fires a bow.
-        if (!st || !st->noAutoShot)
+        // Only while a bow, gun or crossbow is actually equipped. Auto Shot
+        // carries SPELL_ATTR4_AUTO_RANGED_COMBAT, and the 3.3.5 client, for
+        // any character that KNOWS such a spell (cvar autoRangedCombat,
+        // default on), turns every Attack into hunter mode: beyond melee
+        // reach it holds melee off and casts Auto Shot instead. A melee Hero
+        // with an empty ranged slot, or a bow kept for its stats and no
+        // ammo, got "Out of ammo" on every pull and no swing until the mob
+        // closed in (issue 18). The client only enters that mode while the
+        // spell is known, so the spell comes and goes with the weapon.
+        // Settings can also turn it off for good. Shoot still fires a bow.
+        if ((!st || !st->noAutoShot) && (!player || HasAutoShotWeapon(player)))
             out.push_back(75);     // Auto Shot
     }
     if (listed(2567))
@@ -4470,21 +4478,79 @@ bool ClasslessMgr::SetAutoShotOff(Player* player, bool off, std::string* err)
     }
     st.noAutoShot = off;
     SaveState(player);
+    SyncAutoShot(player);
+    Msg(player, off ? "Auto Shot is off. You will not be taught it again until you turn it back on in Settings."
+                    : "Auto Shot is back. It is taught while a bow, gun or crossbow is equipped.");
+    return true;
+}
+
+bool ClasslessMgr::HasAutoShotWeapon(Player const* player)
+{
+    // Auto Shot's own EquippedItemSubClassMask: bow, gun, crossbow. Thrown
+    // weapons use Throw and wands use their Shoot, neither of which puts the
+    // client in hunter mode.
+    Item const* ranged = player ? player->GetWeaponForAttack(RANGED_ATTACK) : nullptr;
+    if (!ranged)
+        return false;
+    switch (ranged->GetTemplate()->SubClass)
+    {
+        case ITEM_SUBCLASS_WEAPON_BOW:
+        case ITEM_SUBCLASS_WEAPON_GUN:
+        case ITEM_SUBCLASS_WEAPON_CROSSBOW:
+            return true;
+        default:
+            return false;
+    }
+}
+
+void ClasslessMgr::SyncAutoShot(Player* player)
+{
+    if (!cfg.enabled || !cfg.teachProficiencies || !player)
+        return;
+    CharState* st = FindState(player);
+    if (!st || st->exempt)
+        return;
+
+    constexpr uint32 AUTO_SHOT = 75;
+    std::vector<uint32> const taught = TaughtSpells(st, player);
+    bool const want = std::find(taught.begin(), taught.end(), AUTO_SHOT) != taught.end();
+    if (want == player->HasSpell(AUTO_SHOT))
+        return;
+
     {
         GrantGuard guard(_applyingGrant);
-        if (off)
+        if (want)
         {
-            if (player->HasSpell(75))
-                player->removeSpell(75, SPEC_MASK_ALL, false);
+            if (sSpellMgr->GetSpellInfo(AUTO_SHOT))
+                player->learnSpell(AUTO_SHOT);
         }
         else
-            TeachProficiencies(player);
+        {
+            // Unit::_UpdateAutoRepeatSpell never cancels a failing Auto Shot
+            // (id 75 is special-cased), so one that ran out of ammo sits in
+            // the autorepeat slot until something interrupts it. Interrupting
+            // it here also sends the client its cancel, which is what drops
+            // the client's own "auto shot running" mark.
+            if (Spell const* current = player->GetCurrentSpell(CURRENT_AUTOREPEAT_SPELL))
+                if (current->GetSpellInfo() && current->GetSpellInfo()->Id == AUTO_SHOT)
+                    player->InterruptSpell(CURRENT_AUTOREPEAT_SPELL);
+            // The packet goes with it: the client clears its hunter-mode spell
+            // only when its own spellbook loses the spell.
+            player->removeSpell(AUTO_SHOT, SPEC_MASK_ALL, false);
+            // If an Attack had already put the client in hunter mode, losing
+            // the spell leaves that mode engaged but idle: its per-frame
+            // routine bails before it reaches the melee start or the stop on
+            // target death, and a right-click sees the mode flag and does
+            // nothing. SMSG_CANCEL_COMBAT is the message whose client handler
+            // runs the full stop (0x14E -> CGUnit_C stop attack), which clears
+            // the flag, unregisters the routine and drops the pending shot.
+            // A swing in progress ends with it; the next right-click starts it
+            // again, which is what a plain melee character gets anyway.
+            player->SendAttackSwingCancelAttack();
+        }
     }
-    // a Marksmanship tab that held nothing else goes with it
+    // a Marksmanship tab that held nothing else comes and goes with it
     SyncSpellbookTabs(player, true);
-    Msg(player, off ? "Auto Shot is off. You will not be taught it again until you turn it back on in Settings."
-                    : "Auto Shot is back.");
-    return true;
 }
 
 // Force every Hero onto the single configured chassis class.
@@ -5925,7 +5991,7 @@ uint32 ClasslessMgr::StripUnearnedSpells(Player* player)
     // Marksmanship, so it sits in _skillLearnedClassSpells and the sweep below
     // would take it back on the same login that taught it -- which is exactly
     // what should happen when this character turned it off.
-    for (uint32 spellId : TaughtSpells(&st))
+    for (uint32 spellId : TaughtSpells(&st, player))
         earned.insert(spellId);
 
     GrantGuard guard(_applyingGrant);
@@ -6047,7 +6113,7 @@ void ClasslessMgr::SyncSpellbookTabs(Player* player, bool clearChassisLines)
     // land on real skill lines and SetSkill unlearns everything on a line it
     // removes, so leaving them out of `want` cancelled the grant -- which is
     // exactly what happened to Auto Shot on the Marksmanship line.
-    for (uint32 spellId : TaughtSpells(&st))
+    for (uint32 spellId : TaughtSpells(&st, player))
         add(spellId);
 
     // The Hero line is nobody's class line: no chassis learns it, and a forged

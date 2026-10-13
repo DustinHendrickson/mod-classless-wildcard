@@ -6811,8 +6811,8 @@ do
     acb:SetScript("OnEnter", function(self)
         GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
         GameTooltip:AddLine("Disable Auto Shot")
-        GameTooltip:AddLine("Removes Auto Shot from this character, and it is not taught again. "
-            .. "Shoot still fires a bow, gun or crossbow. Untick to get Auto Shot back.", 1, 1, 1, true)
+        GameTooltip:AddLine("Auto Shot is taught while a bow, gun or crossbow is equipped. "
+            .. "Tick to keep it off whatever is equipped. Shoot still fires a bow, gun or crossbow.", 1, 1, 1, true)
         GameTooltip:Show()
     end)
     acb:SetScript("OnLeave", function() GameTooltip:Hide() end)
