@@ -95,6 +95,14 @@ for name, ch in sorted(CH.items()):
     need(":" not in ch["rule"] and ";" not in ch["rule"], "%s rule has no ':' or ';'" % name)
     need("|" not in ch["detail"] + ch["tips"], "%s detail and tips have no '|'" % name)
     need("—" not in ch["rule"] + ch["detail"] + ch["tips"], "%s has no em dash" % name)
+    # " ^ " breaks a paragraph and ~Words~ is a heading; neither belongs in the
+    # rule, which is shown on one line
+    need("^" not in ch["rule"] and "~" not in ch["rule"], "%s rule has no paragraph or heading marks" % name)
+    for field in ("detail", "tips"):
+        paragraphs = ch[field].split(" ^ ")
+        need("^" not in "".join(paragraphs) and all(p.count("~") in (0, 2) and (p.count("~") == 0 or p.startswith("~"))
+                                                   for p in paragraphs),
+             "%s %s: every '^' is a paragraph break, every heading opens its paragraph" % (name, field))
 
 
 def word(n):
@@ -138,7 +146,7 @@ need("ChallengeText(ch.rule)" in read("src", "ClasslessAddon.cpp") and "Sanitize
 says(n, "detail", "a death takes nothing from you", "MarkNemesis takes no experience")
 says(n, "detail", "stays that far above you as you level", "ResyncNemesisCopy follows the Hero's level")
 says(n, "detail", "real higher level foe", "the copy's real level sets every roll")
-need("player->SummonCreature(mark.entry, pos, TEMPSUMMON_CORPSE_TIMED_DESPAWN" in mgr
+need("player->SummonCreature(mark.entry, at ? *at : pos, TEMPSUMMON_CORPSE_TIMED_DESPAWN" in mgr
      and "nullptr, true);" in mgr, "the nemesis is a private copy, visible to its Hero alone")
 need("NOTHING_DISPLAY_ID" in rules and "IsNemesisOriginalOf(target, creature)" in rules,
      "the original is drawn invisible for its Hero")

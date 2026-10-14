@@ -443,7 +443,7 @@ These apply to every creature of each rank on the realm, dungeon and raid elites
 
 | Challenge       | Lives | Rule                                                                                       | Gold | Title              | Reward           |
 | --------------- | ----- | ------------------------------------------------------------------------------------------ | ---- | ------------------ | ---------------- |
-| Nemesis         | Unlimited | The creature that kills you becomes your nemesis: for you alone, a private copy of it waits where it lives as a rare elite 2 levels above you (`Nemesis.MarkedLevels`), with real higher-level hit tables, a red arrow overhead and a minimap dot. A death takes nothing. It has strengths and a weakness, and grows with every death to it. *Swear Vendetta* makes a Sworn nemesis of a creature you pick. A kill pays elite experience and a share of a level, Vengeance (its level) and a trophy, and drops like a rare. Finish at level 80 with 500 Vengeance (`Nemesis.VengeanceToFinish`). Deaths in dungeons and raids, and to elites and bosses, make no nemesis. Other players see and fight the creature as normal. | 500  | the Nemesis        | Mark of the Nemesis |
+| Nemesis         | Unlimited | The creature that kills you becomes your nemesis, a rare elite only you can see. Slay nemeses for Vengeance and trophies; finish at level 80 with 500 Vengeance. See [Nemesis](#nemesis). | 500  | the Nemesis        | Mark of the Nemesis |
 | Elite World     | 5     | Every enemy is an elite for you alone, at the realm's elite rates, with elite XP, rare drop chances and the elite border. Rares are rare elites; enemies already elite are unchanged. Other players see and fight them as normal. | 750  | Bane of Giants     | Giantsbane       |
 | Legion          | 4     | Each enemy calls two more the first time it engages you. They fight only you.              | 650  | the Legionbreaker  | One Against Many |
 | Pursued         | 3     | Every 15 to 30 minutes, a rare elite hunter two levels above you chases you until one of you dies or you change maps. Only you can harm it, and it harms no one else. | 600  | the Hunted         | Turnabout        |
@@ -459,38 +459,129 @@ These apply to every creature of each rank on the realm, dungeon and raid elites
 
 ### Nemesis
 
-A nemesis is one creature (its spawn), made a private rare elite copy for the Hero it killed; the
-original is hidden from that Hero and untouched for everyone else. Every number below is a
-`ClasslessWildcard.Nemesis.*` option.
+Nemesis is a run with unlimited lives where dying is how the challenge starts. Whatever kills you
+becomes your nemesis: that exact creature, not every creature of its kind. From then on it is
+yours alone, a rare elite that stays above your level, waits where it lives and remembers you.
+Hunting your nemeses down is how you finish the run.
 
-- **Marked.** The creature that kills you, `MarkedLevels` above you. A kill pays elite experience
-  and `MarkedBonusXpPct` of a level.
-- **Sworn.** *Swear Vendetta*, taught on the run, marks a creature you target: open world, not an
-  elite or a boss, no more than `SwornLevelsBelow` levels below you, one at a time, every
-  `SwornCooldownMinutes`. It is `SwornLevels` above you with Bloodlust, one more strength and a
-  weakness. A kill pays `SwornBonusXpPct` of a level and always drops a classless piece.
-- **Traits.** Strengths: Bloodlust (faster attacks and casts), Ironhide (less physical damage),
-  Spellward (less spell damage), Venomous (a poison), Unyielding (more damage when low),
-  Warband (calls its kind, `WarbandCount`), Relentless (fast regeneration out of combat). Weaknesses: a
-  school it takes more from, Brittle (a stun ends its rage and opens it up), Cowardly (flees, then
-  takes more). Strengths show when a fight starts, the weakness when you find it. Each death to it
-  adds a strength, up to three, and makes it larger. Their sizes and timings are options too.
-- **Vengeance.** A kill gives its level, `SwornVengeancePct` of it for a Sworn one. The run
-  finishes at the level cap with `VengeanceToFinish`.
-- **Trophies.** A kill drops a trophy of its newest strength: one star per strength, one more if
-  Sworn, up to three. Trophies work from the bags while the run lasts and all of them add up, up
-  to `TrophyMax` carried; another waits for room. They are soulbound and cannot be banked, sold,
-  traded or mailed; they can be destroyed. A run that ends unfinished takes them away.
-- **Nemesis Charm.** On a finish, the best trophy of each kind adds its stars to that effect's rank
-  on the charm, up to 5. The charm is kept for good, works from the bags, cannot leave them or be
-  destroyed, and comes back if lost (by mail when the bags are full). It stacks with trophies.
-- **Star values** (`Star*`), the same for a trophy and a charm rank: haste 0.8%, armor 2%,
-  resistance to every school 6, critical strike 0.4%, maximum health 1.2%, attack power and spell
-  power 1.2%, primary stats 0.8%. They are stat changes, not auras. The items carry
-  no stats of their own; the addon's tooltip shows what they give on your realm.
-- **Addon.** The tracker counts Vengeance and lists each nemesis on hover (title, what you have
-  learned, where it lives); the world map shows a skull where each lives; the target frame shows
-  its title.
+#### Getting a nemesis
+
+There are two ways.
+
+- **Marked.** The creature that kills you is marked. It becomes a rare elite two levels above you.
+- **Sworn.** On a Nemesis run you learn *Swear Vendetta* (instant, 30 yards). Cast it on a creature
+  to make it your nemesis on purpose. A Sworn nemesis fights four levels above you and starts
+  stronger, with Bloodlust and one more strength. It pays more for the kill. The target must be
+  in the open world, can't be an elite or a boss, and can be no more than five levels below you.
+  You can have one Sworn nemesis at a time, and the spell has a 30-minute cooldown.
+
+Deaths in dungeons and raids don't make a nemesis, and neither do deaths to elites, bosses, pets,
+totems or summoned creatures.
+
+#### What you see
+
+Your nemesis is a private copy of the creature that only you can see and fight. The original is
+hidden from you, while everyone else sees and fights it as it always was. The copy appears when
+you come within sight of where it lives, and leaves when you go. It wears a red arrow over its
+head, a rare elite border and a title on your target frame, and it has a dot on your minimap. Its
+level is real, so the fight has the misses, dodges and resists of a higher-level foe. It keeps
+that lead as you level.
+
+#### Strengths and weaknesses
+
+Every nemesis has at least one strength and exactly one weakness. Its strengths show the first
+time you fight it; its weakness shows when you find it. Each time it kills you again, it grows
+larger (up to twice its size) and gains another strength, up to three.
+
+| Strength | Effect |
+| --- | --- |
+| Bloodlust | Attacks and casts 30% faster |
+| Ironhide | Takes 25% less physical damage |
+| Spellward | Takes 25% less spell damage |
+| Venomous | Its hits poison you for 2% of your health every 2 seconds, for 6 seconds |
+| Unyielding | Deals 25% more damage below 30% health |
+| Warband | Calls two of its kind to its side, once a fight |
+| Relentless | Regains 5% of its health a second out of combat |
+
+| Weakness | Effect |
+| --- | --- |
+| A school (Fire, Frost, Shadow, Nature, Arcane or Holy) | Takes 50% more damage from it |
+| Brittle | A stun ends its Unyielding rage, and it takes 20% more damage for 8 seconds |
+| Cowardly | Flees at 20% health for 6 seconds, then takes 30% more damage |
+
+#### Slaying a nemesis
+
+Kill it yourself or with your pet. The kill pays:
+
+- **Experience.** An elite's experience for its level, plus a bonus: a quarter of a level for a
+  Marked nemesis, half a level for a Sworn one. The bonus isn't paid at the level cap.
+- **Loot.** Classless gear at a rare's drop chance, heirloom roll included. A Sworn nemesis always
+  drops a piece.
+- **Vengeance.** Its level, or one and a half times its level if it was Sworn.
+- **A trophy** (below).
+
+If you are dead when it falls, it stays your nemesis.
+
+#### Finishing the run
+
+Reach level 80 with **500 Vengeance**. Both are needed: reaching 80 first doesn't end the run, it
+ends the moment your Vengeance reaches 500. Since a nemesis's level follows yours, the same kill is
+worth more later in the run.
+
+#### Trophies
+
+Every nemesis you slay drops a trophy into your bags, named for one of its strengths: its newest
+one. A trophy has a star for each strength the nemesis had, plus one if it was Sworn, up to three.
+Each effect has a value per star:
+
+| Trophy of | Gives, per star |
+| --- | --- |
+| Bloodlust | 0.8% haste |
+| Ironhide | 2% armor |
+| Spellward | 6 resistance to every school |
+| Venomous | 0.4% critical strike chance |
+| Unyielding | 1.2% maximum health |
+| Warband | 1.2% attack power and spell power |
+| Relentless | 0.8% to all primary stats |
+
+So a Trophy of Bloodlust III gives 2.4% haste. Trophies work from your bags for the rest of the
+run; nothing is equipped. Every trophy you carry counts, so four Bloodlust trophies give four
+trophies' worth of haste. You can carry four. A fifth waits until you destroy one, and the same
+goes for one that arrives when your bags are full.
+
+Trophies stay in your bags. They can't be banked, sold, traded, mailed or auctioned, only
+destroyed. They only work on the run, and a run that ends without finishing (a Rebirth included)
+takes them away.
+
+#### The Nemesis Charm
+
+Finishing a Nemesis run turns your trophies into something permanent. For each kind of trophy
+you hold, the best one adds its stars to that effect's rank on your **Nemesis Charm**. Each effect
+on the charm goes up to rank 5. Other trophies of the same kind add nothing, and all of them are
+used up.
+
+The charm gives its ranks at the same per-star values, all the time, on every run and off them. It
+stacks with the trophies of a later run. It sits in your bags like a trophy, can't leave them, and
+can't be destroyed. If it is ever missing it is made again, or mailed to you when your bags are full.
+Filling it takes several finishes across Rebirths. A full charm gives 4% haste, 10% armor, 30
+resistance to every school, 2% critical strike chance, 6% maximum health, 6% attack power and spell
+power, and 4% primary stats.
+
+Trophies and the charm change your stats directly rather than through a buff, so nothing can be
+clicked off. Their items carry no stats of their own; the addon's tooltip shows what each gives on
+your realm.
+
+#### In the addon
+
+- The challenge tracker counts your Vengeance. Hover it for each nemesis: its title, Marked or
+  Sworn, how far above you it fights, what you have learned of it, and where it lives.
+- The world map shows a skull where each nemesis lives.
+- Slaying a nemesis and swearing a vendetta each show a banner.
+
+#### Configuration
+
+The numbers above are the defaults. Each is a `ClasslessWildcard.Nemesis.*` option in the
+configuration file, listed under [Configuration](#configuration).
 
 ### Reward abilities
 
@@ -840,7 +931,14 @@ documented inline and prefixed `ClasslessWildcard.`. The common ones:
 | `Nemesis.SwornCooldownMinutes` / `SwornLevelsBelow` | `30` / `5` | Swear Vendetta's cooldown and reach |
 | `Nemesis.VengeanceToFinish` / `SwornVengeancePct` | `500` / `150` | The goal; a Sworn kill's Vengeance, % of its level |
 | `Nemesis.TrophyMax` | `4` | Trophies carried at once |
-| `Nemesis.Star*` | see Nemesis | One star's worth in each effect |
+| `Nemesis.BloodlustPct` / `IronhidePct` / `SpellwardPct` | `30` / `25` / `25` | Strengths: faster attacks and casts; less physical; less spell damage |
+| `Nemesis.VenomousPct` / `VenomousSeconds` | `2` / `6` | Poison: % of health every 2 seconds, and how long |
+| `Nemesis.UnyieldingPct` / `UnyieldingBelowPct` | `25` / `30` | More damage, below this % health |
+| `Nemesis.WarbandCount` / `RelentlessPct` | `2` / `5` | Creatures called; % health a second out of combat |
+| `Nemesis.WeakSchoolPct` | `50` | More damage from its weak school |
+| `Nemesis.BrittlePct` / `BrittleSeconds` | `20` / `8` | More damage after a stun, and for how long |
+| `Nemesis.CowardlyPct` / `CowardlyFleePct` / `CowardlyFleeSeconds` | `30` / `20` / `6` | More damage once fled; when it flees, and how long |
+| `Nemesis.Star*` | see [Trophies](#trophies) | One star's worth in each trophy and charm effect |
 | `NpcEntry` | `990100` | Hero Advancement NPC entry |
 
 Any spell or talent's rarity, cost, roll weight and availability can be overridden in the

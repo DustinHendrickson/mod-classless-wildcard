@@ -23,6 +23,7 @@
 class Player;
 class Creature;
 class Unit;
+struct Position;
 
 class ClasslessMgr
 {
@@ -264,7 +265,10 @@ public:
     static ObjectGuid NemesisCopyOwner(Creature const* creature, uint32* spawnId = nullptr);
     // Is this the original of one of this Hero's nemeses (hidden from them)?
     bool IsNemesisOriginalOf(Player* viewer, Creature const* creature);
-    Creature* SpawnNemesisCopy(Player* player, uint32 spawnId, ClasslessWildcard::NemesisMark const& mark);
+    // `at`: where it appears, when not at its spawn point (a vendetta sworn
+    // on it where it stands). It goes home to its spawn point either way.
+    Creature* SpawnNemesisCopy(Player* player, uint32 spawnId, ClasslessWildcard::NemesisMark const& mark,
+                               Position const* at = nullptr);
 
     // Swear Vendetta (PLAN-nemesis.md section 2): a stock dummy spell nothing
     // else uses, "Test Whelp Net (Dummy)", named and iconed by the client
@@ -288,7 +292,7 @@ public:
     // What it says to its Hero, and to no one else: when a fight with it
     // starts, when it kills them again, and when it dies. A creature that
     // talks says it; a beast or an elemental emotes.
-    enum class NemesisMoment : uint8 { Engage, Gloat, Death };
+    enum class NemesisMoment : uint8 { Engage, Gloat, Death, Sworn };
     void NemesisTaunt(Player* player, Creature* copy, ClasslessWildcard::NemesisMark const& mark, NemesisMoment moment);
 
     // ---- Vengeance, trophies, the Nemesis Charm (PLAN-nemesis.md section 6) ----
@@ -411,6 +415,12 @@ public:
     // 10828, the impact of 50444) and the level-up glow on the Hero (6375,
     // the cast kit of Level Up 24312).
     static constexpr uint32 NEMESIS_SLAIN_KIT = 10828;
+    // Swear Vendetta: Challenging Shout's war cry on the Hero (SpellVisualKit
+    // 350), and on the nemesis as it takes the creature's place, Mark of
+    // Blood's burst (10648) and Bloodlust's fury (6746)
+    static constexpr uint32 VENDETTA_SHOUT_KIT = 350;
+    static constexpr uint32 VENDETTA_MARK_KIT = 10648;
+    static constexpr uint32 VENDETTA_FURY_KIT = 6746;
     static constexpr uint32 NEMESIS_TRIUMPH_KIT = 6375;
     // Every Overpower in the library: the stock ranks and the elemental
     // variants. Filled when the library is built.

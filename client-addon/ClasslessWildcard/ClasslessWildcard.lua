@@ -469,7 +469,9 @@ do
             return
         end
         GameTooltip:AddLine(" ")
-        GameTooltip:AddLine(c.detail ~= "" and c.detail or c.rule, 1, 1, 1, true)
+        -- the rule alone: the full text is on the challenge page, and a
+        -- tooltip line with line breaks in it stops wrapping
+        GameTooltip:AddLine(c.rule, 1, 1, 1, true)
         GameTooltip:AddLine(" ")
         local unlimited = CW.Unlimited(s.livesMax)
         GameTooltip:AddDoubleLine("Lives", unlimited and "Unlimited" or ((s.lives or 0) .. " of " .. (s.livesMax or 0) .. " left"),
@@ -2018,14 +2020,14 @@ do
 
         -- how it plays
         y = PlaceHeader(fly.hPlay, y)
-        fly.detail:SetText(c.detail ~= "" and c.detail or c.rule)
+        fly.detail:SetText(CW.FormatChallengeText(c.detail ~= "" and c.detail or c.rule))
         Place(fly.detail, 0, y)
         y = y + H(fly.detail, 48) + 18
 
         -- tips: what actually helps under this rule
         if (c.tips or "") ~= "" then
             y = PlaceHeader(fly.hTips, y)
-            fly.tips:SetText(c.tips)
+            fly.tips:SetText(CW.FormatChallengeText(c.tips))
             Place(fly.tips, 0, y)
             fly.tips:Show()
             y = y + H(fly.tips, 48) + 18
@@ -8573,7 +8575,7 @@ rvFX.tiers = {
 -- limit. Nothing on it takes the mouse, so it never blocks a click.
 rvFX.NK = { IN = 0.22, HOLD = 4.6, OUT = 1.2, GONG = "Sound\\Doodad\\G_GongTroll01.wav",
             CRY = "Sound\\Spells\\Bloodlust_player_cast_head.wav", CRY_AT = 0.3 }
-function CW.NemesisSlain(p)
+function CW.NemesisBannerFrame()
     local NK = rvFX.NK
     local B = NK.frame
     if not B then
@@ -8624,6 +8626,20 @@ function CW.NemesisSlain(p)
         B:SetScript("OnUpdate", CW.NemesisBannerTick)
         NK.frame = B
     end
+    return B
+end
+-- the banner shown: the slam, its first sound now and its second at CRY_AT
+function CW.NemesisBannerShow(B, first, second)
+    B.cry = second
+    B.t, B.cried = 0, nil
+    B:SetAlpha(0)
+    B:Show()
+    if PlaySoundFile then pcall(PlaySoundFile, first) end
+end
+
+function CW.NemesisSlain(p)
+    local NK = rvFX.NK
+    local B = CW.NemesisBannerFrame()
     local back, bonus = tonumber(p[3]) or 0, tonumber(p[4]) or 0
     local gained, total, need = tonumber(p[5]) or 0, tonumber(p[6]) or 0, tonumber(p[7]) or 0
     local trophy = tonumber(p[8]) or 0
@@ -8640,10 +8656,22 @@ function CW.NemesisSlain(p)
     else
         B.trophy:SetText("")
     end
-    B.t, B.cried = 0, nil
-    B:SetAlpha(0)
-    B:Show()
-    if PlaySoundFile then pcall(PlaySoundFile, NK.GONG) end
+    CW.NemesisBannerShow(B, NK.GONG, NK.CRY)
+end
+
+-- A vendetta sworn: the same banner, for the oath. "NV|name|level|title".
+-- War drums, then Mark of Blood's cry.
+rvFX.NK.DRUMS = "Sound\\Event Sounds\\Event_wardrum_ogre.wav"
+rvFX.NK.BLOOD = "Sound\\Spells\\DeathKnight_MarkofBlood.wav"
+function CW.VendettaSworn(p)
+    local NK = rvFX.NK
+    local B = CW.NemesisBannerFrame()
+    B.title:SetText("Vendetta Sworn")
+    B.name:SetText((p[2] or "") .. ((p[4] or "") ~= "" and (", " .. p[4]) or ""))
+    B.xp:SetText("A level " .. (tonumber(p[3]) or 0) .. " rare elite in a blood fury")
+    B.head:SetText("Slay it for Vengeance and a trophy")
+    B.trophy:SetText("")
+    CW.NemesisBannerShow(B, NK.DRUMS, NK.BLOOD)
 end
 
 function CW.NemesisBannerTick(self, dt)
@@ -8652,7 +8680,7 @@ function CW.NemesisBannerTick(self, dt)
     local t = self.t
     if not self.cried and t >= NK.CRY_AT then
         self.cried = true
-        if PlaySoundFile then pcall(PlaySoundFile, NK.CRY) end
+        if PlaySoundFile then pcall(PlaySoundFile, self.cry or NK.CRY) end
     end
     local alpha, scale
     if t < NK.IN then
@@ -10089,6 +10117,8 @@ local function HandleMessage(msg)
         CW.ReadNemesisCharm(p)
     elseif kind == "NK" then
         CW.NemesisSlain(p)
+    elseif kind == "NV" then
+        CW.VendettaSworn(p)
     elseif kind == "APA" or kind == "APT" or kind == "APW" or kind == "APE" then
         CW.ReadArchPlan(kind, p)
     elseif kind == "AMA" or kind == "AMT" or kind == "AME" then
@@ -10766,6 +10796,15 @@ function CW.NemesisBorder(frame, forceNormal, fromStock)
     end
 end
 -- "0xGUID=title,...": the Hero's own nemeses, and what each is called
+-- A challenge's long text, as the page draws it: the server marks a new
+-- paragraph with " ^ " and a heading with ~Words~ (one message cannot carry a
+-- line break or a colour code).
+function CW.FormatChallengeText(s)
+    s = string.gsub(s or "", "%s*%^%s*", "\n\n")
+    s = string.gsub(s, "~([^~]+)~%s*", "|cffffd100%1|r\n")
+    return s
+end
+
 function CW.ReadNemesisGuids(list)
     local set = {}
     for item in string.gmatch(list or "", "[^,]+") do

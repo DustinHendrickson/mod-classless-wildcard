@@ -2331,6 +2331,13 @@ def test_challenge_runs(h):
     CW.TrackerTooltip(tr)
     tip = [str(g.TIP[i]) for i in range(1, len(g.TIP) + 1)]
     h.check("Vengeance 38 of 500" in tip, "and its card does: %r" % tip[-4:])
+    # the card shows the rule, never the page's long text: a tooltip line with
+    # line breaks in it stops wrapping and runs across the screen
+    h.rt.execute("ClasslessWildcard_API.challengesById[1].detail = '~Your nemesis~ It waits. ^ It grows.'")
+    CW.TrackerTooltip(tr)
+    tip = [str(g.TIP[i]) for i in range(1, len(g.TIP) + 1)]
+    h.check(not any("It waits" in t or chr(10) in t for t in tip),
+            "the tracker's card leaves the page's text to the page: %r" % [t for t in tip if "wait" in t])
     h.rt.execute("ClasslessWildcard_API.challengesById[1].vengeance = 500")
     CW.RunTooltip(CW.runBadge)
     tip = [str(g.TIP[i]) for i in range(1, len(g.TIP) + 1)]
@@ -3204,6 +3211,22 @@ def test_nemesis_slain(h):
     for _ in range(60):
         tick(b, 0.1)
     h.check(b["__shown"] is False, "it leaves on its own after a few seconds")
+    # a vendetta sworn: the same banner, its own words and sounds
+    b["__shown"] = False
+    h.rt.execute("SOUNDS = {}")
+    h.recv("NV|Diseased Timber Wolf|9|Bloodsworn")
+    h.check(b["__shown"] is True and str(b.title["__text"]) == "Vendetta Sworn"
+            and str(b.name["__text"]) == "Diseased Timber Wolf, Bloodsworn"
+            and str(b.xp["__text"]) == "A level 9 rare elite in a blood fury" and str(b.trophy["__text"]) == "",
+            "NV shows the oath: %r / %r / %r" % (b.title["__text"], b.name["__text"], b.xp["__text"]))
+    h.check(any("Event_wardrum_ogre" in s for s in snd()) and not any("MarkofBlood" in s for s in snd()),
+            "war drums at once: %s" % snd())
+    tick(b, 0.4)
+    h.check(any("MarkofBlood" in s for s in snd()) and not any("Bloodlust" in s for s in snd()),
+            "then Mark of Blood's cry, not the kill's: %s" % snd())
+    for _ in range(60):
+        tick(b, 0.1)
+    h.check(b["__shown"] is False, "and it leaves on its own")
     h.recv("NK|Murloc Forager|0|300|9|71|500|0")
     h.check(str(b.xp["__text"]) == "+300 experience for the kill" and str(b.trophy["__text"]) == "",
             "a nemesis that took nothing and dropped nothing: %r / %r" % (b.xp["__text"], b.trophy["__text"]))
@@ -3213,6 +3236,10 @@ def test_nemesis_slain(h):
 def test_nemesis_titles_and_charms(h):
     """A nemesis's title on the target frame and tooltip; trophy and charm tooltips; map pins."""
     print("--- nemesis titles, trophy and charm tooltips, and the map pins")
+    NL = chr(10)
+    fmt = str(h.rt.eval('ClasslessWildcard_API.FormatChallengeText("~Your nemesis~ It waits. ^ It grows. ^ ~The kill~ Kill it.")'))
+    h.check(fmt == "|cffffd100Your nemesis|r" + NL + "It waits." + NL + NL + "It grows." + NL + NL + "|cffffd100The kill|r" + NL + "Kill it.",
+            "long challenge text breaks into paragraphs under gold headings: %r" % fmt)
     nemesis = "0xF130001234000042"
     h.rt.execute("UNITS.target = { guid = '%s', class = 'normal' }" % nemesis)
     h.recv("NG|%s=the Bloodmad" % nemesis)

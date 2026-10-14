@@ -782,10 +782,13 @@ SPELL_RENAMES = {
 # 36779 is Swear Vendetta (ClasslessMgr::SWEAR_VENDETTA_SPELL), a stock dummy:
 # its cooldown drawn (29 RecoveryTime, ms; the server takes the realm's own from
 # Nemesis.SwornCooldownMinutes, default 30), Hunter's Mark's look when it lands
-# (131 SpellVisual), and its second target cleared (89 EffectImplicitTargetB:
-# 38 looks for a nearby creature by script conditions it has none of).
+# (131 SpellVisual), its second target cleared (89 EffectImplicitTargetB: 38
+# looks for a nearby creature by script conditions it has none of), and two
+# requirements of the stock row cleared, as the server clears them: a target
+# below 20% health (21 TargetAuraState 2, Execute's "You can't do that yet")
+# and one area group (225 AreaGroupId 1).
 SPELL_FIELD_OVERRIDES = {
-    36779: {29: 30 * 60 * 1000, 131: 3239, 89: 0},
+    36779: {29: 30 * 60 * 1000, 131: 3239, 89: 0, 21: 0, 225: 0},
 }
 
 
