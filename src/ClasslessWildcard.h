@@ -233,6 +233,7 @@ namespace ClasslessWildcard
     // and the experience it took, which comes back when one of them dies.
     struct NemesisMark
     {
+        uint32 entry = 0;     // what kind it is: its name, and the head it gives
         uint8 levels = 0;
         uint8 kills = 0;
         uint32 stolen = 0;
@@ -366,7 +367,8 @@ namespace ClasslessWildcard
         uint32 runData = 0;
         uint32 shards = 0;
         uint8  extraLife = 0;
-        std::unordered_map<uint32, NemesisMark> nemeses;  // by creature entry
+        std::unordered_map<uint32, NemesisMark> nemeses;  // by spawn id: the one creature that killed you
+        uint32 nemesisOldXp = 0;         // experience held by marks saved per kind, before marks were per creature
         std::set<uint32> nemesisHeads;   // kinds slain while marked, by entry: the run's heads
         std::unordered_map<uint8, std::pair<uint8, bool>> runBest;  // challenge -> (level reached, finished)
         uint32 hunterTimerMs = 0;        // runtime: Pursued's clock

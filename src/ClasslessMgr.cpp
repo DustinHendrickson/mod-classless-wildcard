@@ -1125,6 +1125,7 @@ void ClasslessMgr::BuildLibrary()
     LoadArchetypes();
     StripSpellTools();
     GateOverpowerOnDodge();
+    PrepareNemesisTrack();
     LoadTalentReach();
     _libraryBuilt = true;
 
@@ -3239,9 +3240,9 @@ namespace
         // line (a forged recipe flagged `reward`), how the rule plays in full, and tips. Lives follow how often the rule itself kills:
         // five where the world is turned up, three where the fight changes shape, one only where
         // the rule IS death. The list is in the order the picker shows it.
-        { 1,  "nemesis",         "Nemesis",         UNLIMITED_LIVES, "Unlimited lives. Whatever kills you takes the experience in your bar, gains five levels and grows. Slay five different nemeses and reach level 80 to finish.", 500, 186, "mark_of_the_nemesis",
-          "You have unlimited lives on this run. A creature that kills you becomes your nemesis and takes all the experience in your current level's bar, though never the level itself. Every creature of that kind gains five levels, elite health and damage, and grows larger, for the rest of the run. Each time that kind kills you again it gains five more levels, up to thirty, grows larger still and takes your bar again. Kill one and the mark is lifted, all the experience that kind took comes back to you, and you take its head. To finish, reach level 80 holding five heads, each from a different kind of creature. Reaching 80 first does not end the run, it ends the moment the fifth head is yours. Pets, totems and summoned creatures are never marked.",
-          "Remember what killed you. Avoid that kind of creature until you are ready, then hunt one down to take your experience back and its head. A kind you already have a head from earns no second one, so five heads means falling to five different kinds and coming back for each. Every death to the same kind makes it stronger and costs you another bar. Be careful in places full of the same creature, since every one of them carries the mark." },
+        { 1,  "nemesis",         "Nemesis",         UNLIMITED_LIVES, "Unlimited lives. The creature that kills you takes the experience in your bar, gains five levels and grows. Slay five nemeses of different kinds and reach level 80 to finish.", 500, 186, "mark_of_the_nemesis",
+          "You have unlimited lives on this run. The creature that kills you becomes your nemesis and takes all the experience in your current level's bar, though never the level itself. That one creature gains five levels, elite health and damage, and grows larger, and it keeps them for the rest of the run, even after it respawns. It shows on your minimap. Each time it kills you again it gains five more levels, up to thirty, grows larger still and takes your bar again. Kill it and the mark is lifted, all the experience it took comes back to you, and you take its head. To finish, reach level 80 holding five heads, each from a different kind of creature. Reaching 80 first does not end the run, it ends the moment the fifth head is yours. Deaths in dungeons and raids make no nemesis, and neither do deaths to elites, bosses, pets, totems or summoned creatures.",
+          "Remember what killed you and where. Your nemesis respawns where it always does, so stay clear of it until you are ready, then go back and kill it to take your experience back and its head. A kind you already have a head from earns no second one, so five heads means five nemeses of different kinds. Every death to the same nemesis makes it stronger and costs you another bar. Other creatures of its kind are not marked." },
         { 2,  "elite_world",     "Elite World",     5, "Every enemy you fight is an elite, with triple health and double damage.", 750, 187, "giantsbane",
           "The moment an enemy engages you or your pet it gains triple health, and every hit it lands on you or your pet deals double damage. This applies to every creature in the world, dungeons included. Pull one at a time, and use every stun, slow and snare you own.",
           "Pull one enemy at a time and rest between fights. Stuns, fears, slows and snares matter far more than usual. Anything that would be a fair fight on your own is now a group fight, so find others for it." },
@@ -3375,6 +3376,8 @@ bool ClasslessMgr::StartRun(Player* player, uint8 challengeId, std::string* err)
     }
     st.lives = st.livesMax;
     st.runData = st.run == uint8(ChallengeId::Pursued) ? NextHunterIn() : 0;
+    for (auto const& [spawnId, mark] : st.nemeses)
+        ClearNemesisTrack(player, spawnId);
     st.nemeses.clear();
     SaveNemeses(player->GetGUID(), st);
     st.nemesisHeads.clear();
@@ -3534,6 +3537,8 @@ void ClasslessMgr::EndRun(Player* player, bool finished)
     st.lives = 0;
     st.livesMax = 0;
     st.runData = 0;
+    for (auto const& [spawnId, mark] : st.nemeses)
+        ClearNemesisTrack(player, spawnId);
     st.nemeses.clear();
     SaveNemeses(player->GetGUID(), st);
     st.nemesisHeads.clear();
@@ -3618,20 +3623,30 @@ void ClasslessMgr::ApplyNemesisTo(Creature* creature, NemesisMark const& mark)
     uint8 const level = uint8(std::min<uint32>(uint32(base) + mark.levels, NEMESIS_LEVEL_CAP));
     CW_ReLevelCreature(creature, level, true);
     // larger with every death, against the creature's own size, so a big
-    // kind stays big and a small one grows from small
+    // creature stays big and a small one grows from small
     uint32 const deaths = std::max<uint32>(mark.kills, 1);
     float const grow = std::min(NEMESIS_SCALE_FIRST + NEMESIS_SCALE_PER_DEATH * float(deaths - 1), NEMESIS_SCALE_MAX);
     creature->SetObjectScale(creature->GetNativeObjectScale() * grow);
     applied = { mark.levels, mark.kills };
 }
 
+// A nemesis is the one creature that killed the Hero, held by its spawn id so
+// it is the same creature after it respawns. Something without a spawn of its
+// own (a pet, a totem, a summon) cannot be one. Nor can a dungeon or raid
+// creature, or one that is already elite or a boss: those deaths are the
+// content working as meant, not a creature that got the better of the Hero.
 std::string ClasslessMgr::MarkNemesis(Player* player, Creature* killer)
 {
-    // a pet or a summon is somebody's, not a kind of creature that can grow
-    if (!killer || killer->IsPet() || killer->IsTotem() || killer->GetOwnerGUID())
+    if (!killer || killer->IsPet() || killer->IsTotem() || killer->GetOwnerGUID() || !killer->GetSpawnId())
         return "";
+    if (killer->GetMap()->IsDungeon())
+        return "Deaths in dungeons and raids make no nemesis.";
+    if (killer->isElite() || killer->isWorldBoss() || killer->IsDungeonBoss())
+        return "Elites and bosses make no nemesis.";
+
     CharState& st = GetState(player);
-    NemesisMark& mark = st.nemeses[killer->GetEntry()];
+    NemesisMark& mark = st.nemeses[killer->GetSpawnId()];
+    mark.entry = killer->GetEntry();
     mark.levels = uint8(std::min<uint32>(uint32(mark.levels) + NEMESIS_LEVELS_PER_KILL, 30));
     if (mark.kills < 255)
         ++mark.kills;
@@ -3649,16 +3664,16 @@ std::string ClasslessMgr::MarkNemesis(Player* player, Creature* killer)
     if (!took)
         return Acore::StringFormat("{} is now level {} and elite. It remembers you.",
                                    killer->GetName(), uint32(killer->GetLevel()));
-    return Acore::StringFormat("{} takes {} experience, and is now level {} and elite. Kill one to take it all back.",
+    return Acore::StringFormat("{} takes {} experience, and is now level {} and elite. Kill it to take it all back.",
                                killer->GetName(), took, uint32(killer->GetLevel()));
 }
 
 bool ClasslessMgr::ApplyNemesis(Player* player, Creature* creature)
 {
     CharState* st = player ? FindState(player) : nullptr;
-    if (!st || st->run != uint8(ChallengeId::Nemesis) || !creature)
+    if (!st || st->run != uint8(ChallengeId::Nemesis) || !creature || !creature->GetSpawnId())
         return false;
-    auto itr = st->nemeses.find(creature->GetEntry());
+    auto itr = st->nemeses.find(creature->GetSpawnId());
     if (itr == st->nemeses.end())
         return false;
     ApplyNemesisTo(creature, itr->second);
@@ -3668,17 +3683,18 @@ bool ClasslessMgr::ApplyNemesis(Player* player, Creature* creature)
 void ClasslessMgr::NemesisSlain(Player* player, Creature* creature)
 {
     CharState* st = player ? FindState(player) : nullptr;
-    if (!st || st->run != uint8(ChallengeId::Nemesis) || !creature)
+    if (!st || st->run != uint8(ChallengeId::Nemesis) || !creature || !creature->GetSpawnId())
         return;
-    auto itr = st->nemeses.find(creature->GetEntry());
+    auto itr = st->nemeses.find(creature->GetSpawnId());
     if (itr == st->nemeses.end())
         return;
-    // Everything that kind took comes back, exactly: GiveXP runs none of the
-    // XP hooks (Rebirth's rate is applied by the kill and quest code that
-    // calls it), and with no victim there is no rested bonus either.
+    // Everything it took comes back, exactly: GiveXP runs none of the XP
+    // hooks (Rebirth's rate is applied by the kill and quest code that calls
+    // it), and with no victim there is no rested bonus either.
     uint32 const back = itr->second.stolen;
     st->nemeses.erase(itr);
     SaveNemeses(player->GetGUID(), *st);
+    ClearNemesisTrack(player, creature->GetSpawnId());
     bool const newHead = st->nemesisHeads.insert(creature->GetEntry()).second;
     if (newHead)
         SaveNemesisHeads(player->GetGUID(), *st);
@@ -3713,6 +3729,62 @@ bool ClasslessMgr::RunGoalMet(CharState const& st) const
 void ClasslessMgr::ForgetCreature(ObjectGuid guid)
 {
     _nemesisApplied.erase(guid);
+}
+
+// Each nemesis the Hero can see is grown before it engages, and carries the
+// Hero's own stalked aura so it is a dot on their minimap. One respawned since
+// is the same spawn, so it is grown again here. One already fighting someone
+// is left at its size until it engages the Hero: growing it rebuilds its
+// health.
+void ClasslessMgr::NemesisTick(Player* player)
+{
+    CharState* st = FindState(player);
+    if (!st || st->run != uint8(ChallengeId::Nemesis) || !player->IsInWorld())
+        return;
+
+    if (st->nemesisOldXp)
+    {
+        uint32 const back = st->nemesisOldXp;
+        st->nemesisOldXp = 0;
+        SaveNemeses(player->GetGUID(), *st);   // and the old rows go
+        player->GiveXP(back, nullptr);
+        Msg(player, Acore::StringFormat("Your old nemesis marks are lifted, and the {} experience they took "
+            "comes back to you.", back));
+        PushRunTracker(player);
+    }
+
+    float const sight = player->GetVisibilityRange();
+    auto& spawns = player->GetMap()->GetCreatureBySpawnIdStore();
+    for (auto const& [spawnId, mark] : st->nemeses)
+    {
+        auto range = spawns.equal_range(spawnId);
+        for (auto itr = range.first; itr != range.second; ++itr)
+        {
+            Creature* creature = itr->second;
+            if (!creature->IsAlive() || !player->IsWithinDist(creature, sight))
+                continue;
+            if (!creature->IsInCombat())
+                ApplyNemesisTo(creature, mark);
+            if (!_nemesisTrackReady)
+                continue;
+            // the aura lasts 30 seconds, so a Hero who walks away leaves no mark behind
+            if (Aura* aura = creature->GetAura(NEMESIS_TRACK_SPELL, player->GetGUID()))
+                aura->RefreshDuration();
+            else if (player->AddAura(NEMESIS_TRACK_SPELL, creature))
+                // another Hero's mark may have set the flag already, and an
+                // unchanged field is never sent: send it anyway
+                creature->ForceValuesUpdateAtIndex(UNIT_DYNAMIC_FLAGS);
+        }
+    }
+}
+
+void ClasslessMgr::ClearNemesisTrack(Player* player, uint32 spawnId)
+{
+    if (!player->IsInWorld())
+        return;
+    auto range = player->GetMap()->GetCreatureBySpawnIdStore().equal_range(spawnId);
+    for (auto itr = range.first; itr != range.second; ++itr)
+        itr->second->RemoveAurasDueToSpell(NEMESIS_TRACK_SPELL, player->GetGUID());
 }
 
 // ---- the hunter ------------------------------------------------------------
@@ -4087,16 +4159,25 @@ void ClasslessMgr::LoadCharacter(Player* player, CharState& st)
     }
 
     if (QueryResult result = CharacterDatabase.Query(
-        "SELECT creature_entry, levels, kills, stolen FROM cw_char_nemeses WHERE guid = {}", guid))
+        "SELECT spawn_id, creature_entry, levels, kills, stolen FROM cw_char_nemeses WHERE guid = {}", guid))
     {
         do
         {
             Field* f = result->Fetch();
+            // A row from when a mark lay on a whole kind has no creature to
+            // belong to. Its experience goes back to the Hero (NemesisTick).
+            uint32 const spawnId = f[0].Get<uint32>();
+            if (!spawnId)
+            {
+                st.nemesisOldXp = uint32(std::min<uint64>(uint64(st.nemesisOldXp) + f[4].Get<uint32>(), 0xFFFFFFFF));
+                continue;
+            }
             NemesisMark mark;
-            mark.levels = f[1].Get<uint8>();
-            mark.kills = f[2].Get<uint8>();
-            mark.stolen = f[3].Get<uint32>();
-            st.nemeses[f[0].Get<uint32>()] = mark;
+            mark.entry = f[1].Get<uint32>();
+            mark.levels = f[2].Get<uint8>();
+            mark.kills = f[3].Get<uint8>();
+            mark.stolen = f[4].Get<uint32>();
+            st.nemeses[spawnId] = mark;
         } while (result->NextRow());
     }
 
@@ -4211,10 +4292,10 @@ void ClasslessMgr::SaveNemeses(ObjectGuid guid, CharState const& st)
 {
     uint32 const low = guid.GetCounter();
     CharacterDatabase.Execute("DELETE FROM cw_char_nemeses WHERE guid = {}", low);
-    for (auto const& [entry, mark] : st.nemeses)
+    for (auto const& [spawnId, mark] : st.nemeses)
         CharacterDatabase.Execute(
-            "INSERT INTO cw_char_nemeses (guid, creature_entry, levels, kills, stolen) VALUES ({}, {}, {}, {}, {})",
-            low, entry, uint32(mark.levels), uint32(mark.kills), mark.stolen);
+            "INSERT INTO cw_char_nemeses (guid, spawn_id, creature_entry, levels, kills, stolen) VALUES ({}, {}, {}, {}, {}, {})",
+            low, spawnId, mark.entry, uint32(mark.levels), uint32(mark.kills), mark.stolen);
 }
 
 void ClasslessMgr::SaveNemesisHeads(ObjectGuid guid, CharState const& st)
@@ -5876,6 +5957,30 @@ void ClasslessMgr::GateOverpowerOnDodge()
         }
     LOG_INFO("module.classless", "mod-classless-wildcard: {} Overpower spells open on a dodge, not on combo points",
              _overpowerSpells.size());
+}
+
+// The nemesis minimap mark (NEMESIS_TRACK_SPELL). Passive, the aura is never
+// sent to a client (Aura::CanBeSentToClient), so nobody sees a debuff named
+// "d" on the creature; the stalked handler still sets the tracking flag. A
+// realm whose data has changed that spell gets no minimap mark, rather than
+// whatever the spell has become.
+void ClasslessMgr::PrepareNemesisTrack()
+{
+    _nemesisTrackReady = false;
+    SpellInfo const* info = sSpellMgr->GetSpellInfo(NEMESIS_TRACK_SPELL);
+    bool lone = info != nullptr;
+    for (uint8 i = 0; lone && i < MAX_SPELL_EFFECTS; ++i)
+        lone = i == 0 ? info->Effects[i].Effect == SPELL_EFFECT_APPLY_AURA
+                        && info->Effects[i].ApplyAuraName == SPELL_AURA_MOD_STALKED
+                      : !info->Effects[i].Effect;
+    if (!lone)
+    {
+        LOG_ERROR("module.classless", "mod-classless-wildcard: spell {} is not a lone stalked aura; nemeses "
+                  "will not show on the minimap", NEMESIS_TRACK_SPELL);
+        return;
+    }
+    const_cast<SpellInfo*>(info)->Attributes |= SPELL_ATTR0_PASSIVE;
+    _nemesisTrackReady = true;
 }
 
 // General talents, across classes.

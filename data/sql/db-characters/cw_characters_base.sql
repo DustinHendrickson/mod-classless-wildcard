@@ -40,11 +40,12 @@ CREATE TABLE IF NOT EXISTS `cw_char_runs` (
 
 CREATE TABLE IF NOT EXISTS `cw_char_nemeses` (
   `guid` INT UNSIGNED NOT NULL,
+  `spawn_id` INT UNSIGNED NOT NULL DEFAULT 0 COMMENT 'the creature that killed the Hero (creature.guid); 0 is a mark saved per kind before marks were per creature',
   `creature_entry` INT UNSIGNED NOT NULL,
   `levels` TINYINT UNSIGNED NOT NULL DEFAULT 0,
   `kills` TINYINT UNSIGNED NOT NULL DEFAULT 0,
-  `stolen` INT UNSIGNED NOT NULL DEFAULT 0 COMMENT 'experience this kind took, returned when one dies',
-  PRIMARY KEY (`guid`, `creature_entry`)
+  `stolen` INT UNSIGNED NOT NULL DEFAULT 0 COMMENT 'experience this creature took, returned when it dies',
+  PRIMARY KEY (`guid`, `spawn_id`, `creature_entry`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='Nemesis marks on the live run';
 
 CREATE TABLE IF NOT EXISTS `cw_char_nemesis_heads` (

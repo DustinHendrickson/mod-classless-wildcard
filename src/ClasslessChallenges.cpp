@@ -210,9 +210,9 @@ void ClasslessMgr::PushRunTracker(Player* player)
             a = uint32(st->nemeses.size());
             b = uint32(st->nemesisHeads.size());
             c = NEMESIS_HEADS_TO_FINISH;
-            for (auto const& [entry, mark] : st->nemeses)
+            for (auto const& [spawnId, mark] : st->nemeses)
             {
-                CreatureTemplate const* tmpl = sObjectMgr->GetCreatureTemplate(entry);
+                CreatureTemplate const* tmpl = sObjectMgr->GetCreatureTemplate(mark.entry);
                 std::string item = Acore::StringFormat("{}:{}:{};", TrackerText(tmpl ? tmpl->Name : "Unknown"),
                                                        uint32(mark.levels), mark.stolen);
                 if (list.size() + item.size() > 140)   // the message's own budget
@@ -340,6 +340,9 @@ public:
             return;
         st->ruleTickMs = 0;
 
+        if (st->run == uint8(ChallengeId::Nemesis))
+            sClasslessMgr->NemesisTick(player);
+
         // The sand holds still in battlegrounds and arenas, where deaths are free.
         if (st->run == uint8(ChallengeId::Hourglass) && player->IsAlive()
             && !player->InBattleground() && !player->InArena())
@@ -438,6 +441,8 @@ public:
         _legionCalled.erase(unit->GetGUID());
         _legionSpawn.erase(unit->GetGUID());
         sClasslessMgr->ForgetCreature(unit->GetGUID());
+        // passive, so death alone would leave a corpse on the minimap
+        unit->RemoveAurasDueToSpell(ClasslessMgr::NEMESIS_TRACK_SPELL);
     }
 
 private:

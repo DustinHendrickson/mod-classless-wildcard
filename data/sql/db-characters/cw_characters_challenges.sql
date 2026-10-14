@@ -60,11 +60,12 @@ CREATE TABLE IF NOT EXISTS `cw_char_runs` (
 
 CREATE TABLE IF NOT EXISTS `cw_char_nemeses` (
   `guid` INT UNSIGNED NOT NULL,
+  `spawn_id` INT UNSIGNED NOT NULL DEFAULT 0 COMMENT 'the creature that killed the Hero (creature.guid); 0 is a mark saved per kind before marks were per creature',
   `creature_entry` INT UNSIGNED NOT NULL,
   `levels` TINYINT UNSIGNED NOT NULL DEFAULT 0,
   `kills` TINYINT UNSIGNED NOT NULL DEFAULT 0,
-  `stolen` INT UNSIGNED NOT NULL DEFAULT 0 COMMENT 'experience this kind took, returned when one dies',
-  PRIMARY KEY (`guid`, `creature_entry`)
+  `stolen` INT UNSIGNED NOT NULL DEFAULT 0 COMMENT 'experience this creature took, returned when it dies',
+  PRIMARY KEY (`guid`, `spawn_id`, `creature_entry`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='Nemesis marks on the live run';
 
 CREATE TABLE IF NOT EXISTS `cw_char_nemesis_heads` (
@@ -91,3 +92,26 @@ END//
 DELIMITER ;
 CALL cw_upgrade_char_nemesis_stolen();
 DROP PROCEDURE IF EXISTS cw_upgrade_char_nemesis_stolen;
+
+-- A nemesis is one creature, held by its spawn id. Tables made when a mark lay
+-- on a whole kind get the column here, with 0 on their old rows, which the
+-- module lifts at login and pays back. The guard makes this a no-op where the
+-- column is already there.
+DROP PROCEDURE IF EXISTS cw_upgrade_char_nemesis_spawn;
+DELIMITER //
+CREATE PROCEDURE cw_upgrade_char_nemesis_spawn()
+BEGIN
+    IF NOT EXISTS (SELECT 1 FROM information_schema.COLUMNS
+                   WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'cw_char_nemeses'
+                     AND COLUMN_NAME = 'spawn_id') THEN
+        ALTER TABLE `cw_char_nemeses`
+            ADD COLUMN `spawn_id` INT UNSIGNED NOT NULL DEFAULT 0
+                COMMENT 'the creature that killed the Hero (creature.guid); 0 is a mark saved per kind before marks were per creature'
+                AFTER `guid`,
+            DROP PRIMARY KEY,
+            ADD PRIMARY KEY (`guid`, `spawn_id`, `creature_entry`);
+    END IF;
+END//
+DELIMITER ;
+CALL cw_upgrade_char_nemesis_spawn();
+DROP PROCEDURE IF EXISTS cw_upgrade_char_nemesis_spawn;

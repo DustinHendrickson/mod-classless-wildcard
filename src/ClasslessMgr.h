@@ -224,6 +224,9 @@ public:
     std::string MarkNemesis(Player* player, Creature* killer);
     bool ApplyNemesis(Player* player, Creature* creature);   // on engage; true when it is one
     void NemesisSlain(Player* player, Creature* creature);
+    // Every five seconds on a Nemesis run: each nemesis in sight is grown and
+    // marked on this Hero's minimap.
+    void NemesisTick(Player* player);
     void ForgetCreature(ObjectGuid guid);                    // a scaled creature died
     void HunterTick(Player* player, uint32 diffMs);
     void SpawnHunter(Player* player);
@@ -288,6 +291,12 @@ public:
     static constexpr uint32 OVERPOWER_AURA_STATE = 21;
     // How long a dodge leaves Overpower open: the core's own reactive window.
     static constexpr uint32 OVERPOWER_WINDOW_MS = 5000;
+    // A nemesis on the minimap. 49891 is a stock spell whose only effect is
+    // SPELL_AURA_MOD_STALKED, the tracking half of Hunter's Mark, with no
+    // visual; nothing in the core, its scripts or the world database casts
+    // it. The core sends UNIT_DYNFLAG_TRACK_UNIT only to the caster of such an
+    // aura, so the Hero who carries the mark is the one who sees the dot.
+    static constexpr uint32 NEMESIS_TRACK_SPELL = 49891;
     // Every Overpower in the library: the stock ranks and the elemental
     // variants. Filled when the library is built.
     std::vector<uint32> const& OverpowerSpells() const { return _overpowerSpells; }
@@ -420,6 +429,10 @@ private:
     // OVERPOWER_AURA_STATE as its caster aura state. The client patch makes the
     // same two changes, so this is not conditional.
     void GateOverpowerOnDodge();
+    // Check NEMESIS_TRACK_SPELL is still a lone stalked aura and make it
+    // passive, so the aura never reaches a client as a debuff icon.
+    void PrepareNemesisTrack();
+    bool _nemesisTrackReady = false;
     // Read cw_talent_reach into _talentReach: every rank of every general
     // talent, by operation, to the abilities of other classes it reaches.
     void LoadTalentReach();
@@ -453,6 +466,8 @@ private:
     // Nemesis asks for more: its heads.
     bool RunGoalMet(ClasslessWildcard::CharState const& st) const;
     void ApplyNemesisTo(Creature* creature, ClasslessWildcard::NemesisMark const& mark);
+    // Take this Hero's minimap mark off a nemesis, by spawn id.
+    void ClearNemesisTrack(Player* player, uint32 spawnId);
     // Nemesis levels already applied to a live creature, by guid: a creature
     // engaged twice is not grown twice, and one that died is forgotten.
     std::unordered_map<ObjectGuid, std::pair<uint8, uint8>> _nemesisApplied;   // levels, deaths
