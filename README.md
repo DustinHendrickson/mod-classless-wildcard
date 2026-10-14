@@ -408,8 +408,8 @@ A run is one life under one rule, on the character's own path. Challenge runs st
 
 - **Lives.** Each death costs one, falls and drowning included. Deaths in battlegrounds and arenas,
   and while dueling, are free. At zero, the run ends and you keep everything. A Rebirth also ends a run.
-- **Finish** by reaching the level cap with a life left. Finishing grants the challenge's title
-  and reward ability. Its gold is paid on the first finish only.
+- **Finish** by reaching the level cap with a life left (Nemesis also asks for its Vengeance).
+  Finishing grants the challenge's title and reward ability. Its gold is paid on the first finish only.
 - **Flawless.** Finish without losing a life (on unlimited runs, without dying) for the title
   *the Unbroken* and a third more shards.
 - **Shards.** Paid whenever a run ends: one per level, two per level past 60. 30 shards buy an
@@ -419,12 +419,34 @@ A run is one life under one rule, on the character's own path. Challenge runs st
   Pursued's hunter is on you, your nemeses (named on hover), and Berserker's health band. Drag it
   to move it, click it for the challenge page. Hide or show it under Settings or with `/cw tracker`.
 
+Elite World's elites, a nemesis and Pursued's hunter take their health and damage from the realm's own
+creature rates in `worldserver.conf` (`Rate.Creature.Elite.Elite.*` for elites,
+`Rate.Creature.Elite.RAREELITE.*` for rare elites). A realm that sets every rank to the same rate
+makes them no tougher than a normal creature. Suggested values, each rank tougher than the one
+before (set the `SpellDamage` lines to the same numbers as the `Damage` lines):
+
+```
+Rate.Creature.Normal.HP              = 2
+Rate.Creature.Elite.RARE.HP          = 2.5
+Rate.Creature.Elite.Elite.HP         = 3
+Rate.Creature.Elite.RAREELITE.HP     = 3.5
+Rate.Creature.Elite.WORLDBOSS.HP     = 4
+
+Rate.Creature.Normal.Damage          = 1.5
+Rate.Creature.Elite.RARE.Damage      = 1.75
+Rate.Creature.Elite.Elite.Damage     = 2
+Rate.Creature.Elite.RAREELITE.Damage = 2.25
+Rate.Creature.Elite.WORLDBOSS.Damage = 2.5
+```
+
+These apply to every creature of each rank on the realm, dungeon and raid elites included.
+
 | Challenge       | Lives | Rule                                                                                       | Gold | Title              | Reward           |
 | --------------- | ----- | ------------------------------------------------------------------------------------------ | ---- | ------------------ | ---------------- |
-| Nemesis         | Unlimited | The creature that kills you takes the XP in your bar and gains up to five levels for it (five for a full bar, one for an empty one), becomes elite and grows larger with every death. It keeps the mark when it respawns, wears a red arrow overhead and shows on your minimap. Kill it to get the XP back, plus a tenth of a level per level it gained (up to a full level), and take its head. Finish at level 80 with five heads, each from a different kind. Deaths in dungeons and raids, and to elites and bosses, make no nemesis. | 500  | the Nemesis        | Mark of the Nemesis |
-| Elite World     | 5     | Enemies that fight you have triple health and double damage, damage over time included.    | 750  | Bane of Giants     | Giantsbane       |
-| Legion          | 4     | Each enemy calls two more the first time it engages you.                                   | 650  | the Legionbreaker  | One Against Many |
-| Pursued         | 3     | Every 15 to 30 minutes, an elite hunter two levels above you chases you until one of you dies or you change maps. | 600  | the Hunted         | Turnabout        |
+| Nemesis         | Unlimited | The creature that kills you becomes your nemesis: for you alone, a private copy of it waits where it lives as a rare elite 2 levels above you (`Nemesis.MarkedLevels`), with real higher-level hit tables, a red arrow overhead and a minimap dot. A death takes nothing. It has strengths and a weakness, and grows with every death to it. *Swear Vendetta* makes a Sworn nemesis of a creature you pick. A kill pays elite experience and a share of a level, Vengeance (its level) and a trophy, and drops like a rare. Finish at level 80 with 500 Vengeance (`Nemesis.VengeanceToFinish`). Deaths in dungeons and raids, and to elites and bosses, make no nemesis. Other players see and fight the creature as normal. | 500  | the Nemesis        | Mark of the Nemesis |
+| Elite World     | 5     | Every enemy is an elite for you alone, at the realm's elite rates, with elite XP, rare drop chances and the elite border. Rares are rare elites; enemies already elite are unchanged. Other players see and fight them as normal. | 750  | Bane of Giants     | Giantsbane       |
+| Legion          | 4     | Each enemy calls two more the first time it engages you. They fight only you.              | 650  | the Legionbreaker  | One Against Many |
+| Pursued         | 3     | Every 15 to 30 minutes, a rare elite hunter two levels above you chases you until one of you dies or you change maps. Only you can harm it, and it harms no one else. | 600  | the Hunted         | Turnabout        |
 | Hourglass       | 3     | Level up in time or lose a life: 20 min below 20, 30 min to 60, 45 min after.              | 500  | the Swift          | Rewind           |
 | Glass           | 3     | Half health, a third more damage from you (not your pet).                                 | 400  | the Unshattered    | Shatterpoint     |
 | Spiteful        | 3     | Creatures reflect a fifth of the damage you deal them, past your armor and absorbs.         | 450  | the Scarred        | Spite Mirror     |
@@ -434,6 +456,41 @@ A run is one life under one rule, on the character's own path. Challenge runs st
 | Big Game Hunter | 3     | Normal enemies give no XP. Elites, rares and bosses give full XP, quests give double.      | 400  | the Big Game Hunter | Trophy Hunt     |
 | Dealt Hand      | Unlimited | Wildcard only. No rerolls, starting hand included: you play every ability and talent dealt. | 500  | the Fated          | Loaded Die       |
 | Hardcore        | 1     | One death ends the run, two if you start it holding an extra life.                         | 1000 | the Deathless      | Last Breath      |
+
+### Nemesis
+
+A nemesis is one creature (its spawn), made a private rare elite copy for the Hero it killed; the
+original is hidden from that Hero and untouched for everyone else. Every number below is a
+`ClasslessWildcard.Nemesis.*` option.
+
+- **Marked.** The creature that kills you, `MarkedLevels` above you. A kill pays elite experience
+  and `MarkedBonusXpPct` of a level.
+- **Sworn.** *Swear Vendetta*, taught on the run, marks a creature you target: open world, not an
+  elite or a boss, no more than `SwornLevelsBelow` levels below you, one at a time, every
+  `SwornCooldownMinutes`. It is `SwornLevels` above you with Bloodlust, one more strength and a
+  weakness. A kill pays `SwornBonusXpPct` of a level and always drops a classless piece.
+- **Traits.** Strengths: Bloodlust (faster attacks and casts), Ironhide (less physical damage),
+  Spellward (less spell damage), Venomous (a poison), Unyielding (more damage when low),
+  Warband (calls its kind, `WarbandCount`), Relentless (fast regeneration out of combat). Weaknesses: a
+  school it takes more from, Brittle (a stun ends its rage and opens it up), Cowardly (flees, then
+  takes more). Strengths show when a fight starts, the weakness when you find it. Each death to it
+  adds a strength, up to three, and makes it larger. Their sizes and timings are options too.
+- **Vengeance.** A kill gives its level, `SwornVengeancePct` of it for a Sworn one. The run
+  finishes at the level cap with `VengeanceToFinish`.
+- **Trophies.** A kill drops a trophy of its newest strength: one star per strength, one more if
+  Sworn, up to three. Trophies work from the bags while the run lasts and all of them add up, up
+  to `TrophyMax` carried; another waits for room. They are soulbound and cannot be banked, sold,
+  traded or mailed; they can be destroyed. A run that ends unfinished takes them away.
+- **Nemesis Charm.** On a finish, the best trophy of each kind adds its stars to that effect's rank
+  on the charm, up to 5. The charm is kept for good, works from the bags, cannot leave them or be
+  destroyed, and comes back if lost (by mail when the bags are full). It stacks with trophies.
+- **Star values** (`Star*`), the same for a trophy and a charm rank: haste 0.8%, armor 2%,
+  resistance to every school 6, critical strike 0.4%, maximum health 1.2%, attack power and spell
+  power 1.2%, primary stats 0.8%. They are stat changes, not auras. The items carry
+  no stats of their own; the addon's tooltip shows what they give on your realm.
+- **Addon.** The tracker counts Vengeance and lists each nemesis on hover (title, what you have
+  learned, where it lives); the world map shows a skull where each lives; the target frame shows
+  its title.
 
 ### Reward abilities
 
@@ -777,6 +834,13 @@ documented inline and prefixed `ClasslessWildcard.`. The common ones:
 | `WorldDrops.Enable` / `Chance` | `1` / `1.0` | Classless gear drops, % per kill |
 | `WorldDrops.RareMultiplier` | `5.0` | Drop multiplier for rares and bosses |
 | `WorldDrops.HeirloomChance` | `2.0` | Heirloom %, rares and bosses only |
+| **Nemesis** | | |
+| `Nemesis.MarkedLevels` / `SwornLevels` | `2` / `4` | Levels above the Hero |
+| `Nemesis.MarkedBonusXpPct` / `SwornBonusXpPct` | `25` / `50` | Kill bonus, % of a level |
+| `Nemesis.SwornCooldownMinutes` / `SwornLevelsBelow` | `30` / `5` | Swear Vendetta's cooldown and reach |
+| `Nemesis.VengeanceToFinish` / `SwornVengeancePct` | `500` / `150` | The goal; a Sworn kill's Vengeance, % of its level |
+| `Nemesis.TrophyMax` | `4` | Trophies carried at once |
+| `Nemesis.Star*` | see Nemesis | One star's worth in each effect |
 | `NpcEntry` | `990100` | Hero Advancement NPC entry |
 
 Any spell or talent's rarity, cost, roll weight and availability can be overridden in the

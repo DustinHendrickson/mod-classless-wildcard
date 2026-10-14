@@ -45,6 +45,12 @@ CREATE TABLE IF NOT EXISTS `cw_char_nemeses` (
   `levels` TINYINT UNSIGNED NOT NULL DEFAULT 0,
   `kills` TINYINT UNSIGNED NOT NULL DEFAULT 0,
   `stolen` INT UNSIGNED NOT NULL DEFAULT 0 COMMENT 'experience this creature took, returned when it dies',
+  `kind` TINYINT UNSIGNED NOT NULL DEFAULT 0 COMMENT '0 Marked (it killed the Hero), 1 Sworn (Swear Vendetta)',
+  `strength1` TINYINT UNSIGNED NOT NULL DEFAULT 0 COMMENT 'NemesisStrength, 0 none',
+  `strength2` TINYINT UNSIGNED NOT NULL DEFAULT 0,
+  `strength3` TINYINT UNSIGNED NOT NULL DEFAULT 0,
+  `weakness` TINYINT UNSIGNED NOT NULL DEFAULT 0 COMMENT 'NemesisWeakness',
+  `learned` TINYINT UNSIGNED NOT NULL DEFAULT 0 COMMENT '1 strengths known, 2 weakness known',
   PRIMARY KEY (`guid`, `spawn_id`, `creature_entry`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='Nemesis marks on the live run';
 
@@ -53,6 +59,20 @@ CREATE TABLE IF NOT EXISTS `cw_char_nemesis_heads` (
   `creature_entry` INT UNSIGNED NOT NULL,
   PRIMARY KEY (`guid`, `creature_entry`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='Nemesis heads on the live run: kinds slain while marked';
+
+CREATE TABLE IF NOT EXISTS `cw_char_nemesis_run` (
+  `guid` INT UNSIGNED NOT NULL,
+  `vengeance` INT UNSIGNED NOT NULL DEFAULT 0 COMMENT 'levels of nemeses slain on the live run',
+  `pending` VARCHAR(255) NOT NULL DEFAULT '' COMMENT 'trophies waiting for room, item entries joined by commas',
+  PRIMARY KEY (`guid`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='Nemesis run Vengeance';
+
+CREATE TABLE IF NOT EXISTS `cw_char_nemesis_charm` (
+  `guid` INT UNSIGNED NOT NULL,
+  `effect` TINYINT UNSIGNED NOT NULL COMMENT 'NemesisStrength',
+  `rank` TINYINT UNSIGNED NOT NULL DEFAULT 0 COMMENT '0 to 5',
+  PRIMARY KEY (`guid`, `effect`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='Nemesis Charm ranks, kept for good';
 
 -- (databases created by an older version are upgraded to this shape by
 --  cw_characters_rerolls.sql, which runs after this file)

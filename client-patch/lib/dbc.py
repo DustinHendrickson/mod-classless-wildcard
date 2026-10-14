@@ -764,6 +764,7 @@ SPELL_ICON_COLUMN = 133
 SPELL_ICON_OVERRIDES = {
     75: "Interface\\Icons\\INV_Weapon_Bow_05",   # Auto Shot
     21391: "Interface\\Icons\\Spell_Shadow_Skull",   # the nemesis mark
+    36779: "Interface\\Icons\\Spell_DeathKnight_Vendetta",   # Swear Vendetta
 }
 
 # Stock spells the module uses under a name of its own: id -> (name, tooltip).
@@ -772,7 +773,44 @@ SPELL_ICON_OVERRIDES = {
 # creature's debuffs. The tooltip is what hovering that debuff shows.
 SPELL_RENAMES = {
     21391: ("Nemesis", "This creature killed a Hero and carries their mark."),
+    36779: ("Swear Vendetta", "Swear vendetta on a creature at or near your level. It becomes your Sworn nemesis, "
+                              "for you alone: a rare elite above your level in a blood fury, waiting where it "
+                              "lives. Nemesis runs only, one at a time."),
 }
+
+# Stock spell columns the module needs set to its own values: id -> {column: value}.
+# 36779 is Swear Vendetta (ClasslessMgr::SWEAR_VENDETTA_SPELL), a stock dummy:
+# its cooldown drawn (29 RecoveryTime, ms; the server takes the realm's own from
+# Nemesis.SwornCooldownMinutes, default 30), Hunter's Mark's look when it lands
+# (131 SpellVisual), and its second target cleared (89 EffectImplicitTargetB:
+# 38 looks for a nearby creature by script conditions it has none of).
+SPELL_FIELD_OVERRIDES = {
+    36779: {29: 30 * 60 * 1000, 131: 3239, 89: 0},
+}
+
+
+def set_spell_fields(spell_data: bytes, overrides=None):
+    """Write SPELL_FIELD_OVERRIDES into stock rows. Returns (new_dbc_bytes, changed)."""
+    overrides = SPELL_FIELD_OVERRIDES if overrides is None else overrides
+    record_count, field_count, record_size, string_size = parse_header(spell_data)
+    if field_count != SPELL_FIELDS or record_size != SPELL_FIELDS * 4:
+        raise DbcError("Spell.dbc is not the 3.3.5a layout this patch understands.")
+    records_off = 20
+    strings_off = records_off + record_count * record_size
+    records = bytearray(spell_data[records_off:strings_off])
+    changed = 0
+    for index in range(record_count):
+        base = index * record_size
+        fields = overrides.get(struct.unpack_from("<I", records, base)[0])
+        if not fields:
+            continue
+        before = bytes(records[base:base + record_size])
+        for col, value in fields.items():
+            struct.pack_into("<I", records, base + col * 4, value)
+        if bytes(records[base:base + record_size]) != before:
+            changed += 1
+    header = WDBC_MAGIC + struct.pack("<4I", record_count, field_count, record_size, string_size)
+    return header + bytes(records) + spell_data[strings_off:], changed
 # Spell.dbc's text columns: name, rank, description, tooltip, each 16 locale
 # columns then a flags column (the forged and elemental appenders use the same)
 SPELL_NAME_COLUMN = 136

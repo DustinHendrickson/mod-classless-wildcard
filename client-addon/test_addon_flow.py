@@ -249,6 +249,9 @@ end
 UNITS = {}
 function UnitGUID(u) return UNITS[u] and UNITS[u].guid end
 function UnitClassification(u) return UNITS[u] and UNITS[u].class or "normal" end
+function UnitCanAttack(a, u) return UNITS[u] and UNITS[u].hostile and 1 or nil end
+function UnitPlayerControlled(u) return UNITS[u] and UNITS[u].player and 1 or nil end
+function UnitCreatureType(u) return UNITS[u] and UNITS[u].ctype or "Beast" end
 -- The target frame's border: Blizzard's TargetFrame_CheckClassification, line
 -- for line from FrameXML TargetFrame.lua (3.3.5a), so the addon's hook on it
 -- installs and runs.
@@ -2293,27 +2296,33 @@ def test_challenge_runs(h):
     arg = str(g.LAST_POPUP_ARG)
     h.check(g.LAST_POPUP == "CW_RUN_DEATH" and "The run goes on." in arg and "255" not in arg,
             "a death on it says the run goes on, with no count: %r" % arg)
-    h.recv("RT|1|255|255|1|0|0|0|Timber Wolf:5:300;")
+    h.recv("RT|1|255|255|1|0|500|0|")
+    h.recv("NLB|")
+    h.recv("NL|Timber Wolf|the Bloodmad|Marked|2|?|?|Elwynn Forest|41.5|62.0")
+    h.recv("NLE|")
     tr = CW.tracker
     h.check([bool(tr["pips"][k]["__shown"]) for k in range(1, 7)] == [False, False, False, False, False, True]
             and tr["pips"][6]["gem"]["__shown"] is True,
             "the tracker shows the one full heart too")
     CW.TrackerTooltip(tr)
     tip = [str(g.TIP[i]) for i in range(1, len(g.TIP) + 1)]
-    h.check("Timber Wolf +5 levels" in tip and any("300 XP" in t for t in tip),
-            "the tracker names the nemesis and the experience it holds: %r" % tip[-3:])
-    h.recv("RT|1|255|255|1|0|0|0|Timber Wolf:5;")
+    h.check("Timber Wolf the Bloodmad Marked +2 levels" in tip and "   strengths fight it to learn" in tip
+            and "   lives in Elwynn Forest" in tip,
+            "the tracker names the nemesis, its title, what is not known yet and where it lives: %r" % tip[-5:])
+    h.recv("NLB|")
+    h.recv("NL|Timber Wolf|the Bloodmad|Sworn|4|Bloodlust/Ironhide|Brittle|Elwynn Forest|41.5|62.0")
+    h.recv("NLE|")
     CW.TrackerTooltip(tr)
     tip = [str(g.TIP[i]) for i in range(1, len(g.TIP) + 1)]
-    h.check("Timber Wolf +5 levels" in tip and not any("XP" in t for t in tip)
-            and not any("heads" in t for t in tip),
-            "an older server's list without experience or heads still reads: %r" % tip[-2:])
+    h.check("   strengths Bloodlust/Ironhide" in tip and "   weakness Brittle" in tip
+            and "Timber Wolf the Bloodmad Sworn +4 levels" in tip,
+            "what it has learned shows once it is learned: %r" % tip[-5:])
 
-    # The goal: five heads and the cap. The tracker counts them, and the
+    # The goal: Vengeance and the cap. The tracker counts it, and the
     # badge's card says what finishing asks for.
-    h.recv("RT|1|255|255|1|2|5|0|Timber Wolf:5:300;")
-    h.check("Heads |cffffd1002 of 5|r" in str(tr["line"]["__text"]),
-            "the tracker counts the heads: %r" % str(tr["line"]["__text"]))
+    h.recv("RT|1|255|255|1|38|500|0|")
+    h.check("Vengeance |cffffd10038/500|r" in str(tr["line"]["__text"]),
+            "the tracker counts the Vengeance: %r" % str(tr["line"]["__text"]))
     # the line is 200 pixels of small font, about 36 characters; the old
     # "(hover for names)" ran past the frame's edge in game
     seen = re.sub(r"\|c[0-9a-fA-F]{8}|\|r", "", str(tr["line"]["__text"]))
@@ -2321,12 +2330,14 @@ def test_challenge_runs(h):
             "the nemesis line fits the tracker (%d characters: %r)" % (len(seen), seen))
     CW.TrackerTooltip(tr)
     tip = [str(g.TIP[i]) for i in range(1, len(g.TIP) + 1)]
-    h.check("Nemesis heads 2 of 5" in tip, "and its card does: %r" % tip[-4:])
-    h.rt.execute("ClasslessWildcard_API.challengesById[1].heads = 5")
+    h.check("Vengeance 38 of 500" in tip, "and its card does: %r" % tip[-4:])
+    h.rt.execute("ClasslessWildcard_API.challengesById[1].vengeance = 500")
     CW.RunTooltip(CW.runBadge)
     tip = [str(g.TIP[i]) for i in range(1, len(g.TIP) + 1)]
-    h.check("Reach level 80 with 5 nemesis heads for" in tip,
-            "the badge's card names the heads as the goal: %r" % [t for t in tip if "Reach" in t])
+    h.check("Reach level 80 with 500 Vengeance for" in tip,
+            "the badge's card names the Vengeance as the goal: %r" % [t for t in tip if "Reach" in t])
+    h.recv("NLB|")
+    h.recv("NLE|")
     h.recv(run_state(1, 17, shards=19))
 
     # Challenges have nothing to do with Rebirth: the picker has no way into
@@ -3130,11 +3141,11 @@ def test_nemesis_border(h):
     h.check(border("TargetFrame") == "UI-TargetingFrame", "before any mark: the plain border (%s)" % border("TargetFrame"))
 
     h.recv("NG|" + nemesis)
-    h.check(border("TargetFrame") == "UI-TargetingFrame-Elite",
-            "marked while targeted: the elite border at once (%s)" % border("TargetFrame"))
+    h.check(border("TargetFrame") == "UI-TargetingFrame-Rare-Elite",
+            "marked while targeted: the rare elite border at once (%s)" % border("TargetFrame"))
     h.rt.execute("TargetFrame_CheckClassification(TargetFrame)")
-    h.check(border("TargetFrame") == "UI-TargetingFrame-Elite",
-            "the client's own pass keeps it elite (%s)" % border("TargetFrame"))
+    h.check(border("TargetFrame") == "UI-TargetingFrame-Rare-Elite",
+            "the client's own pass keeps it rare elite (%s)" % border("TargetFrame"))
     h.check(glow_h() == 112, "and the threat glow takes the elite shape (%s)" % glow_h())
 
     h.rt.execute("UNITS.target.guid = '%s'; TargetFrame_CheckClassification(TargetFrame)" % sibling)
@@ -3158,7 +3169,7 @@ def test_nemesis_border(h):
     h.check(border("FocusFrame") == "UI-TargetingFrame",
             "a small focus frame, which the client forces plain, stays plain (%s)" % border("FocusFrame"))
     h.rt.execute("TargetFrame_CheckClassification(FocusFrame)")
-    h.check(border("FocusFrame") == "UI-TargetingFrame-Elite", "a full focus frame is elite (%s)" % border("FocusFrame"))
+    h.check(border("FocusFrame") == "UI-TargetingFrame-Rare-Elite", "a full focus frame is rare elite (%s)" % border("FocusFrame"))
     h.recv("NG|")
     h.rt.execute("UNITS.target = nil; UNITS.focus = nil")
 
@@ -3167,7 +3178,7 @@ def test_nemesis_slain(h):
     """A nemesis slain: a banner that slams in, two sounds, and leaves on its own."""
     print("--- nemesis slain: the banner, its lines, its sounds, and its exit")
     h.rt.execute("SOUNDS = {}")
-    h.recv("NK|Diseased Timber Wolf|840|1200|2|5|1")
+    h.recv("NK|Diseased Timber Wolf|840|1200|24|62|500|991004")
     # rawget: touching an unknown CapitalCase global makes the harness invent a
     # stub frame, which passed this check with no banner at all
     b = h.rt.eval("rawget(_G, 'ClasslessWildcardNemesisBanner')")
@@ -3179,7 +3190,8 @@ def test_nemesis_slain(h):
             "it names the kill and the creature: %r / %r" % (b.title["__text"], b.name["__text"]))
     h.check(str(b.xp["__text"]) == "+840 experience returned    +1200 bonus",
             "it shows what came back and the bonus: %r" % b.xp["__text"])
-    h.check(str(b.head["__text"]) == "Head 2 of 5 taken", "and the head: %r" % b.head["__text"])
+    h.check(str(b.head["__text"]) == "+24 Vengeance    62 of 500", "and the Vengeance: %r" % b.head["__text"])
+    h.check(str(b.trophy["__text"]) == "Trophy of Ironhide II", "and the trophy it dropped: %r" % b.trophy["__text"])
     snd = lambda: [str(x) for x in h.rt.globals().SOUNDS.values()]
     h.check(any("G_GongTroll01" in s for s in snd()), "the gong sounds at once: %s" % snd())
     tick = b["__scripts"]["OnUpdate"]
@@ -3192,10 +3204,125 @@ def test_nemesis_slain(h):
     for _ in range(60):
         tick(b, 0.1)
     h.check(b["__shown"] is False, "it leaves on its own after a few seconds")
-    h.recv("NK|Murloc Forager|0|300|2|5|0")
-    h.check(str(b.xp["__text"]) == "+300 experience for the kill" and str(b.head["__text"]) == "You already hold a head of this kind",
-            "a nemesis that took nothing, of a kind already taken: %r / %r" % (b.xp["__text"], b.head["__text"]))
+    h.recv("NK|Murloc Forager|0|300|9|71|500|0")
+    h.check(str(b.xp["__text"]) == "+300 experience for the kill" and str(b.trophy["__text"]) == "",
+            "a nemesis that took nothing and dropped nothing: %r / %r" % (b.xp["__text"], b.trophy["__text"]))
     b["__shown"] = False
+
+
+def test_nemesis_titles_and_charms(h):
+    """A nemesis's title on the target frame and tooltip; trophy and charm tooltips; map pins."""
+    print("--- nemesis titles, trophy and charm tooltips, and the map pins")
+    nemesis = "0xF130001234000042"
+    h.rt.execute("UNITS.target = { guid = '%s', class = 'normal' }" % nemesis)
+    h.recv("NG|%s=the Bloodmad" % nemesis)
+    title = h.rt.eval("TargetFrame.cwTitle")
+    h.check(title is not None and str(title["__text"]) == "<the Bloodmad>" and title["__shown"] is True,
+            "the target frame shows its title: %r" % (title and title["__text"]))
+    h.rt.execute("UNITS.target = { guid = '0xF130001234000099', class = 'normal' }; TargetFrame_CheckClassification(TargetFrame)")
+    h.check(title is not None and title["__shown"] is False, "another creature shows none")
+    h.rt.execute("UNITS.target = { guid = '%s', class = 'normal' }; TargetFrame_CheckClassification(TargetFrame)" % nemesis)
+    h.recv("NG|" + nemesis)
+    h.check(title["__shown"] is False and h.rt.eval("TargetFrame.borderTexture.__tex[1]").endswith("Rare-Elite"),
+            "a list without titles still marks it, with no title line")
+
+    # the unit tooltip
+    h.recv("NG|%s=Twice-Victorious" % nemesis)
+    h.rt.execute("TIP = {}; GameTooltip.GetUnit = function() return 'Wolf', 'target' end")
+    h.rt.execute("ClasslessWildcard_API.NemesisUnitTooltip(GameTooltip)")
+    tip = [str(v) for v in h.rt.globals().TIP.values()]
+    h.check("Your nemesis, Twice-Victorious" in tip, "its tooltip says it is yours, and its title: %r" % tip)
+    h.recv("NG|")
+
+    # trophies and the charm: numbers from NT, nothing in the item rows
+    item = lambda entry: h.rt.execute(
+        "TIP = {}; GameTooltip.GetItem = function() return 'x', '|cff1eff00|Hitem:%d:0:0:0:0:0:0:0|h[x]|h|r' end; "
+        "ClasslessWildcard_API.NemesisItemTooltip(GameTooltip)" % entry)
+    tiptext = lambda: [str(v) for v in h.rt.globals().TIP.values()]
+    item(991000)
+    h.check(tiptext()[:1] == ["haste"], "before NT, a trophy names only its effect: %r" % tiptext()[:1])
+    h.recv("NT|0.80,2.00,6.00,0.40,1.20,1.20,0.80|0,3,0,0,0,0,5|4")
+    item(991000)
+    h.check(tiptext()[0] == "+0.8% haste", "Trophy of Bloodlust I: %r" % tiptext()[0])
+    h.check("On finishing, if it is your best of its kind: Bloodlust rank 0 to 1 of 5 on your Nemesis Charm." in tiptext(),
+            "it says what it would add to the charm: %r" % tiptext())
+    item(991005)
+    h.check("On finishing, if it is your best of its kind: Ironhide rank 3 to 5 of 5 on your Nemesis Charm." in tiptext(),
+            "counting the rank the charm has, up to 5: %r" % tiptext())
+    item(991008)
+    h.check(tiptext()[0] == "+18 resistance to every school", "Trophy of Spellward III: %r" % tiptext()[0])
+    item(991016)
+    h.check(tiptext()[0] == "+2.4% attack power and spell power", "Trophy of Warband II: %r" % tiptext()[0])
+    h.check(any("You can carry 4." in t for t in tiptext()), "it says how many can be carried: %r" % tiptext())
+    item(991030)
+    tip = tiptext()
+    h.check("Ironhide 3/5 +6% armor" in tip and "Relentless 5/5 +4% all primary stats" in tip
+            and not any(t.startswith("Bloodlust") for t in tip),
+            "the charm lists its ranks and what they give, and nothing at rank 0: %r" % tip)
+    h.recv("NT|0.80,2.00,6.00,0.40,1.20,1.20,0.80|0,0,0,0,0,0,0|4")
+    item(991030)
+    h.check("No ranks yet." in tiptext(), "a charm with no ranks says so: %r" % tiptext())
+    item(25)
+    h.check(tiptext() == [], "any other item is left alone: %r" % tiptext())
+    h.check(str(h.rt.eval("ClasslessWildcard_API.TrophyName(991020)")) == "Trophy of Relentless III",
+            "the last trophy entry is Relentless III")
+
+    # map pins: the zone shown, and only nemeses there with a spot
+    h.rt.execute(
+        "WorldMapButton = CreateFrame('Frame'); WorldMapButton.GetWidth = function() return 1000 end; "
+        "WorldMapButton.GetHeight = function() return 600 end; "
+        "function GetCurrentMapContinent() return 2 end; function GetCurrentMapZone() return 2 end; "
+        "function GetMapZones() return 'Dun Morogh', 'Elwynn Forest', 'Westfall' end")
+    h.recv("NLB|")
+    h.recv("NL|Timber Wolf|the Bloodmad|Marked|2|?|?|Elwynn Forest|40.0|50.0")
+    h.recv("NL|Defias Thug|Ironhide|Marked|2|?|?|Westfall|50.0|40.0")
+    h.recv("NL|Kobold Miner|Bloodsworn|Sworn|4|?|?|Elwynn Forest|0.0|0.0")
+    h.recv("NLE|")
+    pins = h.rt.eval("ClasslessWildcard_API.nemesisPins")
+    shown = [pins[i] for i in range(1, len(pins) + 1) if pins[i]["__shown"]]
+    h.check(len(shown) == 1 and str(shown[0].entry.name) == "Timber Wolf",
+            "one pin, for the nemesis in the zone shown that has a spot: %r" % [str(p.entry.name) for p in shown])
+    pt = shown[0]["__point"] if shown else None
+    h.check(pt is not None and float(pt[4]) == 400.0 and float(pt[5]) == -300.0,
+            "placed at its spot on the map: %r" % (pt and list(pt.values())))
+    h.rt.execute("function GetCurrentMapZone() return 0 end")
+    h.check(int(h.rt.eval("ClasslessWildcard_API.NemesisPins()")) == 0 and not shown[0]["__shown"],
+            "a continent map shows none")
+    h.recv("NLB|")
+    h.recv("NLE|")
+    h.rt.execute("WorldMapButton = nil; UNITS.target = nil")
+
+
+def test_elite_world_border(h):
+    """Elite World: every enemy you can fight wears the elite border; rares the rare elite one."""
+    print("--- Elite World: the elite border on every enemy you can fight, and nothing else")
+    border = lambda: str(h.rt.eval("(TargetFrame.borderTexture.__tex or {})[1] or ''")).rsplit("\\", 1)[-1]
+    on = lambda guid, cls, hostile=True, player=False, ctype="Beast": h.rt.execute(
+        "UNITS.target = { guid = '%s', class = '%s', hostile = %s, player = %s, ctype = '%s' }; "
+        "TargetFrame_CheckClassification(TargetFrame)"
+        % (guid, cls, "true" if hostile else "false", "true" if player else "false", ctype))
+    h.rt.execute("ClasslessWildcard_API.state = ClasslessWildcard_API.state or {}")
+    h.rt.execute("ClasslessWildcard_API.state.run = 0")
+    on("0xF130000000000001", "normal")
+    h.check(border() == "UI-TargetingFrame", "off the run: a normal enemy is plain (%s)" % border())
+    h.rt.execute("ClasslessWildcard_API.state.run = 2")
+    on("0xF130000000000001", "normal")
+    h.check(border() == "UI-TargetingFrame-Elite", "on Elite World: a normal enemy is elite (%s)" % border())
+    on("0xF130000000000002", "rare")
+    h.check(border() == "UI-TargetingFrame-Rare-Elite", "a rare is a rare elite (%s)" % border())
+    on("0xF130000000000003", "elite")
+    h.check(border() == "UI-TargetingFrame-Elite", "a real elite keeps its own border (%s)" % border())
+    on("0xF130000000000004", "normal", hostile=False)
+    h.check(border() == "UI-TargetingFrame", "a friendly NPC stays plain (%s)" % border())
+    on("0xF130000000000005", "normal", ctype="Critter")
+    h.check(border() == "UI-TargetingFrame", "a critter stays plain (%s)" % border())
+    on("0x0000000000000006", "normal", player=True)
+    h.check(border() == "UI-TargetingFrame", "a hostile player stays plain (%s)" % border())
+    on("0xF130000000000001", "normal")
+    h.rt.execute("ClasslessWildcard_API.state.run = 0")
+    h.rt.execute("TargetFrame_CheckClassification(TargetFrame)")
+    h.check(border() == "UI-TargetingFrame", "the run over: back to plain (%s)" % border())
+    h.rt.execute("UNITS.target = nil")
 
 
 def test_stats(h):
@@ -4722,13 +4849,19 @@ def test_challenge_tracker(h):
     h.rt.execute("function UnitHealth() return 100 end")
 
     # Nemesis: the count on screen, the names on hover
-    h.recv("RT|1|4|5|2|0|0|0|Defias Thug:10;Kobold Miner:5;")
+    h.recv("RT|1|4|5|2|0|0|0|")
+    h.recv("NLB|")
+    h.recv("NL|Defias Thug|Ironhide|Marked|2|Ironhide|?|Westfall|50.0|40.0")
+    h.recv("NL|Kobold Miner|Bloodsworn|Sworn|4|?|?|Elwynn Forest|0.0|0.0")
+    h.recv("NLE|")
     h.check("2 nemeses" in str(f["line"]["__text"]), "the nemeses are counted: %r" % str(f["line"]["__text"]))
     f["__scripts"]["OnEnter"](f)
     tip = str(h.rt.eval("TipText()"))
-    h.check("Defias Thug +10 levels" in tip and "Kobold Miner +5 levels" in tip,
-            "and named on hover: %r" % tip[-120:])
+    h.check("Defias Thug Ironhide" in tip and "Kobold Miner Bloodsworn" in tip and "Sworn +4 levels" in tip,
+            "and named on hover: %r" % tip[-160:])
     f["__scripts"]["OnLeave"](f)
+    h.recv("NLB|")
+    h.recv("NLE|")
 
     # A rule with nothing to count is just the name and the lives.
     h.recv("RT|5|3|3|0|0|0|0|")
@@ -4804,7 +4937,9 @@ def main():
     test_stats(h)
     test_stats_refresh(h)
     test_nemesis_border(h)
+    test_elite_world_border(h)
     test_nemesis_slain(h)
+    test_nemesis_titles_and_charms(h)
     test_confirms(h)
     test_escape(h)
     test_help_text(h)

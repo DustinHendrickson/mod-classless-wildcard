@@ -18,6 +18,15 @@ DROP TABLE IF EXISTS `cw_char_cards`;
 DROP TABLE IF EXISTS `cw_char_bans`;
 DROP TABLE IF EXISTS `cw_char_runs`;
 DROP TABLE IF EXISTS `cw_char_nemeses`;
+DROP TABLE IF EXISTS `cw_char_nemesis_heads`;
+DROP TABLE IF EXISTS `cw_char_nemesis_run`;
+DROP TABLE IF EXISTS `cw_char_nemesis_charm`;
+-- the Nemesis trophies and charm, wherever they are (world uninstall drops their templates)
+DELETE `ci` FROM `character_inventory` `ci` JOIN `item_instance` `ii` ON `ii`.`guid` = `ci`.`item`
+ WHERE `ii`.`itemEntry` BETWEEN 991000 AND 991030;
+DELETE `mi` FROM `mail_items` `mi` JOIN `item_instance` `ii` ON `ii`.`guid` = `mi`.`item_guid`
+ WHERE `ii`.`itemEntry` BETWEEN 991000 AND 991030;
+DELETE FROM `item_instance` WHERE `itemEntry` BETWEEN 991000 AND 991030;
 DROP TABLE IF EXISTS `cw_char_custom_archetype`;
 
 -- module DB-updater bookkeeping, so reinstalling later re-applies cleanly

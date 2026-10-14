@@ -36,7 +36,7 @@ import analyze_stock_items                                  # noqa: E402
 WORLD = os.path.join(MOD, "data", "sql", "db-world")
 OUT = os.path.join(MOD, "client-patch", "items_manifest.json")
 FILES = ["cw_world_base.sql", "cw_items_pack.sql", "cw_items_pack2.sql",
-         "cw_items_heirlooms.sql", "cw_items_tiered.sql"]
+         "cw_items_heirlooms.sql", "cw_items_tiered.sql", "cw_world_nemesis_items.sql"]
 CLIENT = r"B:\World.of.Warcraft.3.3.5a\Data"
 BS = chr(92)
 

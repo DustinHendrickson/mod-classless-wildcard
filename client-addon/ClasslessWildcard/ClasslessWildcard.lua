@@ -486,7 +486,7 @@ do
                 .. "Run out and the rule lifts; you keep your level, gear and build.", 0.7, 0.7, 0.7, true)
         end
         GameTooltip:AddLine(" ")
-        local goal = (c.heads or 0) > 0 and ("Reach level 80 with " .. c.heads .. " nemesis heads for")
+        local goal = (c.vengeance or 0) > 0 and ("Reach level 80 with " .. c.vengeance .. " Vengeance for")
             or (unlimited and "Reach level 80 for" or "Reach level 80 with a life left for")
         GameTooltip:AddLine(goal, 1, 0.82, 0)
         GameTooltip:AddDoubleLine("Gold", "|cffffffff" .. (c.gold or 0)
@@ -2082,8 +2082,8 @@ do
         -- rewards: a label column and a value column, every value a sentence
         y = PlaceHeader(fly.hReward, y)
         local goal = " with at least one life left."
-        if (c.heads or 0) > 0 then
-            goal = " with " .. c.heads .. " nemesis heads, each from a different kind of creature."
+        if (c.vengeance or 0) > 0 then
+            goal = " with " .. c.vengeance .. " Vengeance: the total level of the nemeses you slay."
         elseif CW.Unlimited(c.lives) then
             goal = "."
         end
@@ -5099,8 +5099,9 @@ function CW.HelpSections()
 
     page("challenges", "Challenges", ICON .. "Ability_Warrior_Challange", "A life under one rule.", {
         b("How a run works", "A run is a life under one rule, on your own path. Challenge runs start before level " .. deadline .. ". Pick a challenge, read its rule, go."),
-        b("Lives", "Each challenge shows how many lives it gives. A death costs one, a fall or drowning included; deaths in battlegrounds and arenas, and while you are dueling, are free. Nemesis and Dealt Hand have unlimited lives. On Nemesis a death costs the experience in your bar instead, and the run finishes at level 80 with five nemesis heads."),
+        b("Lives", "Each challenge shows how many lives it gives. A death costs one, a fall or drowning included; deaths in battlegrounds and arenas, and while you are dueling, are free. Nemesis and Dealt Hand have unlimited lives. On Nemesis a death makes a nemesis instead, and the run finishes at level 80 with enough Vengeance."),
         b("Where to see them", "The hearts on the run badge at the top-right of this panel, and on the challenge tracker at the top of your screen. Hover either for your challenge's rule and rewards. The tracker also shows what your challenge is counting: the time left on the level on Hourglass, whether the hunter is on you on Pursued, your nemeses on Nemesis, and your health band on Berserker. Drag it to move it, click it for the challenge page, and hide or show it under Settings or with /cw tracker."),
+        b("Nemesis", "The creature that kills you becomes your nemesis: a rare elite above your level, there for you alone, waiting where it lives. It is on your minimap and has an arrow over its head. Each has strengths and a weakness, learned by fighting it; die to it again and it grows. |cffffd100Swear Vendetta|r makes a nemesis of a creature you choose, stronger and worth more. Slaying one pays experience and |cffffd100Vengeance|r, its level, and drops a trophy that works from your bags for the rest of the run. Finish the run and your best trophies merge into your |cffffd100Nemesis Charm|r, which you keep."),
         b("Ending a run", "|cffffd100Running out|r ends the run: the rule lifts and you keep everything. A Rebirth ends a run too. |cffffd100Reaching " .. cap .. "|r with a life left finishes it. Your first finish of a challenge pays its gold, its title, and an ability no roll or shop can give, kept as an heirloom. Finish without a single death for |cffffd100the Unbroken|r, once per character."),
         b("Shards", "Every run pays them when it ends, finished or not: one per level reached, two per level past 60, and a third more for a run without a death. They buy an |cffffd100extra life|r for your next run, on the challenge page."),
     })
@@ -8567,7 +8568,7 @@ rvFX.tiers = {
 
 -- A nemesis slain: a banner over the world, the way a boss kill announces
 -- itself, while the server bursts the body and lights the Hero up.
--- "NK|name|experience returned|bonus|heads|heads needed|new head". Built on
+-- "NK|name|experience returned|bonus|Vengeance gained|Vengeance|needed|trophy item". Built on
 -- first use, every part on one table: the main chunk is at Lua 5.1's local
 -- limit. Nothing on it takes the mouse, so it never blocks a click.
 rvFX.NK = { IN = 0.22, HOLD = 4.6, OUT = 1.2, GONG = "Sound\\Doodad\\G_GongTroll01.wav",
@@ -8596,8 +8597,8 @@ function CW.NemesisSlain(p)
         B.glow:SetVertexColor(1, 0.3, 0.15)
         -- BORDER: a dark band so the words read on grass and on stone
         B.band = B:CreateTexture(nil, "BORDER")
-        B.band:SetWidth(560); B.band:SetHeight(96)
-        B.band:SetPoint("CENTER", 0, -44)
+        B.band:SetWidth(560); B.band:SetHeight(118)
+        B.band:SetPoint("CENTER", 0, -55)
         B.band:SetTexture(0, 0, 0, 0.6)
         -- ARTWORK: the skull
         B.skull = B:CreateTexture(nil, "ARTWORK")
@@ -8619,11 +8620,13 @@ function CW.NemesisSlain(p)
         B.name = line(20, 1, 0.82, 0.3, -32)
         B.xp = line(16, 0.45, 1, 0.45, -56)
         B.head = line(16, 1, 0.82, 0, -78)
+        B.trophy = line(14, 0.64, 0.21, 0.93, -100)
         B:SetScript("OnUpdate", CW.NemesisBannerTick)
         NK.frame = B
     end
     local back, bonus = tonumber(p[3]) or 0, tonumber(p[4]) or 0
-    local heads, need, newHead = tonumber(p[5]) or 0, tonumber(p[6]) or 0, tonumber(p[7]) == 1
+    local gained, total, need = tonumber(p[5]) or 0, tonumber(p[6]) or 0, tonumber(p[7]) or 0
+    local trophy = tonumber(p[8]) or 0
     B.title:SetText("Nemesis Slain")
     B.name:SetText(p[2] or "")
     if back > 0 then
@@ -8631,8 +8634,12 @@ function CW.NemesisSlain(p)
     else
         B.xp:SetText("+" .. bonus .. " experience for the kill")
     end
-    B.head:SetText(newHead and ("Head " .. heads .. " of " .. need .. " taken")
-        or "You already hold a head of this kind")
+    B.head:SetText("+" .. gained .. " Vengeance    " .. total .. " of " .. need)
+    if trophy > 0 then
+        B.trophy:SetText((GetItemInfo(trophy)) or CW.TrophyName(trophy))
+    else
+        B.trophy:SetText("")
+    end
     B.t, B.cried = 0, nil
     B:SetAlpha(0)
     B:Show()
@@ -10044,7 +10051,7 @@ local function HandleMessage(msg)
             reward = tonumber(p[9]) or 0,   -- the ability it pays, a spell id
             title = p[10] or "",            -- "%s the Nemesis", as the client shows it
             path = tonumber(p[11]) or 255,  -- the path it asks for: 0, 1, or 255 for either
-            heads = tonumber(p[12]) or 0,   -- nemesis heads it asks for besides the level cap
+            vengeance = tonumber(p[12]) or 0,   -- Vengeance it asks for besides the level cap
             detail = "",                    -- how it plays, joined from CD pieces
             tips = "",                      -- advice, joined from CT pieces
         }
@@ -10067,6 +10074,19 @@ local function HandleMessage(msg)
         CW.ReadTracker(p)
     elseif kind == "NG" then
         CW.ReadNemesisGuids(p[2])
+    elseif kind == "NLB" then
+        CW.nemesisListNew = {}
+    elseif kind == "NL" then
+        tinsert(CW.nemesisListNew or {}, { name = p[2] or "", title = p[3] or "", kind = p[4] or "",
+            levels = tonumber(p[5]) or 0, strengths = p[6] or "?", weakness = p[7] or "?",
+            zone = p[8] or "", x = tonumber(p[9]) or 0, y = tonumber(p[10]) or 0 })
+    elseif kind == "NLE" then
+        CW.nemesisList = CW.nemesisListNew or {}
+        CW.nemesisListNew = nil
+        CW.NemesisPins()
+        if CW.UpdateTracker then CW.UpdateTracker() end
+    elseif kind == "NT" then
+        CW.ReadNemesisCharm(p)
     elseif kind == "NK" then
         CW.NemesisSlain(p)
     elseif kind == "APA" or kind == "APT" or kind == "APW" or kind == "APE" then
@@ -10690,19 +10710,36 @@ end
 -- ("NG|guid,guid") and the target and focus frames give the elite border to
 -- those alone. A rare nemesis wears the rare elite border.
 CW.nemesisGuids, CW.nemesisBorderOn = {}, {}
+-- Elite World (challenge 2) makes every enemy a Hero can fight an elite, a
+-- rare a rare elite, and a nemesis is a rare elite: the server changes the
+-- creature itself, but the client draws the dragon from the creature's kind,
+-- so these frames draw it here. Read off the unit, so it needs nothing sent.
+CW.ELITE_WORLD = 2
+function CW.MadeEliteBorder(unit, class)
+    local guid = UnitGUID(unit)
+    if guid and CW.nemesisGuids[guid] then
+        return "Interface\\TargetingFrame\\UI-TargetingFrame-Rare-Elite"
+    end
+    if CW.state and CW.state.run == CW.ELITE_WORLD and UnitCanAttack("player", unit)
+        and not UnitPlayerControlled(unit) and UnitCreatureType(unit) ~= "Critter" then
+        if class == "rare" then return "Interface\\TargetingFrame\\UI-TargetingFrame-Rare-Elite" end
+        if class == "normal" then return "Interface\\TargetingFrame\\UI-TargetingFrame-Elite" end
+    end
+end
+
 function CW.NemesisBorder(frame, forceNormal, fromStock)
     if type(frame) ~= "table" or not frame.borderTexture or not frame.unit then return end
-    local guid = UnitGUID(frame.unit)
-    local mark = guid and CW.nemesisGuids[guid] and not forceNormal and true or nil
+    CW.NemesisTitleLine(frame)
+    local class = UnitClassification(frame.unit)
+    local made = not forceNormal and CW.MadeEliteBorder(frame.unit, class) or nil
+    local mark = made and true or nil
     local was = CW.nemesisBorderOn[frame]
     CW.nemesisBorderOn[frame] = mark
     -- the client's own pass has just drawn its border: nothing of ours to undo
     if not mark and (fromStock or not was) then return end
-    local class = UnitClassification(frame.unit)
     local texture
     if mark then
-        texture = (class == "rare" or class == "rareelite") and "Interface\\TargetingFrame\\UI-TargetingFrame-Rare-Elite"
-            or "Interface\\TargetingFrame\\UI-TargetingFrame-Elite"
+        texture = made
     elseif class == "worldboss" or class == "elite" then
         texture = "Interface\\TargetingFrame\\UI-TargetingFrame-Elite"
     elseif class == "rareelite" then
@@ -10728,12 +10765,178 @@ function CW.NemesisBorder(frame, forceNormal, fromStock)
         end
     end
 end
+-- "0xGUID=title,...": the Hero's own nemeses, and what each is called
 function CW.ReadNemesisGuids(list)
     local set = {}
-    for guid in string.gmatch(list or "", "[^,]+") do set[guid] = true end
+    for item in string.gmatch(list or "", "[^,]+") do
+        local guid, title = string.match(item, "^([^=]+)=?(.*)$")
+        if guid then set[guid] = title ~= "" and title or true end
+    end
     CW.nemesisGuids = set
     CW.NemesisBorder(TargetFrame)
     CW.NemesisBorder(FocusFrame)
+end
+-- its title, under its name on the target and focus frames
+function CW.NemesisTitleLine(frame)
+    if type(frame) ~= "table" or not frame.unit or not frame.CreateFontString then return end
+    local guid = UnitGUID(frame.unit)
+    local title = guid and CW.nemesisGuids[guid]
+    if type(title) ~= "string" then
+        if frame.cwTitle then frame.cwTitle:Hide() end
+        return
+    end
+    if not frame.cwTitle then
+        frame.cwTitle = frame:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+        frame.cwTitle:SetPoint("BOTTOM", frame.name or frame, "TOP", 0, 2)
+        frame.cwTitle:SetTextColor(1, 0.53, 0)
+    end
+    frame.cwTitle:SetText("<" .. title .. ">")
+    frame.cwTitle:Show()
+end
+
+-- Trophies and the Nemesis Charm. Their items carry no stats; what they give
+-- is the server's, sent as "NT|star values|charm ranks|trophies carried",
+-- each list in NemesisStrength order. A trophy's entry is 991000 +
+-- (effect - 1) * 3 + (stars - 1); the charm is 991030.
+CW.NEMESIS_FX = {
+    { name = "Bloodlust", what = "haste", pct = true },
+    { name = "Ironhide", what = "armor", pct = true },
+    { name = "Spellward", what = "resistance to every school" },
+    { name = "Venomous", what = "critical strike chance", pct = true },
+    { name = "Unyielding", what = "maximum health", pct = true },
+    { name = "Warband", what = "attack power and spell power", pct = true },
+    { name = "Relentless", what = "all primary stats", pct = true },
+}
+CW.nemesisCharm = { star = {}, ranks = {}, max = 4 }
+function CW.ReadNemesisCharm(p)
+    local c = CW.nemesisCharm
+    c.star, c.ranks = {}, {}
+    for v in string.gmatch(p[2] or "", "[^,]+") do tinsert(c.star, tonumber(v) or 0) end
+    for v in string.gmatch(p[3] or "", "[^,]+") do tinsert(c.ranks, tonumber(v) or 0) end
+    c.max = tonumber(p[4]) or c.max
+end
+function CW.TrophyOf(id)
+    id = tonumber(id) or 0
+    if id >= 991000 and id <= 991020 then
+        return math.floor((id - 991000) / 3) + 1, (id - 991000) % 3 + 1
+    end
+end
+function CW.TrophyName(id)
+    local effect, stars = CW.TrophyOf(id)
+    if not effect then return "" end
+    return "Trophy of " .. CW.NEMESIS_FX[effect].name .. " " .. ({ "I", "II", "III" })[stars]
+end
+-- "+2.4% haste", from stars of one effect; the bare effect before NT arrives
+function CW.NemesisFxText(effect, stars)
+    local fx = CW.NEMESIS_FX[effect]
+    local per = CW.nemesisCharm.star[effect]
+    if not per then return fx.what end
+    local v = per * stars
+    local num = (v == math.floor(v)) and string.format("%d", v) or string.format("%.1f", v)
+    return "+" .. num .. (fx.pct and "% " or " ") .. fx.what
+end
+function CW.NemesisItemTooltip(tip)
+    if not tip or not tip.GetItem then return end
+    local _, link = tip:GetItem()
+    local id = link and tonumber(string.match(link, "item:(%d+)"))
+    if not id then return end
+    local effect, stars = CW.TrophyOf(id)
+    if effect then
+        tip:AddLine(CW.NemesisFxText(effect, stars), 0.1, 1, 0.1)
+        local rank = CW.nemesisCharm.ranks[effect] or 0
+        tip:AddLine("On finishing, if it is your best of its kind: " .. CW.NEMESIS_FX[effect].name .. " rank "
+            .. rank .. " to " .. math.min(rank + stars, 5) .. " of 5 on your Nemesis Charm.", 1, 0.82, 0, true)
+        tip:AddLine("On a Nemesis run, every trophy you carry adds up. You can carry "
+            .. CW.nemesisCharm.max .. ".", 0.7, 0.7, 0.7, true)
+        tip:AddLine("Finish the run and the best trophy of each kind adds its stars to your Nemesis Charm. "
+            .. "If the run ends unfinished, they are gone.", 0.7, 0.7, 0.7, true)
+        tip:Show()
+    elseif id == 991030 then
+        local any = false
+        for i, fx in ipairs(CW.NEMESIS_FX) do
+            local r = CW.nemesisCharm.ranks[i] or 0
+            if r > 0 then
+                any = true
+                tip:AddDoubleLine(fx.name .. " " .. r .. "/5", CW.NemesisFxText(i, r), 1, 0.82, 0, 0.1, 1, 0.1)
+            end
+        end
+        if not any then tip:AddLine("No ranks yet.", 0.7, 0.7, 0.7) end
+        tip:AddLine("Finish a Nemesis run and the best trophy of each kind adds its stars here, up to rank 5.",
+            0.7, 0.7, 0.7, true)
+        tip:Show()
+    end
+end
+-- a nemesis under the mouse says so, and what it is called
+function CW.NemesisUnitTooltip(tip)
+    if not tip or not tip.GetUnit then return end
+    local _, unit = tip:GetUnit()
+    local guid = unit and UnitGUID(unit)
+    local title = guid and CW.nemesisGuids[guid]
+    if not title then return end
+    tip:AddLine(type(title) == "string" and ("Your nemesis, " .. title) or "Your nemesis", 1, 0.53, 0)
+    tip:Show()
+end
+if GameTooltip and GameTooltip.HookScript then
+    GameTooltip:HookScript("OnTooltipSetItem", CW.NemesisItemTooltip)
+    GameTooltip:HookScript("OnTooltipSetUnit", CW.NemesisUnitTooltip)
+end
+if ItemRefTooltip and ItemRefTooltip.HookScript then
+    ItemRefTooltip:HookScript("OnTooltipSetItem", CW.NemesisItemTooltip)
+end
+
+-- Where each nemesis lives, as a skull on the world map when its zone is the
+-- one shown. The server sends the zone's name and the spot in percent.
+function CW.NemesisPinsNow()
+    local pins = CW.nemesisPins or {}
+    CW.nemesisPins = pins
+    local zoneName
+    if WorldMapButton and GetMapZones and GetCurrentMapContinent and GetCurrentMapZone then
+        local zone = GetCurrentMapZone()
+        if zone and zone > 0 then zoneName = select(zone, GetMapZones(GetCurrentMapContinent())) end
+    end
+    local n = 0
+    if zoneName then
+        local w, h = WorldMapButton:GetWidth(), WorldMapButton:GetHeight()
+        for _, e in ipairs(CW.nemesisList or {}) do
+            if e.zone == zoneName and (e.x > 0 or e.y > 0) then
+                n = n + 1
+                local pin = pins[n]
+                if not pin then
+                    pin = CreateFrame("Frame", nil, WorldMapButton)
+                    pin:SetWidth(20); pin:SetHeight(20)
+                    pin:SetFrameLevel(WorldMapButton:GetFrameLevel() + 5)
+                    pin.icon = pin:CreateTexture(nil, "OVERLAY")
+                    pin.icon:SetAllPoints(pin)
+                    pin.icon:SetTexture("Interface\\TargetingFrame\\UI-TargetingFrame-Skull")
+                    pin:EnableMouse(true)
+                    pin:SetScript("OnEnter", function(self)
+                        local e = self.entry
+                        WorldMapTooltip:SetOwner(self, "ANCHOR_RIGHT")
+                        WorldMapTooltip:AddLine(e.name .. (e.title ~= "" and (" " .. e.title) or ""), 1, 0.53, 0)
+                        WorldMapTooltip:AddLine(e.kind .. " nemesis, " .. e.levels .. " levels above you", 1, 1, 1)
+                        WorldMapTooltip:Show()
+                    end)
+                    pin:SetScript("OnLeave", function() WorldMapTooltip:Hide() end)
+                    pins[n] = pin
+                end
+                pin.entry = e
+                pin:ClearAllPoints()
+                pin:SetPoint("CENTER", WorldMapButton, "TOPLEFT", e.x / 100 * w, -e.y / 100 * h)
+                pin:Show()
+            end
+        end
+    end
+    for i = n + 1, #pins do pins[i]:Hide() end
+    return n
+end
+function CW.NemesisPins()
+    local ok, n = pcall(CW.NemesisPinsNow)
+    return ok and n or 0
+end
+do
+    local ev = CreateFrame("Frame")
+    ev:RegisterEvent("WORLD_MAP_UPDATE")
+    ev:SetScript("OnEvent", function() CW.NemesisPins() end)
 end
 if hooksecurefunc and type(TargetFrame_CheckClassification) == "function" then
     hooksecurefunc("TargetFrame_CheckClassification", function(self, forceNormal)
@@ -10849,9 +11052,9 @@ do
                 or "|cffaaaaaaNo hunter on you. One is coming.|r")
             f.line:Show()
         elseif RT.run == NEMESIS then
-            -- b heads taken of c needed, from a newer server
-            local heads = RT.c > 0 and ("Heads |cffffd100" .. RT.b .. " of " .. RT.c .. "|r   ") or ""
-            f.line:SetText(heads .. (RT.a == 0 and (RT.b > 0 and "|cffaaaaaaNo nemesis now.|r" or "|cffaaaaaaNo nemesis yet.|r")
+            -- b Vengeance of c needed
+            local vengeance = RT.c > 0 and ("Vengeance |cffffd100" .. RT.b .. "/" .. RT.c .. "|r  ") or ""
+            f.line:SetText(vengeance .. (RT.a == 0 and (RT.b > 0 and "|cffaaaaaaNo nemesis now|r" or "|cffaaaaaaNo nemesis yet|r")
                 or ("|cffff8800" .. RT.a .. (RT.a == 1 and " nemesis" or " nemeses") .. "|r")))
             f.line:Show()
         elseif RT.run == BERSERKER then
@@ -10874,20 +11077,24 @@ do
         CW.RunTooltip(self)
         if RT.run == NEMESIS and RT.c > 0 then
             GameTooltip:AddLine(" ")
-            GameTooltip:AddDoubleLine("Nemesis heads", RT.b .. " of " .. RT.c, 1, 0.82, 0, 1, 1, 1)
+            GameTooltip:AddDoubleLine("Vengeance", RT.b .. " of " .. RT.c, 1, 0.82, 0, 1, 1, 1)
+            GameTooltip:AddLine("The total level of the nemeses you slay. A Sworn one counts for more.", 0.7, 0.7, 0.7, true)
             GameTooltip:Show()
         end
-        if RT.run == NEMESIS and #RT.list > 0 then
+        local list = CW.nemesisList or {}
+        if RT.run == NEMESIS and #list > 0 then
             GameTooltip:AddLine(" ")
             GameTooltip:AddLine("Your nemeses", 1, 0.53, 0)
-            for _, e in ipairs(RT.list) do
-                GameTooltip:AddDoubleLine(e.name, "+" .. e.levels .. " levels", 1, 1, 1, 1, 0.53, 0)
-                if (e.held or 0) > 0 then
-                    GameTooltip:AddDoubleLine("   holds your experience", e.held .. " XP", 0.7, 0.7, 0.7, 0.4, 0.8, 1)
+            for _, e in ipairs(list) do
+                GameTooltip:AddDoubleLine(e.name .. (e.title ~= "" and (" " .. e.title) or ""),
+                    e.kind .. " +" .. e.levels .. " levels", 1, 1, 1, 1, 0.53, 0)
+                GameTooltip:AddDoubleLine("   strengths", e.strengths == "?" and "fight it to learn" or e.strengths,
+                    0.7, 0.7, 0.7, 0.4, 1, 0.4)
+                GameTooltip:AddDoubleLine("   weakness", e.weakness == "?" and "fight it to learn" or e.weakness,
+                    0.7, 0.7, 0.7, 1, 0.4, 0.4)
+                if e.zone ~= "" then
+                    GameTooltip:AddDoubleLine("   lives in", e.zone, 0.7, 0.7, 0.7, 1, 1, 1)
                 end
-            end
-            if RT.a > #RT.list then
-                GameTooltip:AddLine("and " .. (RT.a - #RT.list) .. " more", 0.7, 0.7, 0.7)
             end
             GameTooltip:Show()
         end

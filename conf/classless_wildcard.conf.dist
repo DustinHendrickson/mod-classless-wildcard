@@ -29,7 +29,8 @@
 #   12  Primary stat allocation
 #   13  World drops
 #   14  Rebirth
-#   15  Hero Advancement NPC
+#   15  Nemesis
+#   16  Hero Advancement NPC
 #
 
 [worldserver]
@@ -889,14 +890,17 @@ ClasslessWildcard.WorldDrops.Enable = 1
 ClasslessWildcard.WorldDrops.Chance = 1.0
 
 #    ClasslessWildcard.WorldDrops.RareMultiplier
-#        Chance is multiplied by this for rares, rare elites and world bosses.
+#        Chance is multiplied by this for rares, rare elites and world bosses,
+#        and for a nemesis or an Elite World enemy killed by the Hero on that
+#        challenge.
 #        Default: 5.0
 ClasslessWildcard.WorldDrops.RareMultiplier = 5.0
 
 #    ClasslessWildcard.WorldDrops.HeirloomChance
 #        Percent chance of a scaling heirloom, rolled ONLY on rares, rare
-#        elites and world bosses, and rolled before the ordinary drop as the
-#        better prize. Heirlooms scale to 80, so this is the one that matters
+#        elites and world bosses (and a nemesis or an Elite World enemy killed
+#        by the Hero on that challenge), and rolled before the ordinary drop as
+#        the better prize. Heirlooms scale to 80, so this is the one that matters
 #        most. Set it to 0 to keep them vendor-only.
 #        Default: 2.0
 ClasslessWildcard.WorldDrops.HeirloomChance = 2.0
@@ -966,7 +970,131 @@ ClasslessWildcard.Rebirth.LegacyAbilityEssence = 3
 ClasslessWildcard.Rebirth.LegacyTalentEssence = 2
 
 ########################################################################
-# 15  Hero Advancement NPC
+# 15  Nemesis
+########################################################################
+
+#    ClasslessWildcard.Nemesis.MarkedLevels
+#        How many levels above the Hero a Marked nemesis (the creature that
+#        killed them) fights at. Its level follows the Hero's: it is always
+#        this many above them, up to 83, so coming back for it later is never
+#        a walkover. Each Hero fights a copy of their own, made at that level.
+#        Default: 2
+ClasslessWildcard.Nemesis.MarkedLevels = 2
+
+#    ClasslessWildcard.Nemesis.MarkedBonusXpPct
+#        Experience a Marked nemesis's kill pays on top of the kill itself, in
+#        percent of the Hero's current level. Nothing at the level cap.
+#        Default: 25
+ClasslessWildcard.Nemesis.MarkedBonusXpPct = 25
+
+#    ClasslessWildcard.Nemesis.SwornLevels
+#    ClasslessWildcard.Nemesis.SwornBonusXpPct
+#        The same two for a Sworn nemesis: one the Hero chose with Swear
+#        Vendetta. Harder (it always has Bloodlust), and worth more.
+#        Default: 4, 50
+ClasslessWildcard.Nemesis.SwornLevels = 4
+ClasslessWildcard.Nemesis.SwornBonusXpPct = 50
+
+#    ClasslessWildcard.Nemesis.SwornCooldownMinutes
+#        Swear Vendetta's cooldown. Only one Sworn nemesis lives at a time.
+#        Default: 30
+ClasslessWildcard.Nemesis.SwornCooldownMinutes = 30
+
+#    ClasslessWildcard.Nemesis.SwornLevelsBelow
+#        How far below the Hero a creature may be and still be sworn on.
+#        Default: 5
+ClasslessWildcard.Nemesis.SwornLevelsBelow = 5
+
+#    ClasslessWildcard.Nemesis.BloodlustPct
+#    ClasslessWildcard.Nemesis.IronhidePct
+#    ClasslessWildcard.Nemesis.SpellwardPct
+#    ClasslessWildcard.Nemesis.VenomousPct
+#    ClasslessWildcard.Nemesis.UnyieldingPct
+#    ClasslessWildcard.Nemesis.RelentlessPct
+#        A nemesis's strengths, in percent. Bloodlust: faster attacks and
+#        casts. Ironhide: less physical damage taken. Spellward: less spell
+#        damage taken. Venomous: its hits poison for this share of the Hero's
+#        health every 2 seconds, for VenomousSeconds. Unyielding: more damage
+#        below UnyieldingBelowPct health. Relentless: health regained a second
+#        out of combat.
+#        Default: 30, 25, 25, 2, 25, 5
+ClasslessWildcard.Nemesis.BloodlustPct = 30
+ClasslessWildcard.Nemesis.IronhidePct = 25
+ClasslessWildcard.Nemesis.SpellwardPct = 25
+ClasslessWildcard.Nemesis.VenomousPct = 2
+ClasslessWildcard.Nemesis.UnyieldingPct = 25
+ClasslessWildcard.Nemesis.RelentlessPct = 5
+
+#    ClasslessWildcard.Nemesis.WarbandCount
+#    ClasslessWildcard.Nemesis.VenomousSeconds
+#    ClasslessWildcard.Nemesis.UnyieldingBelowPct
+#        Warband: how many of its kind it calls, once a fight. Venomous: how
+#        long its poison lasts. Unyielding: the health, in percent, below
+#        which its rage starts.
+#        Default: 2, 6, 30
+ClasslessWildcard.Nemesis.WarbandCount = 2
+ClasslessWildcard.Nemesis.VenomousSeconds = 6
+ClasslessWildcard.Nemesis.UnyieldingBelowPct = 30
+
+#    ClasslessWildcard.Nemesis.WeakSchoolPct
+#    ClasslessWildcard.Nemesis.BrittlePct
+#    ClasslessWildcard.Nemesis.CowardlyPct
+#        Its weakness, in percent more damage taken. A school: from that
+#        school. Brittle: for BrittleSeconds after a stun, which also ends its
+#        rage. Cowardly: once it has fled at CowardlyFleePct health.
+#        Default: 50, 20, 30
+ClasslessWildcard.Nemesis.WeakSchoolPct = 50
+ClasslessWildcard.Nemesis.BrittlePct = 20
+ClasslessWildcard.Nemesis.CowardlyPct = 30
+
+#    ClasslessWildcard.Nemesis.BrittleSeconds
+#    ClasslessWildcard.Nemesis.CowardlyFleePct
+#    ClasslessWildcard.Nemesis.CowardlyFleeSeconds
+#        Brittle: how long a stun opens it up. Cowardly: the health, in
+#        percent, at which it flees, and for how long.
+#        Default: 8, 20, 6
+ClasslessWildcard.Nemesis.BrittleSeconds = 8
+ClasslessWildcard.Nemesis.CowardlyFleePct = 20
+ClasslessWildcard.Nemesis.CowardlyFleeSeconds = 6
+
+#    ClasslessWildcard.Nemesis.VengeanceToFinish
+#    ClasslessWildcard.Nemesis.SwornVengeancePct
+#        The run finishes at the level cap with this much Vengeance: the total
+#        level of every nemesis slain, at the level it fought at. A Sworn kill
+#        counts this percent of its level.
+#        Default: 500, 150
+ClasslessWildcard.Nemesis.VengeanceToFinish = 500
+ClasslessWildcard.Nemesis.SwornVengeancePct = 150
+
+#    ClasslessWildcard.Nemesis.TrophyMax
+#        Trophies a Hero carries at once. Each slain nemesis drops one; with
+#        this many in the bags the next waits until one is destroyed.
+#        Default: 4
+ClasslessWildcard.Nemesis.TrophyMax = 4
+
+#    ClasslessWildcard.Nemesis.StarHaste
+#    ClasslessWildcard.Nemesis.StarArmor
+#    ClasslessWildcard.Nemesis.StarResistance
+#    ClasslessWildcard.Nemesis.StarCrit
+#    ClasslessWildcard.Nemesis.StarHealth
+#    ClasslessWildcard.Nemesis.StarPower
+#    ClasslessWildcard.Nemesis.StarStats
+#        What one star is worth, in a trophy and on the Nemesis Charm alike:
+#        haste %, armor %, resistance to every school, critical strike %,
+#        maximum health %, attack power and spell power %, and
+#        all primary stats %. A trophy has one to three stars; the charm's
+#        rank in each effect goes up to five.
+#        Default: 0.8, 2, 6, 0.4, 1.2, 1.2, 0.8
+ClasslessWildcard.Nemesis.StarHaste = 0.8
+ClasslessWildcard.Nemesis.StarArmor = 2
+ClasslessWildcard.Nemesis.StarResistance = 6
+ClasslessWildcard.Nemesis.StarCrit = 0.4
+ClasslessWildcard.Nemesis.StarHealth = 1.2
+ClasslessWildcard.Nemesis.StarPower = 1.2
+ClasslessWildcard.Nemesis.StarStats = 0.8
+
+########################################################################
+# 16  Hero Advancement NPC
 ########################################################################
 
 #    ClasslessWildcard.NpcEntry

@@ -645,15 +645,36 @@ def main(argv):
                      for c in range(dbc.SPELL_LOCALES)}
             tips = {dbc.read_string(nstrings, struct.unpack_from("<I", mark_row, (dbc.SPELL_TOOLTIP_COLUMN + c) * 4)[0])
                     for c in range(dbc.SPELL_LOCALES)}
-            check("the nemesis mark is named Nemesis in every locale", renamed == 1 and texts == {"Nemesis"},
+            check("the nemesis mark is named Nemesis in every locale",
+                  renamed == len(dbc.SPELL_RENAMES) and texts == {"Nemesis"},
                   "%d renamed, names %s" % (renamed, sorted(texts)))
             check("and its debuff tooltip says what it is",
                   tips == {dbc.SPELL_RENAMES[21391][1]}, "tooltips %s" % sorted(tips))
             moved = sum(1 for i in range(nc)
                         if struct.unpack_from("<I", named_dbc, 20 + i * nrs)[0] != 21391
                         and named_dbc[20 + i * nrs:20 + (i + 1) * nrs] != spell_dbc[20 + i * sr:20 + (i + 1) * sr])
-            check("no other spell's row changes", moved == 0, "%d moved" % moved)
+            check("no other spell's row changes",
+                  moved == len([s for s in dbc.SPELL_RENAMES if s != 21391]), "%d moved" % moved)
             check("Spell.dbc rename idempotent", not dbc.rename_spells(named_dbc)[1])
+            vendetta = next(named_dbc[20 + i * nrs:20 + (i + 1) * nrs] for i in range(nc)
+                            if struct.unpack_from("<I", named_dbc, 20 + i * nrs)[0] == 36779)
+            check("Swear Vendetta is named", dbc.read_string(nstrings, struct.unpack_from(
+                "<I", vendetta, dbc.SPELL_NAME_COLUMN * 4)[0]) == "Swear Vendetta")
+            check("Swear Vendetta draws its vendetta icon",
+                  spell_icon(icon_dbc, 36779) == dbc.SPELL_ICON_OVERRIDES[36779])
+
+            # Its cooldown, look and cleared second target, and nothing else.
+            fielded, refielded = dbc.set_spell_fields(spell_dbc)
+            row = next(fielded[20 + i * sr:20 + (i + 1) * sr] for i in range(sc)
+                       if struct.unpack_from("<I", fielded, 20 + i * sr)[0] == 36779)
+            want = dbc.SPELL_FIELD_OVERRIDES[36779]
+            check("Swear Vendetta: cooldown, look and second target set",
+                  refielded == 1 and all(struct.unpack_from("<I", row, c * 4)[0] == v for c, v in want.items()),
+                  ", ".join("%d=%d" % (c, struct.unpack_from("<I", row, c * 4)[0]) for c in want))
+            strays = sum(1 for i in range(sc)
+                         if fielded[20 + i * sr:20 + (i + 1) * sr] != spell_dbc[20 + i * sr:20 + (i + 1) * sr]) - 1
+            check("no other spell's columns move", strays == 0, "%d stray" % strays)
+            check("Spell.dbc field patch idempotent", not dbc.set_spell_fields(fielded)[1])
 
             # --- elemental variants ------------------------------------------
             # The generated spell rows must land in THIS client's Spell.dbc,

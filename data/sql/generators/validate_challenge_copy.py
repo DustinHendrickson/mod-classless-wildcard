@@ -104,53 +104,138 @@ def word(n):
 # ---- Nemesis ----------------------------------------------------------------
 print("--- Nemesis")
 n = CH["Nemesis"]
-per_death = const(mgr, "NEMESIS_LEVELS_MAX_PER_DEATH", "Nemesis")
 cap = const(mgr, "NEMESIS_LEVEL_CAP", "Nemesis")
 first = const(mgr, "NEMESIS_SCALE_FIRST", "Nemesis")
 most = const(mgr, "NEMESIS_SCALE_MAX", "Nemesis")
-heads = const(hdr, "NEMESIS_HEADS_TO_FINISH", "Nemesis")
-if per_death:
-    says(n, "rule", "up to %s levels" % word(per_death), "NEMESIS_LEVELS_MAX_PER_DEATH")
-    says(n, "detail", "%s for a full bar" % word(per_death), "NEMESIS_LEVELS_MAX_PER_DEATH")
-    says(n, "detail", "one for an empty bar", "one level plus the quarters taken")
-if cap:
-    says(n, "detail", "up to level %d" % cap, "NEMESIS_LEVEL_CAP")
-if first == 1.5:
-    says(n, "detail", "half again as large", "NEMESIS_SCALE_FIRST 1.5")
+charm_max = const(hdr, "NEMESIS_CHARM_MAX_RANK", "Nemesis")
+max_strengths = const(hdr, "NEMESIS_MAX_STRENGTHS", "Nemesis")
+conf = read("conf", "classless_wildcard.conf.dist")
+cfgh = read("src", "ClasslessWildcard.h")
+# the realm's own numbers go into the text through tokens ChallengeText fills
+TOKENS = (("{nemesis_levels}", "ClasslessWildcard.Nemesis.MarkedLevels", "nemesisMarkedLevels"),
+          ("{nemesis_bonus}", "ClasslessWildcard.Nemesis.MarkedBonusXpPct", "nemesisMarkedBonusXpPct"),
+          ("{sworn_levels}", "ClasslessWildcard.Nemesis.SwornLevels", "nemesisSwornLevels"),
+          ("{sworn_bonus}", "ClasslessWildcard.Nemesis.SwornBonusXpPct", "nemesisSwornBonusXpPct"),
+          ("{sworn_below}", "ClasslessWildcard.Nemesis.SwornLevelsBelow", "nemesisSwornLevelsBelow"),
+          ("{sworn_cooldown}", "ClasslessWildcard.Nemesis.SwornCooldownMinutes", "nemesisSwornCooldownMin"),
+          ("{sworn_vengeance}", "ClasslessWildcard.Nemesis.SwornVengeancePct", "nemesisSwornVengeancePct"),
+          ("{vengeance}", "ClasslessWildcard.Nemesis.VengeanceToFinish", "nemesisVengeanceToFinish"),
+          ("{trophy_max}", "ClasslessWildcard.Nemesis.TrophyMax", "nemesisTrophyMax"))
+for token, option, field in TOKENS:
+    says(n, "detail", token, "%s fills it from %s" % ("ChallengeText", option))
+    # the token filled from that very field, not just filled
+    need(re.search(r'fill\("%s", [\w:]+\(cfg\.%s\)\);' % (re.escape(token), field), mgr) is not None,
+         "ChallengeText fills %s from cfg.%s" % (token, field))
+    shipped = re.search(r"^%s = (\d+)" % re.escape(option), conf, re.M)
+    coded = re.search(r'GetOption<uint32>\("%s", (\d+)\)' % re.escape(option), mgr)
+    member = re.search(r"\b%s = (\d+);" % field, cfgh)
+    need(bool(shipped and coded and member) and shipped.group(1) == coded.group(1) == member.group(1),
+         "%s: the conf, the code and the Config default agree (%s / %s / %s)"
+         % (option, shipped and shipped.group(1), coded and coded.group(1), member and member.group(1)))
+says(n, "rule", "{nemesis_levels} levels above you", "MarkNemesis: the Hero's level plus the offset")
+need("ChallengeText(ch.rule)" in read("src", "ClasslessAddon.cpp") and "SanitizeText(sClasslessMgr->ChallengeText(raw))"
+     in read("src", "ClasslessAddon.cpp"), "the addon is sent the filled text")
+says(n, "detail", "a death takes nothing from you", "MarkNemesis takes no experience")
+says(n, "detail", "stays that far above you as you level", "ResyncNemesisCopy follows the Hero's level")
+says(n, "detail", "real higher level foe", "the copy's real level sets every roll")
+need("player->SummonCreature(mark.entry, pos, TEMPSUMMON_CORPSE_TIMED_DESPAWN" in mgr
+     and "nullptr, true);" in mgr, "the nemesis is a private copy, visible to its Hero alone")
+need("NOTHING_DISPLAY_ID" in rules and "IsNemesisOriginalOf(target, creature)" in rules,
+     "the original is drawn invisible for its Hero")
+if first == 1.5 and most == 2:
+    says(n, "detail", "up to twice its size", "NEMESIS_SCALE_MAX 2.0")
 else:
-    need(False, "NEMESIS_SCALE_FIRST is %s: say the new size in the Nemesis text, then teach this check" % first)
-if most == 2:
-    says(n, "detail", "twice its size", "NEMESIS_SCALE_MAX 2.0")
-else:
-    need(False, "NEMESIS_SCALE_MAX is %s: say it in the Nemesis text, then teach this check" % most)
-if heads:
-    says(n, "detail", "%s heads" % word(heads), "NEMESIS_HEADS_TO_FINISH")
-    says(n, "rule", "%s nemeses" % word(heads), "NEMESIS_HEADS_TO_FINISH")
+    need(False, "the nemesis scale constants changed: say it in the Nemesis text, then teach this check")
+# Vengeance: the goal, what a kill gives, and where it is counted
+says(n, "rule", "{vengeance} Vengeance", "RunGoalMet: nemesisVengeanceToFinish")
+says(n, "detail", "reach level 80 with {vengeance} Vengeance", "RunGoalMet: nemesisVengeanceToFinish")
+need("return st.nemesisVengeance >= cfg.nemesisVengeanceToFinish;" in mgr, "RunGoalMet asks for the Vengeance")
+need("uint32(creature->GetLevel()) * (sworn ? cfg.nemesisSwornVengeancePct : 100) / 100" in mgr,
+     "a kill gives its level in Vengeance, the Sworn percent for a Sworn one")
+says(n, "detail", "{marked_vengeance}, or {sworn_vengeance} for a Sworn one", "NemesisSlain's Vengeance")
+need('fill("{marked_vengeance}", TimesLevel(100));' in mgr, "{marked_vengeance} is its level")
+# traits
+says(n, "detail", "gains another strength, up to %s" % word(max_strengths), "MarkNemesis: AddNemesisStrength, NEMESIS_MAX_STRENGTHS")
+need("AddNemesisStrength(itr->second);" in mgr, "a death to the copy adds a strength")
+says(n, "detail", "its strengths when a fight with it starts", "CopyEngages: LearnNemesis(NEMESIS_LEARNED_STRENGTHS)")
+need("LearnNemesis(hero, copy, NEMESIS_LEARNED_STRENGTHS)" in rules, "strengths are learned on engage")
+# Swear Vendetta
+says(n, "detail", "Bloodlust, one more strength and a weakness", "SwearVendetta")
+need("mark.strengths[0] = NS_BLOODLUST;\n    AddNemesisStrength(mark);\n    mark.weakness = RollNemesisWeakness();"
+     in mgr.replace("\r\n", "\n"), "SwearVendetta gives Bloodlust, one more strength and a weakness")
+says(n, "detail", "one Sworn nemesis at a time", "CanSwearVendetta refuses a second")
+need('fail("You have a sworn nemesis already. Slay it first.")' in mgr, "CanSwearVendetta refuses a second Sworn")
+says(n, "detail", "not an elite or a boss", "CanSwearVendetta")
+need('fail("Not on an elite or a boss.")' in mgr and 'fail("Not in a dungeon or raid.")' in mgr,
+     "CanSwearVendetta refuses elites, bosses and dungeons")
+need("uint32(target->GetLevel()) + cfg.nemesisSwornLevelsBelow < player->GetLevel()" in mgr,
+     "CanSwearVendetta measures how far below")
+# the drop, trophies and the charm
+says(n, "detail", "a Sworn one always drops a piece", "TryWorldDrop skips the roll for a Sworn copy")
+need("if (!sworn && (chance <= 0.0f || !roll_chance_f(chance)))" in read("src", "ClasslessLoot.cpp"),
+     "a Sworn nemesis skips the drop roll")
+says(n, "detail", "a trophy of its newest strength", "NemesisSlain: strengths[strengthsHeld - 1]")
+need("itr->second.strengths[strengthsHeld - 1]" in mgr, "the trophy is of the newest strength")
+says(n, "detail", "a star for each strength it had and one more if it was Sworn, up to three", "NemesisSlain's stars")
+need("std::min<uint32>(uint32(strengthsHeld) + (sworn ? 1 : 0), 3)" in mgr, "stars: strengths, one more if Sworn, up to 3")
+says(n, "detail", "all of them add up", "ApplyNemesisFx sums every trophy's stars")
+need("stars[TrophyStrength(entry)] += float(TrophyStars(entry));" in mgr, "every trophy's stars add up")
+says(n, "detail", "no bank, trade, mail or sale", "the locks")
+items = read("data", "sql", "db-world", "cw_world_nemesis_items.sql")
+need(items.count(", 1, '") >= 22 and "`bonding`" in items, "trophies and the charm bind on pickup (no trade or mail)")
+player_script = read("src", "ClasslessPlayerScript.cpp")
+need(all(op in player_script for op in ("case CMSG_SWAP_ITEM:", "case CMSG_SWAP_INV_ITEM:", "case CMSG_AUTOBANK_ITEM:",
+                                        "case CMSG_SPLIT_ITEM:")) and "SERVERHOOK_CAN_PACKET_RECEIVE" in player_script,
+     "every bank move is refused for them")
+need("PLAYERHOOK_CAN_SELL_ITEM" in read("src", "ClasslessLoot.cpp"), "they cannot be sold")
+says(n, "detail", "cannot leave them or be destroyed", "CMSG_DESTROYITEM refuses the charm")
+need('refuse("Your Nemesis Charm cannot be destroyed.")' in player_script, "the charm cannot be destroyed")
+says(n, "detail", "up to %s in each" % word(charm_max), "NEMESIS_CHARM_MAX_RANK")
+says(n, "detail", "the best trophy of each kind adds its stars", "EndNemesisTrophies merges the best of each kind")
+need("std::max(best[TrophyStrength(item->GetEntry())]," in mgr, "the merge takes the best of each kind")
+says(n, "detail", "A run that ends unfinished loses its trophies", "EndNemesisTrophies destroys them either way")
+need("EndNemesisTrophies(player, finished);" in mgr, "EndRun ends the trophies, finished or not")
 says(n, "detail", "dungeons and raids make no nemesis", "MarkNemesis refuses IsDungeon maps")
-bonus = const(mgr, "NEMESIS_BONUS_PCT_PER_LEVEL", "Nemesis")
-bonus_cap = const(mgr, "NEMESIS_BONUS_CAP_PCT", "Nemesis")
-SHARES = {10: "a tenth", 20: "a fifth", 25: "a quarter"}
-if bonus:
-    says(n, "detail", "%s of your current level for every level it gained" % SHARES.get(bonus, "%d%%" % bonus),
-         "NEMESIS_BONUS_PCT_PER_LEVEL")
-if bonus_cap == 100:
-    says(n, "detail", "up to a full level", "NEMESIS_BONUS_CAP_PCT")
-elif bonus_cap:
-    need(False, "NEMESIS_BONUS_CAP_PCT is %s: say it in the Nemesis text, then teach this check" % bonus_cap)
-says(n, "detail", "red arrow over its head", "NEMESIS_TRACK_SPELL wears Hunter's Mark's arrow")
 says(n, "detail", "elites, bosses", "MarkNemesis refuses isElite and bosses")
+says(n, "detail", "red arrow over its head", "NEMESIS_TRACK_SPELL wears Hunter's Mark's arrow")
 never(n, "up to thirty", "there is no total cap on levels")
 never(n, "every creature of that kind", "a nemesis is the one creature, by spawn id")
+never(n, "takes the experience in your bar", "a death takes nothing now")
+never(n, "comes back to you", "nothing is taken, so nothing comes back")
+never(n, "pet or group", "the copy is its Hero's alone: a group cannot see it")
+never(n, "heads", "the run counts Vengeance, not heads")
+never(n, "its head and", "a kill gives Vengeance and a trophy")
+addon = read("client-addon", "ClasslessWildcard", "ClasslessWildcard.lua")
+need("nemesis heads" not in addon.lower(), "the addon never says 'nemesis heads'")
 
 # ---- Elite World --------------------------------------------------------------
 print("--- Elite World")
 e = CH["Elite World"]
-need("GetMaxHealth() * 3" in rules, "Elite World code triples health")
-says(e, "rule", "triple health", "GetMaxHealth() * 3")
-says(e, "rule", "double damage", "damage *= 2 for a creature hitting the Hero")
-says(e, "detail", "damage over time", "Scale runs from ModifyPeriodicDamageAurasTick too")
+need("bool ClasslessMgr::ChallengeViewOf" in mgr and "void OnPatchValuesUpdate(Unit const* unit" in rules
+     and "UNITHOOK_ON_PATCH_VALUES_UPDATE" in rules and "UNITHOOK_SHOULD_TRACK_VALUES_UPDATE_POS_BY_INDEX" in rules,
+     "Elite World and a nemesis are drawn per player (ChallengeViewOf, OnPatchValuesUpdate)")
+need("CW_ViewDamageRatio" in rules and "CW_ViewHealthRatio" in rules and "void Exchange(" in rules,
+     "and fought per player (Exchange)")
+need("Acore::XP::BaseGain" in rules and "amount *= 2" in rules, "Elite World and a nemesis pay elite experience per player")
+says(e, "rule", "elite for you", "ChallengeViewOf")
+says(e, "detail", "for you alone", "ChallengeViewOf: per player")
+says(e, "detail", "Other players see and fight", "per player: the creature never changes")
+says(e, "detail", "elite experience", "OnPlayerGiveXP")
+says(e, "detail", "Rares are rare elites", "ChallengeViewOf")
+loot = read("src", "ClasslessLoot.cpp")
+need("IsRareOrBoss(killed) || nemesisCopy || sClasslessMgr->ChallengeViewOf(killer, killed, view)" in loot
+     and "ClasslessMgr::NemesisCopyOwner(killed) == killer->GetGUID()" in loot,
+     "a nemesis and an Elite World enemy drop like rares for their Hero")
+says(e, "detail", "drops classless gear as often as a rare, heirloom roll included", "TryWorldDrop reads ChallengeViewOf")
+says(CH["Nemesis"], "detail", "drops classless gear as often as a rare, heirloom roll included", "TryWorldDrop reads ChallengeViewOf")
+says(e, "detail", "already elite, rare elite or bosses are left as they are", "CW_EliteWorldCandidate")
+never(e, "triple health", "the realm's elite rates set it, not a fixed number")
+never(e, "anyone near you fights it as an elite", "Elite World is per player")
+says(CH["Nemesis"], "detail", "for you alone", "the private copy")
+says(CH["Nemesis"], "detail", "Other players see and fight it as it always was", "the private copy")
+says(CH["Pursued"], "detail", "it harms no one else", "Exchange: the hunter fights its Hero alone")
+says(CH["Legion"], "detail", "fight only you", "Exchange: reinforcements fight their Hero alone")
 need("UNITHOOK_MODIFY_PERIODIC_DAMAGE_AURAS_TICK" in rules, "the damage rules cover damage over time")
-never(e, "is an elite", "the creature's rank is not changed")
 
 # ---- Legion -------------------------------------------------------------------
 print("--- Legion")
@@ -194,7 +279,14 @@ if hunter:
         names = re.findall(r"`(\w+)`", cols.group(0))
         vals = [v.strip() for v in row.group(0).strip("()").split(",")]
         rank = vals[names.index("rank")] if "rank" in names else "0"
-        need(rank == "1", "the hunter is elite rank, as 'elite experience' says (rank %s)" % rank)
+        need(rank == "2", "the hunter is rare elite rank, as the text says (rank %s)" % rank)
+says(p, "detail", "rare elite", "the hunter is releveled with the RAREELITE rates")
+says(CH["Nemesis"], "detail", "rare elite", "the copy is releveled with the RAREELITE rates")
+need("RATE_CREATURE_ELITE_RAREELITE_HP" in rules and "Creature::_GetDamageMod(int32(rank))" in rules,
+     "CW_ReLevelCreature reads the realm's rates for the rank it is given")
+need("CW_ReLevelCreature(copy, level, CREATURE_ELITE_RAREELITE)" in mgr and "CW_ReLevelCreature(hunter" in mgr
+     and "NEMESIS_LEVEL_CAP)), CREATURE_ELITE_RAREELITE);" in mgr,
+     "a nemesis's copy and the hunter are releveled as rare elites")
 
 # ---- Hourglass ----------------------------------------------------------------
 print("--- Hourglass")

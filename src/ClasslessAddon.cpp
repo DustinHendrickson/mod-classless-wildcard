@@ -874,6 +874,8 @@ namespace
             st.lastComboPush = 255;
             st.lastRuneSig = 0xFFFFFFFF;
             st.nemesisGuidsSent = "?";   // matches no list, so the next push goes out
+            st.nemesisListSent = "?";
+            sClasslessMgr->PushNemesisCharm(player);
             st.lastRunicBucket = 255;
             st.runeAcc = 1000;   // so runic power is due immediately, not in a second
             st.lastRuneOwn = -1; // and work out from scratch whether to draw it at all
@@ -1127,13 +1129,13 @@ namespace
                 }
                 // field 11: the path the run asks for (0 Classless, 1 Wildcard,
                 // 255 either), so the page can say who may start it; field 12:
-                // the nemesis heads it asks for besides the level cap (0 none)
+                // the Vengeance it asks for besides the level cap (0 none)
                 SendAddon(player, Acore::StringFormat("CH|{}|{}|{}|{}|{}|{}|{}|{}|{}|{}|{}",
-                    uint32(ch.id), ch.name, uint32(ch.lives), ch.rewardGold, ch.rule,
+                    uint32(ch.id), ch.name, uint32(ch.lives), ch.rewardGold, sClasslessMgr->ChallengeText(ch.rule),
                     best != st.runBest.end() ? uint32(best->second.first) : 0u,
                     best != st.runBest.end() && best->second.second ? 1 : 0, reward, title,
                     uint32(ch.path),
-                    ch.id == uint8(ChallengeId::Nemesis) ? uint32(NEMESIS_HEADS_TO_FINISH) : 0u));
+                    ch.id == uint8(ChallengeId::Nemesis) ? sClasslessMgr->cfg.nemesisVengeanceToFinish : 0u));
                 // How the rule plays, in full, as "CD|id|text" pieces the addon
                 // joins in order. Split on spaces, because one addon message
                 // carries about 255 characters and a full explanation does not
@@ -1143,7 +1145,7 @@ namespace
                 // layer might trim.
                 auto sendPieces = [&](char const* kind, char const* raw)
                 {
-                    std::string const text = SanitizeText(raw ? raw : "");
+                    std::string const text = SanitizeText(sClasslessMgr->ChallengeText(raw));
                     size_t pos = 0;
                     while (pos < text.size())
                     {

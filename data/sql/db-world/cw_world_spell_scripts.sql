@@ -79,8 +79,10 @@ DELETE FROM `spell_script_names` WHERE `ScriptName` IN
      'spell_cw_pet_hit_expertise_scaling',
      'spell_cw_dk_blade_barrier', 'spell_cw_dk_death_rune',
      'spell_cw_healing_trance', 'spell_cw_blessing_of_faith',
-     'spell_cw_flask_of_the_north', 'spell_cw_t3_6p_bonus');
+     'spell_cw_flask_of_the_north', 'spell_cw_t3_6p_bonus',
+     'spell_cw_swear_vendetta');
 INSERT INTO `spell_script_names` (`spell_id`, `ScriptName`) VALUES
+(36779, 'spell_cw_swear_vendetta'),
 (37705, 'spell_cw_healing_trance'),
 (60510, 'spell_cw_healing_trance'),
 (37877, 'spell_cw_blessing_of_faith'),

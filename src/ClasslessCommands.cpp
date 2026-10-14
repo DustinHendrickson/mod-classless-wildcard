@@ -377,7 +377,7 @@ public:
             std::string const lives = ch.lives == UNLIMITED_LIVES ? std::string("unlimited lives")
                 : Acore::StringFormat("{} {}", uint32(ch.lives), ch.lives == 1 ? "life" : "lives");
             handler->SendSysMessage(Acore::StringFormat("  {}. |cffffd100{}|r  {}, {} gold.  {}{}",
-                uint32(ch.id), ch.name, lives, ch.rewardGold, ch.rule,
+                uint32(ch.id), ch.name, lives, ch.rewardGold, sClasslessMgr->ChallengeText(ch.rule),
                 best == st.runBest.end() ? ""
                     : Acore::StringFormat("  Best: level {}{}", uint32(best->second.first),
                                           best->second.second ? ", finished" : "")));

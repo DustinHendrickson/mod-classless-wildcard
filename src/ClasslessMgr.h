@@ -210,6 +210,9 @@ public:
     // The list is code (ClasslessMgr.cpp), in id order; the addon is sent it.
     static std::vector<ClasslessWildcard::Challenge> const& Challenges();
     static ClasslessWildcard::Challenge const* GetChallenge(uint8 id);
+    // A challenge's text as players read it: the {tokens} in it filled from
+    // this realm's config, so the text says what the realm actually does.
+    std::string ChallengeText(char const* raw) const;
     static constexpr uint32 HUNTER_ENTRY = 990099;      // Pursued's hunter, cw_world_challenges.sql
     static constexpr uint32 EXTRA_LIFE_SHARDS = 30;
     // A run starts before ModeChoiceDeadline. The character stays on its own
@@ -226,9 +229,99 @@ public:
     std::string MarkNemesis(Player* player, Creature* killer);
     bool ApplyNemesis(Player* player, Creature* creature);   // on engage; true when it is one
     void NemesisSlain(Player* player, Creature* creature);
-    // Every five seconds on a Nemesis run: each nemesis in sight is grown and
-    // marked on this Hero's minimap.
+    // Every five seconds on a Nemesis run: each nemesis in sight is marked on
+    // this Hero's minimap and wears its arrow, for this Hero alone.
     void NemesisTick(Player* player);
+
+    // How a Hero's challenge makes them see and fight one creature: the level,
+    // rank and size it has for them. Elite World's elites and a nemesis are
+    // this Hero's alone; everyone else sees and fights the creature as it is.
+    // The values reach their client through OnPatchValuesUpdate, and their
+    // fights with it through the damage hooks (ClasslessChallenges.cpp).
+    struct ChallengeView
+    {
+        uint8 level = 0;
+        uint32 rank = 0;
+        float scale = 1.0f;
+    };
+    bool ChallengeViewOf(Player* viewer, Creature const* creature, ChallengeView& out);
+    // The run a player is on, kept on the player too. ChallengeViewOf runs for
+    // every creature update sent to every player, bots included, and this
+    // lets it pass over everyone not on Elite World or Nemesis without taking
+    // the state lock. Set wherever CharState::run is.
+    static void TagRun(Player* player, uint8 run);
+    // Send a creature's level, health, size, model and flags again, so each
+    // viewer gets them freshly patched for what they should see.
+    static void RefreshChallengeView(Creature* creature);
+
+    // A nemesis is fought as a private copy: a summon of the same creature,
+    // visible to its Hero alone (the core's visible-to-summoner-only), made
+    // at their level plus the offset with rare elite stats. The original
+    // stays for everyone else and is drawn invisible and untargetable for
+    // its Hero (OnPatchValuesUpdate), who never fights it.
+    void DespawnNemesisCopies(Player* player);
+    // Whose copy this is, and of which spawn; empty / 0 when it is none.
+    static ObjectGuid NemesisCopyOwner(Creature const* creature, uint32* spawnId = nullptr);
+    // Is this the original of one of this Hero's nemeses (hidden from them)?
+    bool IsNemesisOriginalOf(Player* viewer, Creature const* creature);
+    Creature* SpawnNemesisCopy(Player* player, uint32 spawnId, ClasslessWildcard::NemesisMark const& mark);
+
+    // Swear Vendetta (PLAN-nemesis.md section 2): a stock dummy spell nothing
+    // else uses, "Test Whelp Net (Dummy)", named and iconed by the client
+    // patch (dbc.SPELL_RENAMES). Taught for a Nemesis run alone.
+    static constexpr uint32 SWEAR_VENDETTA_SPELL = 36779;
+    void PrepareSwearVendetta();
+    bool CanSwearVendetta(Player* player, Creature* target, std::string* err);
+    void SwearVendetta(Player* player, Creature* target);
+
+    // Traits. The mark a Hero's copy carries, or null.
+    ClasslessWildcard::NemesisMark* MarkOfCopy(Creature const* copy, Player* owner);
+    void AddNemesisStrength(ClasslessWildcard::NemesisMark& mark);
+    static uint8 RollNemesisWeakness();
+    static char const* NemesisStrengthName(uint8 strength);
+    static char const* NemesisWeaknessName(uint8 weakness);
+    // Its Hero has found something out; true when it is new to them.
+    bool LearnNemesis(Player* player, Creature const* copy, uint8 what);
+    // A line from the nemesis to its Hero alone (it is visible to no one else).
+    void NemesisSay(Player* player, Creature* copy, std::string const& text, bool emote = false);
+    bool IsSwornCopy(Creature const* copy, Player* owner);
+    // What it says to its Hero, and to no one else: when a fight with it
+    // starts, when it kills them again, and when it dies. A creature that
+    // talks says it; a beast or an elemental emotes.
+    enum class NemesisMoment : uint8 { Engage, Gloat, Death };
+    void NemesisTaunt(Player* player, Creature* copy, ClasslessWildcard::NemesisMark const& mark, NemesisMoment moment);
+
+    // ---- Vengeance, trophies, the Nemesis Charm (PLAN-nemesis.md section 6) ----
+    // A trophy's entry is FIRST + (strength - 1) * 3 + (stars - 1): one per
+    // effect and star count. cw_world_nemesis_items.sql.
+    static constexpr uint32 NEMESIS_TROPHY_FIRST = 991000;
+    static constexpr uint32 NEMESIS_TROPHY_LAST = 991020;
+    static constexpr uint32 NEMESIS_CHARM = 991030;
+    static constexpr uint8 NEMESIS_CHARM_MAX_RANK = 5;
+    static bool IsNemesisTrophy(uint32 entry) { return entry >= NEMESIS_TROPHY_FIRST && entry <= NEMESIS_TROPHY_LAST; }
+    static uint8 TrophyStrength(uint32 entry) { return uint8((entry - NEMESIS_TROPHY_FIRST) / 3 + 1); }
+    static uint8 TrophyStars(uint32 entry) { return uint8((entry - NEMESIS_TROPHY_FIRST) % 3 + 1); }
+    // trophies in the bags (the backpack and the four bags) and the charm,
+    // applied as stat changes; run on login and every two seconds
+    void ApplyNemesisFx(Player* player);
+    void GrantNemesisTrophy(Player* player, uint32 entry);
+    // the run's end: on a finish the trophies merge into the charm, either way they go
+    void EndNemesisTrophies(Player* player, bool finished);
+    // NT: what a star is worth and the charm's ranks, for the addon's tooltips
+    void PushNemesisCharm(Player* player);
+    void SaveNemesisRun(ObjectGuid guid, ClasslessWildcard::CharState const& st);
+    void SaveNemesisCharm(ObjectGuid guid, ClasslessWildcard::CharState const& st);
+    // A title for a nemesis, from how it was made and what it is.
+    static std::string NemesisTitle(ClasslessWildcard::NemesisMark const& mark);
+    // NL: each nemesis, for the tracker's list and the world map pins:
+    // NLB, then "NL|name|title|kind|levels|strengths|weakness|zone|x|y" for each, then NLE.
+    // What the Hero has not found out yet is sent as "?".
+    void PushNemesisList(Player* player);
+    void ResyncNemesisCopy(Player* player, Creature* copy, ClasslessWildcard::NemesisMark const& mark,
+                           bool made = false);
+    // The nemesis mark's arrow and debuff, sent to its Hero alone (the aura
+    // itself is passive, so the server never shows it to anyone).
+    void SendNemesisMark(Player* player, Creature* creature, bool on);
     // What the server holds and has done for each of this Hero's nemeses, a
     // line each, for .classless nemesis.
     std::vector<std::string> NemesisReport(Player* player);
@@ -310,6 +403,10 @@ public:
     // walks away or logs out leaves no mark behind. The spell's own duration
     // is permanent.
     static constexpr int32 NEMESIS_MARK_MS = 30000;   // 30 seconds
+    // The aura slot the private arrow is sent in. The server hands a unit's
+    // visible auras the lowest free slots from 0, so the top of the client's
+    // range (MAX_AURAS) is never one a real aura is shown in.
+    static constexpr uint8 NEMESIS_MARK_SLOT = 254;
     // A nemesis falling: Corpse Explosion's burst on the body (SpellVisualKit
     // 10828, the impact of 50444) and the level-up glow on the Hero (6375,
     // the cast kit of Level Up 24312).
@@ -447,7 +544,9 @@ private:
     // OVERPOWER_AURA_STATE as its caster aura state. The client patch makes the
     // same two changes, so this is not conditional.
     void GateOverpowerOnDodge();
-    // Check NEMESIS_TRACK_SPELL is still a lone stalked aura.
+    // Check NEMESIS_TRACK_SPELL is still a lone stalked aura, and make it
+    // passive so the server never shows it to anyone; its Hero is sent the
+    // arrow alone (SendNemesisMark).
     void PrepareNemesisTrack();
     bool _nemesisTrackReady = false;
     // Read cw_talent_reach into _talentReach: every rank of every general
@@ -480,7 +579,7 @@ private:
     void SaveNemeses(ObjectGuid guid, ClasslessWildcard::CharState const& st);
     void SaveNemesisHeads(ObjectGuid guid, ClasslessWildcard::CharState const& st);
     // Has the live run met what it asks for besides the level cap? Only
-    // Nemesis asks for more: its heads.
+    // Nemesis asks for more: its Vengeance.
     bool RunGoalMet(ClasslessWildcard::CharState const& st) const;
     // A run saved with lives on a challenge that has since gone unlimited.
     void CarryRunToUnlimitedLives(ClasslessWildcard::CharState& st);

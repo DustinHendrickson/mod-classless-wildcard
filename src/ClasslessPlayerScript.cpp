@@ -699,6 +699,8 @@ public:
         trans->Append("DELETE FROM cw_char_runs WHERE guid = {}", guid);
         trans->Append("DELETE FROM cw_char_nemeses WHERE guid = {}", guid);
         trans->Append("DELETE FROM cw_char_nemesis_heads WHERE guid = {}", guid);
+        trans->Append("DELETE FROM cw_char_nemesis_run WHERE guid = {}", guid);
+        trans->Append("DELETE FROM cw_char_nemesis_charm WHERE guid = {}", guid);
         sClasslessMgr->UnloadState(ObjectGuid::Create<HighGuid::Player>(guid));
     }
 
@@ -709,6 +711,7 @@ public:
         // a hunter with nobody to hunt leaves; before the state goes, which
         // is where its guid lives
         sClasslessMgr->DespawnHunter(player);
+        sClasslessMgr->DespawnNemesisCopies(player);
         // Hourglass's and Pursued's clocks run in memory between saves, and
         // nothing else saves at logout: without this a logout put either
         // clock back to whatever the last level-up or death had saved.
@@ -954,6 +957,9 @@ public:
         // moment and gets the imp back on dismounting. Costs a map lookup and a
         // known-spell check every two seconds.
         sClasslessMgr->DismissOrphanedSummons(player);
+
+        // the trophies and the Nemesis Charm in the bags, as stat changes
+        sClasslessMgr->ApplyNemesisFx(player);
 
         // Player::InitDataForForm resets the displayed power to the CLASS's own
         // whenever a shapeshift starts or ends, and a warrior stance counts --
@@ -1700,7 +1706,92 @@ private:
 class ClasslessServerScript : public ServerScript
 {
 public:
-    ClasslessServerScript() : ServerScript("ClasslessServerScript", { SERVERHOOK_CAN_PACKET_SEND }) { }
+    ClasslessServerScript() : ServerScript("ClasslessServerScript", { SERVERHOOK_CAN_PACKET_SEND,
+                                                                      SERVERHOOK_CAN_PACKET_RECEIVE }) { }
+
+    // Trophies and the Nemesis Charm stay in the bags (PLAN-nemesis.md: locked
+    // in the bags). Trading, mail, the auction house and a guild bank refuse a
+    // soulbound item already; the bank does not, and the core has no hook for
+    // it, so the client's move requests are read here and any that would put
+    // one in the bank or a bank bag is refused. The charm cannot be destroyed.
+    bool CanPacketReceive(WorldSession* session, WorldPacket const& packet) override
+    {
+        Player* player = session ? session->GetPlayer() : nullptr;
+        if (!player || !player->IsInWorld())
+            return true;
+        auto lockedItem = [](Item const* item)
+        {
+            return item && (ClasslessMgr::IsNemesisTrophy(item->GetEntry()) || item->GetEntry() == ClasslessMgr::NEMESIS_CHARM);
+        };
+        // a bag counts as one when it holds one: a bag can move into a bank
+        // bag slot with everything in it
+        auto locked = [player, lockedItem](uint8 bag, uint8 slot)
+        {
+            Item* item = player->GetItemByPos(bag, slot);
+            if (lockedItem(item))
+                return true;
+            if (Bag* container = item ? item->ToBag() : nullptr)
+                for (uint32 i = 0; i < container->GetBagSize(); ++i)
+                    if (lockedItem(container->GetItemByPos(uint8(i))))
+                        return true;
+            return false;
+        };
+        auto refuse = [player](char const* text)
+        {
+            ChatHandler(player->GetSession()).SendNotification(text);
+            return false;
+        };
+        try
+        {
+            switch (packet.GetOpcode())
+            {
+                case CMSG_SWAP_ITEM:   // dstbag, dstslot, srcbag, srcslot
+                {
+                    uint8 const dstBag = packet.read<uint8>(0), dstSlot = packet.read<uint8>(1);
+                    uint8 const srcBag = packet.read<uint8>(2), srcSlot = packet.read<uint8>(3);
+                    if ((locked(srcBag, srcSlot) && Player::IsBankPos(dstBag, dstSlot))
+                        || (locked(dstBag, dstSlot) && Player::IsBankPos(srcBag, srcSlot)))
+                        return refuse("Trophies and your Nemesis Charm stay in your bags.");
+                    break;
+                }
+                case CMSG_SWAP_INV_ITEM:   // srcslot, dstslot, both in the backpack's own range
+                {
+                    uint8 const srcSlot = packet.read<uint8>(0), dstSlot = packet.read<uint8>(1);
+                    if ((locked(INVENTORY_SLOT_BAG_0, srcSlot) && Player::IsBankPos(INVENTORY_SLOT_BAG_0, dstSlot))
+                        || (locked(INVENTORY_SLOT_BAG_0, dstSlot) && Player::IsBankPos(INVENTORY_SLOT_BAG_0, srcSlot)))
+                        return refuse("Trophies and your Nemesis Charm stay in your bags.");
+                    break;
+                }
+                case CMSG_AUTOSTORE_BAG_ITEM:   // srcbag, srcslot, dstbag
+                    if (locked(packet.read<uint8>(0), packet.read<uint8>(1))
+                        && Player::IsBankPos(packet.read<uint8>(2), NULL_SLOT))
+                        return refuse("Trophies and your Nemesis Charm stay in your bags.");
+                    break;
+                case CMSG_AUTOBANK_ITEM:   // srcbag, srcslot
+                    if (locked(packet.read<uint8>(0), packet.read<uint8>(1)))
+                        return refuse("Trophies and your Nemesis Charm stay in your bags.");
+                    break;
+                case CMSG_SPLIT_ITEM:   // srcbag, srcslot, dstbag, dstslot, count
+                    if (locked(packet.read<uint8>(0), packet.read<uint8>(1))
+                        && Player::IsBankPos(packet.read<uint8>(2), packet.read<uint8>(3)))
+                        return refuse("Trophies and your Nemesis Charm stay in your bags.");
+                    break;
+                case CMSG_DESTROYITEM:   // bag, slot, count, ...
+                {
+                    Item* item = player->GetItemByPos(packet.read<uint8>(0), packet.read<uint8>(1));
+                    if (item && item->GetEntry() == ClasslessMgr::NEMESIS_CHARM)
+                        return refuse("Your Nemesis Charm cannot be destroyed.");
+                    break;
+                }
+                default:
+                    break;
+            }
+        }
+        catch (ByteBufferException const&)
+        {
+        }
+        return true;
+    }
 
     bool CanPacketSend(WorldSession* session, WorldPacket const& packet) override
     {

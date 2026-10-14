@@ -260,6 +260,38 @@ void ClasslessMgr::LoadConfig(bool /*reload*/)
     cfg.worldDropChance = sConfigMgr->GetOption<float>("ClasslessWildcard.WorldDrops.Chance", 1.0f);
     cfg.worldDropRareMultiplier = sConfigMgr->GetOption<float>("ClasslessWildcard.WorldDrops.RareMultiplier", 5.0f);
     cfg.worldDropHeirloomChance = sConfigMgr->GetOption<float>("ClasslessWildcard.WorldDrops.HeirloomChance", 2.0f);
+    cfg.nemesisMarkedLevels = std::min<uint32>(sConfigMgr->GetOption<uint32>("ClasslessWildcard.Nemesis.MarkedLevels", 2), 10);
+    cfg.nemesisMarkedBonusXpPct = sConfigMgr->GetOption<uint32>("ClasslessWildcard.Nemesis.MarkedBonusXpPct", 25);
+    cfg.nemesisSwornLevels = std::min<uint32>(sConfigMgr->GetOption<uint32>("ClasslessWildcard.Nemesis.SwornLevels", 4), 10);
+    cfg.nemesisSwornBonusXpPct = sConfigMgr->GetOption<uint32>("ClasslessWildcard.Nemesis.SwornBonusXpPct", 50);
+    cfg.nemesisSwornCooldownMin = sConfigMgr->GetOption<uint32>("ClasslessWildcard.Nemesis.SwornCooldownMinutes", 30);
+    cfg.nemesisSwornLevelsBelow = sConfigMgr->GetOption<uint32>("ClasslessWildcard.Nemesis.SwornLevelsBelow", 5);
+    cfg.nemesisBloodlustPct = std::min<uint32>(sConfigMgr->GetOption<uint32>("ClasslessWildcard.Nemesis.BloodlustPct", 30), 90);
+    cfg.nemesisIronhidePct = std::min<uint32>(sConfigMgr->GetOption<uint32>("ClasslessWildcard.Nemesis.IronhidePct", 25), 90);
+    cfg.nemesisSpellwardPct = std::min<uint32>(sConfigMgr->GetOption<uint32>("ClasslessWildcard.Nemesis.SpellwardPct", 25), 90);
+    cfg.nemesisVenomousPct = sConfigMgr->GetOption<uint32>("ClasslessWildcard.Nemesis.VenomousPct", 2);
+    cfg.nemesisUnyieldingPct = sConfigMgr->GetOption<uint32>("ClasslessWildcard.Nemesis.UnyieldingPct", 25);
+    cfg.nemesisRelentlessPct = sConfigMgr->GetOption<uint32>("ClasslessWildcard.Nemesis.RelentlessPct", 5);
+    cfg.nemesisWeakSchoolPct = sConfigMgr->GetOption<uint32>("ClasslessWildcard.Nemesis.WeakSchoolPct", 50);
+    cfg.nemesisBrittlePct = sConfigMgr->GetOption<uint32>("ClasslessWildcard.Nemesis.BrittlePct", 20);
+    cfg.nemesisCowardlyPct = sConfigMgr->GetOption<uint32>("ClasslessWildcard.Nemesis.CowardlyPct", 30);
+    cfg.nemesisWarbandCount = std::min<uint32>(sConfigMgr->GetOption<uint32>("ClasslessWildcard.Nemesis.WarbandCount", 2), 5);
+    cfg.nemesisVenomousSeconds = std::max<uint32>(sConfigMgr->GetOption<uint32>("ClasslessWildcard.Nemesis.VenomousSeconds", 6), 1);
+    cfg.nemesisUnyieldingBelowPct = std::min<uint32>(sConfigMgr->GetOption<uint32>("ClasslessWildcard.Nemesis.UnyieldingBelowPct", 30), 100);
+    cfg.nemesisBrittleSeconds = sConfigMgr->GetOption<uint32>("ClasslessWildcard.Nemesis.BrittleSeconds", 8);
+    cfg.nemesisCowardlyFleePct = std::min<uint32>(sConfigMgr->GetOption<uint32>("ClasslessWildcard.Nemesis.CowardlyFleePct", 20), 100);
+    cfg.nemesisCowardlyFleeSeconds = sConfigMgr->GetOption<uint32>("ClasslessWildcard.Nemesis.CowardlyFleeSeconds", 6);
+    cfg.nemesisVengeanceToFinish = sConfigMgr->GetOption<uint32>("ClasslessWildcard.Nemesis.VengeanceToFinish", 500);
+    cfg.nemesisSwornVengeancePct = sConfigMgr->GetOption<uint32>("ClasslessWildcard.Nemesis.SwornVengeancePct", 150);
+    cfg.nemesisTrophyMax = std::clamp<uint32>(sConfigMgr->GetOption<uint32>("ClasslessWildcard.Nemesis.TrophyMax", 4), 1, 16);
+    {
+        static char const* const keys[NS_COUNT] = { "", "StarHaste", "StarArmor", "StarResistance", "StarCrit",
+                                                    "StarHealth", "StarPower", "StarStats" };
+        static float const defaults[NS_COUNT] = { 0.0f, 0.8f, 2.0f, 6.0f, 0.4f, 1.2f, 1.2f, 0.8f };
+        for (uint8 s = NS_BLOODLUST; s < NS_COUNT; ++s)
+            cfg.nemesisStar[s] = std::max(0.0f, sConfigMgr->GetOption<float>(
+                std::string("ClasslessWildcard.Nemesis.") + keys[s], defaults[s]));
+    }
 
     cfg.startingAbilityEssence = sConfigMgr->GetOption<uint32>("ClasslessWildcard.Classless.StartingAbilityEssence", 3);
     cfg.essenceStartLevel = sConfigMgr->GetOption<uint8>("ClasslessWildcard.Classless.EssenceStartLevel", 4);
@@ -1126,6 +1158,7 @@ void ClasslessMgr::BuildLibrary()
     StripSpellTools();
     GateOverpowerOnDodge();
     PrepareNemesisTrack();
+    PrepareSwearVendetta();
     LoadTalentReach();
     _libraryBuilt = true;
 
@@ -3212,6 +3245,10 @@ bool ClasslessMgr::Rebirth(Player* player, std::vector<uint32> const& heirlooms,
 // =========================================================================
 // Challenge runs: a Wildcard life under one rule, with lives.
 //
+// Sends the creatures around a Hero again for the view their run now gives
+// them (ClasslessChallenges.cpp).
+void CW_RefreshViewsAround(Player* player);
+
 // The rules themselves are hooks in ClasslessChallenges.cpp. This is the run:
 // starting one, the lives, the end, and
 // the two rules that need the manager's state (Nemesis marks, the hunter).
@@ -3226,14 +3263,7 @@ namespace
     constexpr uint32 HUNTER_MAX_S = 30 * MINUTE;
     constexpr uint32 HUNTER_LOGIN_GRACE_S = 15;   // a hunter due at logout waits out the loading screen
     uint32 NextHunterIn() { return urand(HUNTER_MIN_S, HUNTER_MAX_S); }
-    // Levels a nemesis gains for one death: one for an empty bar, then one
-    // more for every quarter of the bar it took, so a full bar is five.
-    constexpr uint8  NEMESIS_LEVELS_MAX_PER_DEATH = 5;
-    // Killing one pays more than it took: a tenth of the Hero's current level
-    // for every level it gained on them, up to one full level.
-    constexpr uint32 NEMESIS_BONUS_PCT_PER_LEVEL = 10;
-    constexpr uint32 NEMESIS_BONUS_CAP_PCT = 100;
-    constexpr uint8  NEMESIS_LEVEL_CAP = 83;
+    constexpr uint8  NEMESIS_LEVEL_CAP = 83;   // the highest level base stats exist for
     // How much bigger a nemesis is than its kind, the one cue the client
     // cannot ignore: half again at the first death, more with every death
     // after, up to twice its size.
@@ -3246,17 +3276,17 @@ namespace
         // line (a forged recipe flagged `reward`), how the rule plays in full, and tips. Lives follow how often the rule itself kills:
         // five where the world is turned up, three where the fight changes shape, one only where
         // the rule IS death. The list is in the order the picker shows it.
-        { 1,  "nemesis",         "Nemesis",         UNLIMITED_LIVES, "Unlimited lives. The creature that kills you takes the experience in your bar, gains up to five levels for it and grows. Slay five nemeses of different kinds and reach level 80 to finish.", 500, 186, "mark_of_the_nemesis",
-          "You have unlimited lives on this run. The creature that kills you becomes your nemesis and takes the experience in your current level's bar, though never the level itself. That one creature gains levels for the experience it took, five for a full bar, four for three quarters, three for half, two for a quarter and one for an empty bar, up to level 83. It also gains elite health and damage and grows half again as large, and it keeps all of it for the rest of the run, even after it respawns. It wears a red arrow over its head, shows as elite on your target frame and is on your minimap. Each time it kills you again it gains levels the same way, takes your bar again and grows larger, up to twice its size. Kill it, alone or with your pet or group, and the mark is lifted. All the experience it took comes back to you, with bonus experience on top, a tenth of your current level for every level it gained, up to a full level, and you take its head. If you are dead when it falls, the mark stays. To finish, reach level 80 holding five heads, each from a different kind of creature. Reaching 80 first does not end the run, it ends the moment the fifth head is yours. Deaths in dungeons and raids make no nemesis, and neither do deaths to elites, bosses, pets, totems or summoned creatures.",
-          "Remember what killed you and where. Your nemesis respawns where it always does, so stay clear of it until you are ready, then go back and kill it to take your experience back and its head. A kind you already have a head from earns no second one, so five heads means five nemeses of different kinds. Every death to the same nemesis makes it stronger and costs you another bar. Other creatures of its kind are not marked." },
-        { 2,  "elite_world",     "Elite World",     5, "Every enemy that fights you has triple health and deals double damage.", 750, 187, "giantsbane",
-          "The moment an enemy engages you or your pet it gains triple health, and everything it deals to you or your pet, melee, spells and damage over time, is doubled. This applies to every creature in the world, dungeons included, but not to pets, totems or summoned creatures with an owner. Enemies keep their usual rank, so they give their usual experience. Pull one at a time, and use every stun, slow and snare you own.",
+        { 1,  "nemesis",         "Nemesis",         UNLIMITED_LIVES, "Unlimited lives. The creature that kills you becomes your nemesis, a rare elite {nemesis_levels} levels above you, for you alone. Slaying one gives Vengeance, its level. Reach level 80 with {vengeance} Vengeance to finish.", 500, 186, "mark_of_the_nemesis",
+          "You have unlimited lives on this run, and a death takes nothing from you. The creature that kills you becomes your nemesis instead, that one creature, for you alone. It waits for you where it lives as a rare elite {nemesis_levels} levels above you, and it stays that far above you as you level, so every miss, dodge and resist in the fight is a real higher level foe's. It wears a red arrow over its head, shows as a rare elite on your target frame and is on your minimap. Other players see and fight it as it always was. Each nemesis has a strength and a weakness. You learn its strengths when a fight with it starts, and its weakness when you find it. Each time it kills you again it grows larger, up to twice its size, and gains another strength, up to three. Swear Vendetta, which you learn on this run, makes a nemesis of a creature you choose in the open world, no more than {sworn_below} levels below you and not an elite or a boss. It becomes a Sworn nemesis, {sworn_levels} levels above you, with Bloodlust, one more strength and a weakness. You can have one Sworn nemesis at a time, and swear again every {sworn_cooldown} minutes. Kill a nemesis, alone or with your pet, and you get the experience of an elite of its level with {nemesis_bonus} more, or {sworn_bonus} more for a Sworn one. It drops classless gear as often as a rare, heirloom roll included, and a Sworn one always drops a piece. It gives Vengeance: {marked_vengeance}, or {sworn_vengeance} for a Sworn one. It also drops a trophy of its newest strength, with a star for each strength it had and one more if it was Sworn, up to three. Trophies work from your bags for the rest of the run, and all of them add up. You can carry {trophy_max}. Another waits until you destroy one, and one that finds your bags full waits for room. They cannot leave your bags: no bank, trade, mail or sale. If you are dead when it falls, the mark stays. To finish, reach level 80 with {vengeance} Vengeance. Reaching 80 first does not end the run, it ends when your Vengeance reaches the mark. When you finish, the best trophy of each kind adds its stars to your Nemesis Charm, up to five in each. The charm is yours for good: it works from your bags, and it cannot leave them or be destroyed. A run that ends unfinished loses its trophies. Deaths in dungeons and raids make no nemesis, and neither do deaths to elites, bosses, pets, totems or summoned creatures.",
+          "Remember what killed you and where. Your nemesis waits where it lives and stays above your level, so go back when you are ready for a harder fight rather than waiting for it to be easy. Every death to it makes it larger and stronger. Hover the challenge tracker for what you have learned of each nemesis and where it lives; the world map marks it too. A Sworn nemesis is worth more Vengeance and a better trophy. Other creatures of its kind are not marked." },
+        { 2,  "elite_world",     "Elite World",     5, "Every enemy is an elite for you, with elite health, damage and experience.", 750, 187, "giantsbane",
+          "Every enemy you can fight is an elite for you alone, from the moment it comes into sight. You see the health this realm gives elites and the elite border on your target frame, it hits you and your pet with an elite's damage, melee and spells alike, it takes as many hits as an elite to bring down, and it pays you elite experience and drops classless gear as often as a rare, heirloom roll included. Rares are rare elites. Enemies that are already elite, rare elite or bosses are left as they are, in dungeons too, and pets, totems, summoned creatures, critters and civilians never change. Other players see and fight every one of them as it always was. Pull one at a time, and use every stun, slow and snare you own.",
           "Pull one enemy at a time and rest between fights. Stuns, fears, slows and snares matter far more than usual. Anything that would be a fair fight on your own is now a group fight, so find others for it." },
         { 14, "legion",          "Legion",          4, "Every enemy calls two more of its kind to its side the first time it engages you. More to kill, more XP, more ways to die.", 650, 191, "one_against_many",
-          "The first time an enemy engages you or your pet, two more of its kind appear beside it and join the fight. An enemy calls only once in its life, even if it resets and is pulled again. They give experience and loot like any other of their kind, and leave after five minutes out of combat. Reinforcements never call reinforcements of their own. Bosses, critters, civilians, pets, totems and summoned creatures never call at all.",
+          "The first time an enemy engages you or your pet, two more of its kind appear beside it and join the fight. An enemy calls only once in its life, even if it resets and is pulled again. They give experience and loot like any other of their kind, and leave after five minutes out of combat. The reinforcements fight only you, so no one else can harm them and they harm no one else. Reinforcements never call reinforcements of their own. Bosses, critters, civilians, pets, totems and summoned creatures never call at all.",
           "Fight where you have room to back away, and open with abilities that hit several enemies at once. Pull from range so you see the reinforcements coming, and keep away from other groups, since any of them that wanders in calls two more." },
         { 4,  "pursued",         "Pursued",         3, "Every 15 to 30 minutes of play an elite hunter two levels above you finds you and chases you until one of you dies or you change maps.", 600, 189, "turnabout",
-          "Every 15 to 30 minutes of played time, counted while you are alive, a Relentless Hunter appears near you at random. It is an elite two levels above you, up to level 83, and it chases you until one of you dies. Killing it gives elite experience and starts the clock for the next one. If it kills you, or any death costs you a life, it leaves and a new clock starts. Changing maps, into a dungeon or across to another continent, leaves it behind and starts a new clock too. The clock keeps its place when you log out, and a hunter that was on you when you logged out finds you again 15 seconds after you log back in. Battlegrounds and arenas are safe from it.",
+          "Every 15 to 30 minutes of played time, counted while you are alive, a Relentless Hunter appears near you at random. It is a rare elite two levels above you, up to level 83, and it chases you until one of you dies. Killing it gives elite experience and starts the clock for the next one. If it kills you, or any death costs you a life, it leaves and a new clock starts. Changing maps, into a dungeon or across to another continent, leaves it behind and starts a new clock too. The clock keeps its place when you log out, and a hunter that was on you when you logged out finds you again 15 seconds after you log back in. Only you and your pet can harm it, and it harms no one else. Battlegrounds and arenas are safe from it.",
           "Keep a defensive ability and a healing option ready at all times, because the hunter can arrive in the middle of another fight. Finish fights quickly, and when the hunter comes, kill it before anything else joins in." },
         { 15, "hourglass",       "Hourglass",       3, "A level clock. Gain a level every 30 minutes played or lose a life. The clock resets with every level, runs 20 minutes below level 20 and 45 past 60.", 500, 192, "rewind",
           "Every level has a time limit, counted while you are logged in and alive, and paused in battlegrounds and arenas. Below level 20 you have 20 minutes per level, from 20 to 60 you have 30, and past 60 you have 45. A warning comes with five minutes left. If time runs out you lose a life and the clock restarts on the same level. Reaching the next level resets the clock, and so does any death that costs a life.",
@@ -3314,6 +3344,65 @@ namespace
 std::vector<Challenge> const& ClasslessMgr::Challenges()
 {
     return CHALLENGES;
+}
+
+namespace
+{
+    std::string CountWord(uint32 n)
+    {
+        static char const* const words[] = { "no", "one", "two", "three", "four", "five", "six", "seven",
+                                             "eight", "nine", "ten" };
+        return n < 11 ? words[n] : std::to_string(n);
+    }
+
+    // a share of a level, as a sentence says it
+    std::string LevelShare(uint32 pct)
+    {
+        switch (pct)
+        {
+            case 10:  return "a tenth of a level";
+            case 20:  return "a fifth of a level";
+            case 25:  return "a quarter of a level";
+            case 50:  return "half a level";
+            case 75:  return "three quarters of a level";
+            case 100: return "a full level";
+            default:  return Acore::StringFormat("{}% of a level", pct);
+        }
+    }
+
+    // a multiple of its level, as a sentence says it
+    std::string TimesLevel(uint32 pct)
+    {
+        switch (pct)
+        {
+            case 100: return "its level";
+            case 150: return "one and a half times its level";
+            case 200: return "twice its level";
+            case 300: return "three times its level";
+            default:  return Acore::StringFormat("{}% of its level", pct);
+        }
+    }
+}
+
+std::string ClasslessMgr::ChallengeText(char const* raw) const
+{
+    std::string text = raw ? raw : "";
+    auto fill = [&text](std::string const& token, std::string const& value)
+    {
+        for (size_t at = text.find(token); at != std::string::npos; at = text.find(token, at + value.size()))
+            text.replace(at, token.size(), value);
+    };
+    fill("{nemesis_levels}", CountWord(cfg.nemesisMarkedLevels));
+    fill("{nemesis_bonus}", LevelShare(cfg.nemesisMarkedBonusXpPct));
+    fill("{sworn_levels}", CountWord(cfg.nemesisSwornLevels));
+    fill("{sworn_bonus}", LevelShare(cfg.nemesisSwornBonusXpPct));
+    fill("{sworn_below}", CountWord(cfg.nemesisSwornLevelsBelow));
+    fill("{sworn_cooldown}", std::to_string(cfg.nemesisSwornCooldownMin));
+    fill("{marked_vengeance}", TimesLevel(100));
+    fill("{sworn_vengeance}", TimesLevel(cfg.nemesisSwornVengeancePct));
+    fill("{vengeance}", std::to_string(cfg.nemesisVengeanceToFinish));
+    fill("{trophy_max}", CountWord(cfg.nemesisTrophyMax));
+    return text;
 }
 
 Challenge const* ClasslessMgr::GetChallenge(uint8 id)
@@ -3374,6 +3463,7 @@ bool ClasslessMgr::StartRun(Player* player, uint8 challengeId, std::string* err)
     }
 
     st.run = ch->id;
+    TagRun(player, st.run);
     if (ch->lives == UNLIMITED_LIVES)
         st.livesMax = UNLIMITED_LIVES;  // nothing to add to: an extra life waits for the next run
     else
@@ -3390,7 +3480,10 @@ bool ClasslessMgr::StartRun(Player* player, uint8 challengeId, std::string* err)
     PushNemesisGuids(player);
     st.nemesisHeads.clear();
     SaveNemesisHeads(player->GetGUID(), st);
+    st.nemesisVengeance = 0;
+    SaveNemesisRun(player->GetGUID(), st);
     st.hunterTimerMs = 0;
+    CW_RefreshViewsAround(player);   // Elite World and Nemesis are drawn per player
 
     uint32 mailed = 0;
     switch (ChallengeId(st.run))
@@ -3417,10 +3510,10 @@ bool ClasslessMgr::StartRun(Player* player, uint8 challengeId, std::string* err)
 
     SaveState(player);
     if (st.livesMax == UNLIMITED_LIVES)
-        Msg(player, Acore::StringFormat("|cffffd100{}|r begins. {}{}", ch->name, ch->rule, MailedNotice(mailed)));
+        Msg(player, Acore::StringFormat("|cffffd100{}|r begins. {}{}", ch->name, ChallengeText(ch->rule), MailedNotice(mailed)));
     else
         Msg(player, Acore::StringFormat("|cffffd100{}|r begins. {} You have {} {}.{}",
-            ch->name, ch->rule, uint32(st.lives), st.lives == 1 ? "life" : "lives", MailedNotice(mailed)));
+            ch->name, ChallengeText(ch->rule), uint32(st.lives), st.lives == 1 ? "life" : "lives", MailedNotice(mailed)));
     PushRunTracker(player);
     return true;
 }
@@ -3542,17 +3635,25 @@ void ClasslessMgr::EndRun(Player* player, bool finished, bool byRebirth)
     // The rule lifts.
     uint8 const run = st.run;
     st.run = 0;
+    TagRun(player, 0);
     st.lives = 0;
     st.livesMax = 0;
     st.runData = 0;
     for (auto const& [spawnId, mark] : st.nemeses)
         ClearNemesisTrack(player, spawnId);
+    DespawnNemesisCopies(player);
+    if (player->HasSpell(SWEAR_VENDETTA_SPELL))
+        player->removeSpell(SWEAR_VENDETTA_SPELL, SPEC_MASK_ALL, false);
+    if (run == uint8(ChallengeId::Nemesis))
+        EndNemesisTrophies(player, finished);
     st.nemeses.clear();
     SaveNemeses(player->GetGUID(), st);
     PushNemesisGuids(player);
+    PushNemesisList(player);   // the empty list: the tracker and the map pins clear
     st.nemesisHeads.clear();
     SaveNemesisHeads(player->GetGUID(), st);
     DespawnHunter(player);
+    CW_RefreshViewsAround(player);   // Elite World and Nemesis are drawn per player
     switch (ChallengeId(run))
     {
         case ChallengeId::Glass:
@@ -3625,23 +3726,693 @@ bool ClasslessMgr::BuyExtraLife(Player* player, std::string* err)
 }
 
 // ---- Nemesis --------------------------------------------------------------
-void CW_ReLevelCreature(Creature* creature, uint8 level, bool elite);
+void CW_ReLevelCreature(Creature* creature, uint8 level, uint32 rank);
+bool CW_EliteWorldCandidate(Creature const* creature);
+void CW_DropFight(Creature* creature, Unit* other);
 
-void ClasslessMgr::ApplyNemesisTo(Creature* creature, NemesisMark const& mark)
+// A new or lifted mark changes how the original is drawn for its Hero (hidden
+// while it is their nemesis), so it is sent again.
+void ClasslessMgr::ApplyNemesisTo(Creature* creature, NemesisMark const& /*mark*/)
 {
-    // levels and deaths already applied to this creature
-    std::pair<uint8, uint8>& applied = _nemesisApplied[creature->GetGUID()];
-    if (applied.first == mark.levels && applied.second == mark.kills)
+    RefreshChallengeView(creature);
+}
+
+namespace
+{
+    struct CW_RunTag : DataMap::Base
+    {
+        uint8 run = 0;
+    };
+}
+
+void ClasslessMgr::TagRun(Player* player, uint8 run)
+{
+    if (player)
+        player->CustomData.GetDefault<CW_RunTag>("cw_run")->run = run;
+}
+
+bool ClasslessMgr::ChallengeViewOf(Player* viewer, Creature const* creature, ChallengeView& out)
+{
+    CW_RunTag const* tag = viewer ? viewer->CustomData.Get<CW_RunTag>("cw_run") : nullptr;
+    if (!tag || tag->run != uint8(ChallengeId::EliteWorld))
+        return false;
+    CharState* st = FindState(viewer);
+    if (!st || !st->run || !creature)
+        return false;
+    if (st->run == uint8(ChallengeId::EliteWorld))
+    {
+        if (!CW_EliteWorldCandidate(creature) || creature->IsFriendlyTo(viewer))
+            return false;
+        out.level = creature->GetLevel();
+        out.rank = creature->GetCreatureTemplate()->rank == CREATURE_ELITE_RARE
+            ? uint32(CREATURE_ELITE_RAREELITE) : uint32(CREATURE_ELITE_ELITE);
+        out.scale = 1.0f;
+        return true;
+    }
+    return false;
+}
+
+void ClasslessMgr::RefreshChallengeView(Creature* creature)
+{
+    if (!creature)
         return;
-    uint8 const base = creature->GetLevel() > applied.first ? creature->GetLevel() - applied.first : 1;
-    uint8 const level = uint8(std::min<uint32>(uint32(base) + mark.levels, NEMESIS_LEVEL_CAP));
-    CW_ReLevelCreature(creature, level, true);
-    // larger with every death, against the creature's own size, so a big
-    // creature stays big and a small one grows from small
+    for (uint32 index : { uint32(OBJECT_FIELD_SCALE_X), uint32(UNIT_FIELD_LEVEL),
+                          uint32(UNIT_FIELD_HEALTH), uint32(UNIT_FIELD_MAXHEALTH),
+                          uint32(UNIT_FIELD_DISPLAYID), uint32(UNIT_FIELD_FLAGS) })
+        creature->ForceValuesUpdateAtIndex(index);
+}
+
+namespace
+{
+    // Kept on the copy itself, so it goes with it: its Hero and its spawn.
+    struct CW_NemesisCopy : DataMap::Base
+    {
+        ObjectGuid owner;
+        uint32 spawnId = 0;
+    };
+}
+
+ObjectGuid ClasslessMgr::NemesisCopyOwner(Creature const* creature, uint32* spawnId)
+{
+    CW_NemesisCopy const* tag = creature ? creature->CustomData.Get<CW_NemesisCopy>("cw_nemesis_copy") : nullptr;
+    if (spawnId)
+        *spawnId = tag ? tag->spawnId : 0;
+    return tag ? tag->owner : ObjectGuid::Empty;
+}
+
+bool ClasslessMgr::IsNemesisOriginalOf(Player* viewer, Creature const* creature)
+{
+    if (!viewer || !creature || !creature->GetSpawnId())
+        return false;
+    CW_RunTag const* tag = viewer->CustomData.Get<CW_RunTag>("cw_run");
+    if (!tag || tag->run != uint8(ChallengeId::Nemesis))
+        return false;
+    CharState* st = FindState(viewer);
+    return st && st->nemeses.count(creature->GetSpawnId());
+}
+
+// The copy a Hero fights: their nemesis, made for them alone at their level
+// plus its offset with rare elite stats, where the creature spawns. The
+// core's visible-to-summoner-only keeps it from every other client; it
+// despawns 60 seconds after death, for its loot.
+Creature* ClasslessMgr::SpawnNemesisCopy(Player* player, uint32 spawnId, NemesisMark const& mark)
+{
+    CreatureData const* data = sObjectMgr->GetCreatureData(spawnId);
+    if (!data || data->mapid != player->GetMapId())
+        return nullptr;
+    Position const pos(data->posX, data->posY, data->posZ, data->orientation);
+    TempSummon* copy = player->SummonCreature(mark.entry, pos, TEMPSUMMON_CORPSE_TIMED_DESPAWN,
+                                              60 * IN_MILLISECONDS, 0, nullptr, true);
+    if (!copy)
+        return nullptr;
+    CW_NemesisCopy* tag = copy->CustomData.GetDefault<CW_NemesisCopy>("cw_nemesis_copy");
+    tag->owner = player->GetGUID();
+    tag->spawnId = spawnId;
+    ResyncNemesisCopy(player, copy, mark, true);
+    copy->SetHomePosition(pos);
+    copy->SetReactState(REACT_AGGRESSIVE);
+    return copy;
+}
+
+// Its level follows the Hero's, its size its deaths. Rebuilt when it is made,
+// and after that only when the Hero's level has moved and it is not fighting
+// (rebuilding fills its health).
+void ClasslessMgr::ResyncNemesisCopy(Player* player, Creature* copy, NemesisMark const& mark, bool made)
+{
+    uint8 const level = uint8(std::min<uint32>(uint32(player->GetLevel()) + mark.levels, NEMESIS_LEVEL_CAP));
+    if (made || (copy->GetLevel() != level && !copy->IsInCombat()))
+        CW_ReLevelCreature(copy, level, CREATURE_ELITE_RAREELITE);
     uint32 const deaths = std::max<uint32>(mark.kills, 1);
     float const grow = std::min(NEMESIS_SCALE_FIRST + NEMESIS_SCALE_PER_DEATH * float(deaths - 1), NEMESIS_SCALE_MAX);
-    creature->SetObjectScale(creature->GetNativeObjectScale() * grow);
-    applied = { mark.levels, mark.kills };
+    copy->SetObjectScale(copy->GetNativeObjectScale() * grow);
+    // Bloodlust: faster swings and casts, once, on the copy (no one else's)
+    if (made && mark.Has(NS_BLOODLUST))
+    {
+        float const haste = 1.0f + float(cfg.nemesisBloodlustPct) / 100.0f;
+        for (WeaponAttackType type : { BASE_ATTACK, OFF_ATTACK, RANGED_ATTACK })
+            copy->SetAttackTime(type, uint32(float(copy->GetAttackTime(type)) / haste));
+        copy->ApplyCastTimePercentMod(float(cfg.nemesisBloodlustPct), true);
+    }
+}
+
+// ---- traits ----------------------------------------------------------------
+char const* ClasslessMgr::NemesisStrengthName(uint8 strength)
+{
+    static char const* const names[NS_COUNT] = { "", "Bloodlust", "Ironhide", "Spellward", "Venomous",
+                                                  "Unyielding", "Warband", "Relentless" };
+    return strength < NS_COUNT ? names[strength] : "";
+}
+
+char const* ClasslessMgr::NemesisWeaknessName(uint8 weakness)
+{
+    static char const* const names[NW_COUNT] = { "", "fire", "frost", "shadow", "nature", "arcane", "holy",
+                                                 "brittle", "cowardly" };
+    return weakness < NW_COUNT ? names[weakness] : "";
+}
+
+// A strength it does not have yet, in its first empty slot; none past three.
+void ClasslessMgr::AddNemesisStrength(NemesisMark& mark)
+{
+    std::vector<uint8> open;
+    for (uint8 s = NS_BLOODLUST; s < NS_COUNT; ++s)
+        if (!mark.Has(s))
+            open.push_back(s);
+    for (uint8& slot : mark.strengths)
+        if (slot == NS_NONE)
+        {
+            if (!open.empty())
+                slot = open[urand(0, uint32(open.size()) - 1)];
+            return;
+        }
+}
+
+uint8 ClasslessMgr::RollNemesisWeakness()
+{
+    return uint8(urand(NW_FIRE, NW_COUNT - 1));
+}
+
+NemesisMark* ClasslessMgr::MarkOfCopy(Creature const* copy, Player* owner)
+{
+    uint32 spawnId = 0;
+    if (!owner || NemesisCopyOwner(copy, &spawnId) != owner->GetGUID())
+        return nullptr;
+    CharState* st = FindState(owner);
+    if (!st)
+        return nullptr;
+    auto itr = st->nemeses.find(spawnId);
+    return itr != st->nemeses.end() ? &itr->second : nullptr;
+}
+
+bool ClasslessMgr::LearnNemesis(Player* player, Creature const* copy, uint8 what)
+{
+    NemesisMark* mark = MarkOfCopy(copy, player);
+    if (!mark || (mark->learned & what))
+        return false;
+    mark->learned |= what;
+    if (CharState* st = FindState(player))
+        SaveNemeses(player->GetGUID(), *st);
+    PushRunTracker(player);
+    return true;
+}
+
+void ClasslessMgr::NemesisSay(Player* player, Creature* copy, std::string const& text, bool emote)
+{
+    if (!player || !copy || !player->GetSession())
+        return;
+    WorldPacket data;
+    ChatHandler::BuildChatPacket(data, emote ? CHAT_MSG_MONSTER_EMOTE : CHAT_MSG_MONSTER_SAY, LANG_UNIVERSAL,
+                                 copy, player, text);
+    player->SendDirectMessage(&data);
+}
+
+// ---- Swear Vendetta -----------------------------------------------------------
+// The stock row's second target looks for a nearby creature through script
+// conditions it has none of, so it is cleared; the cooldown comes from the
+// realm's config (the client patch draws the default).
+void ClasslessMgr::PrepareSwearVendetta()
+{
+    SpellInfo const* info = sSpellMgr->GetSpellInfo(SWEAR_VENDETTA_SPELL);
+    if (!info || info->Effects[EFFECT_0].Effect != SPELL_EFFECT_DUMMY)
+    {
+        LOG_ERROR("module.classless", "mod-classless-wildcard: spell {} is not the dummy Swear Vendetta is built on; "
+                  "Sworn nemeses are unavailable", SWEAR_VENDETTA_SPELL);
+        return;
+    }
+    SpellInfo* editable = const_cast<SpellInfo*>(info);
+    editable->Effects[EFFECT_0].TargetB = SpellImplicitTargetInfo(0);
+    editable->RecoveryTime = cfg.nemesisSwornCooldownMin * MINUTE * IN_MILLISECONDS;
+}
+
+bool ClasslessMgr::CanSwearVendetta(Player* player, Creature* target, std::string* err)
+{
+    auto fail = [err](char const* text)
+    {
+        if (err)
+            *err = text;
+        return false;
+    };
+    CharState* st = player ? FindState(player) : nullptr;
+    if (!st || st->run != uint8(ChallengeId::Nemesis))
+        return fail("Swear Vendetta works only on a Nemesis run.");
+    if (!target || target->IsPet() || target->IsTotem() || target->IsSummon() || target->GetOwnerGUID()
+        || !target->GetSpawnId() || target->IsCritter() || target->IsCivilian() || target->IsTrigger())
+        return fail("You cannot swear vendetta on that.");
+    if (target->GetMap()->IsDungeon())
+        return fail("Not in a dungeon or raid.");
+    if (target->isElite() || target->isWorldBoss() || target->IsDungeonBoss())
+        return fail("Not on an elite or a boss.");
+    if (uint32(target->GetLevel()) + cfg.nemesisSwornLevelsBelow < player->GetLevel())
+        return fail("It is too far beneath you.");
+    if (st->nemeses.count(target->GetSpawnId()))
+        return fail("It is already your nemesis.");
+    for (auto const& [spawnId, mark] : st->nemeses)
+        if (mark.kind == NEMESIS_SWORN)
+            return fail("You have a sworn nemesis already. Slay it first.");
+    return true;
+}
+
+void ClasslessMgr::SwearVendetta(Player* player, Creature* target)
+{
+    if (!CanSwearVendetta(player, target, nullptr))
+        return;
+    CharState& st = GetState(player);
+    NemesisMark& mark = st.nemeses[target->GetSpawnId()];
+    mark = NemesisMark();
+    mark.entry = target->GetEntry();
+    mark.kind = NEMESIS_SWORN;
+    mark.levels = uint8(cfg.nemesisSwornLevels);
+    mark.strengths[0] = NS_BLOODLUST;
+    AddNemesisStrength(mark);
+    mark.weakness = RollNemesisWeakness();
+    SaveNemeses(player->GetGUID(), st);
+    CW_DropFight(target, player);   // the original: its fight is with the copy now
+    ApplyNemesisTo(target, mark);   // hidden from this Hero from now on
+    uint32 const level = std::min<uint32>(uint32(player->GetLevel()) + mark.levels, NEMESIS_LEVEL_CAP);
+    ChatHandler(player->GetSession()).SendNotification(Acore::StringFormat("You swear vendetta on {}.", target->GetName()));
+    Msg(player, Acore::StringFormat("You swear vendetta on {}. It waits for you where it lives, a level {} rare elite "
+        "in a blood fury, and it knows you are coming.", target->GetName(), level));
+    NemesisTick(player);
+    PushRunTracker(player);
+}
+
+void ClasslessMgr::NemesisTaunt(Player* player, Creature* copy, NemesisMark const& mark, NemesisMoment moment)
+{
+    if (!player || !copy)
+        return;
+    uint32 const type = copy->GetCreatureTemplate()->type;
+    bool const talks = type == CREATURE_TYPE_HUMANOID || type == CREATURE_TYPE_UNDEAD || type == CREATURE_TYPE_DEMON
+                       || type == CREATURE_TYPE_DRAGONKIN || type == CREATURE_TYPE_GIANT;
+    bool const sworn = mark.kind == NEMESIS_SWORN;
+    static std::vector<char const*> const engageSay = {
+        "You came back, {}. I remember you.", "Again? Then I will kill you again.", "I still have your scent, {}." };
+    static std::vector<char const*> const engageSworn = {
+        "You swore against me, {}. Now you answer for it.", "Your vendetta ends here, {}.",
+        "You wanted me. Here I am." };
+    static std::vector<char const*> const engageEmote = {
+        "remembers you.", "bares its teeth at you, remembering.", "has your scent again." };
+    static std::vector<char const*> const gloatSay = {
+        "Stay down, {}.", "Again you fall. Again I grow stronger.", "Every time you die, I remember it." };
+    static std::vector<char const*> const gloatEmote = { "stands over your body.", "grows stronger from your death." };
+    static std::vector<char const*> const deathSay = {
+        "You... earned this, {}.", "This is not how it ends...", "Remember... me..." };
+    static std::vector<char const*> const deathEmote = { "falls, its hunt over.", "lets out a last cry." };
+    std::vector<char const*> const* pool = nullptr;
+    switch (moment)
+    {
+        case NemesisMoment::Engage: pool = talks ? (sworn ? &engageSworn : &engageSay) : &engageEmote; break;
+        case NemesisMoment::Gloat:  pool = talks ? &gloatSay : &gloatEmote; break;
+        case NemesisMoment::Death:  pool = talks ? &deathSay : &deathEmote; break;
+    }
+    std::string line = (*pool)[urand(0, uint32(pool->size()) - 1)];
+    if (std::size_t const at = line.find("{}"); at != std::string::npos)
+        line.replace(at, 2, player->GetName());
+    NemesisSay(player, copy, line, !talks);
+}
+
+bool ClasslessMgr::IsSwornCopy(Creature const* copy, Player* owner)
+{
+    NemesisMark const* mark = MarkOfCopy(copy, owner);
+    return mark && mark->kind == NEMESIS_SWORN;
+}
+
+std::string ClasslessMgr::NemesisTitle(NemesisMark const& mark)
+{
+    if (mark.kind == NEMESIS_SWORN)
+        return "Bloodsworn";
+    if (mark.kills >= 3)
+        return "Thrice-Victorious";
+    if (mark.kills == 2)
+        return "Twice-Victorious";
+    switch (mark.strengths[0])
+    {
+        case NS_BLOODLUST:  return "the Bloodmad";
+        case NS_IRONHIDE:   return "Ironhide";
+        case NS_SPELLWARD:  return "Spellbane";
+        case NS_VENOMOUS:   return "the Venomous";
+        case NS_UNYIELDING: return "the Unyielding";
+        case NS_WARBAND:    return "Packleader";
+        case NS_RELENTLESS: return "the Relentless";
+        default:            return "Hero-Slayer";
+    }
+}
+
+// ---- Vengeance, trophies, the Nemesis Charm -----------------------------------
+void ClasslessMgr::SaveNemesisRun(ObjectGuid guid, CharState const& st)
+{
+    std::string pending;
+    for (uint32 entry : st.nemesisPendingTrophies)
+        pending += (pending.empty() ? "" : ",") + std::to_string(entry);
+    CharacterDatabase.Execute("REPLACE INTO cw_char_nemesis_run (guid, vengeance, pending) VALUES ({}, {}, '{}')",
+                              guid.GetCounter(), st.nemesisVengeance, pending);
+}
+
+void ClasslessMgr::SaveNemesisCharm(ObjectGuid guid, CharState const& st)
+{
+    uint32 const low = guid.GetCounter();
+    CharacterDatabase.Execute("DELETE FROM cw_char_nemesis_charm WHERE guid = {}", low);
+    for (uint8 s = NS_BLOODLUST; s < NS_COUNT; ++s)
+        if (st.charmRanks[s])
+            CharacterDatabase.Execute("INSERT INTO cw_char_nemesis_charm (guid, effect, `rank`) VALUES ({}, {}, {})",
+                                      low, uint32(s), uint32(st.charmRanks[s]));
+}
+
+namespace
+{
+    // every item in the backpack and the four bags: where trophies and the
+    // charm work from, and the only place they can be
+    template <typename F>
+    void ForEachBagItem(Player* player, F&& visit)
+    {
+        for (uint8 slot = INVENTORY_SLOT_ITEM_START; slot < INVENTORY_SLOT_ITEM_END; ++slot)
+            if (Item* item = player->GetItemByPos(INVENTORY_SLOT_BAG_0, slot))
+                visit(item);
+        for (uint8 bag = INVENTORY_SLOT_BAG_START; bag < INVENTORY_SLOT_BAG_END; ++bag)
+            if (Bag* container = player->GetBagByPos(bag))
+                for (uint32 slot = 0; slot < container->GetBagSize(); ++slot)
+                    if (Item* item = container->GetItemByPos(uint8(slot)))
+                        visit(item);
+    }
+
+    uint32 CountTrophies(Player* player)
+    {
+        uint32 n = 0;
+        ForEachBagItem(player, [&n](Item* item) { if (ClasslessMgr::IsNemesisTrophy(item->GetEntry())) ++n; });
+        return n;
+    }
+
+    // An item into the bags, or false when there is no room.
+    bool GiveItem(Player* player, uint32 entry)
+    {
+        ItemPosCountVec dest;
+        if (player->CanStoreNewItem(NULL_BAG, NULL_SLOT, dest, entry, 1) != EQUIP_ERR_OK)
+            return false;
+        if (Item* item = player->StoreNewItem(dest, entry, true))
+        {
+            player->SendNewItem(item, 1, true, false);
+            return true;
+        }
+        return false;
+    }
+}
+
+void ClasslessMgr::GrantNemesisTrophy(Player* player, uint32 entry)
+{
+    CharState* st = FindState(player);
+    if (!st || !IsNemesisTrophy(entry))
+        return;
+    if (CountTrophies(player) < cfg.nemesisTrophyMax && GiveItem(player, entry))
+        return;
+    st->nemesisPendingTrophies.push_back(entry);
+    SaveNemesisRun(player->GetGUID(), *st);
+    ItemTemplate const* proto = sObjectMgr->GetItemTemplate(entry);
+    Msg(player, Acore::StringFormat("Your {} waits: you carry {} trophies, or your bags are full. Destroy one, or "
+        "make room, and it comes to you.", proto ? proto->Name1 : "trophy", cfg.nemesisTrophyMax));
+}
+
+namespace
+{
+    // One effect on or off, as the stat changes Rebirth also uses: never an
+    // aura. A percent modifier MULTIPLIES, so taking one off is its inverse.
+    void NemesisEffect(Player* player, uint8 strength, float value, bool apply)
+    {
+        if (value <= 0.0f)
+            return;
+        auto pct = [player, value, apply](UnitMods mod)
+        {
+            player->ApplyStatPctModifier(mod, TOTAL_PCT, apply ? value : -100.0f * value / (100.0f + value));
+        };
+        switch (strength)
+        {
+            case NS_BLOODLUST:
+                for (WeaponAttackType type : { BASE_ATTACK, OFF_ATTACK, RANGED_ATTACK })
+                    player->ApplyAttackTimePercentMod(type, value, apply);
+                player->ApplyCastTimePercentMod(value, apply);
+                break;
+            case NS_IRONHIDE:
+                pct(UNIT_MOD_ARMOR);
+                break;
+            case NS_SPELLWARD:
+                for (uint32 mod = UNIT_MOD_RESISTANCE_HOLY; mod <= UNIT_MOD_RESISTANCE_ARCANE; ++mod)
+                    player->HandleStatFlatModifier(UnitMods(mod), TOTAL_VALUE, value, apply);
+                break;
+            case NS_UNYIELDING:
+                pct(UNIT_MOD_HEALTH);
+                break;
+            case NS_WARBAND:   // attack power here; spell power in ApplyNemesisFx
+                pct(UNIT_MOD_ATTACK_POWER);
+                pct(UNIT_MOD_ATTACK_POWER_RANGED);
+                break;
+            case NS_RELENTLESS:
+                for (uint8 i = 0; i < MAX_STATS; ++i)
+                    pct(UnitMods(UNIT_MOD_STAT_START + i));
+                break;
+            default:   // crit: as rating, worked out against the level in ApplyNemesisFx
+                break;
+        }
+    }
+}
+
+void ClasslessMgr::ApplyNemesisFx(Player* player)
+{
+    CharState* st = player ? FindState(player) : nullptr;
+    if (!st || st->exempt || !player->IsInWorld())
+        return;
+    bool const onRun = st->run == uint8(ChallengeId::Nemesis);
+
+    // a trophy waiting for room comes when there is some
+    bool claimed = false;
+    while (onRun && !st->nemesisPendingTrophies.empty() && CountTrophies(player) < cfg.nemesisTrophyMax
+           && GiveItem(player, st->nemesisPendingTrophies.front()))
+    {
+        st->nemesisPendingTrophies.erase(st->nemesisPendingTrophies.begin());
+        claimed = true;
+    }
+    if (claimed)
+        SaveNemesisRun(player->GetGUID(), *st);
+
+    // the charm exists while it has a rank, and is put back if it is missing
+    bool ranked = false;
+    for (uint8 s = NS_BLOODLUST; s < NS_COUNT; ++s)
+        ranked = ranked || st->charmRanks[s] > 0;
+    if (ranked && !st->nemesisCharmMailed && !player->HasItemCount(NEMESIS_CHARM, 1, true))
+    {
+        // one waiting in the mailbox is the charm: it is not made twice
+        if (CharacterDatabase.Query("SELECT 1 FROM mail_items mi JOIN item_instance ii ON ii.guid = mi.item_guid "
+                                    "WHERE mi.receiver = {} AND ii.itemEntry = {} LIMIT 1",
+                                    player->GetGUID().GetCounter(), NEMESIS_CHARM))
+            st->nemesisCharmMailed = true;
+        else if (!GiveItem(player, NEMESIS_CHARM))
+        {
+            st->nemesisCharmMailed = true;
+            CharacterDatabaseTransaction trans = CharacterDatabase.BeginTransaction();
+            if (Item* charm = Item::CreateItem(NEMESIS_CHARM, 1, player))
+            {
+                charm->SaveToDB(trans);
+                MailDraft("Nemesis Charm", "Your bags were full. Your Nemesis Charm works from your bags: take it from this mail.")
+                    .AddItem(charm)
+                    .SendMailTo(trans, player, MailSender(player, MAIL_STATIONERY_GM), MAIL_CHECK_MASK_COPIED);
+            }
+            CharacterDatabase.CommitTransaction(trans);
+        }
+    }
+
+    float stars[NS_COUNT] = {};
+    bool charmHeld = false;
+    ForEachBagItem(player, [&](Item* item)
+    {
+        uint32 const entry = item->GetEntry();
+        if (IsNemesisTrophy(entry) && onRun)
+            stars[TrophyStrength(entry)] += float(TrophyStars(entry));   // trophies stack on the run
+        else if (entry == NEMESIS_CHARM)
+            charmHeld = true;
+    });
+    if (charmHeld)
+        for (uint8 s = NS_BLOODLUST; s < NS_COUNT; ++s)
+            stars[s] += float(st->charmRanks[s]);
+
+    for (uint8 s = NS_BLOODLUST; s < NS_COUNT; ++s)
+    {
+        float const want = stars[s] * cfg.nemesisStar[s];
+        float& had = st->nemesisFxApplied[s];
+        if (want == had)
+            continue;
+        NemesisEffect(player, s, had, false);
+        NemesisEffect(player, s, want, true);
+        had = want;
+    }
+
+    // crit as rating, so a fraction of a percent works: what that percent
+    // takes at this level, re-worked when the level moves
+    float const perPoint = player->GetRatingMultiplier(CR_CRIT_MELEE);
+    int32 const rating = perPoint > 0.0f ? int32(st->nemesisFxApplied[NS_VENOMOUS] / perPoint + 0.5f) : 0;
+    if (rating != st->nemesisCritRatingApplied)
+    {
+        for (CombatRating cr : { CR_CRIT_MELEE, CR_CRIT_RANGED, CR_CRIT_SPELL })
+        {
+            if (st->nemesisCritRatingApplied)
+                player->ApplyRatingMod(cr, st->nemesisCritRatingApplied, false);
+            if (rating)
+                player->ApplyRatingMod(cr, rating, true);
+        }
+        st->nemesisCritRatingApplied = rating;
+    }
+
+    // spell power, as a share of the Hero's own (its weakest school, without
+    // this bonus), worked out again as that moves
+    int32 own = std::numeric_limits<int32>::max();
+    for (uint8 school = SPELL_SCHOOL_HOLY; school < MAX_SPELL_SCHOOL; ++school)
+        own = std::min(own, player->SpellBaseDamageBonusDone(SpellSchoolMask(1 << school)));
+    own -= st->nemesisSpellPowerApplied;
+    int32 const power = own > 0 ? int32(float(own) * st->nemesisFxApplied[NS_WARBAND] / 100.0f + 0.5f) : 0;
+    if (power != st->nemesisSpellPowerApplied)
+    {
+        player->ApplySpellPowerBonus(power - st->nemesisSpellPowerApplied, true);
+        st->nemesisSpellPowerApplied = power;
+    }
+}
+
+void ClasslessMgr::EndNemesisTrophies(Player* player, bool finished)
+{
+    CharState* st = FindState(player);
+    if (!st)
+        return;
+    if (finished)
+    {
+        // each effect takes the stars of its best trophy, up to rank 5
+        uint8 best[NS_COUNT] = {};
+        ForEachBagItem(player, [&best](Item* item)
+        {
+            if (IsNemesisTrophy(item->GetEntry()))
+                best[TrophyStrength(item->GetEntry())] = std::max(best[TrophyStrength(item->GetEntry())],
+                                                                  TrophyStars(item->GetEntry()));
+        });
+        std::string gained;
+        for (uint8 s = NS_BLOODLUST; s < NS_COUNT; ++s)
+            if (best[s])
+            {
+                uint8 const before = st->charmRanks[s];
+                st->charmRanks[s] = uint8(std::min<uint32>(uint32(before) + best[s], NEMESIS_CHARM_MAX_RANK));
+                if (st->charmRanks[s] != before)
+                    gained += Acore::StringFormat("{}{} {} to {}", gained.empty() ? "" : ", ",
+                        NemesisStrengthName(s), uint32(before), uint32(st->charmRanks[s]));
+            }
+        SaveNemesisCharm(player->GetGUID(), *st);
+        if (!gained.empty())
+            Msg(player, Acore::StringFormat("|cffffd100Your trophies merge into your Nemesis Charm.|r {}.", gained));
+    }
+    for (uint32 entry = NEMESIS_TROPHY_FIRST; entry <= NEMESIS_TROPHY_LAST; ++entry)
+        if (uint32 const held = player->GetItemCount(entry, true))
+            player->DestroyItemCount(entry, held, true);
+    st->nemesisPendingTrophies.clear();
+    st->nemesisVengeance = 0;
+    SaveNemesisRun(player->GetGUID(), *st);
+    PushNemesisCharm(player);
+}
+
+void ClasslessMgr::PushNemesisList(Player* player)
+{
+    CharState* st = player ? FindState(player) : nullptr;
+    if (!st || !player->GetSession())
+        return;
+    std::vector<std::string> lines;
+    for (auto& [spawnId, mark] : st->nemeses)
+    {
+        CreatureTemplate const* tmpl = sObjectMgr->GetCreatureTemplate(mark.entry);
+        std::string strengths = "?";
+        if (mark.learned & NEMESIS_LEARNED_STRENGTHS)
+        {
+            strengths.clear();
+            for (uint8 s : mark.strengths)
+                if (s != NS_NONE)
+                    strengths += (strengths.empty() ? "" : "/") + std::string(NemesisStrengthName(s));
+        }
+        std::string const weakness = (mark.learned & NEMESIS_LEARNED_WEAKNESS) ? NemesisWeaknessName(mark.weakness) : "?";
+        // where it lives, as the world map draws it: its zone's name and the
+        // spot on that zone's map in percent (0 0 when it has no zone map).
+        // The zone is read from the Hero's own map, never another's: that
+        // would load another map's terrain from this one's thread. Until the
+        // Hero has been on its map, it has no zone in the list.
+        std::string zoneName;
+        float x = 0.0f, y = 0.0f;
+        CreatureData const* data = sObjectMgr->GetCreatureData(spawnId);
+        if (data && !mark.zone && data->mapid == player->GetMapId())
+            mark.zone = player->GetMap()->GetZoneId(PHASEMASK_NORMAL, data->posX, data->posY, data->posZ);
+        if (data && mark.zone)
+        {
+            if (AreaTableEntry const* area = sAreaTableStore.LookupEntry(mark.zone))
+                zoneName = area->area_name[0];
+            float mx = data->posX, my = data->posY;
+            Map2ZoneCoordinates(mx, my, mark.zone);
+            if (mx >= 0.0f && mx <= 100.0f && my >= 0.0f && my <= 100.0f)   // unmoved: no zone map
+            {
+                x = mx;
+                y = my;
+            }
+        }
+        lines.push_back(Acore::StringFormat("NL|{}|{}|{}|{}|{}|{}|{}|{:.1f}|{:.1f}",
+            tmpl ? tmpl->Name : "Unknown", NemesisTitle(mark), mark.kind == NEMESIS_SWORN ? "Sworn" : "Marked",
+            uint32(mark.levels), strengths, weakness, zoneName, x, y));
+    }
+    std::string joined;
+    for (std::string const& line : lines)
+        joined += line + "\n";
+    if (joined == st->nemesisListSent)
+        return;
+    st->nemesisListSent = joined;
+    PushAddon(player, "NLB|");
+    for (std::string const& line : lines)
+        PushAddon(player, line);
+    PushAddon(player, "NLE|");
+}
+
+void ClasslessMgr::PushNemesisCharm(Player* player)
+{
+    CharState* st = player ? FindState(player) : nullptr;
+    if (!st || !player->GetSession())
+        return;
+    std::string values, ranks;
+    for (uint8 s = NS_BLOODLUST; s < NS_COUNT; ++s)
+    {
+        values += Acore::StringFormat("{}{:.2f}", values.empty() ? "" : ",", cfg.nemesisStar[s]);
+        ranks += Acore::StringFormat("{}{}", ranks.empty() ? "" : ",", uint32(st->charmRanks[s]));
+    }
+    PushAddon(player, Acore::StringFormat("NT|{}|{}|{}", values, ranks, cfg.nemesisTrophyMax));
+}
+
+void ClasslessMgr::DespawnNemesisCopies(Player* player)
+{
+    CharState* st = player ? FindState(player) : nullptr;
+    if (!st)
+        return;
+    for (auto const& [spawnId, guid] : st->nemesisCopies)
+        if (Creature* copy = player->IsInWorld() ? ObjectAccessor::GetCreature(*player, guid) : nullptr)
+            copy->DespawnOrUnsummon();
+    st->nemesisCopies.clear();
+}
+
+// The arrow over a nemesis and its "Nemesis" debuff, as an aura update to its
+// Hero's client alone, laid out as AuraApplication::BuildUpdatePacket does.
+// Sent with every rule tick while it is in sight, which also puts it back
+// after the creature has left and re-entered the Hero's view.
+void ClasslessMgr::SendNemesisMark(Player* player, Creature* creature, bool on)
+{
+    if (!player || !creature || !player->GetSession())
+        return;
+    WorldPacket data(SMSG_AURA_UPDATE);
+    data << creature->GetPackGUID();
+    data << uint8(NEMESIS_MARK_SLOT);
+    if (!on)
+        data << uint32(0);
+    else
+    {
+        data << uint32(NEMESIS_TRACK_SPELL);
+        data << uint8(AFLAG_EFF_INDEX_0 | AFLAG_NEGATIVE | AFLAG_DURATION);
+        data << uint8(player->GetLevel());
+        data << uint8(1);
+        data << player->GetPackGUID();   // no AFLAG_CASTER: the caster's guid follows
+        data << uint32(NEMESIS_MARK_MS) << uint32(NEMESIS_MARK_MS);
+    }
+    player->SendDirectMessage(&data);
 }
 
 // A nemesis is the one creature that killed the Hero, held by its spawn id so
@@ -3649,113 +4420,132 @@ void ClasslessMgr::ApplyNemesisTo(Creature* creature, NemesisMark const& mark)
 // own (a pet, a totem, a summon) cannot be one. Nor can a dungeon or raid
 // creature, or one that is already elite or a boss: those deaths are the
 // content working as meant, not a creature that got the better of the Hero.
+// A death takes nothing: the nemesis is the cost. Killed again by their own
+// copy of it, the Hero has died to the same nemesis again, and it grows.
 std::string ClasslessMgr::MarkNemesis(Player* player, Creature* killer)
 {
-    if (!killer || killer->IsPet() || killer->IsTotem() || killer->GetOwnerGUID() || !killer->GetSpawnId())
+    if (!killer)
+        return "";
+    CharState& st = GetState(player);
+
+    uint32 copyOf = 0;
+    if (NemesisCopyOwner(killer, &copyOf) == player->GetGUID())
+    {
+        auto itr = st.nemeses.find(copyOf);
+        if (itr == st.nemeses.end())
+            return "";
+        if (itr->second.kills < 255)
+            ++itr->second.kills;
+        uint8 const before = itr->second.StrengthCount();
+        AddNemesisStrength(itr->second);
+        SaveNemeses(player->GetGUID(), st);
+        ResyncNemesisCopy(player, killer, itr->second);
+        NemesisTaunt(player, killer, itr->second, NemesisMoment::Gloat);
+        PushNemesisGuids(player);   // its title can change with the kill
+        PushRunTracker(player);
+        return itr->second.StrengthCount() > before
+            ? Acore::StringFormat("{} has beaten you again. It grows, and it is stronger.", killer->GetName())
+            : Acore::StringFormat("{} has beaten you again, and grows.", killer->GetName());
+    }
+
+    if (killer->IsPet() || killer->IsTotem() || killer->GetOwnerGUID() || !killer->GetSpawnId())
         return "";
     if (killer->GetMap()->IsDungeon())
         return "Deaths in dungeons and raids make no nemesis.";
     if (killer->isElite() || killer->isWorldBoss() || killer->IsDungeonBoss())
         return "Elites and bosses make no nemesis.";
 
-    CharState& st = GetState(player);
+    bool const fresh = !st.nemeses.count(killer->GetSpawnId());
     NemesisMark& mark = st.nemeses[killer->GetSpawnId()];
     mark.entry = killer->GetEntry();
+    if (fresh)
+    {
+        mark.kind = NEMESIS_MARKED;
+        mark.levels = uint8(cfg.nemesisMarkedLevels);
+        AddNemesisStrength(mark);
+        mark.weakness = RollNemesisWeakness();
+    }
+    else
+        AddNemesisStrength(mark);
     if (mark.kills < 255)
         ++mark.kills;
-
-    // The bar goes, down to a single point: the level itself is never taken.
-    uint32 const bar = player->GetUInt32Value(PLAYER_XP);
-    uint32 const took = bar > 1 ? bar - 1 : 0;
-    if (took)
-    {
-        player->SetUInt32Value(PLAYER_XP, 1);
-        mark.stolen = uint32(std::min<uint64>(uint64(mark.stolen) + took, 0xFFFFFFFF));
-    }
-    // and the fuller it was, the more the nemesis gains: the share of the bar
-    // taken, in quarters to the nearest, plus one
-    uint32 const need = player->GetUInt32Value(PLAYER_NEXT_LEVEL_XP);
-    uint32 const steps = NEMESIS_LEVELS_MAX_PER_DEATH - 1;
-    uint32 const quarters = need ? uint32(std::min<uint64>((uint64(took) * steps * 2 + need) / (uint64(need) * 2), steps)) : 0;
-    uint32 const gained = 1 + quarters;
-    mark.levels = uint8(std::min<uint32>(uint32(mark.levels) + gained, 255));   // the field's own limit
-
+    PushRunTracker(player);
     SaveNemeses(player->GetGUID(), st);
-    ApplyNemesisTo(killer, mark);
-    NemesisTick(player);   // on the minimap now, not at the next rule tick
-    std::string const levels = gained == 1 ? "a level" : Acore::StringFormat("{} levels", gained);
-    if (!took)
-        return Acore::StringFormat("Your bar was empty, so it took no experience. {} gains {}, and is now level {} and elite.",
-                                   killer->GetName(), levels, uint32(killer->GetLevel()));
-    return Acore::StringFormat("{} takes {} experience, gains {}, and is now level {} and elite. Kill it to take it all back.",
-                               killer->GetName(), took, levels, uint32(killer->GetLevel()));
+    ApplyNemesisTo(killer, mark);   // the original is hidden from this Hero from now on
+    uint32 const level = std::min<uint32>(uint32(player->GetLevel()) + mark.levels, NEMESIS_LEVEL_CAP);
+    if (!fresh)
+        return Acore::StringFormat("{} has beaten you again, and grows.", killer->GetName());
+    return Acore::StringFormat("{} is your nemesis now. It waits for you where it lives, a level {} rare elite.",
+                               killer->GetName(), level);
 }
 
 bool ClasslessMgr::ApplyNemesis(Player* player, Creature* creature)
 {
-    CharState* st = player ? FindState(player) : nullptr;
-    if (!st || st->run != uint8(ChallengeId::Nemesis) || !creature || !creature->GetSpawnId())
-        return false;
-    auto itr = st->nemeses.find(creature->GetSpawnId());
-    if (itr == st->nemeses.end())
-        return false;
-    ApplyNemesisTo(creature, itr->second);
-    return true;
+    // a nemesis's original, or the Hero's own copy of one: never another
+    // challenge's creature (Legion does not call for it)
+    return IsNemesisOriginalOf(player, creature) || NemesisCopyOwner(creature) == player->GetGUID();
 }
 
 void ClasslessMgr::NemesisSlain(Player* player, Creature* creature)
 {
     CharState* st = player ? FindState(player) : nullptr;
-    if (!st || st->run != uint8(ChallengeId::Nemesis) || !creature || !creature->GetSpawnId())
+    uint32 spawnId = 0;
+    if (!st || st->run != uint8(ChallengeId::Nemesis) || !creature
+        || NemesisCopyOwner(creature, &spawnId) != player->GetGUID())
         return;
-    auto itr = st->nemeses.find(creature->GetSpawnId());
+    auto itr = st->nemeses.find(spawnId);
     if (itr == st->nemeses.end())
         return;
-    // Everything it took comes back, exactly: GiveXP runs none of the XP
-    // hooks (Rebirth's rate is applied by the kill and quest code that calls
-    // it), and with no victim there is no rested bonus either.
+    // a mark from before a death stopped taking experience gives its back
     uint32 const back = itr->second.stolen;
-    uint32 const gainedLevels = itr->second.levels;
+    bool const sworn = itr->second.kind == NEMESIS_SWORN;
+    uint8 const strengthsHeld = itr->second.StrengthCount();
+    uint8 const trophyStrength = strengthsHeld ? itr->second.strengths[strengthsHeld - 1] : uint8(NS_NONE);
+    NemesisTaunt(player, creature, itr->second, NemesisMoment::Death);
     st->nemeses.erase(itr);
+    st->nemesisCopies.erase(spawnId);
     SaveNemeses(player->GetGUID(), *st);
-    ClearNemesisTrack(player, creature->GetSpawnId());
+    ClearNemesisTrack(player, spawnId);
+    creature->RemoveAurasDueToSpell(NEMESIS_TRACK_SPELL, player->GetGUID());
+    SendNemesisMark(player, creature, false);
     PushNemesisGuids(player);
-    bool const newHead = st->nemesisHeads.insert(creature->GetEntry()).second;
-    if (newHead)
-        SaveNemesisHeads(player->GetGUID(), *st);
+    // Vengeance: its level, half again for a Sworn one
+    uint32 const vengeance = uint32(creature->GetLevel()) * (sworn ? cfg.nemesisSwornVengeancePct : 100) / 100;
+    st->nemesisVengeance += vengeance;
+    SaveNemesisRun(player->GetGUID(), *st);
 
-    // and the kill pays on top: a share of the Hero's current level for every
-    // level it gained on them (none at the cap, where experience is not paid)
+    // the kill pays on top of itself: a share of the Hero's current level
+    // (none at the cap, where experience is not paid)
     uint32 bonus = 0;
     if (player->GetLevel() < sWorld->getIntConfig(CONFIG_MAX_PLAYER_LEVEL))
-    {
-        uint32 const pct = std::min(gainedLevels * NEMESIS_BONUS_PCT_PER_LEVEL, NEMESIS_BONUS_CAP_PCT);
-        bonus = uint32(uint64(player->GetUInt32Value(PLAYER_NEXT_LEVEL_XP)) * pct / 100);
-    }
+        bonus = uint32(uint64(player->GetUInt32Value(PLAYER_NEXT_LEVEL_XP))
+                       * (sworn ? cfg.nemesisSwornBonusXpPct : cfg.nemesisMarkedBonusXpPct) / 100);
     if (back + bonus)
         player->GiveXP(back + bonus, nullptr);
 
     // the moment itself: the body bursts, the Hero glows, the addon's banner
     creature->SendPlaySpellVisual(NEMESIS_SLAIN_KIT);
     player->SendPlaySpellVisual(NEMESIS_TRIUMPH_KIT);
-    uint32 const heads = uint32(st->nemesisHeads.size());
-    PushAddon(player, Acore::StringFormat("NK|{}|{}|{}|{}|{}|{}", creature->GetName(), back, bonus, heads,
-        uint32(NEMESIS_HEADS_TO_FINISH), newHead ? 1 : 0));
+    // its trophy: the effect of its newest strength, a star for each strength
+    // it had and one more for a Sworn nemesis, up to three
+    uint8 const stars = uint8(std::min<uint32>(uint32(strengthsHeld) + (sworn ? 1 : 0), 3));
+    uint32 const trophy = trophyStrength ? NEMESIS_TROPHY_FIRST + (trophyStrength - 1) * 3 + (std::max<uint8>(stars, 1) - 1) : 0;
+    if (trophy)
+        GrantNemesisTrophy(player, trophy);
+    PushAddon(player, Acore::StringFormat("NK|{}|{}|{}|{}|{}|{}|{}", creature->GetName(), back, bonus, vengeance,
+        st->nemesisVengeance, cfg.nemesisVengeanceToFinish, trophy));
 
     if (back)
         Msg(player, Acore::StringFormat("|cff00ff00Your nemesis is dead.|r {} falls. The {} experience it took comes "
             "back to you, and {} more for the kill.", creature->GetName(), back, bonus));
     else
-        Msg(player, Acore::StringFormat("|cff00ff00Your nemesis is dead.|r {} falls. It had taken no experience, and "
-            "the kill is worth {}.", creature->GetName(), bonus));
-    if (newHead)
-        Msg(player, Acore::StringFormat("You take its head: |cffffd100{} of {}|r.", heads,
-            uint32(NEMESIS_HEADS_TO_FINISH)));
-    else
-        Msg(player, "You already hold a head from this kind of creature.");
+        Msg(player, Acore::StringFormat("|cff00ff00Your nemesis is dead.|r {} falls, and the kill is worth {} more "
+            "experience.", creature->GetName(), bonus));
+    Msg(player, Acore::StringFormat("Vengeance |cffffd100+{}|r: {} of {}.", vengeance, st->nemesisVengeance,
+        cfg.nemesisVengeanceToFinish));
     PushRunTracker(player);
 
-    // At the cap already, the last head is what finishes the run.
+    // At the cap already, the Vengeance that reaches the mark finishes the run.
     if (player->GetLevel() >= sWorld->getIntConfig(CONFIG_MAX_PLAYER_LEVEL) && RunGoalMet(*st))
         EndRun(player, true);
 }
@@ -3790,7 +4580,7 @@ void ClasslessMgr::CarryRunToUnlimitedLives(CharState& st)
 bool ClasslessMgr::RunGoalMet(CharState const& st) const
 {
     if (st.run == uint8(ChallengeId::Nemesis))
-        return st.nemesisHeads.size() >= NEMESIS_HEADS_TO_FINISH;
+        return st.nemesisVengeance >= cfg.nemesisVengeanceToFinish;
     return true;
 }
 
@@ -3799,16 +4589,23 @@ void ClasslessMgr::ForgetCreature(ObjectGuid guid)
     _nemesisApplied.erase(guid);
 }
 
-// Each nemesis the Hero can see is grown before it engages, and carries the
-// Hero's own stalked aura so it is a dot on their minimap. One respawned since
-// is the same spawn, so it is grown again here. One already fighting someone
-// is left at its size until it engages the Hero: growing it rebuilds its
-// health.
+// Every rule tick on a Nemesis run. The Hero's copy of each nemesis is there
+// while they are near where it lives and gone when they leave, kept at their
+// level plus its offset, wearing their passive stalked aura (the minimap dot)
+// and the arrow sent to them alone. An original that has picked a fight with
+// its Hero, whom it cannot be seen by, is made to drop it.
 void ClasslessMgr::NemesisTick(Player* player)
 {
     CharState* st = FindState(player);
     if (!st || st->run != uint8(ChallengeId::Nemesis) || !player->IsInWorld())
         return;
+
+    if (!player->HasSpell(SWEAR_VENDETTA_SPELL) && sSpellMgr->GetSpellInfo(SWEAR_VENDETTA_SPELL))
+    {
+        GrantGuard guard(_applyingGrant);
+        player->learnSpell(SWEAR_VENDETTA_SPELL);
+    }
+    PushNemesisList(player);   // sent only when it changed: a zone found on arrival, a trait learned
 
     if (st->nemesisOldXp)
     {
@@ -3825,27 +4622,60 @@ void ClasslessMgr::NemesisTick(Player* player)
     auto& spawns = player->GetMap()->GetCreatureBySpawnIdStore();
     for (auto const& [spawnId, mark] : st->nemeses)
     {
+        // the original never fights its Hero
         auto range = spawns.equal_range(spawnId);
         for (auto itr = range.first; itr != range.second; ++itr)
+            CW_DropFight(itr->second, player);
+
+        Creature* copy = nullptr;
+        if (auto have = st->nemesisCopies.find(spawnId); have != st->nemesisCopies.end())
         {
-            Creature* creature = itr->second;
-            if (!creature->IsAlive() || !player->IsWithinDist(creature, sight))
-                continue;
-            if (!creature->IsInCombat())
-                ApplyNemesisTo(creature, mark);
-            if (!_nemesisTrackReady)
-                continue;
-            // NEMESIS_MARK_MS per refresh, so a Hero who walks away leaves no mark behind
-            if (Aura* aura = creature->GetAura(NEMESIS_TRACK_SPELL, player->GetGUID()))
-                aura->RefreshDuration();
-            else if (Aura* added = player->AddAura(NEMESIS_TRACK_SPELL, creature))
+            copy = ObjectAccessor::GetCreature(*player, have->second);
+            if (!copy || !copy->IsAlive())
             {
-                added->SetMaxDuration(NEMESIS_MARK_MS);
-                added->RefreshDuration();
-                // another Hero's mark may have set the flag already, and an
-                // unchanged field is never sent: send it anyway
-                creature->ForceValuesUpdateAtIndex(UNIT_DYNAMIC_FLAGS);
+                if (copy)
+                    copy->DespawnOrUnsummon();
+                st->nemesisCopies.erase(have);
+                copy = nullptr;
             }
+            else if (!player->IsWithinDist(copy, sight + 30.0f))
+            {
+                copy->DespawnOrUnsummon();   // the Hero has gone: it waits where it lives
+                st->nemesisCopies.erase(have);
+                copy = nullptr;
+            }
+        }
+        if (!copy)
+        {
+            CreatureData const* data = sObjectMgr->GetCreatureData(spawnId);
+            if (!player->IsAlive() || !data || data->mapid != player->GetMapId()
+                || player->GetDistance(data->posX, data->posY, data->posZ) > sight)
+                continue;
+            copy = SpawnNemesisCopy(player, spawnId, mark);
+            if (!copy)
+                continue;
+            st->nemesisCopies[spawnId] = copy->GetGUID();
+        }
+        else
+        {
+            ResyncNemesisCopy(player, copy, mark);
+            // Relentless: out of combat it heals fast (five seconds' worth a tick)
+            if (mark.Has(NS_RELENTLESS) && copy->IsAlive() && !copy->IsInCombat()
+                && copy->GetHealth() < copy->GetMaxHealth())
+                copy->ModifyHealth(int32(copy->CountPctFromMaxHealth(int32(cfg.nemesisRelentlessPct * 5))));
+        }
+
+        if (!_nemesisTrackReady || !copy->IsAlive())
+            continue;
+        SendNemesisMark(player, copy, true);
+        // NEMESIS_MARK_MS per refresh, so a Hero who walks away leaves no mark behind
+        if (Aura* aura = copy->GetAura(NEMESIS_TRACK_SPELL, player->GetGUID()))
+            aura->RefreshDuration();
+        else if (Aura* added = player->AddAura(NEMESIS_TRACK_SPELL, copy))
+        {
+            added->SetMaxDuration(NEMESIS_MARK_MS);
+            added->RefreshDuration();
+            copy->ForceValuesUpdateAtIndex(UNIT_DYNAMIC_FLAGS);
         }
     }
     PushNemesisGuids(player);
@@ -3863,16 +4693,15 @@ void ClasslessMgr::PushNemesisGuids(Player* player)
     std::string list;
     if (st->run == uint8(ChallengeId::Nemesis))
     {
-        float const sight = player->GetVisibilityRange();
-        auto& spawns = player->GetMap()->GetCreatureBySpawnIdStore();
-        for (auto const& [spawnId, mark] : st->nemeses)
-        {
-            auto range = spawns.equal_range(spawnId);
-            for (auto itr = range.first; itr != range.second; ++itr)
-                if (itr->second->IsAlive() && player->IsWithinDist(itr->second, sight) && list.size() < 180)
-                    list += Acore::StringFormat("{}0x{:016X}", list.empty() ? "" : ",",
-                                                itr->second->GetGUID().GetRawValue());
-        }
+        // "0xGUID=title", the title for the target frame and the tooltip
+        for (auto const& [spawnId, guid] : st->nemesisCopies)
+            if (Creature* copy = ObjectAccessor::GetCreature(*player, guid))
+            {
+                auto const mark = st->nemeses.find(spawnId);
+                if (copy->IsAlive() && mark != st->nemeses.end() && list.size() < 200)
+                    list += Acore::StringFormat("{}0x{:016X}={}", list.empty() ? "" : ",", guid.GetRawValue(),
+                                                NemesisTitle(mark->second));
+            }
     }
     if (list == st->nemesisGuidsSent)
         return;
@@ -3896,8 +4725,17 @@ std::vector<std::string> ClasslessMgr::NemesisReport(Player* player)
     {
         CreatureTemplate const* tmpl = sObjectMgr->GetCreatureTemplate(mark.entry);
         std::string const name = tmpl ? tmpl->Name : "Unknown";
-        out.push_back(Acore::StringFormat("{} (spawn {}): +{} levels, {} deaths, holds {} XP.",
-            name, spawnId, uint32(mark.levels), uint32(mark.kills), mark.stolen));
+        out.push_back(Acore::StringFormat("{} (spawn {}): +{} levels over you, {} deaths.",
+            name, spawnId, uint32(mark.levels), uint32(mark.kills)));
+        if (auto have = st->nemesisCopies.find(spawnId); have != st->nemesisCopies.end())
+            if (Creature* copy = ObjectAccessor::GetCreature(*player, have->second))
+                out.push_back(Acore::StringFormat("  Your copy: {} {:.0f} yd, level {}, size {:.2f}, health {}/{}, "
+                    "mark aura {}, tracking flag {}, {}.",
+                    copy->IsAlive() ? "alive," : "dead,", player->GetDistance(copy), uint32(copy->GetLevel()),
+                    copy->GetObjectScale(), copy->GetHealth(), copy->GetMaxHealth(),
+                    copy->HasAura(NEMESIS_TRACK_SPELL, player->GetGUID()) ? "yes" : "no",
+                    copy->HasDynamicFlag(UNIT_DYNFLAG_TRACK_UNIT) ? "set" : "not set",
+                    copy->IsInCombat() ? "in combat" : "not in combat"));
         CreatureData const* data = sObjectMgr->GetCreatureData(spawnId);
         if (data && data->mapid != player->GetMapId())
         {
@@ -3915,14 +4753,9 @@ std::vector<std::string> ClasslessMgr::NemesisReport(Player* player)
         for (auto itr = range.first; itr != range.second; ++itr)
         {
             Creature* c = itr->second;
-            out.push_back(Acore::StringFormat("  {} {:.0f} yd ({}), level {}, size {:.2f} of {:.2f}, mark aura {}, "
-                "tracking flag {}, {}.",
-                c->IsAlive() ? "Alive," : "Dead,", player->GetDistance(c),
-                player->IsWithinDist(c, sight) ? "in sight" : "out of sight",
-                uint32(c->GetLevel()), c->GetObjectScale(), c->GetNativeObjectScale(),
-                c->HasAura(NEMESIS_TRACK_SPELL, player->GetGUID()) ? "yes" : "no",
-                c->HasDynamicFlag(UNIT_DYNFLAG_TRACK_UNIT) ? "set" : "not set",
-                c->IsInCombat() ? "in combat" : "not in combat"));
+            out.push_back(Acore::StringFormat("  The original (hidden from you): {} {:.0f} yd ({}), level {}.",
+                c->IsAlive() ? "alive," : "dead,", player->GetDistance(c),
+                player->IsWithinDist(c, sight) ? "in sight" : "out of sight", uint32(c->GetLevel())));
         }
     }
     return out;
@@ -3934,7 +4767,15 @@ void ClasslessMgr::ClearNemesisTrack(Player* player, uint32 spawnId)
         return;
     auto range = player->GetMap()->GetCreatureBySpawnIdStore().equal_range(spawnId);
     for (auto itr = range.first; itr != range.second; ++itr)
-        itr->second->RemoveAurasDueToSpell(NEMESIS_TRACK_SPELL, player->GetGUID());
+        RefreshChallengeView(itr->second);   // drawn for its Hero again
+    if (CharState* st = FindState(player))
+        if (auto have = st->nemesisCopies.find(spawnId); have != st->nemesisCopies.end())
+        {
+            if (Creature* copy = ObjectAccessor::GetCreature(*player, have->second))
+                if (copy->IsAlive())
+                    copy->DespawnOrUnsummon();
+            st->nemesisCopies.erase(have);
+        }
 }
 
 // ---- the hunter ------------------------------------------------------------
@@ -3989,7 +4830,7 @@ void ClasslessMgr::SpawnHunter(Player* player)
     if (!hunter)
         return;
     hunter->SetFaction(14);
-    CW_ReLevelCreature(hunter, uint8(std::min<uint32>(player->GetLevel() + 2, NEMESIS_LEVEL_CAP)), true);
+    CW_ReLevelCreature(hunter, uint8(std::min<uint32>(player->GetLevel() + 2, NEMESIS_LEVEL_CAP)), CREATURE_ELITE_RAREELITE);
     hunter->SetReactState(REACT_AGGRESSIVE);
     hunter->SetHomePosition(player->GetPosition());
     if (hunter->AI())
@@ -4298,6 +5139,7 @@ void ClasslessMgr::LoadCharacter(Player* player, CharState& st)
         st.archetype = f[12].Get<uint32>();
         st.rebirths = f[13].Get<uint32>();
         st.run = f[14].Get<uint8>();
+        TagRun(player, st.run);
         st.lives = f[15].Get<uint8>();
         st.livesMax = f[16].Get<uint8>();
         st.runData = f[17].Get<uint32>();
@@ -4310,7 +5152,8 @@ void ClasslessMgr::LoadCharacter(Player* player, CharState& st)
     }
 
     if (QueryResult result = CharacterDatabase.Query(
-        "SELECT spawn_id, creature_entry, levels, kills, stolen FROM cw_char_nemeses WHERE guid = {}", guid))
+        "SELECT spawn_id, creature_entry, levels, kills, stolen, kind, strength1, strength2, strength3, weakness, "
+        "learned FROM cw_char_nemeses WHERE guid = {}", guid))
     {
         do
         {
@@ -4328,6 +5171,19 @@ void ClasslessMgr::LoadCharacter(Player* player, CharState& st)
             mark.levels = f[2].Get<uint8>();
             mark.kills = f[3].Get<uint8>();
             mark.stolen = f[4].Get<uint32>();
+            mark.kind = f[5].Get<uint8>();
+            for (uint8 i = 0; i < NEMESIS_MAX_STRENGTHS; ++i)
+                mark.strengths[i] = f[6 + i].Get<uint8>();
+            mark.weakness = f[9].Get<uint8>();
+            mark.learned = f[10].Get<uint8>();
+            // A mark from before traits and the level offset: given what a
+            // Marked nemesis has now. Saved with the next save.
+            if (mark.strengths[0] == NS_NONE)
+            {
+                mark.levels = uint8(cfg.nemesisMarkedLevels);
+                AddNemesisStrength(mark);
+                mark.weakness = RollNemesisWeakness();
+            }
             st.nemeses[spawnId] = mark;
         } while (result->NextRow());
     }
@@ -4338,6 +5194,35 @@ void ClasslessMgr::LoadCharacter(Player* player, CharState& st)
         do
             st.nemesisHeads.insert(result->Fetch()[0].Get<uint32>());
         while (result->NextRow());
+    }
+
+    if (QueryResult result = CharacterDatabase.Query(
+        "SELECT vengeance, pending FROM cw_char_nemesis_run WHERE guid = {}", guid))
+    {
+        st.nemesisVengeance = result->Fetch()[0].Get<uint32>();
+        std::string const pending = result->Fetch()[1].Get<std::string>();
+        for (std::string_view entry : Acore::Tokenize(pending, ',', false))
+            if (Optional<uint32> id = Acore::StringTo<uint32>(entry); id && IsNemesisTrophy(*id))
+                st.nemesisPendingTrophies.push_back(*id);
+    }
+    else if (!st.nemesisHeads.empty() && st.run == uint8(ChallengeId::Nemesis))
+    {
+        // Heads from before Vengeance: each counts the level the Hero is now.
+        st.nemesisVengeance = uint32(st.nemesisHeads.size()) * player->GetLevel();
+        st.nemesisHeads.clear();
+        SaveNemesisHeads(player->GetGUID(), st);
+        SaveNemesisRun(player->GetGUID(), st);
+    }
+    if (QueryResult result = CharacterDatabase.Query(
+        "SELECT effect, `rank` FROM cw_char_nemesis_charm WHERE guid = {}", guid))
+    {
+        do
+        {
+            Field* f = result->Fetch();
+            uint8 const effect = f[0].Get<uint8>();
+            if (effect > NS_NONE && effect < NS_COUNT)
+                st.charmRanks[effect] = uint8(std::min<uint32>(f[1].Get<uint8>(), NEMESIS_CHARM_MAX_RANK));
+        } while (result->NextRow());
     }
 
     // The character's own build, when it follows one. Anything the realm has
@@ -4445,8 +5330,11 @@ void ClasslessMgr::SaveNemeses(ObjectGuid guid, CharState const& st)
     CharacterDatabase.Execute("DELETE FROM cw_char_nemeses WHERE guid = {}", low);
     for (auto const& [spawnId, mark] : st.nemeses)
         CharacterDatabase.Execute(
-            "INSERT INTO cw_char_nemeses (guid, spawn_id, creature_entry, levels, kills, stolen) VALUES ({}, {}, {}, {}, {}, {})",
-            low, spawnId, mark.entry, uint32(mark.levels), uint32(mark.kills), mark.stolen);
+            "INSERT INTO cw_char_nemeses (guid, spawn_id, creature_entry, levels, kills, stolen, kind, strength1, "
+            "strength2, strength3, weakness, learned) VALUES ({}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {})",
+            low, spawnId, mark.entry, uint32(mark.levels), uint32(mark.kills), mark.stolen, uint32(mark.kind),
+            uint32(mark.strengths[0]), uint32(mark.strengths[1]), uint32(mark.strengths[2]), uint32(mark.weakness),
+            uint32(mark.learned));
 }
 
 void ClasslessMgr::SaveNemesisHeads(ObjectGuid guid, CharState const& st)
@@ -5421,16 +6309,17 @@ void ClasslessMgr::HandleLevelUp(Player* player, uint8 oldLevel)
     GrantRuneforging(player);
 
     // A run ends the moment the cap is reached with a life in hand, and
-    // Nemesis once its heads are taken as well.
+    // Nemesis once its Vengeance is there as well.
     if (st.run && newLevel >= sWorld->getIntConfig(CONFIG_MAX_PLAYER_LEVEL))
     {
         if (RunGoalMet(st))
             EndRun(player, true);
         else
         {
-            uint32 const left = NEMESIS_HEADS_TO_FINISH - uint32(st.nemesisHeads.size());
-            Msg(player, Acore::StringFormat("|cffffd100Nemesis|r: level {} reached. Take {} more nemesis {} to finish.",
-                uint32(newLevel), left, left == 1 ? "head" : "heads"));
+            uint32 const left = cfg.nemesisVengeanceToFinish > st.nemesisVengeance
+                ? cfg.nemesisVengeanceToFinish - st.nemesisVengeance : 0;
+            Msg(player, Acore::StringFormat("|cffffd100Nemesis|r: level {} reached. Gain {} more Vengeance to finish.",
+                uint32(newLevel), left));
         }
     }
 
@@ -6110,9 +6999,11 @@ void ClasslessMgr::GateOverpowerOnDodge()
              _overpowerSpells.size());
 }
 
-// The nemesis mark (NEMESIS_TRACK_SPELL): the minimap dot for its Hero and
-// the arrow over its head. A realm whose data has changed that spell gets no
-// mark at all, rather than whatever the spell has become.
+// The nemesis mark (NEMESIS_TRACK_SPELL): the minimap dot for its Hero, set by
+// the stalked aura, and the arrow over its head, which SendNemesisMark shows
+// its Hero alone. Passive, the aura is never sent to any client
+// (Aura::CanBeSentToClient). A realm whose data has changed that spell gets
+// no mark at all, rather than whatever the spell has become.
 void ClasslessMgr::PrepareNemesisTrack()
 {
     _nemesisTrackReady = false;
@@ -6128,6 +7019,7 @@ void ClasslessMgr::PrepareNemesisTrack()
                   "will not show on the minimap", NEMESIS_TRACK_SPELL);
         return;
     }
+    const_cast<SpellInfo*>(info)->Attributes |= SPELL_ATTR0_PASSIVE;
     _nemesisTrackReady = true;
 }
 

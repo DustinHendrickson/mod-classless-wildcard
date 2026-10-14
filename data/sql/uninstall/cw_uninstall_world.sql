@@ -53,7 +53,8 @@ DELETE FROM `item_template` WHERE `entry` IN (990101, 990102)
    OR (`entry` BETWEEN 990201 AND 990212)   -- classless item pack
    OR (`entry` BETWEEN 990250 AND 990272)   -- Hero heirlooms
    OR (`entry` BETWEEN 990280 AND 990295)   -- classless item pack II
-   OR (`entry` BETWEEN 990300 AND 990497);  -- tiered classless gear
+   OR (`entry` BETWEEN 990300 AND 990497)   -- tiered classless gear
+   OR (`entry` BETWEEN 991000 AND 991030);  -- Nemesis trophies and charm
 
 -- vendor visibility conditions (older versions gated the tiered gear by level;
 -- the shop is split into browsable lists now and installs none of these)
@@ -108,7 +109,8 @@ DELETE FROM `spell_script_names` WHERE `ScriptName` IN
      'spell_cw_pet_hit_expertise_scaling',
      'spell_cw_dk_blade_barrier', 'spell_cw_dk_death_rune',
      'spell_cw_healing_trance', 'spell_cw_blessing_of_faith',
-     'spell_cw_flask_of_the_north', 'spell_cw_t3_6p_bonus');
+     'spell_cw_flask_of_the_north', 'spell_cw_t3_6p_bonus',
+     'spell_cw_swear_vendetta');
 INSERT IGNORE INTO `spell_script_names` (`spell_id`, `ScriptName`) VALUES
 (37705, 'spell_item_healing_trance'),
 (60510, 'spell_item_soul_preserver'),

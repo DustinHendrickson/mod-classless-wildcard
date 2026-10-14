@@ -164,13 +164,20 @@ namespace
         // classless gear would only churn loot they have no use for.
         if (sClasslessMgr->IsExempt(killer))
             return;
-        if (!IsValidDropSource(killed))
+        // a Hero's copy of their nemesis is a summon, but it is the nemesis
+        bool const nemesisCopy = ClasslessMgr::NemesisCopyOwner(killed) == killer->GetGUID();
+        if (!nemesisCopy && !IsValidDropSource(killed))
             return;
 
         if (!g_loaded)
             LoadPool();
 
-        bool rareOrBoss = IsRareOrBoss(killed);
+        // A nemesis or an Elite World enemy is a rare elite or an elite to the
+        // Hero on that run (ClasslessMgr::ChallengeViewOf), and drops like a
+        // rare for them: the rare chance and the heirloom roll. It is read
+        // here, in the kill, before the death hook lifts a nemesis's mark.
+        ClasslessMgr::ChallengeView view;
+        bool rareOrBoss = IsRareOrBoss(killed) || nemesisCopy || sClasslessMgr->ChallengeViewOf(killer, killed, view);
 
         // Heirlooms are the premium reward, so they come only off rares and
         // bosses, and are rolled first as the better prize. They carry
@@ -185,7 +192,9 @@ namespace
             float chance = cfg.worldDropChance;
             if (rareOrBoss)
                 chance *= cfg.worldDropRareMultiplier;
-            if (chance <= 0.0f || !roll_chance_f(chance))
+            // a Sworn nemesis always gives a piece
+            bool const sworn = nemesisCopy && sClasslessMgr->IsSwornCopy(killed, killer);
+            if (!sworn && (chance <= 0.0f || !roll_chance_f(chance)))
                 return;
             itemId = PickForLevel(g_gear, killed->GetLevel());
         }
@@ -212,8 +221,16 @@ class ClasslessLootScript : public PlayerScript
 public:
     ClasslessLootScript() : PlayerScript("ClasslessLootScript", {
         PLAYERHOOK_ON_CREATURE_KILL,
-        PLAYERHOOK_ON_CREATURE_KILLED_BY_PET
+        PLAYERHOOK_ON_CREATURE_KILLED_BY_PET,
+        PLAYERHOOK_CAN_SELL_ITEM
     }) { }
+
+    // Trophies and the Nemesis Charm are never sold (they have no price either).
+    bool OnPlayerCanSellItem(Player* /*player*/, Item* item, Creature* /*creature*/) override
+    {
+        return !item || !(ClasslessMgr::IsNemesisTrophy(item->GetEntry())
+                          || item->GetEntry() == ClasslessMgr::NEMESIS_CHARM);
+    }
 
     void OnPlayerCreatureKill(Player* killer, Creature* killed) override
     {

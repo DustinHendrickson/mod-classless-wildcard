@@ -209,9 +209,6 @@ namespace ClasslessWildcard
     // A run's lives when it has no limit: a death never ends it. The state
     // and the client carry this number for both lives and lives at the start.
     constexpr uint8 UNLIMITED_LIVES = 255;
-    // Nemesis is finished at the level cap with this many heads: different
-    // kinds of creature slain while they were the Hero's nemesis.
-    constexpr uint8 NEMESIS_HEADS_TO_FINISH = 5;
 
     struct Challenge
     {
@@ -231,12 +228,50 @@ namespace ClasslessWildcard
     };
     // Nemesis: a creature kind that has killed this Hero, how much it grew,
     // and the experience it took, which comes back when one of them dies.
+    // A nemesis is Marked (it killed the Hero) or Sworn (the Hero swore
+    // vendetta on it), and carries up to three strengths and one weakness
+    // (PLAN-nemesis.md, sections 2 and 4).
+    enum NemesisKind : uint8 { NEMESIS_MARKED = 0, NEMESIS_SWORN = 1 };
+    enum NemesisStrength : uint8
+    {
+        NS_NONE = 0, NS_BLOODLUST, NS_IRONHIDE, NS_SPELLWARD, NS_VENOMOUS, NS_UNYIELDING, NS_WARBAND,
+        NS_RELENTLESS, NS_COUNT
+    };
+    enum NemesisWeakness : uint8
+    {
+        NW_NONE = 0, NW_FIRE, NW_FROST, NW_SHADOW, NW_NATURE, NW_ARCANE, NW_HOLY, NW_BRITTLE, NW_COWARDLY, NW_COUNT
+    };
+    // what its Hero has found out about it
+    enum : uint8 { NEMESIS_LEARNED_STRENGTHS = 0x1, NEMESIS_LEARNED_WEAKNESS = 0x2 };
+    constexpr uint8 NEMESIS_MAX_STRENGTHS = 3;
+
     struct NemesisMark
     {
-        uint32 entry = 0;     // what kind it is: its name, and the head it gives
-        uint8 levels = 0;
-        uint8 kills = 0;
-        uint32 stolen = 0;
+        uint32 entry = 0;     // what kind it is: its name
+        uint8 levels = 0;     // how far above its Hero it fights
+        uint8 kills = 0;      // how often it has killed its Hero
+        uint32 stolen = 0;    // experience taken by a mark from before deaths stopped taking any
+        uint8 kind = NEMESIS_MARKED;
+        uint8 strengths[NEMESIS_MAX_STRENGTHS] = { NS_NONE, NS_NONE, NS_NONE };
+        uint8 weakness = NW_NONE;
+        uint8 learned = 0;
+        uint32 zone = 0;      // runtime: the zone it lives in, once its Hero has been on its map
+
+        bool Has(uint8 strength) const
+        {
+            for (uint8 s : strengths)
+                if (s == strength)
+                    return true;
+            return false;
+        }
+        uint8 StrengthCount() const
+        {
+            uint8 n = 0;
+            for (uint8 s : strengths)
+                if (s != NS_NONE)
+                    ++n;
+            return n;
+        }
     };
 
     struct RollBan
@@ -370,7 +405,16 @@ namespace ClasslessWildcard
         std::unordered_map<uint32, NemesisMark> nemeses;  // by spawn id: the one creature that killed you
         uint32 nemesisOldXp = 0;         // experience held by marks saved per kind, before marks were per creature
         std::string nemesisGuidsSent;    // runtime: the nemesis GUIDs the addon was last sent ("NG")
-        std::set<uint32> nemesisHeads;   // kinds slain while marked, by entry: the run's heads
+        std::unordered_map<uint32, ObjectGuid> nemesisCopies;   // runtime: spawn id -> this Hero's copy of it
+        uint32 nemesisVengeance = 0;                  // the run's Vengeance: levels of nemeses slain
+        uint8 charmRanks[NS_COUNT] = {};              // the Nemesis Charm's rank in each effect, 0 to 5
+        std::vector<uint32> nemesisPendingTrophies;   // trophies waiting for room among the four
+        float nemesisFxApplied[NS_COUNT] = {};        // runtime: each effect's value as applied
+        int32 nemesisCritRatingApplied = 0;           // runtime: the crit rating that value came to
+        int32 nemesisSpellPowerApplied = 0;           // runtime: the spell power the power effect came to
+        bool nemesisCharmMailed = false;              // runtime: a charm that found the bags full was mailed
+        std::string nemesisListSent;                  // runtime: the nemesis list the addon was last sent
+        std::set<uint32> nemesisHeads;   // heads from before Vengeance, read once and turned into it
         std::unordered_map<uint8, std::pair<uint8, bool>> runBest;  // challenge -> (level reached, finished)
         uint32 hunterTimerMs = 0;        // runtime: Pursued's clock
         uint32 ruleTickMs = 0;           // runtime: the five-second rule tick
@@ -599,6 +643,39 @@ namespace ClasslessWildcard
         float  worldDropChance = 1.0f;           // percent, per qualifying kill
         float  worldDropRareMultiplier = 5.0f;   // rares/elites/bosses drop more often
         float  worldDropHeirloomChance = 2.0f;   // percent, rares and bosses only
+
+        // Nemesis (PLAN-nemesis.md): how far above the Hero a Marked nemesis
+        // fights, and the experience its kill pays on top, in percent of the
+        // Hero's current level
+        uint32 nemesisMarkedLevels = 2;
+        uint32 nemesisMarkedBonusXpPct = 25;
+        // Sworn: Swear Vendetta's nemesis
+        uint32 nemesisSwornLevels = 4;
+        uint32 nemesisSwornBonusXpPct = 50;
+        uint32 nemesisSwornCooldownMin = 30;
+        uint32 nemesisSwornLevelsBelow = 5;   // how far below the Hero its target may be
+        // traits, in percent
+        uint32 nemesisBloodlustPct = 30;      // faster attacks and casts
+        uint32 nemesisIronhidePct = 25;       // less physical damage taken
+        uint32 nemesisSpellwardPct = 25;      // less spell damage taken
+        uint32 nemesisVenomousPct = 2;        // of the Hero's health, every 2 seconds for 6
+        uint32 nemesisUnyieldingPct = 25;     // more damage below 30% health
+        uint32 nemesisRelentlessPct = 5;      // health a second, out of combat
+        uint32 nemesisWeakSchoolPct = 50;     // more damage from its weak school
+        uint32 nemesisBrittlePct = 20;        // more damage for 8 seconds after a stun
+        uint32 nemesisCowardlyPct = 30;       // more damage once it has fled
+        uint32 nemesisWarbandCount = 2;       // its kind called to its side
+        uint32 nemesisVenomousSeconds = 6;    // how long its poison lasts
+        uint32 nemesisUnyieldingBelowPct = 30;   // its health when its rage starts
+        uint32 nemesisBrittleSeconds = 8;     // how long a stun opens it up
+        uint32 nemesisCowardlyFleePct = 20;   // its health when it flees
+        uint32 nemesisCowardlyFleeSeconds = 6;
+        // Vengeance and trophies (PLAN-nemesis.md section 6)
+        uint32 nemesisVengeanceToFinish = 500;
+        uint32 nemesisSwornVengeancePct = 150;   // a Sworn kill's Vengeance, in percent of its level
+        uint32 nemesisTrophyMax = 4;             // trophies carried at once
+        // what one star is worth, in each trophy effect, indexed by NemesisStrength
+        float nemesisStar[NS_COUNT] = { 0.0f, 0.8f, 2.0f, 6.0f, 0.4f, 1.2f, 1.2f, 0.8f };
 
         // classless (free-pick) economy
         uint32 startingAbilityEssence = 3;

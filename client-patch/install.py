@@ -286,7 +286,9 @@ def build_data_patch(files, name, report, theme=False):
     # The nemesis mark is a stock spell every nearby player sees on the
     # creature's debuffs; it reads "Nemesis" rather than its internal name.
     payload[SPELL], renamed = dbc.rename_spells(payload[SPELL])
-    report.append("  Spell.dbc        %d stock spell(s) renamed (the nemesis mark)" % renamed)
+    report.append("  Spell.dbc        %d stock spell(s) renamed (the nemesis mark, Swear Vendetta)" % renamed)
+    payload[SPELL], refielded = dbc.set_spell_fields(payload[SPELL])
+    report.append("  Spell.dbc        %d stock spell(s) given the module's own values (Swear Vendetta)" % refielded)
 
     # The cost floor used to run here. It runs in apply_client_floors() now, after
     # the generated rows have been appended -- see that function for why.
