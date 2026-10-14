@@ -7,13 +7,20 @@
 -- Assassin's (display 3727, Syndicate Assassin 2246 in the core's own dump),
 -- a hooded human: something that looks like it came for you.
 
-DELETE FROM `creature_template` WHERE `entry` = 990131;
+--
+-- Entry 990099. It was 990131 until 2026-10-14, an id cw_world_vendor_lists.sql
+-- also claims for a vendor list and loads after this file, so the hunter was
+-- overwritten by a civilian, unattackable vendor clone. 990131 is left to the
+-- vendor list. Rank 1 (elite) is what the core pays elite experience on and
+-- what draws the elite dragon; its health and damage are set by hand anyway.
+
+DELETE FROM `creature_template` WHERE `entry` = 990099;
 INSERT INTO `creature_template`
   (`entry`, `name`, `subname`, `minlevel`, `maxlevel`, `faction`, `npcflag`, `unit_class`,
-   `unit_flags`, `type`, `type_flags`, `RegenHealth`, `flags_extra`, `speed_walk`, `speed_run`, `DamageModifier`, `HealthModifier`, `ScriptName`, `VerifiedBuild`)
+   `unit_flags`, `type`, `type_flags`, `rank`, `RegenHealth`, `flags_extra`, `speed_walk`, `speed_run`, `DamageModifier`, `HealthModifier`, `ScriptName`, `VerifiedBuild`)
 VALUES
-(990131, 'Relentless Hunter', 'Pursuer', 1, 80, 14, 0, 1, 0, 7, 0, 1, 0, 1.0, 1.14286, 1.00, 1.00, '', 12340);
+(990099, 'Relentless Hunter', 'Pursuer', 1, 80, 14, 0, 1, 0, 7, 0, 1, 1, 0, 1.0, 1.14286, 1.00, 1.00, '', 12340);
 
-DELETE FROM `creature_template_model` WHERE `CreatureID` = 990131;
+DELETE FROM `creature_template_model` WHERE `CreatureID` = 990099;
 INSERT INTO `creature_template_model` (`CreatureID`, `Idx`, `CreatureDisplayID`, `DisplayScale`, `Probability`, `VerifiedBuild`) VALUES
-(990131, 0, 3727, 1.00, 1, 12340);
+(990099, 0, 3727, 1.00, 1, 12340);

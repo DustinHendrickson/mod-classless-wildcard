@@ -28,6 +28,7 @@
 #include "Chat.h"
 #include "Creature.h"
 #include "CreatureAI.h"
+#include "Group.h"
 #include "Item.h"
 #include "ItemTemplate.h"
 #include "Map.h"
@@ -259,8 +260,7 @@ public:
     {
         if (!killer || !killed)
             return;
-        if (sClasslessMgr->OnRun(killer, ChallengeId::Nemesis))
-            sClasslessMgr->NemesisSlain(killer, killed);
+        // a nemesis is credited from cw_challenge_world::OnUnitDeath
         if (sClasslessMgr->OnRun(killer, ChallengeId::Pursued))
             sClasslessMgr->HunterSlain(killer, killed);
     }
@@ -385,6 +385,8 @@ public:
         UNITHOOK_MODIFY_MELEE_DAMAGE,
         UNITHOOK_MODIFY_SPELL_DAMAGE_TAKEN,
         UNITHOOK_MODIFY_HEAL_RECEIVED,
+        UNITHOOK_MODIFY_PERIODIC_DAMAGE_AURAS_TICK,
+        UNITHOOK_ON_DAMAGE,
         UNITHOOK_ON_UNIT_DEATH
     }) { }
 
@@ -424,6 +426,34 @@ public:
         damage = int32(amount);
     }
 
+    // Damage over time is its own hook, and the same hook carries heal-over-
+    // time ticks a line before ModifyHealReceived: only damage ticks scale.
+    void ModifyPeriodicDamageAurasTick(Unit* target, Unit* attacker, uint32& damage, SpellInfo const* spellInfo) override
+    {
+        if (!spellInfo || !(spellInfo->HasAura(SPELL_AURA_PERIODIC_DAMAGE) || spellInfo->HasAura(SPELL_AURA_PERIODIC_LEECH)
+                            || spellInfo->HasAura(SPELL_AURA_PERIODIC_DAMAGE_PERCENT)))
+            return;
+        Scale(target, attacker, damage);
+    }
+
+    // What a hit actually did, once the core has rolled it, taken off armor
+    // and absorbs, and is about to apply it: damage over time included, a
+    // miss, dodge or parry never arriving here. Bloodpact's leech, Spiteful's
+    // reflection and Berserker's snare break answer this, not the swing.
+    void OnDamage(Unit* attacker, Unit* victim, uint32& damage) override
+    {
+        Player* dealer = attacker ? attacker->ToPlayer() : nullptr;
+        if (!dealer || !victim || victim == attacker || !damage || !dealer->IsAlive())
+            return;
+        if (sClasslessMgr->OnRun(dealer, ChallengeId::Berserker) && dealer->GetHealthPct() < BERSERKER_LOW)
+            dealer->RemoveMovementImpairingAuras(false);
+        if (sClasslessMgr->OnRun(dealer, ChallengeId::Bloodpact))
+            dealer->ModifyHealth(int32(damage * BLOODPACT_LEECH_PCT / 100));
+        if (sClasslessMgr->OnRun(dealer, ChallengeId::Spiteful) && WildCreature(victim))
+            if (uint32 const back = damage * SPITEFUL_PCT / 100)
+                Unit::DealDamage(victim, dealer, back, nullptr, DIRECT_DAMAGE, SPELL_SCHOOL_MASK_NORMAL, nullptr, false);
+    }
+
     // Bloodpact: every heal that reaches the Hero is halved. The leech below
     // adds health directly and never comes through here.
     void ModifyHealReceived(Unit* target, Unit* /*healer*/, uint32& heal, SpellInfo const* /*spellInfo*/) override
@@ -433,10 +463,11 @@ public:
             heal /= 2;
     }
 
-    void OnUnitDeath(Unit* unit, Unit* /*killer*/) override
+    void OnUnitDeath(Unit* unit, Unit* killer) override
     {
         if (!unit || !unit->IsCreature())
             return;
+        CreditNemesis(unit->ToCreature(), killer);
         _eliteScaled.erase(unit->GetGUID());
         _legionCalled.erase(unit->GetGUID());
         _legionSpawn.erase(unit->GetGUID());
@@ -446,6 +477,32 @@ public:
     }
 
 private:
+    // A nemesis is killed when it dies to its Hero, their pet or totem, or the
+    // group that tagged it, not only when the Hero lands the killing blow:
+    // OnPlayerCreatureKill fires for that last case alone. A Hero who is dead
+    // when it falls keeps the mark, since the experience could not be given
+    // back to them; the creature respawns still their nemesis.
+    void CreditNemesis(Creature* creature, Unit* killer)
+    {
+        if (!creature || !creature->GetSpawnId())
+            return;
+        std::vector<Player*> heroes;
+        auto add = [&heroes](Player* p)
+        {
+            if (p && std::find(heroes.begin(), heroes.end(), p) == heroes.end())
+                heroes.push_back(p);
+        };
+        add(OwnerPlayer(killer));
+        add(creature->GetLootRecipient());
+        if (Group* group = creature->GetLootRecipientGroup())
+            for (GroupReference* ref = group->GetFirstMember(); ref; ref = ref->next())
+                if (Player* member = ref->GetSource(); member && member->IsInMap(creature))
+                    add(member);
+        for (Player* hero : heroes)
+            if (hero->IsAlive() && sClasslessMgr->OnRun(hero, ChallengeId::Nemesis))
+                sClasslessMgr->NemesisSlain(hero, creature);
+    }
+
     // Legion: the enemy calls two more of its kind, once per life. A called
     // one never calls (or every fight would be a flood), and nothing is
     // called for a boss, a critter, or anything that cannot fight. The copies
@@ -474,11 +531,10 @@ private:
         }
     }
 
-    // The damage rates, both ways. Elite World doubles a creature's hit on
-    // the Hero. Glass, Berserker and Bloodpact read the Hero's own hits:
-    // Glass adds a third, Berserker doubles below 35% health and takes 30%
-    // off above 75%, Bloodpact heals the Hero for a share. Spiteful hands a
-    // fifth of the Hero's hit back as damage from the enemy.
+    // The damage rates, both ways, on melee, direct spells and damage over
+    // time alike. Elite World doubles a creature's hit on the Hero or their
+    // pet. Glass adds a third to the Hero's own damage, and Berserker doubles
+    // it below 35% health and takes 30% off above 75%.
     void Scale(Unit* target, Unit* attacker, uint32& damage)
     {
         if (!damage || !attacker || !target)
@@ -496,18 +552,10 @@ private:
         {
             float const hp = dealer->GetHealthPct();
             if (hp < BERSERKER_LOW)
-            {
                 damage *= 2;
-                dealer->RemoveMovementImpairingAuras(false);
-            }
             else if (hp > BERSERKER_HIGH)
                 damage -= damage * BERSERKER_HIGH_PENALTY / 100;
         }
-        if (sClasslessMgr->OnRun(dealer, ChallengeId::Bloodpact) && dealer->IsAlive())
-            dealer->ModifyHealth(int32(damage * BLOODPACT_LEECH_PCT / 100));
-        if (sClasslessMgr->OnRun(dealer, ChallengeId::Spiteful) && WildCreature(target) && dealer->IsAlive())
-            Unit::DealDamage(target, dealer, damage * SPITEFUL_PCT / 100, nullptr, DIRECT_DAMAGE,
-                             SPELL_SCHOOL_MASK_NORMAL, nullptr, false);
     }
 
     std::unordered_set<ObjectGuid> _eliteScaled;

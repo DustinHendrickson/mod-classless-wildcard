@@ -3087,7 +3087,7 @@ bool ClasslessMgr::Rebirth(Player* player, std::vector<uint32> const& heirlooms,
     // A Rebirth ends any run the character is on. It is at the level cap, so
     // a run with a life left is finished; the new life can start a new one.
     if (st.run)
-        EndRun(player, st.lives > 0 && RunGoalMet(st));
+        EndRun(player, st.lives > 0 && RunGoalMet(st), true);
 
     uint32 const guid = player->GetGUID().GetCounter();
     GrantGuard bulk(_bulkCorrections);   // one push at the end, not one per spell
@@ -3243,44 +3243,44 @@ namespace
         // five where the world is turned up, three where the fight changes shape, one only where
         // the rule IS death. The list is in the order the picker shows it.
         { 1,  "nemesis",         "Nemesis",         UNLIMITED_LIVES, "Unlimited lives. The creature that kills you takes the experience in your bar, gains up to five levels for it and grows. Slay five nemeses of different kinds and reach level 80 to finish.", 500, 186, "mark_of_the_nemesis",
-          "You have unlimited lives on this run. The creature that kills you becomes your nemesis and takes all the experience in your current level's bar, though never the level itself. That one creature gains levels for the experience it took, five for a full bar, four for three quarters, three for half, two for a quarter and one for an empty bar. It also gains elite health and damage and grows larger, and it keeps all of it for the rest of the run, even after it respawns. It shows as elite on your target frame and on your minimap. Each time it kills you again it gains levels the same way, up to thirty in all, grows larger still and takes your bar again. Kill it and the mark is lifted, all the experience it took comes back to you, and you take its head. To finish, reach level 80 holding five heads, each from a different kind of creature. Reaching 80 first does not end the run, it ends the moment the fifth head is yours. Deaths in dungeons and raids make no nemesis, and neither do deaths to elites, bosses, pets, totems or summoned creatures.",
+          "You have unlimited lives on this run. The creature that kills you becomes your nemesis and takes the experience in your current level's bar, though never the level itself. That one creature gains levels for the experience it took, five for a full bar, four for three quarters, three for half, two for a quarter and one for an empty bar, up to level 83. It also gains elite health and damage and grows half again as large, and it keeps all of it for the rest of the run, even after it respawns. It shows as elite on your target frame and on your minimap. Each time it kills you again it gains levels the same way, takes your bar again and grows larger, up to twice its size. Kill it, alone or with your pet or group, and the mark is lifted, all the experience it took comes back to you, and you take its head. If you are dead when it falls, the mark stays. To finish, reach level 80 holding five heads, each from a different kind of creature. Reaching 80 first does not end the run, it ends the moment the fifth head is yours. Deaths in dungeons and raids make no nemesis, and neither do deaths to elites, bosses, pets, totems or summoned creatures.",
           "Remember what killed you and where. Your nemesis respawns where it always does, so stay clear of it until you are ready, then go back and kill it to take your experience back and its head. A kind you already have a head from earns no second one, so five heads means five nemeses of different kinds. Every death to the same nemesis makes it stronger and costs you another bar. Other creatures of its kind are not marked." },
-        { 2,  "elite_world",     "Elite World",     5, "Every enemy you fight is an elite, with triple health and double damage.", 750, 187, "giantsbane",
-          "The moment an enemy engages you or your pet it gains triple health, and every hit it lands on you or your pet deals double damage. This applies to every creature in the world, dungeons included. Pull one at a time, and use every stun, slow and snare you own.",
+        { 2,  "elite_world",     "Elite World",     5, "Every enemy that fights you has triple health and deals double damage.", 750, 187, "giantsbane",
+          "The moment an enemy engages you or your pet it gains triple health, and everything it deals to you or your pet, melee, spells and damage over time, is doubled. This applies to every creature in the world, dungeons included, but not to pets, totems or summoned creatures with an owner. Enemies keep their usual rank, so they give their usual experience. Pull one at a time, and use every stun, slow and snare you own.",
           "Pull one enemy at a time and rest between fights. Stuns, fears, slows and snares matter far more than usual. Anything that would be a fair fight on your own is now a group fight, so find others for it." },
-        { 14, "legion",          "Legion",          4, "Every enemy you engage calls two more of its kind to its side. More to kill, more XP, more ways to die.", 650, 191, "one_against_many",
-          "When an enemy engages you, two more of its kind appear beside it and join the fight. They give experience and loot like any other of their kind, and leave after five minutes if the fight never reaches them. Reinforcements never call reinforcements of their own. Bosses, critters and civilians never call at all.",
+        { 14, "legion",          "Legion",          4, "Every enemy calls two more of its kind to its side the first time it engages you. More to kill, more XP, more ways to die.", 650, 191, "one_against_many",
+          "The first time an enemy engages you or your pet, two more of its kind appear beside it and join the fight. An enemy calls only once in its life, even if it resets and is pulled again. They give experience and loot like any other of their kind, and leave after five minutes out of combat. Reinforcements never call reinforcements of their own. Bosses, critters, civilians, pets, totems and summoned creatures never call at all.",
           "Fight where you have room to back away, and open with abilities that hit several enemies at once. Pull from range so you see the reinforcements coming, and keep away from other groups, since any of them that wanders in calls two more." },
-        { 4,  "pursued",         "Pursued",         3, "Every 15 to 30 minutes of play a hunter two levels above you finds you and tracks you until one of you dies.", 600, 189, "turnabout",
-          "Every 15 to 30 minutes of played time, at random, a Relentless Hunter appears near you, two levels above you, with elite health and damage. It follows you anywhere until one of you dies. Killing it gives its elite experience and starts the clock for the next one. If it kills you it leaves, and a new clock starts. The clock keeps its place when you log out, and a hunter on you when you log out is waiting when you log back in. Battlegrounds and arenas are safe from it.",
+        { 4,  "pursued",         "Pursued",         3, "Every 15 to 30 minutes of play an elite hunter two levels above you finds you and chases you until one of you dies or you change maps.", 600, 189, "turnabout",
+          "Every 15 to 30 minutes of played time, counted while you are alive, a Relentless Hunter appears near you at random. It is an elite two levels above you, up to level 83, and it chases you until one of you dies. Killing it gives elite experience and starts the clock for the next one. If it kills you, or any death costs you a life, it leaves and a new clock starts. Changing maps, into a dungeon or across to another continent, leaves it behind and starts a new clock too. The clock keeps its place when you log out, and a hunter that was on you when you logged out finds you again 15 seconds after you log back in. Battlegrounds and arenas are safe from it.",
           "Keep a defensive ability and a healing option ready at all times, because the hunter can arrive in the middle of another fight. Finish fights quickly, and when the hunter comes, kill it before anything else joins in." },
         { 15, "hourglass",       "Hourglass",       3, "A level clock. Gain a level every 30 minutes played or lose a life. The clock resets with every level, runs 20 minutes below level 20 and 45 past 60.", 500, 192, "rewind",
-          "Every level has a time limit, counted while you are logged in and alive. Below level 20 you have 20 minutes per level, from 20 to 60 you have 30, and past 60 you have 45. A warning comes with five minutes left. If time runs out you lose a life and the clock restarts on the same level. Reaching the next level always resets the clock.",
+          "Every level has a time limit, counted while you are logged in and alive, and paused in battlegrounds and arenas. Below level 20 you have 20 minutes per level, from 20 to 60 you have 30, and past 60 you have 45. A warning comes with five minutes left. If time runs out you lose a life and the clock restarts on the same level. Reaching the next level resets the clock, and so does any death that costs a life.",
           "Quest in zones at your level and run dungeons to keep the pace up, and save long trips between zones for the start of a level. The clock only counts while you are logged in and alive, so logging out pauses it." },
         { 5,  "glass",           "Glass",           3, "Your health is halved. Your damage is up by a third.", 400, 190, "shatterpoint",
-          "Your maximum health is halved for the whole run, and every hit you deal, melee or spell, is a third stronger. Enemies die faster, and so do you. Stamina is worth more than ever, and so is anything that keeps enemies away from you.",
-          "Put stat points into Stamina, and favor abilities that keep enemies stunned, slowed or at range. Keep a heal or a shield for emergencies, and do not take on more than one enemy at a time if you can help it." },
-        { 16, "spiteful",        "Spiteful",        3, "Every enemy reflects a fifth of the damage you deal back at you.", 450, 193, "spite_mirror",
-          "Every time you damage an enemy, a fifth of that damage comes straight back to you. Big hits come back big. Armor, absorbs and healing over time all help, and killing fast is not always the safest choice.",
-          "Steady damage is safer than one huge hit. Absorb shields and healing over time soak up what comes back, and damage your pet deals is never reflected, so a pet does the risky work for free." },
-        { 17, "bloodpact",       "Bloodpact",       3, "Healing from spells, potions and food is halved. Every hit you land heals you for 15% of its damage.", 450, 194, "sanguine_pact",
-          "Every heal you receive is halved, whether it comes from your own spells, a potion, food, or another player. In return, every hit you land heals you for 15% of the damage it dealt. Resting to full is slow. Fighting is how you stay alive.",
-          "Abilities that hit often heal you the most. Recover by fighting rather than resting, and do not count on potions, food or healers to save you, since all of them are halved." },
-        { 18, "berserker",       "Berserker",       3, "Below 35% health you deal double damage and nothing can slow you. Above 75% you deal 30% less.", 450, 195, "brink",
-          "Below 35% health your damage is doubled, and every hit you land breaks slows and snares on you. Above 75% health your damage is reduced by 30%. Between the two you fight as normal. The rule rewards fighting hurt and punishes playing it safe.",
+          "Your maximum health is halved for the whole run, and all the damage you deal yourself, melee, spells and damage over time, is a third stronger. Your pet's damage is not. Enemies die faster, and so do you. Each point of Stamina gives half its usual health, so anything that keeps enemies away from you matters more than ever.",
+          "Favor abilities that keep enemies stunned, slowed or at range, since Stamina gives only half its usual health. Keep a heal or a shield for emergencies, and do not take on more than one enemy at a time if you can help it." },
+        { 16, "spiteful",        "Spiteful",        3, "Every creature you damage reflects a fifth of that damage back at you.", 450, 193, "spite_mirror",
+          "Every time you damage a creature, a fifth of the damage it takes comes straight back to you, damage over time included. Big hits come back big. The reflected damage ignores your armor and absorb shields, so only healing keeps you ahead of it. Players, pets and summoned creatures never reflect.",
+          "Healing over time keeps you ahead of what comes back, and damage your pet deals is never reflected, so a pet does the risky work for free. The reflection is the same share of every hit, so a fast kill costs no more than a slow one." },
+        { 17, "bloodpact",       "Bloodpact",       3, "Healing from spells, potions and other players is halved. The damage you deal heals you for 15% of it.", 450, 194, "sanguine_pact",
+          "Every heal you receive is halved, whether it comes from your own spells, a potion or another player, heals over time included. Food, drink and natural regeneration are not. In return, all the damage you deal yourself, damage over time included, heals you for 15% of what it dealt. Your pet's damage does not. Fighting is how you stay alive.",
+          "Abilities that hit often heal you the most. Recover by fighting or by eating, and do not count on potions or healers to save you, since both are halved." },
+        { 18, "berserker",       "Berserker",       3, "Below 35% health you deal double damage and your hits break snares. Above 75% you deal 30% less.", 450, 195, "brink",
+          "Below 35% health all the damage you deal yourself is doubled, damage over time included, and every hit you land while that low breaks the snares on you. Roots are not broken. Above 75% health your damage is reduced by 30%. Between the two you fight as normal. Your pet's damage is not affected. The rule rewards fighting hurt and punishes playing it safe.",
           "Learn when not to heal. Save your hardest hitting abilities for when you are below 35% health, and keep a shield or a burst of healing for when you are about to die rather than for topping up." },
-        { 19, "ironman",         "Ironman",         3, "Only white gear can be worn. Anything better is refused.", 500, 196, "ironbound",
-          "Only common, white quality gear can be worn. When the run starts anything better is moved to your bags, and from then on it cannot be equipped. Weapons count. Your stats, abilities and talents carry you, not your gear.",
+        { 19, "ironman",         "Ironman",         3, "Only white and grey gear can be worn. Anything better is refused.", 500, 196, "ironbound",
+          "Only common and poor quality gear, white and grey, can be worn. When the run starts anything better is moved to your bags, or mailed to you if your bags are full, and from then on it cannot be equipped. Weapons count. Your stats, abilities and talents carry you, not your gear.",
           "Vendors in every town sell white weapons and armor, so replace yours as you level. Spend stat points where your gear is weakest, and value talents and abilities that add damage or armor." },
-        { 20, "big_game_hunter", "Big Game Hunter", 3, "Normal enemies give no XP. Elites and bosses give full, quests give double.", 400, 197, "trophy_hunt",
-          "Normal enemies give no experience at all. Elite and rare enemies and dungeon bosses give their full experience, and quests give double. Hunt the dangerous things, run the dungeons, and do the quests.",
+        { 20, "big_game_hunter", "Big Game Hunter", 3, "Normal enemies give no XP. Elites, rares and bosses give full, quests give double.", 400, 197, "trophy_hunt",
+          "Normal enemies give no experience at all. Elite, rare and boss enemies give their full experience, and quests give double, Dungeon Finder rewards included. Exploration and battleground experience are unchanged. Hunt the dangerous things, run the dungeons, and do the quests.",
           "Look for elite quest areas and dungeons at your level, and pick up every quest you find, since quests pay double. Group up for elites you cannot take alone." },
         { 21, "dealt_hand",      "Dealt Hand",      UNLIMITED_LIVES, "Wildcard Heroes only. Unlimited lives. No rerolls, starting hand included. You play every ability and talent the Wildcard deals you.", 500, 198, "loaded_die",
           "This run is for Wildcard Heroes, and it has unlimited lives, so a death never ends it. From the moment it starts nothing can be rerolled. Not the starting hand, not the abilities and talents dealt as you level, and no Reroll Scroll changes that. The reroll charges you earn each level still build up, and they are yours to spend when the run ends.",
           "Read every ability you are dealt and find the few that work together, then build around them. Talents are dealt too, so look over My Build after each level. Stat points are still yours to place, so use them to cover what the hand is missing.",
           Mode::Wildcard },
-        { 3,  "hardcore",        "Hardcore",        1, "One life. A death ends the run.", 1000, 188, "last_breath",
-          "You have one life. If you die the run is over, though you keep your level, gear and build and simply carry on without the rule. Deaths in battlegrounds, arenas and duels still do not count. The largest gold reward of any challenge.",
+        { 3,  "hardcore",        "Hardcore",        1, "One life, plus your extra life if you hold one. When it is gone the run ends.", 1000, 188, "last_breath",
+          "You have one life, two if you hold an extra life when you start. When the last is lost the run is over, though you keep your level, gear and build and simply carry on without the rule. Deaths in battlegrounds and arenas, and while you are dueling, do not count. The largest gold reward of any challenge.",
           "Know your escape abilities and when to use them, avoid fights you are not sure of, and rest to full before every pull. Duels, battlegrounds and arenas cost nothing, so they are safe places to practice." },
     };
 
@@ -3342,8 +3342,9 @@ bool ClasslessMgr::StartRun(Player* player, uint8 challengeId, std::string* err)
     }
     if (st.run)
     {
-        if (err) *err = Acore::StringFormat("You are already on a run: {}. Finish it, or run out of lives.",
-                                            GetChallenge(st.run) ? GetChallenge(st.run)->name : "a challenge");
+        if (err) *err = Acore::StringFormat("You are already on a run: {}. Finish it first{}.",
+                                            GetChallenge(st.run) ? GetChallenge(st.run)->name : "a challenge",
+                                            st.livesMax == UNLIMITED_LIVES ? "" : ", or run out of lives");
         return false;
     }
 
@@ -3478,7 +3479,7 @@ void ClasslessMgr::LoseLife(Player* player, Unit* killer)
         EndRun(player, false);
 }
 
-void ClasslessMgr::EndRun(Player* player, bool finished)
+void ClasslessMgr::EndRun(Player* player, bool finished, bool byRebirth)
 {
     CharState& st = GetState(player);
     Challenge const* ch = GetChallenge(st.run);
@@ -3559,10 +3560,12 @@ void ClasslessMgr::EndRun(Player* player, bool finished)
 
     SaveState(player);
     // "RE|finished|level|shards|gold|name|challenge|lives left|lives max|
-    //  reward spell (new only)|title (new only)|Unbroken title (new only)|repeat"
-    PushAddon(player, Acore::StringFormat("RE|{}|{}|{}|{}|{}|{}|{}|{}|{}|{}|{}|{}",
+    //  reward spell (new only)|title (new only)|Unbroken title (new only)|repeat|
+    //  deaths (lives used, or deaths on an unlimited run)|ended by a Rebirth"
+    PushAddon(player, Acore::StringFormat("RE|{}|{}|{}|{}|{}|{}|{}|{}|{}|{}|{}|{}|{}|{}",
         finished ? 1 : 0, uint32(level), shards, gold, ch->name, uint32(ch->id),
-        uint32(livesLeft), uint32(livesMax), rewardSpell, titleText, unbrokenText, repeat ? 1 : 0));
+        uint32(livesLeft), uint32(livesMax), rewardSpell, titleText, unbrokenText, repeat ? 1 : 0,
+        uint32(used), byRebirth ? 1 : 0));
     PushRunTracker(player);   // run 0: the tracker goes away
 
     std::string const earned = Acore::StringFormat("|cffffffff{}|r shard{}{}", shards, shards == 1 ? "" : "s",
@@ -3588,6 +3591,9 @@ void ClasslessMgr::EndRun(Player* player, bool finished)
                 unbrokenText.empty() ? ""
                 : Acore::StringFormat(", and the title |cffffd100{}|r", unbrokenText)));
     }
+    else if (byRebirth)
+        Msg(player, Acore::StringFormat("|cffff4444Challenge over: {}.|r Your Rebirth ends the run at level {}. "
+            "You earn {}. The rule lifts.", ch->name, uint32(level), earned));
     else
         Msg(player, Acore::StringFormat("|cffff4444Challenge over: {}.|r Your last life was lost at level {}. "
             "You earn {}. The rule lifts; your level, gear and build stay.",
@@ -3668,14 +3674,14 @@ std::string ClasslessMgr::MarkNemesis(Player* player, Creature* killer)
     uint32 const steps = NEMESIS_LEVELS_MAX_PER_DEATH - 1;
     uint32 const quarters = need ? uint32(std::min<uint64>((uint64(took) * steps * 2 + need) / (uint64(need) * 2), steps)) : 0;
     uint32 const gained = 1 + quarters;
-    mark.levels = uint8(std::min<uint32>(uint32(mark.levels) + gained, 30));
+    mark.levels = uint8(std::min<uint32>(uint32(mark.levels) + gained, 255));   // the field's own limit
 
     SaveNemeses(player->GetGUID(), st);
     ApplyNemesisTo(killer, mark);
     NemesisTick(player);   // on the minimap now, not at the next rule tick
     std::string const levels = gained == 1 ? "a level" : Acore::StringFormat("{} levels", gained);
     if (!took)
-        return Acore::StringFormat("{} gains {}, and is now level {} and elite. It remembers you.",
+        return Acore::StringFormat("Your bar was empty, so it took no experience. {} gains {}, and is now level {} and elite.",
                                    killer->GetName(), levels, uint32(killer->GetLevel()));
     return Acore::StringFormat("{} takes {} experience, gains {}, and is now level {} and elite. Kill it to take it all back.",
                                killer->GetName(), took, levels, uint32(killer->GetLevel()));
@@ -3719,7 +3725,8 @@ void ClasslessMgr::NemesisSlain(Player* player, Creature* creature)
             "comes back to you.", creature->GetName(), back));
     }
     else
-        Msg(player, Acore::StringFormat("|cff00ff00Your nemesis is dead.|r {} falls.", creature->GetName()));
+        Msg(player, Acore::StringFormat("|cff00ff00Your nemesis is dead.|r {} falls. It had taken no experience, so none comes back.",
+            creature->GetName()));
     uint32 const heads = uint32(st->nemesisHeads.size());
     if (newHead)
         Msg(player, Acore::StringFormat("You take its head: |cffffd100{} of {}|r.", heads,

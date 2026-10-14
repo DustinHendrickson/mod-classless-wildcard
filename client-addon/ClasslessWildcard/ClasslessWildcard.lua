@@ -503,7 +503,7 @@ do
                 0.6, 0.6, 0.6, true)
         end
         if c.finished == 1 then
-            GameTooltip:AddLine("You finished this challenge before: this time it pays shards only.", 0.6, 0.6, 0.6, true)
+            GameTooltip:AddLine("You finished this challenge before: this time it pays shards, and the Unbroken title if you have not earned it.", 0.6, 0.6, 0.6, true)
         end
         GameTooltip:AddLine(" ")
         GameTooltip:AddLine("Click for the challenge page: tips, the ability's tooltip and your record.", 0.3, 1, 0.3, true)
@@ -1079,8 +1079,8 @@ rebirthBtn:SetScript("OnEnter", function(self)
         GameTooltip:AddLine("Start a new life at level 1 with a permanent rank that stacks: more kill XP, a bonus to every stat, and an heirloom ability carried through.", 0.8, 0.8, 0.8, true)
     elseif s.runReady == 1 then
         GameTooltip:SetText("|cffff4444Challenge run|r")
-        GameTooltip:AddLine("Level from here under one rule, with a fixed number of lives.", 0.8, 0.8, 0.8, true)
-        GameTooltip:AddLine("Reach level " .. CW.rules.maxLevel .. " with a life left for gold, a title, and an ability no roll or shop can give.", 0.8, 0.8, 0.8, true)
+        GameTooltip:AddLine("Level from here under one rule, with the lives it gives.", 0.8, 0.8, 0.8, true)
+        GameTooltip:AddLine("Finish at level " .. CW.rules.maxLevel .. " for gold, a title, and an ability no roll or shop can give.", 0.8, 0.8, 0.8, true)
         GameTooltip:AddLine("Open to see every challenge, its rule and its rewards.", 0.6, 0.6, 0.6, true)
     elseif s.mode == 255 then
         GameTooltip:SetText("Choose path")
@@ -1637,6 +1637,8 @@ do
         local id, left, max = tonumber(p[7]) or 0, tonumber(p[8]) or 0, tonumber(p[9]) or 0
         local reward, title, unbroken = tonumber(p[10]) or 0, p[11] or "", p[12] or ""
         local repeatRun = tonumber(p[13]) == 1
+        -- 14: deaths on the run, 15: ended by a Rebirth (both from newer servers)
+        local deaths, rebirth = tonumber(p[14]), tonumber(p[15]) == 1
         local ch = CW.challengesById and CW.challengesById[id]
         local iconSpell = reward > 0 and reward or (ch and ch.reward or 0)
 
@@ -1655,9 +1657,17 @@ do
         if unbroken ~= "" then tinsert(rewards, { "New title", unbroken, GOLD }) end
 
         local notes = {}
-        if finished and max > 0 and left == max then tinsert(notes, "Not a life lost: a third more shards.") end
+        -- an unlimited run never spends a life, so only the death count can say it was clean
+        local clean = deaths and deaths == 0 or (not deaths and max > 0 and not CW.Unlimited(max) and left == max)
+        if finished and clean then
+            tinsert(notes, (CW.Unlimited(max) and "Not a single death" or "Not a life lost") .. ": a third more shards.")
+        end
         if repeatRun then tinsert(notes, "Gold is paid for the first finish only.") end
-        tinsert(notes, finished and "The rule lifts." or "The rule lifts. Your level, gear and build stay.")
+        if rebirth then
+            tinsert(notes, "Your Rebirth ended the run. The rule lifts.")
+        else
+            tinsert(notes, finished and "The rule lifts." or "The rule lifts. Your level, gear and build stay.")
+        end
 
         return {
             icon = iconSpell > 0 and SpellIcon(iconSpell) or "Interface\\Icons\\INV_Misc_Bone_HumanSkull_01",
@@ -1775,7 +1785,7 @@ do
     fly.listSub:SetPoint("TOPLEFT", 16, -34)
     fly.listSub:SetWidth(LEFT_W)
     fly.listSub:SetJustifyH("LEFT")
-    fly.listSub:SetText("|cffaaaaaaOne rule, counted lives.|r")
+    fly.listSub:SetText("|cffaaaaaaOne rule, and the lives it gives.|r")
 
     fly.rows = {}
     for i = 1, ROWS do
@@ -2090,7 +2100,7 @@ do
             { "Shards", "Paid whenever the run ends, whether you finish or not. You earn one per level reached, and two per level past 60." },
         }
         if c.finished == 1 then
-            tinsert(rows, { "Already earned", "You finished this challenge. Running it again pays shards only." })
+            tinsert(rows, { "Already earned", "You finished this challenge. Running it again pays shards, and the Unbroken title if you have not earned it." })
         end
         for k = 1, 5 do
             local l, v = fly.rwLabels[k], fly.rwValues[k]
@@ -5084,12 +5094,12 @@ function CW.HelpSections()
         note("The price rises with each rank."),
     })
 
-    page("challenges", "Challenges", ICON .. "Ability_Warrior_Challange", "A life under one rule, with counted lives.", {
+    page("challenges", "Challenges", ICON .. "Ability_Warrior_Challange", "A life under one rule.", {
         b("How a run works", "A run is a life under one rule, on your own path. Challenge runs start before level " .. deadline .. ". Pick a challenge, read its rule, go."),
-        b("Lives", "Each challenge shows how many lives it gives. A death costs one; battlegrounds, arenas and duels are free. Nemesis and Dealt Hand have unlimited lives. On Nemesis a death costs the experience in your bar instead, and the run finishes at level 80 with five nemesis heads."),
+        b("Lives", "Each challenge shows how many lives it gives. A death costs one, a fall or drowning included; deaths in battlegrounds and arenas, and while you are dueling, are free. Nemesis and Dealt Hand have unlimited lives. On Nemesis a death costs the experience in your bar instead, and the run finishes at level 80 with five nemesis heads."),
         b("Where to see them", "The hearts on the run badge at the top-right of this panel, and on the challenge tracker at the top of your screen. Hover either for your challenge's rule and rewards. The tracker also shows what your challenge is counting: the time left on the level on Hourglass, whether the hunter is on you on Pursued, your nemeses on Nemesis, and your health band on Berserker. Drag it to move it, click it for the challenge page, and hide or show it under Settings or with /cw tracker."),
-        b("Ending a run", "|cffffd100Running out|r ends the run: the rule lifts and you keep everything. |cffffd100Reaching " .. cap .. "|r with a life left finishes it. Your first finish of a challenge pays its gold, its title, and an ability no roll or shop can give, kept as an heirloom. Finish with no life lost for |cffffd100the Unbroken|r."),
-        b("Shards", "Every run pays them when it ends, finished or not: one per level reached, two per level past 60, and a third more for a run with no life lost. They buy an |cffffd100extra life|r for your next run, on the challenge page."),
+        b("Ending a run", "|cffffd100Running out|r ends the run: the rule lifts and you keep everything. A Rebirth ends a run too. |cffffd100Reaching " .. cap .. "|r with a life left finishes it. Your first finish of a challenge pays its gold, its title, and an ability no roll or shop can give, kept as an heirloom. Finish without a single death for |cffffd100the Unbroken|r, once per character."),
+        b("Shards", "Every run pays them when it ends, finished or not: one per level reached, two per level past 60, and a third more for a run without a death. They buy an |cffffd100extra life|r for your next run, on the challenge page."),
     })
     return sections
 end
@@ -10734,8 +10744,8 @@ do
         elseif RT.run == NEMESIS then
             -- b heads taken of c needed, from a newer server
             local heads = RT.c > 0 and ("Heads |cffffd100" .. RT.b .. " of " .. RT.c .. "|r   ") or ""
-            f.line:SetText(heads .. (RT.a == 0 and "|cffaaaaaaNo nemesis yet.|r"
-                or ("|cffff8800" .. RT.a .. (RT.a == 1 and " nemesis" or " nemeses") .. "|r  (hover for names)")))
+            f.line:SetText(heads .. (RT.a == 0 and (RT.b > 0 and "|cffaaaaaaNo nemesis now.|r" or "|cffaaaaaaNo nemesis yet.|r")
+                or ("|cffff8800" .. RT.a .. (RT.a == 1 and " nemesis" or " nemeses") .. "|r")))
             f.line:Show()
         elseif RT.run == BERSERKER then
             local band = CW.BerserkerBand()

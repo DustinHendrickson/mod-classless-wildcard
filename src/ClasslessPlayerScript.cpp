@@ -709,6 +709,11 @@ public:
         // a hunter with nobody to hunt leaves; before the state goes, which
         // is where its guid lives
         sClasslessMgr->DespawnHunter(player);
+        // Hourglass's and Pursued's clocks run in memory between saves, and
+        // nothing else saves at logout: without this a logout put either
+        // clock back to whatever the last level-up or death had saved.
+        if (sClasslessMgr->FindState(player))
+            sClasslessMgr->SaveState(player);
         sClasslessMgr->UnloadState(player->GetGUID());
     }
 

@@ -406,8 +406,8 @@ epic; Lay on Hands, Rebirth and the 41-point talents are legendary.
 A run is one life under one rule, on the character's own path. Challenge runs start before level 2
 (`ModeChoiceDeadline`).
 
-- **Lives.** Each death costs one. Battlegrounds, arenas and duels are free. At zero, the run ends
-  and you keep everything.
+- **Lives.** Each death costs one, falls and drowning included. Deaths in battlegrounds and arenas,
+  and while dueling, are free. At zero, the run ends and you keep everything. A Rebirth also ends a run.
 - **Finish** by reaching the level cap with a life left. Finishing grants the challenge's title
   and reward ability. Its gold is paid on the first finish only.
 - **Flawless.** Finish without losing a life (on unlimited runs, without dying) for the title
@@ -422,18 +422,18 @@ A run is one life under one rule, on the character's own path. Challenge runs st
 | Challenge       | Lives | Rule                                                                                       | Gold | Title              | Reward           |
 | --------------- | ----- | ------------------------------------------------------------------------------------------ | ---- | ------------------ | ---------------- |
 | Nemesis         | Unlimited | The creature that kills you takes the XP in your bar and gains up to five levels for it (five for a full bar, one for an empty one), becomes elite and grows larger with every death. It keeps the mark when it respawns and shows on your minimap. Kill it to get the XP back and take its head. Finish at level 80 with five heads, each from a different kind. Deaths in dungeons and raids, and to elites and bosses, make no nemesis. | 500  | the Nemesis        | Mark of the Nemesis |
-| Elite World     | 5     | Enemies have triple health and double damage.                                              | 750  | Bane of Giants     | Giantsbane       |
-| Legion          | 4     | Each enemy you engage calls two more.                                                      | 650  | the Legionbreaker  | One Against Many |
-| Pursued         | 3     | Every 15 to 30 minutes, a hunter two levels above you tracks you until one of you dies.     | 600  | the Hunted         | Turnabout        |
+| Elite World     | 5     | Enemies that fight you have triple health and double damage, damage over time included.    | 750  | Bane of Giants     | Giantsbane       |
+| Legion          | 4     | Each enemy calls two more the first time it engages you.                                   | 650  | the Legionbreaker  | One Against Many |
+| Pursued         | 3     | Every 15 to 30 minutes, an elite hunter two levels above you chases you until one of you dies or you change maps. | 600  | the Hunted         | Turnabout        |
 | Hourglass       | 3     | Level up in time or lose a life: 20 min below 20, 30 min to 60, 45 min after.              | 500  | the Swift          | Rewind           |
-| Glass           | 3     | Half health, a third more damage.                                                          | 400  | the Unshattered    | Shatterpoint     |
-| Spiteful        | 3     | Enemies reflect a fifth of your damage.                                                    | 450  | the Scarred        | Spite Mirror     |
-| Bloodpact       | 3     | Healing halved; every hit heals you for 15% of its damage.                                 | 450  | the Bloodthirsty   | Sanguine Pact    |
-| Berserker       | 3     | Below 35% health: double damage, and your hits clear slows. Above 75%: 30% less damage.     | 450  | the Berserker      | Brink            |
+| Glass           | 3     | Half health, a third more damage from you (not your pet).                                 | 400  | the Unshattered    | Shatterpoint     |
+| Spiteful        | 3     | Creatures reflect a fifth of the damage you deal them, past your armor and absorbs.         | 450  | the Scarred        | Spite Mirror     |
+| Bloodpact       | 3     | Heals from spells, potions and players halved (not food); your damage heals you for 15% of it. | 450  | the Bloodthirsty   | Sanguine Pact    |
+| Berserker       | 3     | Below 35% health: double damage, and your hits break snares. Above 75%: 30% less damage.    | 450  | the Berserker      | Brink            |
 | Ironman         | 3     | White and grey gear only.                                                                  | 500  | the Ironclad       | Ironbound        |
-| Big Game Hunter | 3     | Normal enemies give no XP. Elites and bosses give full XP, quests give double.             | 400  | the Big Game Hunter | Trophy Hunt     |
+| Big Game Hunter | 3     | Normal enemies give no XP. Elites, rares and bosses give full XP, quests give double.      | 400  | the Big Game Hunter | Trophy Hunt     |
 | Dealt Hand      | Unlimited | Wildcard only. No rerolls, starting hand included: you play every ability and talent dealt. | 500  | the Fated          | Loaded Die       |
-| Hardcore        | 1     | One death ends the run.                                                                    | 1000 | the Deathless      | Last Breath      |
+| Hardcore        | 1     | One death ends the run, two if you start it holding an extra life.                         | 1000 | the Deathless      | Last Breath      |
 
 ### Reward abilities
 

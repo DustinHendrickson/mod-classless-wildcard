@@ -210,7 +210,7 @@ public:
     // The list is code (ClasslessMgr.cpp), in id order; the addon is sent it.
     static std::vector<ClasslessWildcard::Challenge> const& Challenges();
     static ClasslessWildcard::Challenge const* GetChallenge(uint8 id);
-    static constexpr uint32 HUNTER_ENTRY = 990131;      // Pursued's hunter, cw_world_challenges.sql
+    static constexpr uint32 HUNTER_ENTRY = 990099;      // Pursued's hunter, cw_world_challenges.sql
     static constexpr uint32 EXTRA_LIFE_SHARDS = 30;
     // A run starts before ModeChoiceDeadline. The character stays on its own
     // path; only the rule and the lives are added.
@@ -218,7 +218,9 @@ public:
     bool OnRun(Player* player, ClasslessWildcard::ChallengeId id);   // this rule, live, on this character
     // A death on a run. Battleground, arena and duel deaths are free.
     void LoseLife(Player* player, Unit* killer);
-    void EndRun(Player* player, bool finished);
+    // byRebirth: a Rebirth ended it, not the rule, which changes what the
+    // Hero is told (no life was lost, and the Rebirth does not keep level).
+    void EndRun(Player* player, bool finished, bool byRebirth = false);
     bool BuyExtraLife(Player* player, std::string* err);
     // Nemesis and the hunter, driven from the rules in ClasslessChallenges.cpp.
     std::string MarkNemesis(Player* player, Creature* killer);

@@ -2233,6 +2233,19 @@ def test_challenge_runs(h):
     h.check("T=Challenge Over" in t and "H=Earned" in t and "Lives left=0 of 5" in t
             and "N=The rule lifts. Your level, gear and build stay." in t,
             "a run lost says where it ended and what stays: %r" % t)
+    # An unlimited run never spends a life: only the death count (field 14)
+    # can say it was clean. Before it was sent, every finished Nemesis run
+    # claimed "Not a life lost" whatever it cost.
+    t = shown_card("RE|1|80|90|500|Nemesis|1|255|255|0|||0|3|0")
+    h.check("Not a" not in t, "a finished Nemesis run with deaths claims no clean run: %r" % t)
+    t = shown_card("RE|1|80|120|500|Nemesis|1|255|255|0|||0|0|0")
+    h.check("N=Not a single death: a third more shards." in t, "a deathless unlimited run says so: %r" % t)
+    t = shown_card("RE|1|80|120|0|Glass|5|3|3|0|||1|0|0")
+    h.check("N=Not a life lost: a third more shards." in t, "a counted run with no life lost still says so: %r" % t)
+    # A Rebirth ended it: no life was lost, and the Rebirth keeps no level
+    t = shown_card("RE|0|80|100|0|Nemesis|1|255|255|0|||0|2|1")
+    h.check("N=Your Rebirth ended the run. The rule lifts." in t and "level, gear and build stay" not in t,
+            "a run a Rebirth ended says so and promises nothing it does not keep: %r" % t)
     # A Rebirth's summary
     t = shown_card("RB|2|150|50|6|0|2|6|4|3|Tester the Twice Reborn|133,686")
     h.check("T=Rebirth 2" in t and "S=A new life begins at level 1." in t and "H=Your rank" in t and "H=This life" in t,
@@ -2300,6 +2313,11 @@ def test_challenge_runs(h):
     h.recv("RT|1|255|255|1|2|5|0|Timber Wolf:5:300;")
     h.check("Heads |cffffd1002 of 5|r" in str(tr["line"]["__text"]),
             "the tracker counts the heads: %r" % str(tr["line"]["__text"]))
+    # the line is 200 pixels of small font, about 36 characters; the old
+    # "(hover for names)" ran past the frame's edge in game
+    seen = re.sub(r"\|c[0-9a-fA-F]{8}|\|r", "", str(tr["line"]["__text"]))
+    h.check(len(seen) <= 36 and "hover" not in seen,
+            "the nemesis line fits the tracker (%d characters: %r)" % (len(seen), seen))
     CW.TrackerTooltip(tr)
     tip = [str(g.TIP[i]) for i in range(1, len(g.TIP) + 1)]
     h.check("Nemesis heads 2 of 5" in tip, "and its card does: %r" % tip[-4:])
