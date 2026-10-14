@@ -3719,6 +3719,33 @@ void ClasslessMgr::NemesisSlain(Player* player, Creature* creature)
         EndRun(player, true);
 }
 
+// Nemesis and Dealt Hand had a life count until they went to unlimited lives
+// (2026-10-11). A run started before that was saved with its count, and the
+// count alone decides how a death is handled, so its last life would still
+// have ended a run that can no longer end that way. It is carried over: the
+// deaths so far become the run's death count, which is what the record and
+// the Unbroken title read, and an extra life spent on the run comes back for
+// the next one, or as its shards when one is already waiting. Nothing is
+// saved here, and every login starts again from the saved row, so this gives
+// the same answer until the next save writes it.
+void ClasslessMgr::CarryRunToUnlimitedLives(CharState& st)
+{
+    Challenge const* ch = GetChallenge(st.run);
+    if (!ch || ch->lives != UNLIMITED_LIVES || st.livesMax == UNLIMITED_LIVES)
+        return;
+    uint8 const oldLives = st.run == uint8(ChallengeId::Nemesis) ? 5 : 3;   // what each started with
+    if (st.livesMax > oldLives)
+    {
+        if (st.extraLife)
+            st.shards += EXTRA_LIFE_SHARDS;
+        else
+            st.extraLife = 1;
+    }
+    st.runData = st.livesMax > st.lives ? uint32(st.livesMax - st.lives) : 0;
+    st.lives = UNLIMITED_LIVES;
+    st.livesMax = UNLIMITED_LIVES;
+}
+
 bool ClasslessMgr::RunGoalMet(CharState const& st) const
 {
     if (st.run == uint8(ChallengeId::Nemesis))
@@ -4156,6 +4183,7 @@ void ClasslessMgr::LoadCharacter(Player* player, CharState& st)
         st.shards = f[18].Get<uint32>();
         st.extraLife = f[19].Get<uint8>();
         st.noAutoShot = f[20].Get<uint8>() != 0;
+        CarryRunToUnlimitedLives(st);
     }
 
     if (QueryResult result = CharacterDatabase.Query(

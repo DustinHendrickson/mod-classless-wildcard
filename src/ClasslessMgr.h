@@ -465,6 +465,8 @@ private:
     // Has the live run met what it asks for besides the level cap? Only
     // Nemesis asks for more: its heads.
     bool RunGoalMet(ClasslessWildcard::CharState const& st) const;
+    // A run saved with lives on a challenge that has since gone unlimited.
+    void CarryRunToUnlimitedLives(ClasslessWildcard::CharState& st);
     void ApplyNemesisTo(Creature* creature, ClasslessWildcard::NemesisMark const& mark);
     // Take this Hero's minimap mark off a nemesis, by spawn id.
     void ClearNemesisTrack(Player* player, uint32 spawnId);
