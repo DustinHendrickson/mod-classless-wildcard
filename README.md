@@ -459,10 +459,11 @@ These apply to every creature of each rank on the realm, dungeon and raid elites
 
 ### Nemesis
 
-Nemesis is a run with unlimited lives where dying is how the challenge starts. Whatever kills you
-becomes your nemesis: that exact creature, not every creature of its kind. From then on it is
-yours alone, a rare elite that stays above your level, waits where it lives and remembers you.
-Hunting your nemeses down is how you finish the run.
+Nemesis is a run with unlimited lives, built around enemies of your own. The creature that kills
+you becomes your nemesis, and with *Swear Vendetta* you can pick one yourself. Each nemesis is a
+rare elite above your level that only you can see. It waits where it lives, grows stronger every
+time it beats you, and drops a trophy when you finally put it down. Reach level 80 with 500
+Vengeance, earned by slaying them, to finish.
 
 #### Getting a nemesis
 
