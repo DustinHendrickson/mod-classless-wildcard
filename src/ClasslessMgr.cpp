@@ -5720,8 +5720,47 @@ void ClasslessMgr::SyncRequiredForms(Player* player)
 //
 // PET_SAVE_NOT_IN_SLOT is what Dismiss Pet uses: the beast is put away, not
 // destroyed, so rolling Tame Beast again calls the same one back.
+//
+// Totems and guardians stand in the world the same way, and a reroll that took
+// Stoneskin Totem left the totem planted for its full duration. Each records
+// the spell that summoned it in UNIT_CREATED_BY_SPELL, so one is sent home when
+// that spell is one the module hands out and the Hero no longer knows any rank
+// of it. A summon from anything else (an item, a quest, a spell the module
+// never grants) is left alone.
 void ClasslessMgr::DismissOrphanedSummons(Player* player)
 {
+    auto orphaned = [&](Unit const* summon)
+    {
+        uint32 const spellId = summon->GetUInt32Value(UNIT_CREATED_BY_SPELL);
+        if (!spellId || player->HasSpell(spellId))
+            return false;
+        // a totem from a lower rank stays while the Hero holds any rank of its line
+        if (AbilityEntry const* e = FindAbilityBySpell(spellId))
+            return std::none_of(e->ranks.begin(), e->ranks.end(),
+                [player](uint32 rank) { return rank && player->HasSpell(rank); });
+        if (_skillLearnedClassSpells.count(spellId))
+            return true;
+        for (auto const& [talentId, t] : _talents)
+            for (uint8 r = 0; r < t.maxRank; ++r)
+                if (t.rankSpells[r] == spellId)
+                    return true;
+        return false;
+    };
+
+    // collected first: UnSummon takes the summon out of m_Controlled
+    std::vector<TempSummon*> gone;
+    for (uint8 slot = SUMMON_SLOT_TOTEM_FIRE; slot < MAX_TOTEM_SLOT && player->IsInWorld(); ++slot)
+        if (player->m_SummonSlot[slot])
+            if (Creature* totem = player->GetMap()->GetCreature(player->m_SummonSlot[slot]))
+                if (totem->IsTotem() && orphaned(totem))
+                    gone.push_back(totem->ToTempSummon());
+    for (Unit* controlled : player->m_Controlled)
+        if (controlled->IsSummon() && !controlled->IsPet() && !controlled->IsTotem() && orphaned(controlled))
+            gone.push_back(controlled->ToTempSummon());
+    for (TempSummon* summon : gone)
+        if (summon)
+            summon->UnSummon();
+
     Pet* pet = player->GetPet();
     if (!pet)
         return;
@@ -5870,7 +5909,7 @@ void ClasslessMgr::LoadTalentReach()
 
     // first rank -> operation -> targets
     std::unordered_map<uint32, std::unordered_map<uint8, std::unordered_set<uint32>>> byFirst;
-    uint32 rows = 0, skipped = 0;
+    uint32 rows = 0, skipped = 0, outsidePool = 0;
     do
     {
         Field* f = result->Fetch();
@@ -5881,6 +5920,15 @@ void ClasslessMgr::LoadTalentReach()
         if (!info || effect >= MAX_SPELL_EFFECTS || !sSpellMgr->GetSpellInfo(target))
         {
             ++skipped;
+            continue;
+        }
+        // Only abilities this realm's pool actually offers. The generator
+        // builds the pool from the default conf; a realm that turns Death
+        // Knight abilities or racials off, excludes spells or disables an
+        // override has a narrower one, and its own settings win.
+        if (!FindAbilityBySpell(target))
+        {
+            ++outsidePool;
             continue;
         }
         AuraType const aura = info->Effects[effect].ApplyAuraName;
@@ -5906,7 +5954,8 @@ void ClasslessMgr::LoadTalentReach()
     }
 
     LOG_INFO("module.classless", "mod-classless-wildcard: {} general talents reach other classes' abilities "
-             "({} talent ranks, {} rows, {} skipped)", byFirst.size(), _talentReach.size(), rows, skipped);
+             "({} talent ranks, {} rows, {} outside this realm's pool, {} skipped)",
+             byFirst.size(), _talentReach.size(), rows, outsidePool, skipped);
 }
 
 bool ClasslessMgr::TalentReaches(uint32 talentSpell, uint8 op, uint32 target) const
@@ -6082,6 +6131,7 @@ void ClasslessMgr::RemoveTalentInternal(Player* player, TalentPoolEntry const& t
     CW_SyncTalentPetSpell(player);   // and the pet spell it handed over
     PushSpellCorrections(player);    // the numbers it was moving go back
     SyncClassPassives(player);       // Deep Freeze's immunity state, Chaos Bolt's
+    DismissOrphanedSummons(player);  // a Mana Tide Totem it planted
 
     // the ability line the talent handed over goes with it
     for (uint32 first : t.abilityLines)

@@ -92,3 +92,24 @@ FROM `playercreateinfo_action` WHERE `race`=1 AND `class`=2;   -- Blood Elf
 INSERT IGNORE INTO `playercreateinfo_action` (`race`,`class`,`button`,`action`,`type`)
 SELECT 11, 2, `button`,`action`,`type`
 FROM `playercreateinfo_action` WHERE `race`=1 AND `class`=2;   -- Draenei
+
+-- Totem models for every race. A totem takes its model from
+-- player_totem_model by its owner's race, and the core ships rows only for the
+-- five races that could be shamans (Orc, Dwarf, Tauren, Troll, Draenei). Any
+-- other race got model 0, which the client draws as a checkered cube. The
+-- Alliance races without rows wear the Dwarf totems and the Horde races the
+-- Orc ones, copied from whatever this realm has for those two.
+INSERT IGNORE INTO `player_totem_model` (`TotemID`,`RaceID`,`ModelID`)
+SELECT `TotemID`, 1, `ModelID` FROM `player_totem_model` WHERE `RaceID`=3;    -- Human: Dwarf totems
+
+INSERT IGNORE INTO `player_totem_model` (`TotemID`,`RaceID`,`ModelID`)
+SELECT `TotemID`, 4, `ModelID` FROM `player_totem_model` WHERE `RaceID`=3;    -- Night Elf: Dwarf totems
+
+INSERT IGNORE INTO `player_totem_model` (`TotemID`,`RaceID`,`ModelID`)
+SELECT `TotemID`, 7, `ModelID` FROM `player_totem_model` WHERE `RaceID`=3;    -- Gnome: Dwarf totems
+
+INSERT IGNORE INTO `player_totem_model` (`TotemID`,`RaceID`,`ModelID`)
+SELECT `TotemID`, 5, `ModelID` FROM `player_totem_model` WHERE `RaceID`=2;    -- Undead: Orc totems
+
+INSERT IGNORE INTO `player_totem_model` (`TotemID`,`RaceID`,`ModelID`)
+SELECT `TotemID`, 10, `ModelID` FROM `player_totem_model` WHERE `RaceID`=2;   -- Blood Elf: Orc totems

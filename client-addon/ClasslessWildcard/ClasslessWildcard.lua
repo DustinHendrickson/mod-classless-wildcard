@@ -9814,6 +9814,18 @@ local function HandleMessage(msg)
 
     elseif kind == "ST" then
         local s = CW.stats
+        -- Edits waiting on Apply survive a refresh (a level-up mid-edit), as
+        -- long as they still fit the budget; with none waiting, the page
+        -- starts again from what the server now holds.
+        local kept
+        if CW.statsPending then
+            local edited, total = false, 0
+            for i = 1, 5 do
+                total = total + (CW.statsPending[i] or 0)
+                if (CW.statsPending[i] or 0) ~= (s.alloc[i] or 0) then edited = true end
+            end
+            if edited then kept = { pending = CW.statsPending, total = total } end
+        end
         s.budget, s.unspent, s.perPoint = tonumber(p[2]) or 0, tonumber(p[3]) or 0, tonumber(p[4]) or 1
         for i = 1, 5 do
             s.alloc[i] = tonumber(p[4 + i]) or 0
@@ -9844,7 +9856,7 @@ local function HandleMessage(msg)
         s.have = true   -- the rates are real now, not the shipped defaults
         -- the help panel quotes these rates, so rebuild it now they are known
         if CW.RefreshHelpText then CW.RefreshHelpText() end
-        CW.statsPending = nil
+        CW.statsPending = (kept and kept.total <= s.budget) and kept.pending or nil
         RenderList() -- refreshes the stats flyout when it is open
 
     elseif kind == "CFG" then
@@ -10820,6 +10832,8 @@ events:RegisterEvent("CHAT_MSG_ADDON")
 events:RegisterEvent("PLAYER_ENTERING_WORLD")
 events:RegisterEvent("UPDATE_BINDINGS")
 events:RegisterEvent("CINEMATIC_STOP")
+events:RegisterEvent("PLAYER_LEVEL_UP")   -- a level brings stat points: ask for the new budget
+events:RegisterEvent("UNIT_STATS")        -- the totals the Stats page quotes have moved
 events:SetScript("OnEvent", function(self, event, arg1, arg2, arg3, arg4)
     if event == "CHAT_MSG_ADDON" then
         if arg1 == PREFIX and arg4 == UnitName("player") then
@@ -10849,6 +10863,19 @@ events:SetScript("OnEvent", function(self, event, arg1, arg2, arg3, arg4)
     elseif event == "UPDATE_BINDINGS" then
         -- the player rebound us in Key Bindings: keep the "(N)" suffix honest
         if CW.RefreshMicroTooltip then CW.RefreshMicroTooltip() end
+    elseif event == "PLAYER_LEVEL_UP" then
+        -- The server sends the stat budget only when asked, so a level's new
+        -- points never reached the Stats page or the "Stats (N)" button. The
+        -- server has levelled the character by the time this arrives.
+        Send("STATS")
+    elseif event == "UNIT_STATS" then
+        -- The page shows the character's live totals (UnitStat). After Apply
+        -- the server's reply lands before the new totals do, so the page drew
+        -- the old ones until something else redrew it; draw again when the
+        -- totals actually change.
+        if arg1 == "player" and CW.statFly and CW.statFly:IsShown() and CW.RenderStats then
+            CW.RenderStats()
+        end
     end
 end)
 

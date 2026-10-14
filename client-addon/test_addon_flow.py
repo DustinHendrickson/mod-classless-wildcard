@@ -3011,6 +3011,51 @@ def test_paperdoll(h):
     rt.execute("ClasslessWildcard_API.state.universalResources = 1")
 
 
+def test_stats_refresh(h):
+    """The Stats page follows a level-up, an Apply and the live totals."""
+    print("--- stats: refreshes on level-up, after Apply, and keeps edits through a refresh")
+    CW, g = h.CW, h.g
+    ev = lambda *a: h.events["__scripts"]["OnEvent"](h.events, *a)
+    h.recv(state(0, level=10))
+    h.recv("ST|4|4|1|0|0|0|0|0|1|1|1|1|0.5|2|0|1|0|0|0|0")
+    CW.statFly["__shown"] = True
+    CW.RenderStats()
+    h.check("|cff00ff004|r of 4 unspent" in str(CW.statTitle["__text"]), "four points to place")
+
+    # a level-up asks the server for the new budget
+    h.clear_sent()
+    ev("PLAYER_LEVEL_UP", 11)
+    h.check("STATS" in h.sent(), "PLAYER_LEVEL_UP asks for the stats (%s)" % h.sent())
+    h.recv("ST|10|10|1|0|0|0|0|0|1|1|1|1|0.5|2|0|1|0|0|0|0")
+    h.check("|cff00ff0010|r of 10 unspent" in str(CW.statTitle["__text"]),
+            "and the page shows the new budget (%s)" % CW.statTitle["__text"])
+    h.check(str(CW.statsBtn["__text"]) == "Stats (10)", "the button too (%s)" % CW.statsBtn["__text"])
+
+    # an edit waiting on Apply survives another refresh
+    row = CW.statRows[1]
+    row.plus["__scripts"]["OnClick"](row.plus)
+    row.plus["__scripts"]["OnClick"](row.plus)
+    h.recv("ST|10|10|1|0|0|0|0|0|1|1|1|1|0.5|2|0|1|0|0|0|0")
+    h.check(str(row.count["__text"]) == "2" and "|cff00ff008|r of 10" in str(CW.statTitle["__text"]),
+            "two points placed and not applied are still there after a refresh")
+
+    # Apply: the server's reply lands first, the totals after
+    h.clear_sent()
+    CW.statApply["__scripts"]["OnClick"](CW.statApply)
+    h.check("STATSETALL 2 0 0 0 0" in h.sent(), "Apply sends the allocation (%s)" % h.sent())
+    h.recv("ST|10|8|1|2|0|0|0|0|1|1|1|1|0.5|2|0|1|0|0|0|0")
+    h.check(str(row.count["__text"]) == "2" and CW.statApply["__enabled"] is False,
+            "after the reply the card shows the applied points and nothing waits on Apply")
+    before = str(row.label["__text"])
+    h.rt.execute("_G.__oldUnitStat = UnitStat; UnitStat = function(u, i) if i == 1 then return 4321, 4321, 0, 0 end return 98, 98, 0, 0 end")
+    ev("UNIT_STATS", "target")
+    h.check(str(row.label["__text"]) == before, "another unit's stats do not redraw the page (%s)" % row.label["__text"])
+    ev("UNIT_STATS", "player")
+    h.check("4321" in str(row.label["__text"]), "the player's new totals redraw it (%s)" % row.label["__text"])
+    h.rt.execute("UnitStat = _G.__oldUnitStat")
+    CW.statFly["__shown"] = False
+
+
 def test_stats(h):
     """The stat panel: solid to the mouse, and the button carries the count."""
     print("--- stats: a panel that stops the mouse, and a button that counts")
@@ -4602,6 +4647,7 @@ def main():
     test_default_scope(h)
     test_paperdoll(h)
     test_stats(h)
+    test_stats_refresh(h)
     test_confirms(h)
     test_escape(h)
     test_help_text(h)

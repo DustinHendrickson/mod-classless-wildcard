@@ -1,62 +1,68 @@
-Talents that reach every class -- generation f6d503456bd6
+Talents that reach every class -- generation 384a99a47aa9
 
 == death knight
-   Annihilation                       crit chance        melee, damage, direct, instant   9 own lines (100%)  -> 1256 abilities of other classes
+   Annihilation                       crit chance        melee, Physical, damage, direct, instant   4 own lines (100%)  ->  224 abilities of other classes
 == druid
-   Berserk                            cost               melee, Physical, instant        11 own lines ( 69%)  ->  119 abilities of other classes
-   Empowered Rejuvenation             bonus coefficient  spell, Nature, heal, instant     4 own lines ( 80%)  ->   27 abilities of other classes
-   Gift of Nature                     damage             spell, Nature, heal              5 own lines ( 62%)  ->   58 abilities of other classes
-   Nature's Majesty                   crit chance        spell, direct, cast              4 own lines ( 80%)  ->  317 abilities of other classes
+   Berserk                            cost               melee, Physical, instant        11 own lines ( 69%)  ->  116 abilities of other classes
+   Empowered Rejuvenation             bonus coefficient  spell, Nature, heal              4 own lines ( 67%)  ->   46 abilities of other classes
+   Gift of Nature                     damage             spell, Nature, heal              4 own lines ( 67%)  ->   46 abilities of other classes
+   Moonfury                           damage             spell, damage                    3 own lines ( 60%)  ->  442 abilities of other classes
+   Nature's Majesty                   crit chance        spell, direct, cast              4 own lines ( 80%)  ->  298 abilities of other classes
+   Vengeance                          crit damage        spell, damage                    3 own lines ( 60%)  ->  442 abilities of other classes
 == hunter
-   Hawk Eye                           range              ranged                          20 own lines ( 91%)  ->   29 abilities of other classes
-   Mortal Shots                       crit damage        ranged, damage, direct          10 own lines ( 77%)  ->   34 abilities of other classes
-   Savage Strikes                     crit chance        melee, Physical, damage, direct, instant   3 own lines ( 60%)  ->  253 abilities of other classes
+   Hawk Eye                           range              ranged                          14 own lines (100%)  ->   23 abilities of other classes
+   Marked for Death                   crit damage        ranged, damage, direct, cast     4 own lines (100%)  ->    3 abilities of other classes
+   Mortal Shots                       crit damage        ranged, Physical, damage, direct, cast   3 own lines (100%)  ->    3 abilities of other classes
+   Savage Strikes                     crit chance        melee, Physical, damage, direct, instant   3 own lines (100%)  ->  222 abilities of other classes
 == mage
-   Arcane Focus                       hit                spell, Arcane, damage, direct    4 own lines (100%)  ->   26 abilities of other classes
-   Arcane Power                       damage             spell, damage                   20 own lines ( 95%)  ->  580 abilities of other classes
-   Arcane Power                       cost               spell, damage                   17 own lines ( 81%)  ->  384 abilities of other classes
-   Burnout                            crit damage        spell, damage                   21 own lines (100%)  ->  580 abilities of other classes
-   Combustion                         crit damage        spell, Fire, damage             10 own lines (100%)  ->  116 abilities of other classes
-   Fire Power                         damage             spell, Fire, damage              9 own lines ( 90%)  ->  116 abilities of other classes
+   Arcane Focus                       hit                spell, Arcane, damage, direct    3 own lines (100%)  ->   26 abilities of other classes
+   Arcane Power                       damage             spell, damage                   15 own lines ( 94%)  ->  364 abilities of other classes
+   Arcane Power                       cost               spell, damage                   16 own lines (100%)  ->  344 abilities of other classes
+   Burnout                            crit damage        spell, damage                   16 own lines (100%)  ->  364 abilities of other classes
+   Combustion                         crit damage        spell, Fire, damage              8 own lines (100%)  ->   62 abilities of other classes
+   Fire Power                         damage             spell, Fire, damage              7 own lines ( 88%)  ->   62 abilities of other classes
    Fire Power                         periodic damage    spell, Fire, damage, cast        3 own lines ( 75%)  ->   16 abilities of other classes
-   Spell Power                        crit damage        spell, damage, direct           20 own lines (100%)  ->  444 abilities of other classes
+   Flame Throwing                     range              spell, Fire                      6 own lines ( 60%)  ->   76 abilities of other classes
+   Ice Shards                         crit damage        spell, Frost, damage, direct     4 own lines (100%)  ->   12 abilities of other classes
+   Magic Attunement                   range              spell, Arcane                   10 own lines ( 62%)  ->   27 abilities of other classes
+   Spell Power                        crit damage        spell, damage                   15 own lines ( 94%)  ->  364 abilities of other classes
 == paladin
-   Benediction                        cost               instant                         45 own lines ( 79%)  ->  991 abilities of other classes
-   The Art of War                     damage             melee, damage, direct, instant   6 own lines ( 75%)  -> 1382 abilities of other classes
+   Benediction                        cost               instant                         30 own lines ( 79%)  ->  844 abilities of other classes
 == priest
-   Darkness                           damage             spell, Shadow, damage, direct, instant   3 own lines (100%)  ->   53 abilities of other classes
-   Darkness                           periodic damage    spell, Shadow, damage, periodic   3 own lines (100%)  ->   51 abilities of other classes
-   Inner Focus                        cost               spell                           47 own lines ( 87%)  -> 1139 abilities of other classes
-   Inner Focus                        crit chance        spell, direct                   18 own lines ( 90%)  ->  655 abilities of other classes
-   Mind Melt                          crit chance        spell, Shadow, damage, direct    3 own lines ( 75%)  ->   70 abilities of other classes
-   Mind Melt                          crit chance        spell, Shadow, damage, periodic   3 own lines (100%)  ->   51 abilities of other classes
-   Misery                             bonus coefficient  spell, Shadow, damage, direct    3 own lines ( 75%)  ->   70 abilities of other classes
-   Searing Light                      damage             spell, Holy, damage              4 own lines ( 80%)  ->   35 abilities of other classes
-   Shadow Affinity                    threat             spell, Shadow                   16 own lines ( 80%)  ->  311 abilities of other classes
-   Shadow Focus                       hit                spell, Shadow, damage            7 own lines (100%)  ->  121 abilities of other classes
-   Shadow Focus                       cost               spell, Shadow, instant          15 own lines ( 94%)  ->  172 abilities of other classes
-   Shadow Power                       crit damage        spell, Shadow, damage, direct    3 own lines ( 75%)  ->   70 abilities of other classes
-   Shadow Reach                       range              spell, Shadow                   14 own lines ( 70%)  ->  225 abilities of other classes
-   Spiritual Healing                  damage             spell, Holy, heal, direct       10 own lines ( 91%)  ->   39 abilities of other classes
-   Twin Disciplines                   damage             spell, direct, instant           9 own lines ( 82%)  ->  361 abilities of other classes
-   Twin Disciplines                   periodic damage    spell, periodic, instant         3 own lines (100%)  ->  123 abilities of other classes
+   Darkness                           damage             spell, Shadow, damage            3 own lines ( 60%)  ->   93 abilities of other classes
+   Darkness                           periodic damage    spell, Shadow, damage, periodic   3 own lines (100%)  ->   49 abilities of other classes
+   Healing Focus                      pushback           spell, Holy, heal                6 own lines ( 67%)  ->   27 abilities of other classes
+   Inner Focus                        cost               spell                           39 own lines ( 98%)  ->  954 abilities of other classes
+   Inner Focus                        crit chance        spell, Holy, direct             10 own lines ( 91%)  ->   46 abilities of other classes
+   Mental Agility                     cost               spell, instant                  20 own lines ( 80%)  ->  552 abilities of other classes
+   Mind Melt                          crit chance        spell, Shadow, damage, periodic   3 own lines (100%)  ->   49 abilities of other classes
+   Searing Light                      damage             spell, Holy, damage              3 own lines (100%)  ->   22 abilities of other classes
+   Shadow Affinity                    threat             spell, Shadow                   12 own lines ( 80%)  ->  200 abilities of other classes
+   Shadow Focus                       hit                spell, Shadow, damage            5 own lines (100%)  ->   93 abilities of other classes
+   Shadow Focus                       cost               spell, Shadow, instant          11 own lines (100%)  ->  106 abilities of other classes
+   Shadow Reach                       range              spell, Shadow                   10 own lines ( 67%)  ->  135 abilities of other classes
+   Spiritual Healing                  damage             spell, Holy, heal, direct        8 own lines (100%)  ->   32 abilities of other classes
+   Twin Disciplines                   damage             spell, direct, instant           4 own lines (100%)  ->  149 abilities of other classes
+   Twin Disciplines                   periodic damage    spell, periodic, instant         3 own lines (100%)  ->   87 abilities of other classes
 == rogue
-   Cold Blood                         crit chance        melee, damage, direct, instant   9 own lines ( 90%)  -> 1061 abilities of other classes
-   Find Weakness                      damage             melee, damage, direct, instant  10 own lines (100%)  -> 1061 abilities of other classes
-   Lethality                          crit damage        melee, damage, direct, instant   6 own lines ( 60%)  -> 1061 abilities of other classes
+   Cold Blood                         crit chance        melee, damage, direct, instant   7 own lines ( 88%)  ->  915 abilities of other classes
+   Find Weakness                      damage             melee, damage, direct, instant   8 own lines (100%)  ->  915 abilities of other classes
 == shaman
-   Call of Thunder                    crit chance        spell, Nature, damage, direct    3 own lines ( 60%)  ->   41 abilities of other classes
-   Concussion                         damage             spell, damage, direct            7 own lines ( 78%)  ->  503 abilities of other classes
-   Elemental Fury                     crit damage        spell, damage, direct            8 own lines ( 89%)  ->  503 abilities of other classes
-   Elemental Mastery                  cast time          spell, damage                    7 own lines ( 78%)  ->  246 abilities of other classes
-   Healing Focus                      pushback           spell, Nature, heal              3 own lines ( 60%)  ->   28 abilities of other classes
-   Tidal Focus                        cost               spell, Nature, heal              4 own lines ( 80%)  ->   66 abilities of other classes
-   Tidal Mastery                      crit chance        spell, Nature, direct            8 own lines ( 89%)  ->   79 abilities of other classes
+   Call of Thunder                    crit chance        spell, Nature, damage, direct    3 own lines ( 75%)  ->   12 abilities of other classes
+   Concussion                         damage             spell, damage, direct            7 own lines (100%)  ->  329 abilities of other classes
+   Convection                         cost               spell, damage                    6 own lines ( 86%)  ->  423 abilities of other classes
+   Elemental Fury                     crit damage        spell, damage, direct            7 own lines (100%)  ->  329 abilities of other classes
+   Elemental Mastery                  cast time          spell, damage                    7 own lines (100%)  ->  227 abilities of other classes
+   Healing Focus                      pushback           spell, Nature, heal              3 own lines ( 75%)  ->   28 abilities of other classes
+   Mental Quickness                   cost               spell, instant                  12 own lines ( 92%)  ->  618 abilities of other classes
+   Shamanistic Focus                  cost               spell, damage, instant           3 own lines ( 75%)  ->  196 abilities of other classes
+   Tidal Mastery                      crit chance        spell, Nature, direct, cast      5 own lines (100%)  ->   40 abilities of other classes
 == warlock
-   Emberstorm                         damage             spell, Fire, damage              8 own lines ( 89%)  ->  137 abilities of other classes
-   Shadow Mastery                     damage             spell, Shadow, damage, direct    8 own lines ( 80%)  ->   32 abilities of other classes
-   Shadow Mastery                     periodic damage    spell, Shadow, damage, periodic   7 own lines (100%)  ->   31 abilities of other classes
+   Devastation                        crit chance        spell, damage, direct            9 own lines ( 82%)  ->  308 abilities of other classes
+   Emberstorm                         damage             spell, Fire, damage, cast        5 own lines (100%)  ->   61 abilities of other classes
+   Ruin                               crit damage        spell, damage, direct            9 own lines ( 82%)  ->  308 abilities of other classes
+   Shadow Mastery                     periodic damage    spell, damage, periodic          7 own lines ( 78%)  ->  138 abilities of other classes
 == warrior
-   Impale                             crit damage        melee, damage, direct, instant  14 own lines (100%)  -> 1092 abilities of other classes
+   Impale                             crit damage        melee, damage, direct, instant  11 own lines (100%)  ->  951 abilities of other classes
 
-Not widened: names specific abilities 346, operation not carried across 123
+Not widened: names specific abilities 339, operation not carried across 123

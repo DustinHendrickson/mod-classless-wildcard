@@ -41,9 +41,12 @@ Outputs, from the same run so the server and the client agree:
   * talent_reach_report.txt beside this script: every general effect, its kind
     and how many abilities it now reaches, for review.
 
-Abilities are the class spells on a class skill line (SkillLineAbility,
-category 7) that are not passive, the elemental variants and the Hero line, the
-last two read from the client manifests. Hero talents are not widened: the Hero
+Abilities are the pool: what a Hero can buy or be dealt, built the way the
+server's BuildLibrary builds it (gen_archetypes.Pool, from the DBCs, the
+core's trainer_spell and spell_ranks dumps and the module conf), every rank of
+every enabled line that is not passive. The server keeps only targets that
+are in its own live pool when it loads the table, so a realm's own settings
+always win. Hero talents are not widened: the Hero
 tree is the module's own and already aimed at the Hero line.
 
 Run:  python3 gen_talent_reach.py [--dbc DIR]
@@ -58,6 +61,9 @@ import json
 import os
 import struct
 import sys
+
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+import gen_archetypes as archetypes  # noqa: E402  the pool, the way BuildLibrary builds it
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 ROOT = os.path.abspath(os.path.join(HERE, os.pardir, os.pardir, os.pardir))
@@ -289,24 +295,23 @@ def modifier_value(row, e):
     return v
 
 
-def build(dbc_dir):
+def build(dbc_dir, conf_path):
     spells = Spells(dbc_dir)
-    def is_ability(sid, row):
-        # something a Hero casts: not passive, not hidden, and not a glyph or
-        # a test spell, both of which sit on class skill lines
-        name = spells.names.get(sid, "")
-        return (row and row[C["Family"]] and not (row[C["Attributes"]] & (ATTR0_PASSIVE | ATTR0_HIDDEN))
-                and not name.startswith("Glyph of") and "TEST" not in name.upper().split("(")[-1])
-
-    abilities = set()
-    for sid in class_spell_ids(dbc_dir):
-        if is_ability(sid, spells.rows.get(sid)):
-            abilities.add(sid)
+    # The generated rows, so every pool spell has a full row to read.
     for path, key in ((ELEMENTAL_MANIFEST, "variants"), (FORGED_MANIFEST, "spells")):
         for entry in json.load(open(path, encoding="utf-8")).get(key, []):
-            row = spells.add_generated(entry)
-            if is_ability(entry["id"], row):
-                abilities.add(entry["id"])
+            spells.add_generated(entry)
+
+    # The abilities are the POOL: what a Hero can buy or be dealt, built the
+    # way BuildLibrary builds it (gen_archetypes.Pool: class lines with a
+    # trainer, minus utility, auto-repeat, disabled and talent spells, plus
+    # the elemental variants and the Hero line), every rank of every enabled
+    # line that is not passive. Judging talents and choosing targets from
+    # anything wider counted spells no Hero can own.
+    pool = archetypes.Pool(dbc_dir, archetypes.DEFAULT_CORE, archetypes.read_conf(conf_path),
+                           ELEMENTAL_MANIFEST)
+    abilities = {sid for e in pool.abilities.values() if e["enabled"] and not e["passive"]
+                 for sid in e["ranks"] if sid in spells.rows and spells.rows[sid][C["Family"]]}
 
     # One ability "line" per set of class bits. Blizzard gives related spells
     # the same bit -- every rank, the eight Judgements, a strike and its
@@ -527,11 +532,13 @@ def write_report(spells, general, skipped, path, gen):
 def main(argv=None):
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--dbc", default=DEFAULT_DBC, help="directory of extracted 3.3.5a DBCs")
+    ap.add_argument("--conf", default=archetypes.DEFAULT_CONF,
+                    help="module conf the pool is built with (IncludeDeathKnight, IncludeRacials, ...)")
     ap.add_argument("--explain", action="append", default=[],
                     help="print how this talent (by name) was judged; repeatable")
     args = ap.parse_args(argv)
     EXPLAIN.update(n.lower() for n in args.explain)
-    spells, abilities, general, skipped = build(args.dbc)
+    spells, abilities, general, skipped = build(args.dbc, args.conf)
     gen = generation_id(general)
     rows = write_sql(general, OUT_SQL, gen)
     client = write_manifest(general, OUT_MANIFEST, gen)
