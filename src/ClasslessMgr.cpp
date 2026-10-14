@@ -3777,7 +3777,9 @@ void ClasslessMgr::RefreshChallengeView(Creature* creature)
         return;
     for (uint32 index : { uint32(OBJECT_FIELD_SCALE_X), uint32(UNIT_FIELD_LEVEL),
                           uint32(UNIT_FIELD_HEALTH), uint32(UNIT_FIELD_MAXHEALTH),
-                          uint32(UNIT_FIELD_DISPLAYID), uint32(UNIT_FIELD_FLAGS) })
+                          uint32(UNIT_FIELD_DISPLAYID), uint32(UNIT_FIELD_FLAGS),
+                          uint32(UNIT_VIRTUAL_ITEM_SLOT_ID), uint32(UNIT_VIRTUAL_ITEM_SLOT_ID + 1),
+                          uint32(UNIT_VIRTUAL_ITEM_SLOT_ID + 2), uint32(UNIT_FIELD_MOUNTDISPLAYID) })
         creature->ForceValuesUpdateAtIndex(index);
 }
 
@@ -3911,6 +3913,7 @@ bool ClasslessMgr::LearnNemesis(Player* player, Creature const* copy, uint8 what
     if (CharState* st = FindState(player))
         SaveNemeses(player->GetGUID(), *st);
     PushRunTracker(player);
+    SendNemesisTraits(player, const_cast<Creature*>(copy), true);   // on its frame at once
     return true;
 }
 
@@ -3958,7 +3961,7 @@ bool ClasslessMgr::CanSwearVendetta(Player* player, Creature* target, std::strin
     if (!st || st->run != uint8(ChallengeId::Nemesis))
         return fail("Swear Vendetta works only on a Nemesis run.");
     if (!target || target->IsPet() || target->IsTotem() || target->IsSummon() || target->GetOwnerGUID()
-        || !target->GetSpawnId() || target->IsCritter() || target->IsCivilian() || target->IsTrigger())
+        || !target->GetSpawnId() || target->IsCritter() || target->IsTrigger())
         return fail("You cannot swear vendetta on that.");
     if (target->GetMap()->IsDungeon())
         return fail("Not in a dungeon or raid.");
@@ -4401,6 +4404,12 @@ void ClasslessMgr::PushNemesisCharm(Player* player)
         ranks += Acore::StringFormat("{}{}", ranks.empty() ? "" : ",", uint32(st->charmRanks[s]));
     }
     PushAddon(player, Acore::StringFormat("NT|{}|{}|{}", values, ranks, cfg.nemesisTrophyMax));
+    // NX: the trait numbers, for its buffs' and debuff's tooltips
+    PushAddon(player, Acore::StringFormat("NX|{}|{}|{}|{}|{}|{}|{}|{}|{}|{}|{}|{}|{}|{}|{}",
+        cfg.nemesisBloodlustPct, cfg.nemesisIronhidePct, cfg.nemesisSpellwardPct, cfg.nemesisVenomousPct,
+        cfg.nemesisVenomousSeconds, cfg.nemesisUnyieldingPct, cfg.nemesisUnyieldingBelowPct, cfg.nemesisWarbandCount,
+        cfg.nemesisRelentlessPct, cfg.nemesisWeakSchoolPct, cfg.nemesisBrittlePct, cfg.nemesisBrittleSeconds,
+        cfg.nemesisCowardlyPct, cfg.nemesisCowardlyFleePct, cfg.nemesisCowardlyFleeSeconds));
 }
 
 void ClasslessMgr::DespawnNemesisCopies(Player* player)
@@ -4418,6 +4427,40 @@ void ClasslessMgr::DespawnNemesisCopies(Player* player)
 // Hero's client alone, laid out as AuraApplication::BuildUpdatePacket does.
 // Sent with every rule tick while it is in sight, which also puts it back
 // after the creature has left and re-entered the Hero's view.
+void ClasslessMgr::SendNemesisTraits(Player* player, Creature* copy, bool on)
+{
+    if (!player || !copy || !player->GetSession())
+        return;
+    NemesisMark const* mark = on ? MarkOfCopy(copy, player) : nullptr;
+    auto send = [&](uint8 slot, uint32 spell, bool positive)
+    {
+        WorldPacket data(SMSG_AURA_UPDATE);
+        data << copy->GetPackGUID();
+        data << uint8(slot);
+        data << uint32(spell);
+        if (spell)
+        {
+            // its own, with no timer: AFLAG_CASTER says the caster is the unit
+            data << uint8(AFLAG_EFF_INDEX_0 | AFLAG_CASTER | (positive ? AFLAG_POSITIVE : AFLAG_NEGATIVE));
+            data << uint8(copy->GetLevel());
+            data << uint8(1);
+        }
+        player->SendDirectMessage(&data);
+    };
+    // strengths, once learned, one slot each
+    for (uint8 i = 0; i < NEMESIS_MAX_STRENGTHS; ++i)
+    {
+        uint8 const s = mark && (mark->learned & NEMESIS_LEARNED_STRENGTHS) ? mark->strengths[i] : uint8(NS_NONE);
+        send(uint8(NEMESIS_WEAKNESS_SLOT + 1 + i), s > NS_NONE && s < NS_COUNT ? NEMESIS_STRENGTH_SPELLS[s - 1] : 0, true);
+    }
+    // the weakness, or that it has one still to find
+    uint32 weakness = 0;
+    if (mark && mark->weakness > NW_NONE && mark->weakness < NW_COUNT)
+        weakness = (mark->learned & NEMESIS_LEARNED_WEAKNESS) ? NEMESIS_WEAKNESS_SPELLS[mark->weakness - 1]
+                                                               : NEMESIS_HIDDEN_WEAKNESS_SPELL;
+    send(NEMESIS_WEAKNESS_SLOT, weakness, false);
+}
+
 void ClasslessMgr::SendNemesisMark(Player* player, Creature* creature, bool on)
 {
     if (!player || !creature || !player->GetSession())
@@ -4534,6 +4577,7 @@ void ClasslessMgr::NemesisSlain(Player* player, Creature* creature)
     ClearNemesisTrack(player, spawnId);
     creature->RemoveAurasDueToSpell(NEMESIS_TRACK_SPELL, player->GetGUID());
     SendNemesisMark(player, creature, false);
+    SendNemesisTraits(player, creature, false);
     PushNemesisGuids(player);
     // Vengeance: its level, half again for a Sworn one
     uint32 const vengeance = uint32(creature->GetLevel()) * (sworn ? cfg.nemesisSwornVengeancePct : 100) / 100;
@@ -4694,6 +4738,7 @@ void ClasslessMgr::NemesisTick(Player* player)
         if (!_nemesisTrackReady || !copy->IsAlive())
             continue;
         SendNemesisMark(player, copy, true);
+        SendNemesisTraits(player, copy, true);
         // NEMESIS_MARK_MS per refresh, so a Hero who walks away leaves no mark behind
         if (Aura* aura = copy->GetAura(NEMESIS_TRACK_SPELL, player->GetGUID()))
             aura->RefreshDuration();

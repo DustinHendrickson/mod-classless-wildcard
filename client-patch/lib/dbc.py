@@ -765,6 +765,22 @@ SPELL_ICON_OVERRIDES = {
     75: "Interface\\Icons\\INV_Weapon_Bow_05",   # Auto Shot
     21391: "Interface\\Icons\\Spell_Shadow_Skull",   # the nemesis mark
     36779: "Interface\\Icons\\Spell_DeathKnight_Vendetta",   # Swear Vendetta
+    54060: "Interface\\Icons\\Spell_Nature_BloodLust",   # nemesis trait: Bloodlust
+    70522: "Interface\\Icons\\Ability_Warrior_ShieldWall",   # nemesis trait: Ironhide
+    6747: "Interface\\Icons\\Spell_Shadow_AntiMagicShell",   # nemesis trait: Spellward
+    6748: "Interface\\Icons\\Ability_Creature_Poison_03",   # nemesis trait: Venomous
+    15068: "Interface\\Icons\\Spell_Shadow_UnholyFrenzy",   # nemesis trait: Unyielding
+    23674: "Interface\\Icons\\Ability_Warrior_BattleShout",   # nemesis trait: Warband
+    24653: "Interface\\Icons\\Spell_Nature_Rejuvenation",   # nemesis trait: Relentless
+    32557: "Interface\\Icons\\Spell_Fire_Fire",   # nemesis trait: Weak to Fire
+    36676: "Interface\\Icons\\Spell_Frost_FrostBolt02",   # nemesis trait: Weak to Frost
+    45016: "Interface\\Icons\\Spell_Shadow_ShadowBolt",   # nemesis trait: Weak to Shadow
+    47929: "Interface\\Icons\\Spell_Nature_Lightning",   # nemesis trait: Weak to Nature
+    48031: "Interface\\Icons\\Spell_Arcane_Blast",   # nemesis trait: Weak to Arcane
+    48209: "Interface\\Icons\\Spell_Holy_HolyBolt",   # nemesis trait: Weak to Holy
+    46334: "Interface\\Icons\\Spell_Frost_Stun",   # nemesis trait: Brittle
+    47464: "Interface\\Icons\\Ability_Rogue_Sprint",   # nemesis trait: Cowardly
+    33930: "Interface\\Icons\\INV_Misc_QuestionMark",   # nemesis trait: Hidden Weakness
 }
 
 # Stock spells the module uses under a name of its own: id -> (name, tooltip).
@@ -776,6 +792,26 @@ SPELL_RENAMES = {
     36779: ("Swear Vendetta", "Swear vendetta on a creature at or above your level. It becomes your Sworn nemesis, "
                               "for you alone: a rare elite above your level in a blood fury, waiting where it "
                               "lives. Nemesis runs only, one at a time."),
+    # A nemesis's strengths and weakness, shown on its frame to its Hero alone
+    # (ClasslessMgr::NEMESIS_STRENGTH_SPELLS, NEMESIS_WEAKNESS_SPELLS,
+    # NEMESIS_HIDDEN_WEAKNESS_SPELL): stock test spells nothing casts. The
+    # addon puts the realm's numbers into these tooltips.
+    54060: ("Bloodlust", "Attacks and casts faster."),
+    70522: ("Ironhide", "Takes less physical damage."),
+    6747: ("Spellward", "Takes less spell damage."),
+    6748: ("Venomous", "Its hits poison you."),
+    15068: ("Unyielding", "Deals more damage when badly hurt."),
+    23674: ("Warband", "Calls its kind to its side, once a fight."),
+    24653: ("Relentless", "Regains health quickly out of combat."),
+    32557: ("Weak to Fire", "Takes more damage from Fire."),
+    36676: ("Weak to Frost", "Takes more damage from Frost."),
+    45016: ("Weak to Shadow", "Takes more damage from Shadow."),
+    47929: ("Weak to Nature", "Takes more damage from Nature."),
+    48031: ("Weak to Arcane", "Takes more damage from Arcane."),
+    48209: ("Weak to Holy", "Takes more damage from Holy."),
+    46334: ("Brittle", "A stun ends its rage and leaves it open."),
+    47464: ("Cowardly", "Flees when badly hurt, and takes more damage after."),
+    33930: ("Hidden Weakness", "It has a weakness. Find it in the fight."),
 }
 
 # Stock spell columns the module needs set to its own values: id -> {column: value}.

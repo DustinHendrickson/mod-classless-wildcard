@@ -10115,6 +10115,8 @@ local function HandleMessage(msg)
         if CW.UpdateTracker then CW.UpdateTracker() end
     elseif kind == "NT" then
         CW.ReadNemesisCharm(p)
+    elseif kind == "NX" then
+        CW.ReadNemesisTraitNums(p)
     elseif kind == "NK" then
         CW.NemesisSlain(p)
     elseif kind == "NV" then
@@ -10825,9 +10827,18 @@ function CW.NemesisTitleLine(frame)
         return
     end
     if not frame.cwTitle then
-        frame.cwTitle = frame:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+        -- its own frame, above the one holding the name and the border: on
+        -- the target frame itself the elite dragon draws over it
+        local holder = CreateFrame("Frame", nil, frame)
+        holder:SetAllPoints(frame)
+        local over = frame.name and frame.name.GetParent and frame.name:GetParent()
+        holder:SetFrameLevel(((over and over.GetFrameLevel and over:GetFrameLevel()) or frame:GetFrameLevel()) + 5)
+        frame.cwTitleHolder = holder
+        frame.cwTitle = holder:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
         frame.cwTitle:SetPoint("BOTTOM", frame.name or frame, "TOP", 0, 2)
         frame.cwTitle:SetTextColor(1, 0.53, 0)
+        frame.cwTitle:SetShadowColor(0, 0, 0, 1)
+        frame.cwTitle:SetShadowOffset(1, -1)
     end
     frame.cwTitle:SetText("<" .. title .. ">")
     frame.cwTitle:Show()
@@ -10921,6 +10932,65 @@ if GameTooltip and GameTooltip.HookScript then
 end
 if ItemRefTooltip and ItemRefTooltip.HookScript then
     ItemRefTooltip:HookScript("OnTooltipSetItem", CW.NemesisItemTooltip)
+end
+
+-- A nemesis's strengths (buffs) and weakness (a debuff) on its frame: the
+-- server sends them to its Hero alone, the client patch names them, and their
+-- tooltips get the realm's numbers here, from "NX|..." (in its order below).
+CW.nemesisTraitNums = {}
+CW.NEMESIS_TRAIT_TEXT = {
+    [54060] = "Attacks and casts %1%% faster.",
+    [70522] = "Takes %2%% less physical damage.",
+    [6747] = "Takes %3%% less spell damage.",
+    [6748] = "Its hits poison you for %4%% of your health every 2 seconds, for %5 seconds.",
+    [15068] = "Deals %6%% more damage below %7%% health.",
+    [23674] = "Calls %8 of its kind to its side, once a fight.",
+    [24653] = "Regains %9%% of its health every second out of combat.",
+    [32557] = "Takes %10%% more damage from Fire.",
+    [36676] = "Takes %10%% more damage from Frost.",
+    [45016] = "Takes %10%% more damage from Shadow.",
+    [47929] = "Takes %10%% more damage from Nature.",
+    [48031] = "Takes %10%% more damage from Arcane.",
+    [48209] = "Takes %10%% more damage from Holy.",
+    [46334] = "A stun ends its rage, and it takes %11%% more damage for %12 seconds.",
+    [47464] = "Flees at %14%% health for %15 seconds, then takes %13%% more damage.",
+    [33930] = "It has a weakness. Find it in the fight.",
+}
+function CW.ReadNemesisTraitNums(p)
+    local nums = {}
+    for i = 2, 16 do nums[i - 1] = p[i] or "?" end
+    CW.nemesisTraitNums = nums
+end
+-- the text for one trait aura, nil for any other spell, nil before NX arrives
+function CW.NemesisTraitText(spellId)
+    local text = CW.NEMESIS_TRAIT_TEXT[tonumber(spellId) or 0]
+    if not text or not CW.nemesisTraitNums[1] then return nil end
+    text = string.gsub(text, "%%(%d+)", function(n) return CW.nemesisTraitNums[tonumber(n)] or "?" end)
+    text = string.gsub(text, "%%%%", "%%")
+    return text
+end
+function CW.NemesisAuraTooltip(tip, spellId)
+    local text = CW.NemesisTraitText(spellId)
+    if not text or not tip then return end
+    local line = tip.GetName and _G[(tip:GetName() or "") .. "TextLeft2"]
+    if line and line.SetText then
+        line:SetText(text)
+    else
+        tip:AddLine(text, 1, 0.82, 0, true)
+    end
+    tip:Show()
+end
+if hooksecurefunc and GameTooltip then
+    for _, f in ipairs({ { "SetUnitBuff", "UnitBuff" }, { "SetUnitDebuff", "UnitDebuff" }, { "SetUnitAura", "UnitAura" } }) do
+        if GameTooltip[f[1]] then
+            local query = f[2]
+            hooksecurefunc(GameTooltip, f[1], function(tip, unit, index, filter)
+                local getter = _G[query]
+                if type(getter) ~= "function" then return end
+                CW.NemesisAuraTooltip(tip, select(11, getter(unit, index, filter)))
+            end)
+        end
+    end
 end
 
 -- Where each nemesis lives, as a skull on the world map when its zone is the

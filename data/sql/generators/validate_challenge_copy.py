@@ -149,6 +149,9 @@ need("player->SummonCreature(mark.entry, at ? *at : pos, TEMPSUMMON_CORPSE_TIMED
      and "nullptr, true);" in mgr, "the nemesis is a private copy, visible to its Hero alone")
 need("NOTHING_DISPLAY_ID" in rules and "IsNemesisOriginalOf(target, creature)" in rules,
      "the original is drawn invisible for its Hero")
+# its weapons and mount are drawn apart from its model: hidden too, or a sword walks about
+need(rules.count("UNIT_VIRTUAL_ITEM_SLOT_ID + MAX_EQUIPMENT_ITEMS") >= 2 and "uint32(UNIT_VIRTUAL_ITEM_SLOT_ID + 2)" in mgr,
+     "the hidden original holds no weapons for its Hero, and the refresh resends them")
 if first == 1.5 and most == 2:
     says(n, "detail", "up to twice its size", "NEMESIS_SCALE_MAX 2.0")
 else:
@@ -177,6 +180,24 @@ need('fail("Not on an elite or a boss.")' in mgr and 'fail("Not in a dungeon or 
      "CanSwearVendetta refuses elites, bosses and dungeons")
 says(n, "detail", "at your level or above", "CanSwearVendetta refuses a target below the Hero")
 need("if (target->GetLevel() < player->GetLevel())" in mgr, "CanSwearVendetta refuses a target below the Hero")
+# the trait auras: the same spell ids on the server, in the client patch and in the addon
+ids = lambda pattern, text: [int(x) for x in re.findall(r"\d+", re.search(pattern, text, re.S).group(1))]
+srv = ids(r"NEMESIS_STRENGTH_SPELLS\[7\] = \{([^}]*)\}", hdr) + ids(r"NEMESIS_WEAKNESS_SPELLS\[8\] = \{([^}]*)\}", hdr) \
+      + ids(r"NEMESIS_HIDDEN_WEAKNESS_SPELL = (\d+);", hdr)
+dbcpy = read("client-patch", "lib", "dbc.py")
+lua_text = read("client-addon", "ClasslessWildcard", "ClasslessWildcard.lua")
+lua_ids = [int(x) for x in re.findall(r"^    \[(\d+)\] = \"", lua_text[lua_text.index("CW.NEMESIS_TRAIT_TEXT"):], re.M)][:16]
+need(len(srv) == 16 and len(set(srv)) == 16, "16 distinct trait spells on the server (%d)" % len(set(srv)))
+need(all(re.search(r"^    %d: \(\"" % i, dbcpy, re.M) and re.search(r"^    %d: \"Interface" % i, dbcpy, re.M) for i in srv),
+     "the client patch names every trait spell and gives it an icon")
+need(lua_ids == srv, "the addon's trait tooltips are the server's spells, in its order")
+need("SendNemesisTraits(player, copy, true);" in mgr and "SendNemesisTraits(player, creature, false);" in mgr,
+     "the traits are sent with the mark and cleared on the kill")
+
+# flags_extra 2 ("civilian") only means a creature never starts a fight; many hostile
+# beasts carry it, and refusing them broke Swear Vendetta on a Diseased Timber Wolf
+need("IsCivilian()" not in mgr and "IsCivilian()" not in rules,
+     "no challenge refuses a passive creature: Swear Vendetta, Elite World and Legion take them")
 need("SwornLevelsBelow" not in conf and "SwornLevelsBelow" not in readme,
      "the level rule is fixed: no option for it in the conf or the README")
 # the drop, trophies and the charm

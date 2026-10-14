@@ -991,6 +991,8 @@ ClasslessWildcard.Nemesis.MarkedBonusXpPct = 25
 #    ClasslessWildcard.Nemesis.SwornBonusXpPct
 #        The same two for a Sworn nemesis: one the Hero chose with Swear
 #        Vendetta. Harder (it always has Bloodlust), and worth more.
+#        Either offset at 4 or more lets the nemesis land crushing blows
+#        (150% damage), more often the lower the Hero's defense skill.
 #        Default: 4, 50
 ClasslessWildcard.Nemesis.SwornLevels = 4
 ClasslessWildcard.Nemesis.SwornBonusXpPct = 50

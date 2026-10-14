@@ -3246,6 +3246,9 @@ def test_nemesis_titles_and_charms(h):
     title = h.rt.eval("TargetFrame.cwTitle")
     h.check(title is not None and str(title["__text"]) == "<the Bloodmad>" and title["__shown"] is True,
             "the target frame shows its title: %r" % (title and title["__text"]))
+    holder = h.rt.eval("TargetFrame.cwTitleHolder")
+    h.check(holder is not None and int(holder["__level"] or 0) > int(h.rt.eval("TargetFrame:GetFrameLevel()") or 0),
+            "the title sits on its own frame above the target frame, so the border cannot cover it")
     h.rt.execute("UNITS.target = { guid = '0xF130001234000099', class = 'normal' }; TargetFrame_CheckClassification(TargetFrame)")
     h.check(title is not None and title["__shown"] is False, "another creature shows none")
     h.rt.execute("UNITS.target = { guid = '%s', class = 'normal' }; TargetFrame_CheckClassification(TargetFrame)" % nemesis)
@@ -3293,6 +3296,24 @@ def test_nemesis_titles_and_charms(h):
     h.check(tiptext() == [], "any other item is left alone: %r" % tiptext())
     h.check(str(h.rt.eval("ClasslessWildcard_API.TrophyName(991020)")) == "Trophy of Relentless III",
             "the last trophy entry is Relentless III")
+
+    # its trait buffs and debuff: the realm's numbers in their tooltips
+    h.check(h.rt.eval("ClasslessWildcard_API.NemesisTraitText(54060)") is None, "before NX, no numbers are made up")
+    h.recv("NX|30|25|25|2|6|25|30|2|5|50|20|8|30|20|6")
+    tt = lambda sid: str(h.rt.eval("ClasslessWildcard_API.NemesisTraitText(%d)" % sid))
+    h.check(tt(54060) == "Attacks and casts 30% faster.", "Bloodlust: %r" % tt(54060))
+    h.check(tt(6748) == "Its hits poison you for 2% of your health every 2 seconds, for 6 seconds.", "Venomous: %r" % tt(6748))
+    h.check(tt(15068) == "Deals 25% more damage below 30% health.", "Unyielding: %r" % tt(15068))
+    h.check(tt(23674) == "Calls 2 of its kind to its side, once a fight.", "Warband: %r" % tt(23674))
+    h.check(tt(32557) == "Takes 50% more damage from Fire.", "Weak to Fire: %r" % tt(32557))
+    h.check(tt(46334) == "A stun ends its rage, and it takes 20% more damage for 8 seconds.", "Brittle: %r" % tt(46334))
+    h.check(tt(47464) == "Flees at 20% health for 6 seconds, then takes 30% more damage.", "Cowardly: %r" % tt(47464))
+    h.check(tt(33930) == "It has a weakness. Find it in the fight.", "Hidden Weakness: %r" % tt(33930))
+    h.check(h.rt.eval("ClasslessWildcard_API.NemesisTraitText(116)") is None, "any other aura is left alone")
+    h.rt.execute("GameTooltipTextLeft2 = CreateFrame('Frame'); GameTooltip.GetName = function() return 'GameTooltip' end")
+    h.rt.execute("ClasslessWildcard_API.NemesisAuraTooltip(GameTooltip, 70522)")
+    h.check(str(h.rt.eval("GameTooltipTextLeft2:GetText()")) == "Takes 25% less physical damage.",
+            "hovering Ironhide puts the number in its tooltip: %r" % h.rt.eval("GameTooltipTextLeft2:GetText()"))
 
     # map pins: the zone shown, and only nemeses there with a spot
     h.rt.execute(

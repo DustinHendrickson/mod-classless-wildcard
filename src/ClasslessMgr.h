@@ -411,6 +411,17 @@ public:
     // visible auras the lowest free slots from 0, so the top of the client's
     // range (MAX_AURAS) is never one a real aura is shown in.
     static constexpr uint8 NEMESIS_MARK_SLOT = 254;
+    // Its strengths as buffs and its weakness as a debuff on its frame, sent
+    // to its Hero alone like the mark: stock test spells nothing in the game
+    // casts, which the client patch names and gives icons (SPELL_RENAMES), and
+    // whose tooltips the addon fills with the realm's numbers. Strengths in
+    // NemesisStrength order, weaknesses in NemesisWeakness order; the hidden
+    // one stands for a weakness not found yet.
+    static constexpr uint32 NEMESIS_STRENGTH_SPELLS[7] = { 54060, 70522, 6747, 6748, 15068, 23674, 24653 };
+    static constexpr uint32 NEMESIS_WEAKNESS_SPELLS[8] = { 32557, 36676, 45016, 47929, 48031, 48209, 46334, 47464 };
+    static constexpr uint32 NEMESIS_HIDDEN_WEAKNESS_SPELL = 33930;
+    static constexpr uint8 NEMESIS_WEAKNESS_SLOT = 250;   // and 251 to 253 for its strengths
+    void SendNemesisTraits(Player* player, Creature* copy, bool on);
     // A nemesis falling: Corpse Explosion's burst on the body (SpellVisualKit
     // 10828, the impact of 50444) and the level-up glow on the Hero (6375,
     // the cast kit of Level Up 24312).

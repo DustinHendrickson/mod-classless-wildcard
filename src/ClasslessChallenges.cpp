@@ -177,13 +177,14 @@ void CW_ReLevelCreature(Creature* creature, uint8 level, uint32 rank)
 
 // Elite World makes every enemy its Hero can fight an elite, a rare a rare
 // elite, for that Hero alone: one nobody owns, that can fight, and that is not
-// already elite, rare elite or a world boss. Pets, totems, summons, critters,
-// civilians and triggers never change. Declared in ClasslessMgr.cpp, whose
-// ChallengeViewOf asks it.
+// already elite, rare elite or a world boss. Pets, totems, summons, critters
+// and triggers never change. A "civilian" (flags_extra 2) does: the flag only
+// means it never starts a fight, and many beasts carry it. Declared in
+// ClasslessMgr.cpp, whose ChallengeViewOf asks it.
 bool CW_EliteWorldCandidate(Creature const* creature)
 {
     if (!creature || creature->IsPet() || creature->IsTotem() || creature->GetOwnerGUID()
-        || creature->IsCritter() || creature->IsCivilian() || creature->IsTrigger())
+        || creature->IsCritter() || creature->IsTrigger())
         return false;
     CreatureTemplate const* tmpl = creature->GetCreatureTemplate();
     return tmpl && (tmpl->rank == CREATURE_ELITE_NORMAL || tmpl->rank == CREATURE_ELITE_RARE);
@@ -584,7 +585,10 @@ public:
     {
         return unit && unit->IsCreature()
             && (index == OBJECT_FIELD_SCALE_X || index == UNIT_FIELD_LEVEL
-                || index == UNIT_FIELD_HEALTH || index == UNIT_FIELD_MAXHEALTH);
+                || index == UNIT_FIELD_HEALTH || index == UNIT_FIELD_MAXHEALTH
+                // what it holds and rides: a hidden original draws neither
+                || (index >= UNIT_VIRTUAL_ITEM_SLOT_ID && index < UNIT_VIRTUAL_ITEM_SLOT_ID + MAX_EQUIPMENT_ITEMS)
+                || index == UNIT_FIELD_MOUNTDISPLAYID);
     }
 
     void OnPatchValuesUpdate(Unit const* unit, ByteBuffer& buffer, BuildValuesCachePosPointers& positions,
@@ -594,8 +598,9 @@ public:
         if (!creature || !target)
             return;
         // A nemesis's original is not there for its Hero: they fight their
-        // own copy of it. Drawn with the core's draw-nothing model and made
-        // unselectable, for them alone.
+        // own copy of it. Drawn with the core's draw-nothing model, holding no
+        // weapons and riding nothing (both are drawn apart from the model),
+        // and made unselectable, for them alone.
         if (sClasslessMgr->IsNemesisOriginalOf(target, creature))
         {
             if (positions.UnitFieldDisplayPos >= 0)
@@ -603,6 +608,10 @@ public:
             if (positions.UnitFieldFlagsPos >= 0)
                 buffer.put<uint32>(positions.UnitFieldFlagsPos, creature->GetUInt32Value(UNIT_FIELD_FLAGS)
                                                                  | UNIT_FLAG_NOT_SELECTABLE | UNIT_FLAG_NON_ATTACKABLE);
+            for (auto const& [index, at] : positions.other)
+                if ((index >= UNIT_VIRTUAL_ITEM_SLOT_ID && index < UNIT_VIRTUAL_ITEM_SLOT_ID + MAX_EQUIPMENT_ITEMS)
+                    || index == UNIT_FIELD_MOUNTDISPLAYID)
+                    buffer.put<uint32>(at, 0u);
             return;
         }
         ClasslessMgr::ChallengeView view;
@@ -741,7 +750,10 @@ public:
         for (AuraEffect const* eff : unit->GetAuraEffectsByType(SPELL_AURA_MOD_STALKED))
             if (eff->GetId() == ClasslessMgr::NEMESIS_TRACK_SPELL)
                 if (Player* hero = ObjectAccessor::FindPlayer(eff->GetCasterGUID()))
+                {
                     sClasslessMgr->SendNemesisMark(hero, unit->ToCreature(), false);
+                    sClasslessMgr->SendNemesisTraits(hero, unit->ToCreature(), false);
+                }
         _legionCalled.erase(unit->GetGUID());
         _legionSpawn.erase(unit->GetGUID());
         sClasslessMgr->ForgetCreature(unit->GetGUID());
@@ -788,8 +800,7 @@ private:
             return;
         CreatureTemplate const* tmpl = creature->GetCreatureTemplate();
         if (!tmpl || creature->IsDungeonBoss() || tmpl->rank == CREATURE_ELITE_WORLDBOSS
-            || creature->GetCreatureType() == CREATURE_TYPE_CRITTER || creature->IsTrigger()
-            || creature->IsCivilian())
+            || creature->GetCreatureType() == CREATURE_TYPE_CRITTER || creature->IsTrigger())
             return;
         for (uint32 i = 0; i < LEGION_CALLED; ++i)
         {
