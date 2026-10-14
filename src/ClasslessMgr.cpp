@@ -1125,6 +1125,7 @@ void ClasslessMgr::BuildLibrary()
     LoadArchetypes();
     StripSpellTools();
     GateOverpowerOnDodge();
+    LoadTalentReach();
     _libraryBuilt = true;
 
     LOG_INFO("module", "mod-classless-wildcard: library built — {} ability lines, {} talents.",
@@ -5836,6 +5837,85 @@ void ClasslessMgr::GateOverpowerOnDodge()
         }
     LOG_INFO("module.classless", "mod-classless-wildcard: {} Overpower spells open on a dodge, not on combo points",
              _overpowerSpells.size());
+}
+
+// General talents, across classes.
+//
+// A talent's spell modifier reaches a spell only when the spell is in the
+// talent's own family and carries one of its class bits (SpellInfo::IsAffected),
+// so Fire Power never touched a warlock's Immolate or a Fiery Heroic Strike,
+// and Impale never touched a rogue's strike. On a classless realm a talent
+// that improves ALL of its class's abilities of one kind should improve every
+// Hero ability of that kind. gen_talent_reach.py works out which talent effects
+// are general and which abilities of other classes match their kind, and
+// writes them to cw_talent_reach; the client patch reads the same run's cost
+// and cooldown entries for its floors.
+//
+// Applied through the core's own check: SpellInfo::IsAffectedBySpellMod asks
+// OnIsAffectedBySpellModCheck before matching family and bits, and a script
+// answering "affected" there makes the talent's OWN modifier apply to the spell
+// (ClasslessTalentReachScript). Nothing is added to the player, so there is
+// nothing to keep in step: the talent's rank, its charges and its removal are
+// the core's as always.
+void ClasslessMgr::LoadTalentReach()
+{
+    _talentReach.clear();
+    QueryResult result = WorldDatabase.Query("SELECT talent_spell, effect, target_spell FROM cw_talent_reach");
+    if (!result)
+    {
+        LOG_WARN("module.classless", "mod-classless-wildcard: cw_talent_reach is empty or missing; "
+                 "class talents reach only their own class's abilities (apply data/sql/db-world/cw_talent_reach.sql)");
+        return;
+    }
+
+    // first rank -> operation -> targets
+    std::unordered_map<uint32, std::unordered_map<uint8, std::unordered_set<uint32>>> byFirst;
+    uint32 rows = 0, skipped = 0;
+    do
+    {
+        Field* f = result->Fetch();
+        uint32 const talent = f[0].Get<uint32>();
+        uint8 const effect = f[1].Get<uint8>();
+        uint32 const target = f[2].Get<uint32>();
+        SpellInfo const* info = sSpellMgr->GetSpellInfo(talent);
+        if (!info || effect >= MAX_SPELL_EFFECTS || !sSpellMgr->GetSpellInfo(target))
+        {
+            ++skipped;
+            continue;
+        }
+        AuraType const aura = info->Effects[effect].ApplyAuraName;
+        if (aura != SPELL_AURA_ADD_FLAT_MODIFIER && aura != SPELL_AURA_ADD_PCT_MODIFIER)
+        {
+            ++skipped;
+            continue;
+        }
+        byFirst[talent][uint8(info->Effects[effect].MiscValue)].insert(target);
+        ++rows;
+    } while (result->NextRow());
+
+    // Every rank reaches what rank 1 does: the ranks differ in value, not in
+    // what they name, and the modifier carries the rank's own spell id.
+    for (auto const& [first, ops] : byFirst)
+    {
+        uint32 rank = first;
+        for (uint8 guard = 0; rank && guard < 16; ++guard)
+        {
+            _talentReach[rank] = ops;
+            rank = sSpellMgr->GetNextSpellInChain(rank);
+        }
+    }
+
+    LOG_INFO("module.classless", "mod-classless-wildcard: {} general talents reach other classes' abilities "
+             "({} talent ranks, {} rows, {} skipped)", byFirst.size(), _talentReach.size(), rows, skipped);
+}
+
+bool ClasslessMgr::TalentReaches(uint32 talentSpell, uint8 op, uint32 target) const
+{
+    auto const talent = _talentReach.find(talentSpell);
+    if (talent == _talentReach.end())
+        return false;
+    auto const ops = talent->second.find(op);
+    return ops != talent->second.end() && ops->second.count(target);
 }
 
 bool ClasslessMgr::OwnsOverpower(Player const* player) const

@@ -881,7 +881,7 @@ def _deepest_modifier(records, offset_of, spell_id, want_op):
 
 def lower_talent_reduced_costs(spell_data: bytes, talent_data: bytes,
                                class_spells, stock_costs: bytes = None,
-                               extra_modifier_spells=(), pct_families=()):
+                               extra_modifier_spells=(), pct_families=(), reach=()):
     """Lower each spell's cost to the least any Hero build could pay.
 
     The client checks power itself before it will send a cast, and it cannot
@@ -1006,6 +1006,14 @@ def lower_talent_reduced_costs(spell_data: bytes, talent_data: bytes,
             if mod_family != family:
                 continue
             if not any(a & b for a, b in zip(mod_mask, mask)):
+                continue
+            if is_flat:
+                total_flat += value
+            else:
+                total_mul *= (100.0 + value) / 100.0
+        # and the general talents of other classes that reach this spell
+        for targets, is_flat, value in reach:
+            if spell_id not in targets or value >= 0:
                 continue
             if is_flat:
                 total_flat += value
@@ -1159,7 +1167,7 @@ def single_class_combos(data: bytes, shell_class: int):
 
 def lower_talent_reduced_cooldowns(spell_data: bytes, talent_data: bytes,
                                    class_spells, stock: bytes = None,
-                                   extra_modifier_spells=()):
+                                   extra_modifier_spells=(), reach=()):
     """Lower each cooldown to the least any Hero build could reach.
 
     The mirror of lower_talent_reduced_costs, and for the same reason. The
@@ -1247,6 +1255,14 @@ def lower_talent_reduced_cooldowns(spell_data: bytes, talent_data: bytes,
             if mod_family != family:
                 continue
             if not any(a & b for a, b in zip(mod_mask, mask)):
+                continue
+            if is_flat:
+                total_flat += value
+            else:
+                total_mul *= (100.0 + value) / 100.0
+        # and the general talents of other classes that reach this spell
+        for targets, is_flat, value in reach:
+            if spell_id not in targets or value >= 0:
                 continue
             if is_flat:
                 total_flat += value

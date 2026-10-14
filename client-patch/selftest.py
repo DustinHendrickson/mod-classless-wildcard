@@ -542,6 +542,19 @@ def main(argv):
                   tc_before == 200 and tc_after is not None and tc_after <= 160,
                   "%s -> %s (x10)" % (tc_before, tc_after))
 
+            # A general talent of another class reaching a spell (the talent
+            # reach manifest): no rogue talent takes 50% off Sinister Strike's
+            # flat energy cost, so only the reach entry can.
+            reach_dbc, _n = dbc.lower_talent_reduced_costs(
+                spell_dbc, talent_raw, class_spells, reach=[(frozenset({1752}), False, -50)])
+            ss_plain, ss_reach = _cost(cost_dbc, 1752), _cost(reach_dbc, 1752)
+            check("a general talent of another class lowers the client's cost floor",
+                  ss_plain and ss_reach is not None and ss_reach <= ss_plain // 2 + 1,
+                  "Sinister Strike %s -> %s energy" % (ss_plain, ss_reach))
+            installer_reach = __import__("install").talent_reach()
+            check("the installer reads the talent reach manifest",
+                  bool(installer_reach.get(14)), "%d cost entries" % len(installer_reach.get(14, [])))
+
             raised = vanished = 0
             rcc, _fcc, rsc, _sc = dbc.parse_header(cost_dbc)
             for n3 in range(rcc):

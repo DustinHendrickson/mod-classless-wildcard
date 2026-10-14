@@ -326,6 +326,27 @@ def build_data_patch(files, name, report, theme=False):
 HERO_SPELL_FAMILY = 14
 
 
+TALENT_REACH_MANIFEST = "talent_reach_manifest.json"
+
+
+def talent_reach():
+    """General talents that reach other classes' abilities, by operation:
+    {op: [(targets, is_flat, value), ...]}, from the manifest the server's
+    cw_talent_reach.sql was generated with (gen_talent_reach.py). Only the
+    cost (14) and cooldown (11) entries are shipped: those are the two the
+    client checks itself before it sends a cast. Missing file: nothing."""
+    path = os.path.join(HERE, TALENT_REACH_MANIFEST)
+    if not os.path.exists(path):
+        return {}
+    with open(path, encoding="utf-8") as fh:
+        data = json.load(fh)
+    out = {}
+    for entry in data.get("entries", []):
+        out.setdefault(entry["op"], []).append(
+            (frozenset(entry["targets"]), bool(entry["flat"]), int(entry["value"])))
+    return out
+
+
 def apply_client_floors(files, payload, report, hero_talents=()):
     """Make the client copy permissive enough never to refuse a legal cast.
 
@@ -379,10 +400,12 @@ def apply_client_floors(files, payload, report, hero_talents=()):
     class_spells = dbc.class_spell_ids(payload.get(SKILLLINEABILITY)
                                        or files.find(SKILLLINEABILITY)[0], categories)
     talent_raw, talent_source = files.find(TALENT)
+    reach = talent_reach()
     before = payload[SPELL]
     payload[SPELL], lowered = dbc.lower_talent_reduced_costs(
         before, talent_raw, class_spells, stock_costs=before,
-        extra_modifier_spells=hero_talents, pct_families=(HERO_SPELL_FAMILY,))
+        extra_modifier_spells=hero_talents, pct_families=(HERO_SPELL_FAMILY,),
+        reach=reach.get(14, ()))
     report.append("  Spell.dbc        cost floor lowered on %d spells "
                   "(talent-reduced costs cast at the real price; from %s)"
                   % (lowered, os.path.basename(talent_source)))
@@ -394,7 +417,7 @@ def apply_client_floors(files, payload, report, hero_talents=()):
     before = payload[SPELL]
     payload[SPELL], shortened = dbc.lower_talent_reduced_cooldowns(
         before, talent_raw, class_spells, stock=before,
-        extra_modifier_spells=hero_talents)
+        extra_modifier_spells=hero_talents, reach=reach.get(11, ()))
     report.append("  Spell.dbc        cooldown floor lowered on %d spells "
                   "(talent-shortened cooldowns are castable when they are ready)"
                   % shortened)

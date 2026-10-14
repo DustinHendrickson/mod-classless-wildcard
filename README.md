@@ -132,6 +132,12 @@ with your build on the right. Lock or reroll anything you own from the same wind
 - **Talents that teach a spell** (Pyroblast, Mortal Strike, Mangle and so on) are in the
   Abilities list instead, with every rank, at the level their tier opens. Owning one counts for
   that talent's prerequisites.
+- **General talents reach every class.** A talent that improves all of its class's abilities of
+  one kind improves every ability of that kind, from any class: Fire Power every Fire spell,
+  Impale every melee strike, Spiritual Healing every direct Holy heal, Benediction every instant
+  mana spell. A talent that names particular spells, such as Improved Fireball, improves only
+  those. The list is `cw_talent_reach`, written by `data/sql/generators/gen_talent_reach.py`,
+  which also writes `talent_reach_report.txt` listing each widened talent and what it reaches.
 - **Prerequisites come with the ability.** Cat Form brings Claw and Prowl, Charge brings Battle
   Stance, Kill Command brings a pet, Soul Shard spells bring Drain Soul. These are free, do not
   use a roll, and leave when nothing you own needs them.

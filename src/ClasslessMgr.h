@@ -292,6 +292,11 @@ public:
     // variants. Filled when the library is built.
     std::vector<uint32> const& OverpowerSpells() const { return _overpowerSpells; }
     bool OwnsOverpower(Player const* player) const;
+    // General talents across classes (cw_talent_reach, see LoadTalentReach):
+    // whether a spell modifier from talent spell `talentSpell` (any rank) with
+    // operation `op` also reaches `target`, an ability of another class.
+    // Read on every spell-modifier check, so a hash lookup and nothing more.
+    bool TalentReaches(uint32 talentSpell, uint8 op, uint32 target) const;
     // A dodge opens the window (or holds it open another five seconds); casting
     // Overpower, dying or leaving combat closes it.
     void OpenOverpowerWindow(Player* player);
@@ -415,6 +420,9 @@ private:
     // OVERPOWER_AURA_STATE as its caster aura state. The client patch makes the
     // same two changes, so this is not conditional.
     void GateOverpowerOnDodge();
+    // Read cw_talent_reach into _talentReach: every rank of every general
+    // talent, by operation, to the abilities of other classes it reaches.
+    void LoadTalentReach();
     // The deadline has passed with no path chosen: put the Hero on the realm
     // default and deal a starting hand if that is Wildcard. Returns true if it
     // did anything. Runs at login AND on level-up -- see the comment there.
@@ -506,6 +514,9 @@ private:
     bool _libraryBuilt = false;
     bool _applyingGrant = false;
     std::vector<uint32> _overpowerSpells;   // see OverpowerSpells()
+    // talent rank spell -> spell-modifier operation -> abilities it also
+    // reaches. Built once at startup, read-only after, so no lock.
+    std::unordered_map<uint32, std::unordered_map<uint8, std::unordered_set<uint32>>> _talentReach;
     // true while handing out a form's starter kit, so a kit spell that is
     // itself a form cannot start the whole thing over
     bool _grantingKit = false;

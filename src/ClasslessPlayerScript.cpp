@@ -852,14 +852,19 @@ public:
                     }
                 }
 
-                // The client does not bring a spent rune back unless the
-                // character is a real Death Knight. It takes the spend from
-                // SMSG_SPELL_GO like anyone's, then waits: Plague
-                // Strike cast twice on the two Unholy runes and then sat
-                // dimmed, full runes on the server, until a relog reset the
-                // client's copy. The core sends nothing when a rune comes
-                // back ("runes act as cooldowns"), so tell the client each
-                // time one does, the way Empower Rune Weapon tells it.
+                // The client does not bring a spent rune back on its own
+                // unless the displayed bar is runic power, which a Hero's
+                // never is: it takes the spend from SMSG_SPELL_GO, and only
+                // its per-frame check, gated on that bar, marks the rune up
+                // again. The client patch lifts that gate (lib/exepatch.py);
+                // without it the runes came back only with the next rune
+                // spell's SPELL_GO, so spending all six locked every rune
+                // spell until a relog. The core sends nothing when a rune
+                // comes back ("runes act as cooldowns"), so tell the client
+                // each time one does, the way Empower Rune Weapon tells it:
+                // that sets the rune's ready time to now, so the patched
+                // check picks it up the next frame and the client follows
+                // the server rather than its own estimate.
                 if (cpSt.runes && player->getClass() != CLASS_DEATH_KNIGHT)
                 {
                     uint8 ready = 0;
@@ -1710,8 +1715,33 @@ public:
     }
 };
 
+// General talents reach every class's abilities (ClasslessMgr::LoadTalentReach).
+//
+// SpellInfo::IsAffectedBySpellMod asks this before it matches a modifier's
+// family and class bits, and an answer of false there means "affected". So a
+// talent modifier the generator judged general applies, as itself, to the
+// abilities of other classes of its kind; everything else falls through to the
+// core's own family-and-bit match, unchanged. Any script answering false wins,
+// so this only ever widens what a modifier reaches.
+class ClasslessTalentReachScript : public GlobalScript
+{
+public:
+    ClasslessTalentReachScript() : GlobalScript("ClasslessTalentReachScript", {
+        GLOBALHOOK_ON_IS_AFFECTED_BY_SPELL_MOD_CHECK
+    }) { }
+
+    bool OnIsAffectedBySpellModCheck(SpellInfo const* affectSpell, SpellInfo const* checkSpell,
+                                     SpellModifier const* mod) override
+    {
+        if (!affectSpell || !checkSpell || !mod)
+            return true;
+        return !sClasslessMgr->TalentReaches(affectSpell->Id, uint8(mod->op), checkSpell->Id);
+    }
+};
+
 void AddClasslessPlayerScripts()
 {
+    new ClasslessTalentReachScript();
     new ClasslessWorldScript();
     new ClasslessServerScript();
     new ClasslessFormScript();
