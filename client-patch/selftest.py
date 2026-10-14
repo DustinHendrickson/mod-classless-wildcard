@@ -897,6 +897,11 @@ def main(argv):
                 check("eye glow site patched once",
                       patched_exe.count(glow_new) == 1
                       and patched_exe.count(glow_old) == 0, summary)
+                rune_old = exepatch._bytes(exepatch.RUNE_SEARCH)
+                rune_new = exepatch._bytes(exepatch.RUNE_REPLACE)
+                check("rune readiness gate patched once",
+                      patched_exe.count(rune_new) == 1
+                      and patched_exe.count(rune_old) == 0, summary)
                 check("patched copy reads as patched",
                       exepatch.inspect(copy)[0] == exepatch.PATCHED)
                 changed = [i for i in range(len(original))

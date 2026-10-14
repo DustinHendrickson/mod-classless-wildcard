@@ -364,6 +364,26 @@ waiting, and `apply` no longer stops once the interface sites are done). A
 stock exe now changes 13 bytes; the existing backup is never overwritten, so
 `--uninstall` still restores the original.
 
+#### Runes come back on any power bar
+
+One more non-core site: `0x728aa4` (file offset `0x327EA4`), the `jne` after
+`cmp ebx, 6`, becomes two NOPs. The client keeps its own rune ready mask at
+`0xc24388` (all bits set at login), and only two places write it: the rune list
+in `SMSG_SPELL_GO` for a spell whose PowerType is runes (`0x8068f6`,
+`0x80e712`, both into `0x5ee240`), and the per-frame check in `0x728a20`, which
+sets a spent rune's bit once its ready time passes. That check runs only when
+the active player's DISPLAYED power is runic power (6). A Death Knight always
+passes; a Hero, on mana, rage or energy, never does, so a Hero's runes came
+back only when the next rune spell's SPELL_GO carried the server's mask. Spend
+all six and the client refuses every rune spell (its cost check counts bits in
+that mask), no SPELL_GO comes, and the runes stay spent until a relog.
+
+`SMSG_ADD_RUNE_POWER` (`0x5ee520`) does not set the mask; it sets the rune's
+ready time to now and leaves the rest to that per-frame check, which is why the
+server's per-rune notice did nothing on its own. `SMSG_RESYNC_RUNES`
+(`0x5ee440`) does not set it either. With the gate lifted, both work as they do
+for a Death Knight.
+
 #### Death Knight skins from any face
 
 The skin arrows are stock; the filled-in faces do their work. The Face arrows

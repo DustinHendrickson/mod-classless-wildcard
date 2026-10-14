@@ -23,6 +23,19 @@ every class can pick those faces (lib/dbc.py, open_death_knight_appearance),
 which would leave a Hero wearing one with ordinary eyes. The test byte becomes
 0x14, so either bit lights the eyes. No stock face row has 0x10, so this draws
 exactly the faces it drew before.
+
+And the rune readiness gate. The client keeps its own copy of which runes are
+up (a mask at 0xc24388, every bit set at login), and only two things ever write
+it: the rune list in SMSG_SPELL_GO for a rune-cost spell, and a per-frame check
+in 0x728a20 that sets a spent rune's bit once its ready time passes. That check
+runs only while the DISPLAYED power is runic power (`cmp ebx, 6` at 0x728aa1),
+which is always true for a Death Knight and never for a Hero, whose bar is
+mana, rage or energy. So a Hero's runes came back only when the next rune spell
+went out and its SPELL_GO carried the server's mask. Spend all six and the
+client refuses every rune spell, so no SPELL_GO ever comes, and the runes stay
+spent until a relog resets the mask. The jump becomes two NOPs, so the check
+runs for whatever bar is shown. It only ever sets bits for runes that were
+spent, so a character with no runes is untouched.
 """
 
 from __future__ import annotations
@@ -44,6 +57,12 @@ KNOWN_SHA256 = {
 GLOW_SEARCH = "85 C0 74 0A F6 40 1C 04 74 04 C6 45 FF 01"
 GLOW_REPLACE = "85 C0 74 0A F6 40 1C 14 74 04 C6 45 FF 01"
 
+# Rune readiness, Wow.exe 12340 at 0x728a94: the active-player GUID compare
+# (`cmp edi,eax / jne`, `cmp esi,edx / jne`), then `cmp ebx, 6 / jne` on the
+# displayed power type. Only that last jne goes.
+RUNE_SEARCH = "E8 F7 AC DA FF 3B F8 75 63 3B F2 75 5F 83 FB 06 75 5A"
+RUNE_REPLACE = "E8 F7 AC DA FF 3B F8 75 63 3B F2 75 5F 83 FB 06 90 90"
+
 # (search, replace). `core` patterns must each be present exactly once (or
 # already applied) or the exe is refused. Non-core patterns are applied when
 # present and skipped when absent -- they cover client revisions this one is not.
@@ -60,6 +79,8 @@ _PATCHES = [
     ("00 A1 26",                         "00 16 4E",                         False),
     # eye glow: `test byte ptr [eax+0x1c], 4` -> `..., 0x14` on the face row.
     (GLOW_SEARCH,                        GLOW_REPLACE,                       False),
+    # runes come back whatever bar is shown: `jne` past the check -> two NOPs.
+    (RUNE_SEARCH,                        RUNE_REPLACE,                       False),
 ]
 
 # Death Knight skins from any face (with lib/dbc.py's filled-in faces).
@@ -278,6 +299,12 @@ def apply(exe):
                  "done": "; Death Knight eye glow already follows the face",
                  }.get(glow_state, "; eye glow site not found, left alone")
 
+    rune = _bytes(RUNE_SEARCH)
+    rune_state = next(st for (st, sb, rb, core) in states if sb == rune)
+    glow_note += {"apply": "; spent runes come back on any power bar",
+                  "done": "; spent runes already come back on any power bar",
+                  }.get(rune_state, "; rune readiness site not found, left alone")
+
     skin_state = _face_arrow_state(data)
     glow_note += {"apply": "; Death Knight skins reachable from any face",
                   "done": "; Death Knight skins already reachable from any face",
@@ -296,7 +323,8 @@ def apply(exe):
         if st == "apply" and sb != glow:
             i = data.find(sb)
             data[i:i + len(sb)] = rb
-            applied += 1
+            if sb != rune:
+                applied += 1
     if glow_state == "apply":
         i = data.find(glow)
         data[i:i + len(glow)] = _bytes(GLOW_REPLACE)

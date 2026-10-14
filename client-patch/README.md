@@ -183,7 +183,7 @@ Install to this client? [Y/n] y
   CharacterCreate.lua  class selector hidden
   Hero class icon      emblem on the Hero cell, other class icons kept
   -> Data/enUS/patch-enUS-Z.MPQ  (DBCs here outrank the client's own locale patches)
-  Wow.exe          patched 6 site(s) to accept custom interface files; Death Knight eye glow follows the face; Death Knight skins reachable from any face
+  Wow.exe          patched 6 site(s) to accept custom interface files; Death Knight eye glow follows the face; spent runes come back on any power bar; Death Knight skins reachable from any face
   addon            16 files -> Interface/AddOns/ClasslessWildcard
   cache            cleared (the client rebuilds it on next login)
 
