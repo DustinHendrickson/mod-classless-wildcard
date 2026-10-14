@@ -9950,6 +9950,8 @@ local function HandleMessage(msg)
         if CW.UpdateTracker then CW.UpdateTracker() end
     elseif kind == "RT" then
         CW.ReadTracker(p)
+    elseif kind == "NG" then
+        CW.ReadNemesisGuids(p[2])
     elseif kind == "APA" or kind == "APT" or kind == "APW" or kind == "APE" then
         CW.ReadArchPlan(kind, p)
     elseif kind == "AMA" or kind == "AMT" or kind == "AME" then
@@ -10566,10 +10568,66 @@ end
 -- ---------------------------------------------------------------------------
 -- Challenge tracker
 --
+-- Your nemesis is one creature, and the client keeps the elite dragon per kind
+-- of creature, so the server sends the GUIDs of the nemeses near you
+-- ("NG|guid,guid") and the target and focus frames give the elite border to
+-- those alone. A rare nemesis wears the rare elite border.
+CW.nemesisGuids, CW.nemesisBorderOn = {}, {}
+function CW.NemesisBorder(frame, forceNormal, fromStock)
+    if type(frame) ~= "table" or not frame.borderTexture or not frame.unit then return end
+    local guid = UnitGUID(frame.unit)
+    local mark = guid and CW.nemesisGuids[guid] and not forceNormal and true or nil
+    local was = CW.nemesisBorderOn[frame]
+    CW.nemesisBorderOn[frame] = mark
+    -- the client's own pass has just drawn its border: nothing of ours to undo
+    if not mark and (fromStock or not was) then return end
+    local class = UnitClassification(frame.unit)
+    local texture
+    if mark then
+        texture = (class == "rare" or class == "rareelite") and "Interface\\TargetingFrame\\UI-TargetingFrame-Rare-Elite"
+            or "Interface\\TargetingFrame\\UI-TargetingFrame-Elite"
+    elseif class == "worldboss" or class == "elite" then
+        texture = "Interface\\TargetingFrame\\UI-TargetingFrame-Elite"
+    elseif class == "rareelite" then
+        texture = "Interface\\TargetingFrame\\UI-TargetingFrame-Rare-Elite"
+    elseif class == "rare" then
+        texture = "Interface\\TargetingFrame\\UI-TargetingFrame-Rare"
+    end
+    local dragon = texture and not forceNormal
+    frame.borderTexture:SetTexture(dragon and texture or "Interface\\TargetingFrame\\UI-TargetingFrame")
+    -- the threat glow follows the border's shape, as TargetFrame_CheckClassification has it
+    local glow = frame.threatIndicator
+    if glow then
+        if dragon then
+            glow:SetTexCoord(0, 0.9453125, 0.181640625, 0.400390625)
+            glow:SetWidth(242)
+            glow:SetHeight(112)
+            glow:SetPoint("TOPLEFT", frame, "TOPLEFT", -22, 9)
+        else
+            glow:SetTexCoord(0, 0.9453125, 0, 0.181640625)
+            glow:SetWidth(242)
+            glow:SetHeight(93)
+            glow:SetPoint("TOPLEFT", frame, "TOPLEFT", -24, 0)
+        end
+    end
+end
+function CW.ReadNemesisGuids(list)
+    local set = {}
+    for guid in string.gmatch(list or "", "[^,]+") do set[guid] = true end
+    CW.nemesisGuids = set
+    CW.NemesisBorder(TargetFrame)
+    CW.NemesisBorder(FocusFrame)
+end
+if hooksecurefunc and type(TargetFrame_CheckClassification) == "function" then
+    hooksecurefunc("TargetFrame_CheckClassification", function(self, forceNormal)
+        CW.NemesisBorder(self, forceNormal, true)
+    end)
+end
+
 -- A run's live numbers on screen while playing, not only in the panel: the
 -- challenge, its lives, and whatever its rule is counting. Hourglass's level
 -- clock drains as a bar, Pursued says whether the hunter is out, Nemesis
--- counts the marked kinds (named on hover), and Berserker says which health
+-- counts your nemeses (named on hover), and Berserker says which health
 -- band you are in. The server sends "RT" with every state, on run events and
 -- every 30 seconds while a clock runs; between those the bar counts down here.
 -- Drag to move, click for the challenge page, /cw tracker to hide or show.

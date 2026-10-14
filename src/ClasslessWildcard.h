@@ -369,6 +369,7 @@ namespace ClasslessWildcard
         uint8  extraLife = 0;
         std::unordered_map<uint32, NemesisMark> nemeses;  // by spawn id: the one creature that killed you
         uint32 nemesisOldXp = 0;         // experience held by marks saved per kind, before marks were per creature
+        std::string nemesisGuidsSent;    // runtime: the nemesis GUIDs the addon was last sent ("NG")
         std::set<uint32> nemesisHeads;   // kinds slain while marked, by entry: the run's heads
         std::unordered_map<uint8, std::pair<uint8, bool>> runBest;  // challenge -> (level reached, finished)
         uint32 hunterTimerMs = 0;        // runtime: Pursued's clock

@@ -55,6 +55,7 @@ public:
             { "rebirth", HandleRebirth,       SEC_PLAYER, Console::No },
             { "challenges", HandleChallenges, SEC_PLAYER, Console::No },
             { "run",     HandleRun,           SEC_PLAYER, Console::No },
+            { "nemesis", HandleNemesis,       SEC_PLAYER, Console::No },
         };
         static ChatCommandTable wildcardTable =
         {
@@ -395,6 +396,17 @@ public:
     }
 
     // ".classless run <id>": start a challenge run, before ModeChoiceDeadline.
+    // Each nemesis as the server sees it: where it is, its level and size,
+    // and whether it carries your minimap mark.
+    static bool HandleNemesis(ChatHandler* handler)
+    {
+        if (!CheckEnabled(handler))
+            return true;
+        for (std::string const& line : sClasslessMgr->NemesisReport(handler->GetSession()->GetPlayer()))
+            handler->SendSysMessage(line);
+        return true;
+    }
+
     static bool HandleRun(ChatHandler* handler, uint32 challengeId)
     {
         if (!CheckEnabled(handler))

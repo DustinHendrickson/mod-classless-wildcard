@@ -873,6 +873,7 @@ namespace
             CharState& st = sClasslessMgr->GetState(player);
             st.lastComboPush = 255;
             st.lastRuneSig = 0xFFFFFFFF;
+            st.nemesisGuidsSent = "?";   // matches no list, so the next push goes out
             st.lastRunicBucket = 255;
             st.runeAcc = 1000;   // so runic power is due immediately, not in a second
             st.lastRuneOwn = -1; // and work out from scratch whether to draw it at all

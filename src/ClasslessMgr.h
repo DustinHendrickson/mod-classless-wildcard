@@ -227,6 +227,9 @@ public:
     // Every five seconds on a Nemesis run: each nemesis in sight is grown and
     // marked on this Hero's minimap.
     void NemesisTick(Player* player);
+    // What the server holds and has done for each of this Hero's nemeses, a
+    // line each, for .classless nemesis.
+    std::vector<std::string> NemesisReport(Player* player);
     void ForgetCreature(ObjectGuid guid);                    // a scaled creature died
     void HunterTick(Player* player, uint32 diffMs);
     void SpawnHunter(Player* player);
@@ -470,6 +473,9 @@ private:
     void ApplyNemesisTo(Creature* creature, ClasslessWildcard::NemesisMark const& mark);
     // Take this Hero's minimap mark off a nemesis, by spawn id.
     void ClearNemesisTrack(Player* player, uint32 spawnId);
+    // Tell the addon which creatures in sight are this Hero's nemeses, so it
+    // can give them the elite border. Only sent when the list changes.
+    void PushNemesisGuids(Player* player);
     // Nemesis levels already applied to a live creature, by guid: a creature
     // engaged twice is not grown twice, and one that died is forgotten.
     std::unordered_map<ObjectGuid, std::pair<uint8, uint8>> _nemesisApplied;   // levels, deaths

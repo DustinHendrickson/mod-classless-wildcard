@@ -245,6 +245,50 @@ function IsUsableAction(action)
     if u == nil then return 1, nil end
     return u[1], u[2]
 end
+-- Units the target and focus frames show: UNITS[unit] = { guid, class }.
+UNITS = {}
+function UnitGUID(u) return UNITS[u] and UNITS[u].guid end
+function UnitClassification(u) return UNITS[u] and UNITS[u].class or "normal" end
+-- The target frame's border: Blizzard's TargetFrame_CheckClassification, line
+-- for line from FrameXML TargetFrame.lua (3.3.5a), so the addon's hook on it
+-- installs and runs.
+for _, n in ipairs({ "TargetFrame", "FocusFrame" }) do
+    local f = Stub("Frame", n)
+    f.unit = n == "TargetFrame" and "target" or "focus"
+    f.showClassification = true
+    f.borderTexture = Stub("Texture")
+    f.threatIndicator = Stub("Texture")
+end
+function TargetFrame_CheckClassification (self, forceNormalTexture)
+	local texture;
+	local classification = UnitClassification(self.unit);
+	if ( classification == "worldboss" or classification == "elite" ) then
+		texture = "Interface\\TargetingFrame\\UI-TargetingFrame-Elite";
+	elseif ( classification == "rareelite" ) then
+		texture = "Interface\\TargetingFrame\\UI-TargetingFrame-Rare-Elite";
+	elseif ( classification == "rare" ) then
+		texture = "Interface\\TargetingFrame\\UI-TargetingFrame-Rare";
+	end
+	if ( texture and not forceNormalTexture) then
+		self.borderTexture:SetTexture(texture);
+		self.haveElite = true;
+		if ( self.threatIndicator ) then
+			self.threatIndicator:SetTexCoord(0, 0.9453125, 0.181640625, 0.400390625);
+			self.threatIndicator:SetWidth(242);
+			self.threatIndicator:SetHeight(112);
+			self.threatIndicator:SetPoint("TOPLEFT", self, "TOPLEFT", -22, 9);
+		end
+	else
+		self.borderTexture:SetTexture("Interface\\TargetingFrame\\UI-TargetingFrame");
+		self.haveElite = nil;
+		if ( self.threatIndicator ) then
+			self.threatIndicator:SetTexCoord(0, 0.9453125, 0, 0.181640625);
+			self.threatIndicator:SetWidth(242);
+			self.threatIndicator:SetHeight(93);
+			self.threatIndicator:SetPoint("TOPLEFT", self, "TOPLEFT", -24, 0);
+		end
+	end
+end
 function ActionButton_UpdateUsable(self)
     local name = self:GetName()
     local icon = _G[name.."Icon"]
@@ -3056,6 +3100,50 @@ def test_stats_refresh(h):
     CW.statFly["__shown"] = False
 
 
+def test_nemesis_border(h):
+    """A nemesis is one creature: the elite border goes on it alone, by GUID."""
+    print("--- nemesis: the elite border for your nemesis, and for nothing else of its kind")
+    border = lambda f: str(h.rt.eval("(%s.borderTexture.__tex or {})[1] or ''" % f)).rsplit("\\", 1)[-1]
+    glow_h = lambda: h.rt.eval("TargetFrame.threatIndicator.__h")
+    nemesis, sibling = "0xF130000B8D0012AB", "0xF130000B8D0012AC"
+    h.rt.execute("UNITS.target = { guid = '%s', class = 'normal' }" % nemesis)
+    h.rt.execute("TargetFrame_CheckClassification(TargetFrame)")
+    h.check(border("TargetFrame") == "UI-TargetingFrame", "before any mark: the plain border (%s)" % border("TargetFrame"))
+
+    h.recv("NG|" + nemesis)
+    h.check(border("TargetFrame") == "UI-TargetingFrame-Elite",
+            "marked while targeted: the elite border at once (%s)" % border("TargetFrame"))
+    h.rt.execute("TargetFrame_CheckClassification(TargetFrame)")
+    h.check(border("TargetFrame") == "UI-TargetingFrame-Elite",
+            "the client's own pass keeps it elite (%s)" % border("TargetFrame"))
+    h.check(glow_h() == 112, "and the threat glow takes the elite shape (%s)" % glow_h())
+
+    h.rt.execute("UNITS.target.guid = '%s'; TargetFrame_CheckClassification(TargetFrame)" % sibling)
+    h.check(border("TargetFrame") == "UI-TargetingFrame",
+            "another creature of the same kind keeps the plain border (%s)" % border("TargetFrame"))
+    h.check(glow_h() == 93, "and the plain threat glow (%s)" % glow_h())
+
+    h.rt.execute("UNITS.target = { guid = '%s', class = 'rare' }; TargetFrame_CheckClassification(TargetFrame)" % nemesis)
+    h.check(border("TargetFrame") == "UI-TargetingFrame-Rare-Elite",
+            "a rare nemesis wears the rare elite border (%s)" % border("TargetFrame"))
+    h.recv("NG|")
+    h.check(border("TargetFrame") == "UI-TargetingFrame-Rare",
+            "the mark lifted: back to the client's own rare border (%s)" % border("TargetFrame"))
+    h.check(glow_h() == 112, "with the glow the client gives a rare border (%s)" % glow_h())
+
+    h.rt.execute("UNITS.target = { guid = '%s', class = 'elite' }; TargetFrame_CheckClassification(TargetFrame)" % sibling)
+    h.recv("NG|" + nemesis)
+    h.check(border("TargetFrame") == "UI-TargetingFrame-Elite", "a real elite is left as it is (%s)" % border("TargetFrame"))
+
+    h.rt.execute("UNITS.focus = { guid = '%s', class = 'normal' }; TargetFrame_CheckClassification(FocusFrame, true)" % nemesis)
+    h.check(border("FocusFrame") == "UI-TargetingFrame",
+            "a small focus frame, which the client forces plain, stays plain (%s)" % border("FocusFrame"))
+    h.rt.execute("TargetFrame_CheckClassification(FocusFrame)")
+    h.check(border("FocusFrame") == "UI-TargetingFrame-Elite", "a full focus frame is elite (%s)" % border("FocusFrame"))
+    h.recv("NG|")
+    h.rt.execute("UNITS.target = nil; UNITS.focus = nil")
+
+
 def test_stats(h):
     """The stat panel: solid to the mouse, and the button carries the count."""
     print("--- stats: a panel that stops the mouse, and a button that counts")
@@ -4648,6 +4736,7 @@ def main():
     test_paperdoll(h)
     test_stats(h)
     test_stats_refresh(h)
+    test_nemesis_border(h)
     test_confirms(h)
     test_escape(h)
     test_help_text(h)
