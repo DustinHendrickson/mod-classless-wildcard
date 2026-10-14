@@ -296,12 +296,25 @@ public:
     static constexpr uint32 OVERPOWER_AURA_STATE = 21;
     // How long a dodge leaves Overpower open: the core's own reactive window.
     static constexpr uint32 OVERPOWER_WINDOW_MS = 5000;
-    // A nemesis on the minimap. 49891 is a stock spell whose only effect is
-    // SPELL_AURA_MOD_STALKED, the tracking half of Hunter's Mark, with no
-    // visual; nothing in the core, its scripts or the world database casts
-    // it. The core sends UNIT_DYNFLAG_TRACK_UNIT only to the caster of such an
-    // aura, so the Hero who carries the mark is the one who sees the dot.
-    static constexpr uint32 NEMESIS_TRACK_SPELL = 49891;
+    // A nemesis's mark. 21391 ("Syndicate Tracker (MURP) DND") is a stock
+    // spell whose only effect is SPELL_AURA_MOD_STALKED, the tracking half of
+    // Hunter's Mark, wearing Hunter's Mark's own visual: the red arrow over
+    // the head (SpellVisual 3239, state kit 2950). Nothing in the core, its
+    // scripts or the world database casts it. The core sends
+    // UNIT_DYNFLAG_TRACK_UNIT only to the caster of such an aura, so the Hero
+    // who carries the mark is the one who sees the minimap dot; the arrow is
+    // the aura's own and shows to anyone near. The client patch names it
+    // Nemesis and gives it a skull (dbc.SPELL_RENAMES, SPELL_ICON_OVERRIDES).
+    static constexpr uint32 NEMESIS_TRACK_SPELL = 21391;
+    // How long one refresh of the mark lasts: a few rule ticks, so a Hero who
+    // walks away or logs out leaves no mark behind. The spell's own duration
+    // is permanent.
+    static constexpr int32 NEMESIS_MARK_MS = 30000;   // 30 seconds
+    // A nemesis falling: Corpse Explosion's burst on the body (SpellVisualKit
+    // 10828, the impact of 50444) and the level-up glow on the Hero (6375,
+    // the cast kit of Level Up 24312).
+    static constexpr uint32 NEMESIS_SLAIN_KIT = 10828;
+    static constexpr uint32 NEMESIS_TRIUMPH_KIT = 6375;
     // Every Overpower in the library: the stock ranks and the elemental
     // variants. Filled when the library is built.
     std::vector<uint32> const& OverpowerSpells() const { return _overpowerSpells; }
@@ -434,8 +447,7 @@ private:
     // OVERPOWER_AURA_STATE as its caster aura state. The client patch makes the
     // same two changes, so this is not conditional.
     void GateOverpowerOnDodge();
-    // Check NEMESIS_TRACK_SPELL is still a lone stalked aura and make it
-    // passive, so the aura never reaches a client as a debuff icon.
+    // Check NEMESIS_TRACK_SPELL is still a lone stalked aura.
     void PrepareNemesisTrack();
     bool _nemesisTrackReady = false;
     // Read cw_talent_reach into _talentReach: every rank of every general

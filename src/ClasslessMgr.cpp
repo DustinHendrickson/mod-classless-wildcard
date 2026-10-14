@@ -3229,6 +3229,10 @@ namespace
     // Levels a nemesis gains for one death: one for an empty bar, then one
     // more for every quarter of the bar it took, so a full bar is five.
     constexpr uint8  NEMESIS_LEVELS_MAX_PER_DEATH = 5;
+    // Killing one pays more than it took: a tenth of the Hero's current level
+    // for every level it gained on them, up to one full level.
+    constexpr uint32 NEMESIS_BONUS_PCT_PER_LEVEL = 10;
+    constexpr uint32 NEMESIS_BONUS_CAP_PCT = 100;
     constexpr uint8  NEMESIS_LEVEL_CAP = 83;
     // How much bigger a nemesis is than its kind, the one cue the client
     // cannot ignore: half again at the first death, more with every death
@@ -3243,7 +3247,7 @@ namespace
         // five where the world is turned up, three where the fight changes shape, one only where
         // the rule IS death. The list is in the order the picker shows it.
         { 1,  "nemesis",         "Nemesis",         UNLIMITED_LIVES, "Unlimited lives. The creature that kills you takes the experience in your bar, gains up to five levels for it and grows. Slay five nemeses of different kinds and reach level 80 to finish.", 500, 186, "mark_of_the_nemesis",
-          "You have unlimited lives on this run. The creature that kills you becomes your nemesis and takes the experience in your current level's bar, though never the level itself. That one creature gains levels for the experience it took, five for a full bar, four for three quarters, three for half, two for a quarter and one for an empty bar, up to level 83. It also gains elite health and damage and grows half again as large, and it keeps all of it for the rest of the run, even after it respawns. It shows as elite on your target frame and on your minimap. Each time it kills you again it gains levels the same way, takes your bar again and grows larger, up to twice its size. Kill it, alone or with your pet or group, and the mark is lifted, all the experience it took comes back to you, and you take its head. If you are dead when it falls, the mark stays. To finish, reach level 80 holding five heads, each from a different kind of creature. Reaching 80 first does not end the run, it ends the moment the fifth head is yours. Deaths in dungeons and raids make no nemesis, and neither do deaths to elites, bosses, pets, totems or summoned creatures.",
+          "You have unlimited lives on this run. The creature that kills you becomes your nemesis and takes the experience in your current level's bar, though never the level itself. That one creature gains levels for the experience it took, five for a full bar, four for three quarters, three for half, two for a quarter and one for an empty bar, up to level 83. It also gains elite health and damage and grows half again as large, and it keeps all of it for the rest of the run, even after it respawns. It wears a red arrow over its head, shows as elite on your target frame and is on your minimap. Each time it kills you again it gains levels the same way, takes your bar again and grows larger, up to twice its size. Kill it, alone or with your pet or group, and the mark is lifted. All the experience it took comes back to you, with bonus experience on top, a tenth of your current level for every level it gained, up to a full level, and you take its head. If you are dead when it falls, the mark stays. To finish, reach level 80 holding five heads, each from a different kind of creature. Reaching 80 first does not end the run, it ends the moment the fifth head is yours. Deaths in dungeons and raids make no nemesis, and neither do deaths to elites, bosses, pets, totems or summoned creatures.",
           "Remember what killed you and where. Your nemesis respawns where it always does, so stay clear of it until you are ready, then go back and kill it to take your experience back and its head. A kind you already have a head from earns no second one, so five heads means five nemeses of different kinds. Every death to the same nemesis makes it stronger and costs you another bar. Other creatures of its kind are not marked." },
         { 2,  "elite_world",     "Elite World",     5, "Every enemy that fights you has triple health and deals double damage.", 750, 187, "giantsbane",
           "The moment an enemy engages you or your pet it gains triple health, and everything it deals to you or your pet, melee, spells and damage over time, is doubled. This applies to every creature in the world, dungeons included, but not to pets, totems or summoned creatures with an owner. Enemies keep their usual rank, so they give their usual experience. Pull one at a time, and use every stun, slow and snare you own.",
@@ -3711,6 +3715,7 @@ void ClasslessMgr::NemesisSlain(Player* player, Creature* creature)
     // hooks (Rebirth's rate is applied by the kill and quest code that calls
     // it), and with no victim there is no rested bonus either.
     uint32 const back = itr->second.stolen;
+    uint32 const gainedLevels = itr->second.levels;
     st->nemeses.erase(itr);
     SaveNemeses(player->GetGUID(), *st);
     ClearNemesisTrack(player, creature->GetSpawnId());
@@ -3718,16 +3723,31 @@ void ClasslessMgr::NemesisSlain(Player* player, Creature* creature)
     bool const newHead = st->nemesisHeads.insert(creature->GetEntry()).second;
     if (newHead)
         SaveNemesisHeads(player->GetGUID(), *st);
-    if (back)
+
+    // and the kill pays on top: a share of the Hero's current level for every
+    // level it gained on them (none at the cap, where experience is not paid)
+    uint32 bonus = 0;
+    if (player->GetLevel() < sWorld->getIntConfig(CONFIG_MAX_PLAYER_LEVEL))
     {
-        player->GiveXP(back, nullptr);
-        Msg(player, Acore::StringFormat("|cff00ff00Your nemesis is dead.|r {} falls, and the {} experience it took "
-            "comes back to you.", creature->GetName(), back));
+        uint32 const pct = std::min(gainedLevels * NEMESIS_BONUS_PCT_PER_LEVEL, NEMESIS_BONUS_CAP_PCT);
+        bonus = uint32(uint64(player->GetUInt32Value(PLAYER_NEXT_LEVEL_XP)) * pct / 100);
     }
-    else
-        Msg(player, Acore::StringFormat("|cff00ff00Your nemesis is dead.|r {} falls. It had taken no experience, so none comes back.",
-            creature->GetName()));
+    if (back + bonus)
+        player->GiveXP(back + bonus, nullptr);
+
+    // the moment itself: the body bursts, the Hero glows, the addon's banner
+    creature->SendPlaySpellVisual(NEMESIS_SLAIN_KIT);
+    player->SendPlaySpellVisual(NEMESIS_TRIUMPH_KIT);
     uint32 const heads = uint32(st->nemesisHeads.size());
+    PushAddon(player, Acore::StringFormat("NK|{}|{}|{}|{}|{}|{}", creature->GetName(), back, bonus, heads,
+        uint32(NEMESIS_HEADS_TO_FINISH), newHead ? 1 : 0));
+
+    if (back)
+        Msg(player, Acore::StringFormat("|cff00ff00Your nemesis is dead.|r {} falls. The {} experience it took comes "
+            "back to you, and {} more for the kill.", creature->GetName(), back, bonus));
+    else
+        Msg(player, Acore::StringFormat("|cff00ff00Your nemesis is dead.|r {} falls. It had taken no experience, and "
+            "the kill is worth {}.", creature->GetName(), bonus));
     if (newHead)
         Msg(player, Acore::StringFormat("You take its head: |cffffd100{} of {}|r.", heads,
             uint32(NEMESIS_HEADS_TO_FINISH)));
@@ -3815,13 +3835,17 @@ void ClasslessMgr::NemesisTick(Player* player)
                 ApplyNemesisTo(creature, mark);
             if (!_nemesisTrackReady)
                 continue;
-            // the aura lasts 30 seconds, so a Hero who walks away leaves no mark behind
+            // NEMESIS_MARK_MS per refresh, so a Hero who walks away leaves no mark behind
             if (Aura* aura = creature->GetAura(NEMESIS_TRACK_SPELL, player->GetGUID()))
                 aura->RefreshDuration();
-            else if (player->AddAura(NEMESIS_TRACK_SPELL, creature))
+            else if (Aura* added = player->AddAura(NEMESIS_TRACK_SPELL, creature))
+            {
+                added->SetMaxDuration(NEMESIS_MARK_MS);
+                added->RefreshDuration();
                 // another Hero's mark may have set the flag already, and an
                 // unchanged field is never sent: send it anyway
                 creature->ForceValuesUpdateAtIndex(UNIT_DYNAMIC_FLAGS);
+            }
         }
     }
     PushNemesisGuids(player);
@@ -6086,11 +6110,9 @@ void ClasslessMgr::GateOverpowerOnDodge()
              _overpowerSpells.size());
 }
 
-// The nemesis minimap mark (NEMESIS_TRACK_SPELL). Passive, the aura is never
-// sent to a client (Aura::CanBeSentToClient), so nobody sees a debuff named
-// "d" on the creature; the stalked handler still sets the tracking flag. A
-// realm whose data has changed that spell gets no minimap mark, rather than
-// whatever the spell has become.
+// The nemesis mark (NEMESIS_TRACK_SPELL): the minimap dot for its Hero and
+// the arrow over its head. A realm whose data has changed that spell gets no
+// mark at all, rather than whatever the spell has become.
 void ClasslessMgr::PrepareNemesisTrack()
 {
     _nemesisTrackReady = false;
@@ -6106,7 +6128,6 @@ void ClasslessMgr::PrepareNemesisTrack()
                   "will not show on the minimap", NEMESIS_TRACK_SPELL);
         return;
     }
-    const_cast<SpellInfo*>(info)->Attributes |= SPELL_ATTR0_PASSIVE;
     _nemesisTrackReady = true;
 }
 

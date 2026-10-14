@@ -307,6 +307,7 @@ function ActionButton_UpdateUsable(self)
 end
 SOUNDS = {}
 function PlaySound(name) table.insert(SOUNDS, name) end
+function PlaySoundFile(path) table.insert(SOUNDS, path) end
 function StaticPopup_Show(which, a1) LAST_POPUP = which; LAST_POPUP_ARG = a1; LAST_POPUP_FRAME = {}; return LAST_POPUP_FRAME end
 function GetItemInfo() return nil end
 function GetItemCount() return 0 end
@@ -3162,6 +3163,41 @@ def test_nemesis_border(h):
     h.rt.execute("UNITS.target = nil; UNITS.focus = nil")
 
 
+def test_nemesis_slain(h):
+    """A nemesis slain: a banner that slams in, two sounds, and leaves on its own."""
+    print("--- nemesis slain: the banner, its lines, its sounds, and its exit")
+    h.rt.execute("SOUNDS = {}")
+    h.recv("NK|Diseased Timber Wolf|840|1200|2|5|1")
+    # rawget: touching an unknown CapitalCase global makes the harness invent a
+    # stub frame, which passed this check with no banner at all
+    b = h.rt.eval("rawget(_G, 'ClasslessWildcardNemesisBanner')")
+    h.check(b is not None and b["__shown"] is True, "the banner shows on NK")
+    if b is None:
+        return
+    h.check(b["__mouse"] is False, "and takes no mouse, so it never blocks a click")
+    h.check(str(b.title["__text"]) == "Nemesis Slain" and str(b.name["__text"]) == "Diseased Timber Wolf",
+            "it names the kill and the creature: %r / %r" % (b.title["__text"], b.name["__text"]))
+    h.check(str(b.xp["__text"]) == "+840 experience returned    +1200 bonus",
+            "it shows what came back and the bonus: %r" % b.xp["__text"])
+    h.check(str(b.head["__text"]) == "Head 2 of 5 taken", "and the head: %r" % b.head["__text"])
+    snd = lambda: [str(x) for x in h.rt.globals().SOUNDS.values()]
+    h.check(any("G_GongTroll01" in s for s in snd()), "the gong sounds at once: %s" % snd())
+    tick = b["__scripts"]["OnUpdate"]
+    tick(b, 0.1)
+    h.check(not any("Bloodlust" in s for s in snd()), "the war cry waits for the slam")
+    h.check(b["__scale"] is None or float(b["__scale"]) > 1.0, "mid-slam it is still oversized (%s)" % b["__scale"])
+    tick(b, 0.3)
+    h.check(any("Bloodlust" in s for s in snd()), "then the war cry: %s" % snd())
+    h.check(float(b["__scale"]) == 1.0, "and it has landed at full size (%s)" % b["__scale"])
+    for _ in range(60):
+        tick(b, 0.1)
+    h.check(b["__shown"] is False, "it leaves on its own after a few seconds")
+    h.recv("NK|Murloc Forager|0|300|2|5|0")
+    h.check(str(b.xp["__text"]) == "+300 experience for the kill" and str(b.head["__text"]) == "You already hold a head of this kind",
+            "a nemesis that took nothing, of a kind already taken: %r / %r" % (b.xp["__text"], b.head["__text"]))
+    b["__shown"] = False
+
+
 def test_stats(h):
     """The stat panel: solid to the mouse, and the button carries the count."""
     print("--- stats: a panel that stops the mouse, and a button that counts")
@@ -4636,6 +4672,19 @@ def test_challenge_tracker(h):
             "three lives, two left, drawn as hearts")
     h.check(f["bar"]["__shown"] is True and "25:00 left" in str(f["bar"]["text"]["__text"]),
             "the clock reads 25:00: %r" % str(f["bar"]["text"]["__text"]))
+    # Its click opens the challenge page. The page is the panel's child, so
+    # with the panel closed (the usual case while playing) it has to open the
+    # panel too, or the click shows nothing.
+    panel = g.ClasslessWildcardFrame
+    panel["__shown"] = False
+    CW.runFly["__shown"] = False
+    f["__scripts"]["OnClick"](f)
+    h.check(panel["__shown"] is True and CW.runFly["__shown"] is True,
+            "clicking the tracker with the panel closed opens the panel and the challenge page (%s, %s)"
+            % (panel["__shown"], CW.runFly["__shown"]))
+    h.check(CW.runFly["selected"] == 15, "on the run's own challenge (%s)" % CW.runFly["selected"])
+    CW.runFly["__shown"] = False
+    panel["__shown"] = False
     h.check(abs(float(f["bar"]["__value"]) - 1500 / 1800.0) < 1e-6, "the bar is the share of the level's time left")
     h.rt.execute("NOW = NOW + 61")
     f["__scripts"]["OnUpdate"](f, 1.0)
@@ -4755,6 +4804,7 @@ def main():
     test_stats(h)
     test_stats_refresh(h)
     test_nemesis_border(h)
+    test_nemesis_slain(h)
     test_confirms(h)
     test_escape(h)
     test_help_text(h)

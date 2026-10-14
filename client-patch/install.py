@@ -281,8 +281,12 @@ def build_data_patch(files, name, report, theme=False):
     # icon shows where a hunter would see their bow.
     icon_raw, _icon_source = files.find(elemental.SPELLICON)
     payload[SPELL], reiconed = dbc.set_spell_icons(payload[SPELL], icon_raw)
-    report.append("  Spell.dbc        icon replaced on %d stock spell(s) (Auto Shot)"
+    report.append("  Spell.dbc        icon replaced on %d stock spell(s) (Auto Shot, the nemesis mark)"
                   % reiconed)
+    # The nemesis mark is a stock spell every nearby player sees on the
+    # creature's debuffs; it reads "Nemesis" rather than its internal name.
+    payload[SPELL], renamed = dbc.rename_spells(payload[SPELL])
+    report.append("  Spell.dbc        %d stock spell(s) renamed (the nemesis mark)" % renamed)
 
     # The cost floor used to run here. It runs in apply_client_floors() now, after
     # the generated rows have been appended -- see that function for why.

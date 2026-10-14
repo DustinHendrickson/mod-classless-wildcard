@@ -625,10 +625,35 @@ def main(argv):
             stray = sum(1 for index in range(sc)
                         if spell_dbc[20 + index * sr:20 + (index + 1) * sr]
                         != icon_dbc[20 + index * sr:20 + (index + 1) * sr]) - reiconed
-            check("only the overridden spells change icon", reiconed == 1 and stray == 0,
+            check("only the overridden spells change icon",
+                  reiconed == len(dbc.SPELL_ICON_OVERRIDES) and stray == 0,
                   "%d changed, %d stray" % (reiconed, stray))
             check("Spell.dbc icon patch idempotent",
                   not dbc.set_spell_icons(icon_dbc, icon_raw)[1])
+            check("the nemesis mark draws a skull",
+                  spell_icon(icon_dbc, 21391) == dbc.SPELL_ICON_OVERRIDES[21391],
+                  "%s -> %s" % (spell_icon(spell_dbc, 21391), spell_icon(icon_dbc, 21391)))
+
+            # The nemesis mark reads "Nemesis" in every locale column, and its
+            # debuff tooltip says what it is; nothing else's text moves.
+            named_dbc, renamed = dbc.rename_spells(spell_dbc)
+            nc, _nf, nrs, _nss = dbc.parse_header(named_dbc)
+            nstrings = named_dbc[20 + nc * nrs:]
+            mark_row = next(named_dbc[20 + i * nrs:20 + (i + 1) * nrs] for i in range(nc)
+                            if struct.unpack_from("<I", named_dbc, 20 + i * nrs)[0] == 21391)
+            texts = {dbc.read_string(nstrings, struct.unpack_from("<I", mark_row, (dbc.SPELL_NAME_COLUMN + c) * 4)[0])
+                     for c in range(dbc.SPELL_LOCALES)}
+            tips = {dbc.read_string(nstrings, struct.unpack_from("<I", mark_row, (dbc.SPELL_TOOLTIP_COLUMN + c) * 4)[0])
+                    for c in range(dbc.SPELL_LOCALES)}
+            check("the nemesis mark is named Nemesis in every locale", renamed == 1 and texts == {"Nemesis"},
+                  "%d renamed, names %s" % (renamed, sorted(texts)))
+            check("and its debuff tooltip says what it is",
+                  tips == {dbc.SPELL_RENAMES[21391][1]}, "tooltips %s" % sorted(tips))
+            moved = sum(1 for i in range(nc)
+                        if struct.unpack_from("<I", named_dbc, 20 + i * nrs)[0] != 21391
+                        and named_dbc[20 + i * nrs:20 + (i + 1) * nrs] != spell_dbc[20 + i * sr:20 + (i + 1) * sr])
+            check("no other spell's row changes", moved == 0, "%d moved" % moved)
+            check("Spell.dbc rename idempotent", not dbc.rename_spells(named_dbc)[1])
 
             # --- elemental variants ------------------------------------------
             # The generated spell rows must land in THIS client's Spell.dbc,

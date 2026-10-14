@@ -127,6 +127,17 @@ if heads:
     says(n, "detail", "%s heads" % word(heads), "NEMESIS_HEADS_TO_FINISH")
     says(n, "rule", "%s nemeses" % word(heads), "NEMESIS_HEADS_TO_FINISH")
 says(n, "detail", "dungeons and raids make no nemesis", "MarkNemesis refuses IsDungeon maps")
+bonus = const(mgr, "NEMESIS_BONUS_PCT_PER_LEVEL", "Nemesis")
+bonus_cap = const(mgr, "NEMESIS_BONUS_CAP_PCT", "Nemesis")
+SHARES = {10: "a tenth", 20: "a fifth", 25: "a quarter"}
+if bonus:
+    says(n, "detail", "%s of your current level for every level it gained" % SHARES.get(bonus, "%d%%" % bonus),
+         "NEMESIS_BONUS_PCT_PER_LEVEL")
+if bonus_cap == 100:
+    says(n, "detail", "up to a full level", "NEMESIS_BONUS_CAP_PCT")
+elif bonus_cap:
+    need(False, "NEMESIS_BONUS_CAP_PCT is %s: say it in the Nemesis text, then teach this check" % bonus_cap)
+says(n, "detail", "red arrow over its head", "NEMESIS_TRACK_SPELL wears Hunter's Mark's arrow")
 says(n, "detail", "elites, bosses", "MarkNemesis refuses isElite and bosses")
 never(n, "up to thirty", "there is no total cap on levels")
 never(n, "every creature of that kind", "a nemesis is the one creature, by spawn id")

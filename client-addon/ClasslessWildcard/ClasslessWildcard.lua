@@ -2256,7 +2256,10 @@ do
         if toTop and fly.scroll.SetVerticalScroll then fly.scroll:SetVerticalScroll(0) end
     end
 
+    -- The page is the panel's child, so it can only show while the panel
+    -- does: the tracker's click, with the panel closed, showed nothing.
     function CW.OpenRuns()
+        if not frame:IsShown() then frame:Show() end
         CW.OverPanel(fly)
         if CW.rebirthFly then CW.rebirthFly:Hide() end
         if CW.archFly then CW.archFly:Hide() end
@@ -8562,6 +8565,108 @@ rvFX.tiers = {
             snd2 = "LEVELUPSOUND" },
 }
 
+-- A nemesis slain: a banner over the world, the way a boss kill announces
+-- itself, while the server bursts the body and lights the Hero up.
+-- "NK|name|experience returned|bonus|heads|heads needed|new head". Built on
+-- first use, every part on one table: the main chunk is at Lua 5.1's local
+-- limit. Nothing on it takes the mouse, so it never blocks a click.
+rvFX.NK = { IN = 0.22, HOLD = 4.6, OUT = 1.2, GONG = "Sound\\Doodad\\G_GongTroll01.wav",
+            CRY = "Sound\\Spells\\Bloodlust_player_cast_head.wav", CRY_AT = 0.3 }
+function CW.NemesisSlain(p)
+    local NK = rvFX.NK
+    local B = NK.frame
+    if not B then
+        B = CreateFrame("Frame", "ClasslessWildcardNemesisBanner", UIParent)
+        B:SetWidth(560); B:SetHeight(220)
+        B:SetPoint("CENTER", 0, 170)
+        B:SetFrameStrata("FULLSCREEN_DIALOG")
+        B:EnableMouse(false)
+        -- BACKGROUND: the starbursts and the glow, additive, red for blood
+        B.rays = B:CreateTexture(nil, "BACKGROUND")
+        B.rays:SetWidth(330); B.rays:SetHeight(330)
+        B.rays:SetPoint("CENTER", 0, 50)
+        B.rays:SetTexture("Interface\\AddOns\\ClasslessWildcard\\rays")
+        B.rays:SetBlendMode("ADD")
+        B.rays:SetVertexColor(1, 0.25, 0.12)
+        B.glow = B:CreateTexture(nil, "BACKGROUND")
+        B.glow:SetWidth(200); B.glow:SetHeight(200)
+        B.glow:SetPoint("CENTER", 0, 50)
+        B.glow:SetTexture("Interface\\AddOns\\ClasslessWildcard\\glow")
+        B.glow:SetBlendMode("ADD")
+        B.glow:SetVertexColor(1, 0.3, 0.15)
+        -- BORDER: a dark band so the words read on grass and on stone
+        B.band = B:CreateTexture(nil, "BORDER")
+        B.band:SetWidth(560); B.band:SetHeight(96)
+        B.band:SetPoint("CENTER", 0, -44)
+        B.band:SetTexture(0, 0, 0, 0.6)
+        -- ARTWORK: the skull
+        B.skull = B:CreateTexture(nil, "ARTWORK")
+        B.skull:SetWidth(60); B.skull:SetHeight(60)
+        B.skull:SetPoint("CENTER", 0, 50)
+        B.skull:SetTexture("Interface\\Icons\\Spell_Shadow_Skull")
+        B.skull:SetTexCoord(0.07, 0.93, 0.07, 0.93)
+        local face = "Fonts\\MORPHEUS.ttf"
+        local function line(size, r, g, b, y)
+            local fs = B:CreateFontString(nil, "OVERLAY")
+            fs:SetFont(face, size, "OUTLINE")
+            fs:SetTextColor(r, g, b)
+            fs:SetShadowColor(0, 0, 0, 1)
+            fs:SetShadowOffset(1, -1)
+            fs:SetPoint("CENTER", 0, y)
+            return fs
+        end
+        B.title = line(36, 1, 0.22, 0.12, -2)
+        B.name = line(20, 1, 0.82, 0.3, -32)
+        B.xp = line(16, 0.45, 1, 0.45, -56)
+        B.head = line(16, 1, 0.82, 0, -78)
+        B:SetScript("OnUpdate", CW.NemesisBannerTick)
+        NK.frame = B
+    end
+    local back, bonus = tonumber(p[3]) or 0, tonumber(p[4]) or 0
+    local heads, need, newHead = tonumber(p[5]) or 0, tonumber(p[6]) or 0, tonumber(p[7]) == 1
+    B.title:SetText("Nemesis Slain")
+    B.name:SetText(p[2] or "")
+    if back > 0 then
+        B.xp:SetText("+" .. back .. " experience returned    +" .. bonus .. " bonus")
+    else
+        B.xp:SetText("+" .. bonus .. " experience for the kill")
+    end
+    B.head:SetText(newHead and ("Head " .. heads .. " of " .. need .. " taken")
+        or "You already hold a head of this kind")
+    B.t, B.cried = 0, nil
+    B:SetAlpha(0)
+    B:Show()
+    if PlaySoundFile then pcall(PlaySoundFile, NK.GONG) end
+end
+
+function CW.NemesisBannerTick(self, dt)
+    local NK = rvFX.NK
+    self.t = (self.t or 0) + (dt or 0)
+    local t = self.t
+    if not self.cried and t >= NK.CRY_AT then
+        self.cried = true
+        if PlaySoundFile then pcall(PlaySoundFile, NK.CRY) end
+    end
+    local alpha, scale
+    if t < NK.IN then
+        local k = t / NK.IN
+        alpha, scale = k, 1.6 - 0.6 * k          -- slams in from big
+    elseif t < NK.IN + NK.HOLD then
+        alpha, scale = 1, 1
+    elseif t < NK.IN + NK.HOLD + NK.OUT then
+        alpha, scale = 1 - (t - NK.IN - NK.HOLD) / NK.OUT, 1
+    else
+        self:Hide()
+        return
+    end
+    self:SetAlpha(alpha)
+    self:SetScale(scale)
+    -- the burst turns slowly and breathes; the skull's glow pulses with it
+    rvFX.Spin(self.rays, t * 0.5)
+    self.rays:SetAlpha(0.55 + 0.25 * math.sin(t * 3))
+    self.glow:SetAlpha(0.6 + 0.3 * math.sin(t * 3))
+end
+
 -- The second layer turns against the first. It used to run 1.45x FASTER, which
 -- put the two sets of beams through each other quicker than either one alone;
 -- slower than the first reads as depth instead of churn.
@@ -9962,6 +10067,8 @@ local function HandleMessage(msg)
         CW.ReadTracker(p)
     elseif kind == "NG" then
         CW.ReadNemesisGuids(p[2])
+    elseif kind == "NK" then
+        CW.NemesisSlain(p)
     elseif kind == "APA" or kind == "APT" or kind == "APW" or kind == "APE" then
         CW.ReadArchPlan(kind, p)
     elseif kind == "AMA" or kind == "AMT" or kind == "AME" then

@@ -763,7 +763,63 @@ SPELL_ICON_COLUMN = 133
 # sword in hand and the whirlwind is what shows.
 SPELL_ICON_OVERRIDES = {
     75: "Interface\\Icons\\INV_Weapon_Bow_05",   # Auto Shot
+    21391: "Interface\\Icons\\Spell_Shadow_Skull",   # the nemesis mark
 }
+
+# Stock spells the module uses under a name of its own: id -> (name, tooltip).
+# 21391 is the nemesis mark (ClasslessMgr::NEMESIS_TRACK_SPELL), stock name
+# "Syndicate Tracker (MURP) DND", which every nearby player sees on the
+# creature's debuffs. The tooltip is what hovering that debuff shows.
+SPELL_RENAMES = {
+    21391: ("Nemesis", "This creature killed a Hero and carries their mark."),
+}
+# Spell.dbc's text columns: name, rank, description, tooltip, each 16 locale
+# columns then a flags column (the forged and elemental appenders use the same)
+SPELL_NAME_COLUMN = 136
+SPELL_DESCRIPTION_COLUMN = 170
+SPELL_TOOLTIP_COLUMN = 187
+SPELL_LOCALES = 16
+
+
+def rename_spells(spell_data: bytes, renames=None):
+    """Give stock spells a name and a buff tooltip of the module's own, in every
+    locale column so a client of any locale reads it. A spell that already
+    reads that way is left alone, so a second pass changes nothing.
+    Returns (new_dbc_bytes, renamed)."""
+    renames = SPELL_RENAMES if renames is None else renames
+    record_count, field_count, record_size, string_size = parse_header(spell_data)
+    if field_count != SPELL_FIELDS or record_size != SPELL_FIELDS * 4:
+        raise DbcError("Spell.dbc is not the 3.3.5a layout this patch understands.")
+    records_off = 20
+    strings_off = records_off + record_count * record_size
+    records = bytearray(spell_data[records_off:strings_off])
+    strings = bytearray(spell_data[strings_off:])
+
+    def add(text):
+        off = len(strings)
+        strings.extend(text.encode("utf-8") + b"\0")
+        return off
+
+    renamed = 0
+    for index in range(record_count):
+        base = index * record_size
+        spell_id = struct.unpack_from("<I", records, base)[0]
+        if spell_id not in renames:
+            continue
+        name, tooltip = renames[spell_id]
+        current = read_string(bytes(strings), struct.unpack_from("<I", records, base + SPELL_NAME_COLUMN * 4)[0])
+        current_tip = read_string(bytes(strings), struct.unpack_from("<I", records, base + SPELL_TOOLTIP_COLUMN * 4)[0])
+        if current == name and current_tip == tooltip:
+            continue
+        name_off, tip_off = add(name), add(tooltip)
+        for col in range(SPELL_LOCALES):
+            struct.pack_into("<I", records, base + (SPELL_NAME_COLUMN + col) * 4, name_off)
+            struct.pack_into("<I", records, base + (SPELL_DESCRIPTION_COLUMN + col) * 4, tip_off)
+            struct.pack_into("<I", records, base + (SPELL_TOOLTIP_COLUMN + col) * 4, tip_off)
+        renamed += 1
+
+    header = WDBC_MAGIC + struct.pack("<4I", record_count, field_count, record_size, len(strings))
+    return header + bytes(records) + bytes(strings), renamed
 
 
 def set_spell_icons(spell_data: bytes, icon_data: bytes, overrides=None):
