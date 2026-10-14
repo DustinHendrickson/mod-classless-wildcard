@@ -653,7 +653,6 @@ namespace ClasslessWildcard
         uint32 nemesisSwornLevels = 4;
         uint32 nemesisSwornBonusXpPct = 50;
         uint32 nemesisSwornCooldownMin = 30;
-        uint32 nemesisSwornLevelsBelow = 5;   // how far below the Hero its target may be
         // traits, in percent
         uint32 nemesisBloodlustPct = 30;      // faster attacks and casts
         uint32 nemesisIronhidePct = 25;       // less physical damage taken

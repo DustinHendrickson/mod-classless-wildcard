@@ -124,7 +124,6 @@ TOKENS = (("{nemesis_levels}", "ClasslessWildcard.Nemesis.MarkedLevels", "nemesi
           ("{nemesis_bonus}", "ClasslessWildcard.Nemesis.MarkedBonusXpPct", "nemesisMarkedBonusXpPct"),
           ("{sworn_levels}", "ClasslessWildcard.Nemesis.SwornLevels", "nemesisSwornLevels"),
           ("{sworn_bonus}", "ClasslessWildcard.Nemesis.SwornBonusXpPct", "nemesisSwornBonusXpPct"),
-          ("{sworn_below}", "ClasslessWildcard.Nemesis.SwornLevelsBelow", "nemesisSwornLevelsBelow"),
           ("{sworn_cooldown}", "ClasslessWildcard.Nemesis.SwornCooldownMinutes", "nemesisSwornCooldownMin"),
           ("{sworn_vengeance}", "ClasslessWildcard.Nemesis.SwornVengeancePct", "nemesisSwornVengeancePct"),
           ("{vengeance}", "ClasslessWildcard.Nemesis.VengeanceToFinish", "nemesisVengeanceToFinish"),
@@ -176,14 +175,16 @@ need('fail("You have a sworn nemesis already. Slay it first.")' in mgr, "CanSwea
 says(n, "detail", "not an elite or a boss", "CanSwearVendetta")
 need('fail("Not on an elite or a boss.")' in mgr and 'fail("Not in a dungeon or raid.")' in mgr,
      "CanSwearVendetta refuses elites, bosses and dungeons")
-need("uint32(target->GetLevel()) + cfg.nemesisSwornLevelsBelow < player->GetLevel()" in mgr,
-     "CanSwearVendetta measures how far below")
+says(n, "detail", "at your level or above", "CanSwearVendetta refuses a target below the Hero")
+need("if (target->GetLevel() < player->GetLevel())" in mgr, "CanSwearVendetta refuses a target below the Hero")
+need("SwornLevelsBelow" not in conf and "SwornLevelsBelow" not in readme,
+     "the level rule is fixed: no option for it in the conf or the README")
 # the drop, trophies and the charm
 says(n, "detail", "a Sworn one always drops a piece", "TryWorldDrop skips the roll for a Sworn copy")
 need("if (!sworn && (chance <= 0.0f || !roll_chance_f(chance)))" in read("src", "ClasslessLoot.cpp"),
      "a Sworn nemesis skips the drop roll")
-says(n, "detail", "a trophy of its newest strength", "NemesisSlain: strengths[strengthsHeld - 1]")
-need("itr->second.strengths[strengthsHeld - 1]" in mgr, "the trophy is of the newest strength")
+says(n, "detail", "a trophy of one of its strengths, chosen at random", "NemesisSlain: strengths[urand(...)]")
+need("itr->second.strengths[urand(0, strengthsHeld - 1)]" in mgr, "the trophy is of one of its strengths, at random")
 says(n, "detail", "a star for each strength it had and one more if it was Sworn, up to three", "NemesisSlain's stars")
 need("std::min<uint32>(uint32(strengthsHeld) + (sworn ? 1 : 0), 3)" in mgr, "stars: strengths, one more if Sworn, up to 3")
 says(n, "detail", "all of them add up", "ApplyNemesisFx sums every trophy's stars")

@@ -473,7 +473,7 @@ There are two ways.
 - **Sworn.** On a Nemesis run you learn *Swear Vendetta* (instant, 30 yards). Cast it on a creature
   to make it your nemesis on purpose. A Sworn nemesis fights four levels above you and starts
   stronger, with Bloodlust and one more strength. It pays more for the kill. The target must be
-  in the open world, can't be an elite or a boss, and can be no more than five levels below you.
+  in the open world, at your level or above, and can't be an elite or a boss.
   You can have one Sworn nemesis at a time, and the spell has a 30-minute cooldown.
 
 Deaths in dungeons and raids don't make a nemesis, and neither do deaths to elites, bosses, pets,
@@ -531,8 +531,8 @@ worth more later in the run.
 
 #### Trophies
 
-Every nemesis you slay drops a trophy into your bags, named for one of its strengths: its newest
-one. A trophy has a star for each strength the nemesis had, plus one if it was Sworn, up to three.
+Every nemesis you slay drops a trophy into your bags, named for one of its strengths, chosen at
+random. A trophy has a star for each strength the nemesis had, plus one if it was Sworn, up to three.
 Each effect has a value per star:
 
 | Trophy of | Gives, per star |
@@ -929,7 +929,7 @@ documented inline and prefixed `ClasslessWildcard.`. The common ones:
 | **Nemesis** | | |
 | `Nemesis.MarkedLevels` / `SwornLevels` | `2` / `4` | Levels above the Hero |
 | `Nemesis.MarkedBonusXpPct` / `SwornBonusXpPct` | `25` / `50` | Kill bonus, % of a level |
-| `Nemesis.SwornCooldownMinutes` / `SwornLevelsBelow` | `30` / `5` | Swear Vendetta's cooldown and reach |
+| `Nemesis.SwornCooldownMinutes` | `30` | Swear Vendetta's cooldown |
 | `Nemesis.VengeanceToFinish` / `SwornVengeancePct` | `500` / `150` | The goal; a Sworn kill's Vengeance, % of its level |
 | `Nemesis.TrophyMax` | `4` | Trophies carried at once |
 | `Nemesis.BloodlustPct` / `IronhidePct` / `SpellwardPct` | `30` / `25` / `25` | Strengths: faster attacks and casts; less physical; less spell damage |

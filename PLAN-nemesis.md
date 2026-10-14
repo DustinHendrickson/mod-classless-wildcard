@@ -149,9 +149,8 @@ the charm:
     any that would put a trophy there, with an error message;
   - and a trophy only ever counts from the bags, so one that got out some other way would
     simply stop working.
-- **Its effect** comes from the nemesis's newest strength (Bloodlust gives haste, and so
-  on: the table in section 4). Not the first: every Sworn nemesis starts with Bloodlust,
-  so the first would make every Sworn trophy a haste one.
+- **Its effect** comes from one of the nemesis's strengths, chosen at random (Bloodlust
+  gives haste, and so on: the table in section 4).
 - **Its stars**: one per strength the nemesis had, plus one for a Sworn nemesis, up to
   **three**. A ★★ haste trophy gives 2 x 0.8% = 1.6% haste.
 - **It works from the bags**, like a Diablo 2 charm: nothing is equipped. The server reads

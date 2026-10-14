@@ -773,7 +773,7 @@ SPELL_ICON_OVERRIDES = {
 # creature's debuffs. The tooltip is what hovering that debuff shows.
 SPELL_RENAMES = {
     21391: ("Nemesis", "This creature killed a Hero and carries their mark."),
-    36779: ("Swear Vendetta", "Swear vendetta on a creature at or near your level. It becomes your Sworn nemesis, "
+    36779: ("Swear Vendetta", "Swear vendetta on a creature at or above your level. It becomes your Sworn nemesis, "
                               "for you alone: a rare elite above your level in a blood fury, waiting where it "
                               "lives. Nemesis runs only, one at a time."),
 }

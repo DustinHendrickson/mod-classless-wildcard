@@ -1000,11 +1000,6 @@ ClasslessWildcard.Nemesis.SwornBonusXpPct = 50
 #        Default: 30
 ClasslessWildcard.Nemesis.SwornCooldownMinutes = 30
 
-#    ClasslessWildcard.Nemesis.SwornLevelsBelow
-#        How far below the Hero a creature may be and still be sworn on.
-#        Default: 5
-ClasslessWildcard.Nemesis.SwornLevelsBelow = 5
-
 #    ClasslessWildcard.Nemesis.BloodlustPct
 #    ClasslessWildcard.Nemesis.IronhidePct
 #    ClasslessWildcard.Nemesis.SpellwardPct
