@@ -183,7 +183,7 @@ Install to this client? [Y/n] y
   CharacterCreate.lua  class selector hidden
   Hero class icon      emblem on the Hero cell, other class icons kept
   -> Data/enUS/patch-enUS-Z.MPQ  (DBCs here outrank the client's own locale patches)
-  Wow.exe          patched 6 site(s) to accept custom interface files; Death Knight eye glow follows the face; spent runes come back on any power bar; Death Knight skins reachable from any face
+  Wow.exe          patched 6 site(s) to accept custom interface files; Death Knight eye glow follows the face; spent runes come back on any power bar; Death Knight skins reachable from any face; the totem bar works without totems
   addon            16 files -> Interface/AddOns/ClasslessWildcard
   cache            cleared (the client rebuilds it on next login)
 
@@ -248,7 +248,8 @@ The `Wow.exe` patch is the well-known "allow custom interface" patch (the same o
 Project Reforged patcher uses), confirmed working on a stock 3.3.5a build 12340 client.
 One more byte lets the Death Knight faces keep their glowing eyes on every class, and two
 small additions keep the Face arrow on real faces while the Skin Color arrow reaches the
-Death Knight skins from any face without changing it. The installer also paints every
+Death Knight skins from any face without changing it. One small rewrite lets a Hero use the
+shaman totem bar without carrying totems. The installer also paints every
 normal face in the three Death Knight skin tones from your own client (about 30 seconds,
 32 MB), so a normal face keeps its own eyes on a Death Knight skin.
 It is backed up to `Wow.exe.classless-bak` and restored by `--uninstall`.

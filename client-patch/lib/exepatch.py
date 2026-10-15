@@ -36,6 +36,21 @@ client refuses every rune spell, so no SPELL_GO ever comes, and the runes stay
 spent until a relog resets the mask. The jump becomes two NOPs, so the check
 runs for whatever bar is shown. It only ever sets bits for runes that were
 spent, so a character with no runes is untouched.
+
+And the shaman totem bar. The client files each totem spell under its element
+by the spell's tool category (Earth, Air, Fire or Water Totem) when the spell
+is learned, and the totem bar (Call of the Elements, the Ancestors and the
+Spirits) shows an element only when the player carries that element's totem.
+Both read one function, 0x7548f0 "does an item in the bags fit this tool
+category", which the cast check, GetTotemInfo, the learn path and the tooltip
+all call. A Hero carries no totems, so the client patch would have to clear the
+categories for the totems to cast, and then the bar has nothing to show. The
+function's tail is rewritten in place (TOTEM_TOOL) so a category of type 2,
+the shaman totems in TotemCategory.dbc (2 Earth, 3 Air, 4 Fire, 5 Water, 21
+Master Totem) and nothing else, reads as carried. Every other tool (skinning
+knife, mining pick, runed rods) still asks the bags. The client patch then
+keeps those categories on totem spells (dbc.clear_spell_tools), so the bar
+fills; the server never asks for them.
 """
 
 from __future__ import annotations
@@ -66,6 +81,21 @@ RUNE_REPLACE = "E8 F7 AC DA FF 3B F8 75 63 3B F2 75 5F 83 FB 06 90 90"
 # (search, replace). `core` patterns must each be present exactly once (or
 # already applied) or the exe is refused. Non-core patterns are applied when
 # present and skipped when absent -- they cover client revisions this one is not.
+# The totem tool, Wow.exe 12340 VA 0x7548f3 to 0x75493f: the bounds checks,
+# the row lookup and the bag search, rewritten in the same 77 bytes (the last
+# six were int3 padding before the next function at 0x754940). The two bounds
+# checks jump to the moved failure block; nothing else jumps into the range.
+#
+#   test eax,eax / je FAIL          (no row for this category)
+#   cmp dword [eax+8],2 / je YES    (type 2: a shaman's totem)
+#   ...the stock bag search, as before...
+#   FAIL: xor al,al   YES: mov al,1   pop ebp / ret 8
+TOTEM_TOOL = [
+    (0x353CF3,
+     "8B 45 08 8B 15 8C 4C AD 00 3B C2 7C 17 3B 05 88 4C AD 00 7F 0F 2B C2 8B 15 9C 4C AD 00 8B 04 82 85 C0 75 06 32 C0 5D C2 08 00 8B 50 0C 89 55 08 8B 55 0C 8B 40 08 52 6A 01 8D 55 08 52 50 E8 BA F8 FF FF 5D C2 08 00 CC CC CC CC CC CC",
+     "8B 45 08 8B 15 8C 4C AD 00 3B C2 7C 36 3B 05 88 4C AD 00 7F 2E 2B C2 8B 15 9C 4C AD 00 8B 04 82 85 C0 74 1F 83 78 08 02 74 1D 8B 50 0C 89 55 08 FF 75 0C 6A 01 8D 55 08 52 FF 70 08 E8 BC F8 FF FF EB 06 32 C0 EB 02 B0 01 5D C2 08 00"),
+]
+
 _PATCHES = [
     # signature-scope validation: branches -> always take the accept path,
     # and both "return 1" (reject) sites -> "return 3" (accept).
@@ -264,7 +294,8 @@ def inspect(exe):
         # any site still waiting, core or not (a client patched before the eye
         # glow site existed), means apply() has work to do
         if any(st == "apply" for st, *_ in states) \
-                or _face_arrow_state(data) == "apply":
+                or _face_arrow_state(data) == "apply" \
+                or _group_state(data, TOTEM_TOOL) == "apply":
             return UNPATCHED, None, digest, label
         return PATCHED, None, digest, label
     return UNKNOWN, None, digest, label
@@ -310,8 +341,13 @@ def apply(exe):
                   "done": "; Death Knight skins already reachable from any face",
                   }.get(skin_state, "; face arrow sites not found, left alone")
 
+    totem_state = _group_state(data, TOTEM_TOOL)
+    glow_note += {"apply": "; the totem bar works without totems",
+                  "done": "; the totem bar already works without totems",
+                  }.get(totem_state, "; totem tool site not found, left alone")
+
     if not any(st == "apply" for (st, sb, rb, core) in states) \
-            and skin_state != "apply":
+            and skin_state != "apply" and totem_state != "apply":
         return "already accepts custom interface files%s; left alone" % glow_note
 
     backup = backup_path(exe)
@@ -332,6 +368,8 @@ def apply(exe):
         if _group_state(data, LEGACY_SKIN_FACE) == "done":
             _group_write(data, LEGACY_SKIN_FACE, patched=False)
         _group_write(data, FACE_ARROW, patched=True)
+    if totem_state == "apply":
+        _group_write(data, TOTEM_TOOL, patched=True)
 
     with open(exe, "wb") as handle:
         handle.write(bytes(data))
@@ -359,6 +397,7 @@ def has_changes(exe) -> bool:
         data = handle.read()
     return _group_state(data, FACE_ARROW) == "done" or \
         _group_state(data, LEGACY_SKIN_FACE) == "done" or \
+        _group_state(data, TOTEM_TOOL) == "done" or \
         any(_count(data, _bytes(replace)) == 1
             and _count(data, _bytes(search)) == 0
             for search, replace, _core in _PATCHES)
@@ -384,7 +423,7 @@ def restore(exe):
             i = data.find(rb)
             data[i:i + len(rb)] = sb
             reverted += 1
-    for group in (FACE_ARROW, LEGACY_SKIN_FACE):
+    for group in (FACE_ARROW, LEGACY_SKIN_FACE, TOTEM_TOOL):
         if _group_state(data, group) == "done":
             _group_write(data, group, patched=False)
             reverted += len(group)

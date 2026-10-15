@@ -90,6 +90,12 @@ SKILL_CATEGORY_CLASS = 7
 #                                     Knife, Runeforge) the caster must hold
 SPELL_FIELDS = 234
 SPELL_TOTEM_COLUMNS = (50, 51, 222, 223)
+SPELL_TOTEM_CATEGORY_COLUMNS = (222, 223)
+# The shaman totems in TotemCategory.dbc, the categories of type 2: Earth,
+# Air, Fire and Water Totem and the Master Totem that is all four. The totem
+# bar files a totem spell under its element by these, so they stay on when the
+# exe patch makes them read as carried (exepatch.TOTEM_TOOL).
+SHAMAN_TOTEM_CATEGORIES = (2, 3, 4, 5, 21)
 
 # How the CLIENT spells "everyone". The server's GetSkillRaceClassInfo treats a
 # mask of 0 as a wildcard, and the server SQL uses 0/0 -- but that is the
@@ -633,7 +639,7 @@ def open_class_abilities(data: bytes, skill_categories: dict):
     return header + bytes(records) + data[strings_off:], changed, already
 
 
-def clear_spell_tools(data: bytes, class_spells):
+def clear_spell_tools(data: bytes, class_spells, keep_totem_categories=False):
     """Drop the class tool requirement from every class spell in Spell.dbc.
 
     Stoneskin Totem asks for an Earth Totem and Mana Tide Totem for a Water
@@ -652,6 +658,11 @@ def clear_spell_tools(data: bytes, class_spells):
 
     `class_spells` is the set of spell ids that appear on a category-7
     SkillLineAbility row, so profession and item spells keep their tools.
+
+    `keep_totem_categories`: leave a shaman totem's elemental category on (Earth
+    Totem and so on, SHAMAN_TOTEM_CATEGORIES). The totem bar sorts totems into
+    their elements by it. Only with the exe patch, which makes those categories
+    read as carried (exepatch.TOTEM_TOOL); without it they would refuse to cast.
 
     Returns (new_dbc_bytes, rows_cleared).
     """
@@ -674,7 +685,11 @@ def clear_spell_tools(data: bytes, class_spells):
             continue
         touched = False
         for column in SPELL_TOTEM_COLUMNS:
-            if struct.unpack_from("<I", records, base + column * 4)[0]:
+            value = struct.unpack_from("<I", records, base + column * 4)[0]
+            if keep_totem_categories and column in SPELL_TOTEM_CATEGORY_COLUMNS \
+                    and value in SHAMAN_TOTEM_CATEGORIES:
+                continue
+            if value:
                 struct.pack_into("<I", records, base + column * 4, 0)
                 touched = True
         if touched:

@@ -384,6 +384,37 @@ server's per-rune notice did nothing on its own. `SMSG_RESYNC_RUNES`
 (`0x5ee440`) does not set it either. With the gate lifted, both work as they do
 for a Death Knight.
 
+#### The shaman totem bar without totems
+
+The totem bar (Call of the Elements, the Ancestors, the Spirits) never showed
+for a Hero, for two reasons, both behind one function. `0x542030`, the client's
+"spell learned" routine, files a spell with AttributesEx7 `0x20` (a player
+totem) under each element its tool category (Spell.dbc 222-223, field 158 of
+the in-memory record) maps to, in the per-element lists at `0xbe8ea0` that
+`GetMultiCastTotemSpells` (`0x5a8330`) reads. `clear_spell_tools` cleared those
+categories so the totems would cast without the Earth/Fire/Water/Air Totem
+items, which left every list empty. And `GetTotemInfo` (`0x51d330`), with no
+totem down, reports an element only when its totem item is in the bags; the
+bar counts an element only when both hold.
+
+Every one of those checks, the cast check (`0x8091e8`, its category test at
+`0x80923a`), `GetTotemInfo`, the learn path's update event and the tooltip's
+"Tools:" line, calls `0x7548f0`: "does an item in the bags fit this
+category". Its tail (`0x7548f3` to `0x75493f`, file `0x353CF3`, 77 bytes, the
+last six int3 padding) is rewritten in place, `TOTEM_TOOL`: a category whose
+TotemCategory.dbc type is 2 (2 Earth, 3 Air, 4 Fire, 5 Water, 21 Master
+Totem: the shaman totems and nothing else) reads as carried, every other tool
+asks the bags as before. The two bounds checks are retargeted to the moved
+failure block; nothing else in the exe jumps into the range. With it,
+`clear_spell_tools(keep_totem_categories=True)` leaves the elemental category
+on totem spells, only when the installer patches the exe.
+
+One thing stays Lua: `UIParent_ManageFramePositions` hides the totem bar
+whenever the stance bar shows, since no shaman has both. The addon's
+`CW.LayoutClassBars` puts it on the row instead, after the stance bar or the
+pet bar (or a row up when the main bar is full), and moves nothing of
+Blizzard's.
+
 #### Death Knight skins from any face
 
 The skin arrows are stock; the filled-in faces do their work. The Face arrows

@@ -3315,6 +3315,56 @@ def test_nemesis_titles_and_charms(h):
     h.check(str(h.rt.eval("GameTooltipTextLeft2:GetText()")) == "Takes 25% less physical damage.",
             "hovering Ironhide puts the number in its tooltip: %r" % h.rt.eval("GameTooltipTextLeft2:GetText()"))
 
+    # the class bars: the totem bar joins the row after the stance bar or the
+    # pet bar, or goes up a row when the main bar is full; Blizzard's own bars
+    # are never moved
+    h.rt.execute(
+        "MainMenuBar = CreateFrame('Frame'); MainMenuBar.GetLeft = function() return 0 end; "
+        "MainMenuBar.GetWidth = function() return 1024 end; "
+        "MultiCastActionBarFrame = CreateFrame('Frame', nil, MainMenuBar); "
+        "MultiCastActionBarFrame.GetWidth = function() return 230 end; "
+        "ShapeshiftBarFrame = CreateFrame('Frame'); ShapeshiftBarFrame:Show(); "
+        "ShapeshiftBarFrame:SetPoint('BOTTOMLEFT', MainMenuBar, 'TOPLEFT', 30, 0); "
+        "ShapeshiftBarFrame.GetPoint = function(s) return unpack(rawget(s, '__point')) end; "
+        "ShapeshiftButton3 = CreateFrame('Frame'); ShapeshiftButton3.GetRight = function() return 150 end; "
+        "function GetNumShapeshiftForms() return 3 end; "
+        "PetActionBarFrame = CreateFrame('Frame'); PetActionBarFrame:Hide(); "
+        "PetActionBarFrame.GetWidth = function() return 380 end; PETACTIONBAR_XPOS = 170; "
+        "function PetActionBarFrame_IsAboveShapeshift() return nil end; "
+        "PossessBarFrame = CreateFrame('Frame'); PossessBarFrame:Hide(); "
+        "MultiCastActionBarFrame.numActiveSlots = 2; MultiCastActionBarFrame.mode = 'hide'; "
+        "function InCombatLockdown() return nil end; function UnitHasVehicleUI() return nil end")
+    mcp = lambda: str(h.rt.eval("table.concat({tostring(MultiCastActionBarFrame.__point[1]), "
+                                "MultiCastActionBarFrame.__point[2] == MainMenuBar and 'bar' or "
+                                "MultiCastActionBarFrame.__point[2] == ShapeshiftBarFrame and 'stance' or '?', "
+                                "tostring(MultiCastActionBarFrame.__point[4]), tostring(MultiCastActionBarFrame.__point[5])}, ' ')"))
+    h.rt.execute("ClasslessWildcard_API.LayoutClassBars()")
+    mc = h.rt.eval("MultiCastActionBarFrame")
+    h.check(mc["__shown"] is True and str(mc.mode) == "none" and mcp() == "BOTTOMLEFT bar 162 0",
+            "stances and totems: the totem bar goes right after the stance bar (%s)" % mcp())
+    h.check(h.rt.eval("ShapeshiftBarFrame.__point[4] == 30 and PetActionBarFrame.__point == nil") is True,
+            "and the stance bar is left where Blizzard put it")
+    h.rt.execute("PetActionBarFrame:Show(); ClasslessWildcard_API.LayoutClassBars()")
+    h.check(mcp() == "BOTTOMLEFT bar 562 0", "with a pet too, it goes after the pet bar (%s)" % mcp())
+    h.rt.execute("PetActionBarFrame.GetWidth = function() return 700 end; ClasslessWildcard_API.LayoutClassBars()")
+    h.check(mcp() == "BOTTOMLEFT stance 0 4", "when the row is full it goes up a row (%s)" % mcp())
+    h.rt.execute("function PetActionBarFrame_IsAboveShapeshift() return 1 end; ClasslessWildcard_API.LayoutClassBars()")
+    h.check(mcp() == "BOTTOMLEFT bar 162 0", "a pet bar on the row above takes no room on this one (%s)" % mcp())
+    h.rt.execute("MultiCastActionBarFrame:Hide(); MultiCastActionBarFrame.mode = 'hide'; "
+                 "function InCombatLockdown() return 1 end; ClasslessWildcard_API.LayoutClassBars()")
+    h.check(mc["__shown"] is False and str(mc.mode) == "hide"
+            and h.rt.eval("ClasslessWildcard_API.classBarsPending") is True,
+            "in combat it waits")
+    h.rt.execute("function InCombatLockdown() return nil end; PossessBarFrame:Show(); "
+                 "ClasslessWildcard_API.LayoutClassBars()")
+    h.check(mc["__shown"] is False and h.rt.eval("ClasslessWildcard_API.classBarsPending") is None,
+            "possession takes the totem bar away, as stock")
+    h.rt.execute("PossessBarFrame:Hide(); MultiCastActionBarFrame.numActiveSlots = 0; "
+                 "ClasslessWildcard_API.LayoutClassBars()")
+    h.check(mc["__shown"] is False, "with no totem slots there is no totem bar to place")
+    h.rt.execute("MultiCastActionBarFrame = nil; ShapeshiftBarFrame = nil; MainMenuBar = nil; PossessBarFrame = nil; "
+                 "PetActionBarFrame = nil; ShapeshiftButton3 = nil")
+
     # map pins: the zone shown, and only nemeses there with a spot
     h.rt.execute(
         "WorldMapButton = CreateFrame('Frame'); WorldMapButton.GetWidth = function() return 1000 end; "

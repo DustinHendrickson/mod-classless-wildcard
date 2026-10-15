@@ -6982,8 +6982,9 @@ void ClasslessMgr::DismissOrphanedSummons(Player* player)
 // class identity rather than balance, so it comes off every spell in the
 // library, in both columns the game reads: a named item (Totem) and a tool
 // category (TotemCategory). Reagents stay, because those are vendor goods
-// anyone can buy. The client patch clears the same two columns so the tooltip
-// agrees with the server.
+// anyone can buy. The client patch clears the same two columns, except a
+// totem's elemental category when it also patches Wow.exe: the totem bar sorts
+// totems by it, and the exe reads those categories as carried.
 void ClasslessMgr::StripSpellTools()
 {
     // Not optional. The client patch clears the same two columns, so a server

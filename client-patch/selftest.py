@@ -474,6 +474,32 @@ def main(argv):
                   after_tools is not None and not any(after_tools),
                   "%d class spell(s) cleared" % tools_cleared)
 
+            # With the exe patch, a totem keeps its element (the totem bar
+            # sorts totems by it) and nothing else: no named item, and no tool
+            # but the shaman totems, which are exactly TotemCategory.dbc's
+            # type 2 rows (the type exepatch.TOTEM_TOOL reads as carried).
+            kept_dbc, _kept_cleared = dbc.clear_spell_tools(raw_spell, class_spells, keep_totem_categories=True)
+            kept_tools = spell_tools(kept_dbc, 8071)
+            check("with the exe patch, Stoneskin Totem keeps only its Earth Totem category",
+                  kept_tools is not None and kept_tools[:2] == (0, 0)
+                  and sorted(v for v in kept_tools[2:] if v) == [2], "%s" % (kept_tools,))
+            tc_raw = files.find("DBFilesClient\\TotemCategory.dbc")[0]
+            tcn, tcf, tcs, _tcss = dbc.parse_header(tc_raw)
+            type2 = sorted(struct.unpack_from("<%dI" % tcf, tc_raw, 20 + i * tcs)[0] for i in range(tcn)
+                           if struct.unpack_from("<%dI" % tcf, tc_raw, 20 + i * tcs)[tcf - 2] == 2)
+            check("the kept categories are exactly the shaman totems (TotemCategory type 2)",
+                  type2 == sorted(dbc.SHAMAN_TOTEM_CATEGORIES), "%s / %s" % (type2, dbc.SHAMAN_TOTEM_CATEGORIES))
+            stray_tools = 0
+            for index in range(sc):
+                row_k = struct.unpack_from("<%dI" % sf, kept_dbc, 20 + index * sr)
+                if row_k[0] in class_spells and (row_k[50] or row_k[51]
+                                                  or any(v and v not in dbc.SHAMAN_TOTEM_CATEGORIES
+                                                         for v in (row_k[222], row_k[223]))):
+                    stray_tools += 1
+            check("no class spell keeps any other tool", not stray_tools, "%d kept one" % stray_tools)
+            check("keeping the totem categories is idempotent",
+                  not dbc.clear_spell_tools(kept_dbc, class_spells, keep_totem_categories=True)[1])
+
             # --- Overpower on a dodge, not a combo point -------------------
             # The server opens Overpower with aura state 21 and has taken its
             # finishing-move flag off; the client copy must agree or it asks for
@@ -963,6 +989,9 @@ def main(argv):
                       and patched_exe.count(rune_old) == 0, summary)
                 check("patched copy reads as patched",
                       exepatch.inspect(copy)[0] == exepatch.PATCHED)
+                check("the totem tool reads the shaman totems as carried",
+                      exepatch._group_state(patched_exe, exepatch.TOTEM_TOOL) == "done",
+                      exepatch._group_state(patched_exe, exepatch.TOTEM_TOOL))
                 changed = [i for i in range(len(original))
                            if original[i] != patched_exe[i]] \
                     if len(original) == len(patched_exe) else None
@@ -976,7 +1005,7 @@ def main(argv):
                     at = original.find(sb)
                     if at >= 0 and original.count(sb) == 1:
                         allowed.update(range(at, at + len(sb)))
-                for group in (exepatch.FACE_ARROW, exepatch.LEGACY_SKIN_FACE):
+                for group in (exepatch.FACE_ARROW, exepatch.LEGACY_SKIN_FACE, exepatch.TOTEM_TOOL):
                     for offset, search, _replace in group:
                         allowed.update(range(offset, offset + len(exepatch._bytes(search))))
                 check("Face arrow copy filter in place",

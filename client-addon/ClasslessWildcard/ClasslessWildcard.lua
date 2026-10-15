@@ -10993,6 +10993,69 @@ if hooksecurefunc and GameTooltip then
     end
 end
 
+-- The class bars above the main bar: stances and forms, the totem bar, the
+-- pet bar, possession. Blizzard lays them out for one class at a time
+-- (UIParent_ManageFramePositions): the stance bar, the possess bar and the
+-- totem bar share one spot, the totem bar is hidden whenever either of the
+-- others shows ("we have too many bars"), and the pet bar goes after the
+-- stance bar, or after the totem bar when there is no stance bar. A Hero can
+-- hold stances, totems and a pet at once.
+--
+-- So after each of Blizzard's passes, the totem bar is put on the row instead
+-- of hidden: after the stance bar, or after the pet bar when that shares the
+-- row, and on a row of its own above when the main bar is not wide enough. The
+-- stance and pet bars stay where Blizzard put them, so nothing of Blizzard's
+-- is moved. Possession and a vehicle still take the totem bar away, as stock:
+-- both replace the bars on purpose. Frames with secure buttons cannot be moved
+-- in combat, so a pass then waits for combat to end.
+CW.CLASS_BAR_GAP = 12
+function CW.LayoutClassBars()
+    local mc, ss, pet, bar = MultiCastActionBarFrame, ShapeshiftBarFrame, PetActionBarFrame, MainMenuBar
+    if type(mc) ~= "table" or type(ss) ~= "table" or type(bar) ~= "table" then return end
+    if InCombatLockdown and InCombatLockdown() then
+        CW.classBarsPending = true
+        return
+    end
+    CW.classBarsPending = nil
+    if (mc.numActiveSlots or 0) == 0 or not ss:IsShown()
+            or (PossessBarFrame and PossessBarFrame:IsShown())
+            or (UnitHasVehicleUI and UnitHasVehicleUI("player")) then
+        return   -- one bar, or none: Blizzard's own layout is right
+    end
+    local left = bar:GetLeft() or 0
+    -- the row starts where Blizzard put the stance bar this pass (it moves up
+    -- over the bottom-left action bar and the watch bars)
+    local _, _, _, x0, y0 = ss:GetPoint()
+    local rowRight = (x0 or 30) + (ss:GetWidth() or 0)
+    local lastForm = _G["ShapeshiftButton" .. (GetNumShapeshiftForms and GetNumShapeshiftForms() or 0)]
+    if lastForm and lastForm.GetRight and lastForm:GetRight() then
+        rowRight = lastForm:GetRight() - left
+    end
+    if pet and pet.IsShown and pet:IsShown()
+            and not (PetActionBarFrame_IsAboveShapeshift and PetActionBarFrame_IsAboveShapeshift()) then
+        rowRight = math.max(rowRight, (PETACTIONBAR_XPOS or 36) + (pet:GetWidth() or 0))
+    end
+    local x = rowRight + CW.CLASS_BAR_GAP
+    mc.mode = "none"   -- cancel the slide out Blizzard's pass just started
+    mc:ClearAllPoints()
+    if x + (mc:GetWidth() or 0) <= (bar:GetWidth() or 1024) then
+        mc:SetPoint("BOTTOMLEFT", bar, "TOPLEFT", x, y0 or 0)
+    else
+        mc:SetPoint("BOTTOMLEFT", ss, "TOPLEFT", 0, 4)   -- the row is full: one above
+    end
+    mc:Show()
+end
+if hooksecurefunc and type(UIParent_ManageFramePositions) == "function" then
+    hooksecurefunc("UIParent_ManageFramePositions", CW.LayoutClassBars)
+end
+do
+    local ev = CreateFrame("Frame")
+    ev:RegisterEvent("PLAYER_REGEN_ENABLED")
+    ev:SetScript("OnEvent", function()
+        if CW.classBarsPending then CW.LayoutClassBars() end
+    end)
+end
+
 -- Where each nemesis lives, as a skull on the world map when its zone is the
 -- one shown. The server sends the zone's name and the spot in percent.
 function CW.NemesisPinsNow()

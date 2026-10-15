@@ -180,7 +180,7 @@ def prompt_for_client():
 SHELL_CLASS = 2
 
 
-def build_data_patch(files, name, report, theme=False):
+def build_data_patch(files, name, report, theme=False, keep_totems=False):
     """Assemble the base patch archive contents from the client's own DBCs.
 
     theme=True (with --creation-text) also gives the Hero the armored starting
@@ -271,11 +271,13 @@ def build_data_patch(files, name, report, theme=False):
     # ever sent.
     class_spells = dbc.class_spell_ids(sla_raw, categories)
     raw, source = files.find(SPELL)
-    patched, cleared = dbc.clear_spell_tools(raw, class_spells)
+    # a totem keeps its element only when the exe patch makes it read as carried
+    patched, cleared = dbc.clear_spell_tools(raw, class_spells, keep_totem_categories=keep_totems)
     payload[SPELL] = patched
     report.append("  Spell.dbc        class tool requirement cleared from %d spells "
-                  "(totems, relics; reagents untouched; from %s)"
-                  % (cleared, os.path.basename(source)))
+                  "(%s; reagents untouched; from %s)"
+                  % (cleared, "relics; totems keep their element for the totem bar" if keep_totems
+                     else "totems, relics", os.path.basename(source)))
 
     # Auto Shot is taught to every Hero at level 1, sword in hand, so its own
     # icon shows where a hunter would see their bow.
@@ -686,7 +688,7 @@ def do_install(args, wow_dir):
     # base patch: built once, from the highest-priority locale's chain
     with clientfs.ClientFiles(data_dir, locales[0],
                               exclude=own_archives(locales[0])) as files:
-        dbc_payload = build_data_patch(files, args.name, report, theme=args.glue)
+        dbc_payload = build_data_patch(files, args.name, report, theme=args.glue, keep_totems=args.exe)
         # Elemental ability variants: the server's generated spell rows have
         # to exist in the client's own Spell.dbc too, or the game has no name,
         # icon or tooltip for them. Appended to the player's tables, with one
