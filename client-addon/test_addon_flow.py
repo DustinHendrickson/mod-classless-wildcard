@@ -3376,6 +3376,40 @@ def test_nemesis_titles_and_charms(h):
     h.rt.execute("MultiCastActionBarFrame = nil; ShapeshiftBarFrame = nil; MainMenuBar = nil; PossessBarFrame = nil; "
                  "PetActionBarFrame = nil; ShapeshiftButton3 = nil")
 
+    # under the player frame: second mana bar, the addon's bars, totem timers
+    # and the pet frame stacked instead of piled; rows kept for what can show
+    h.rt.execute(
+        "PlayerFrame = CreateFrame('Frame'); PlayerFrameAlternateManaBar = CreateFrame('Frame', nil, PlayerFrame); "
+        "TotemFrame = CreateFrame('Frame', nil, PlayerFrame); TotemFrame:Hide(); "
+        "PetFrame = CreateFrame('Frame', nil, PlayerFrame); PetFrame:Show(); "
+        "MultiCastActionBarFrame = CreateFrame('Frame'); MultiCastActionBarFrame.numActiveSlots = 0; "
+        "ClasslessWildcardBars:Hide(); ClasslessWildcardDB.barsPos = nil; "
+        "function InCombatLockdown() return nil end")
+    pos = lambda name: str(h.rt.eval("(function(f) local p = rawget(f, '__point'); if not p then return 'none' end "
+                                     "return tostring(p[1]) .. ' ' .. tostring(p[4]) .. ' ' .. tostring(p[5]) end)(%s)" % name))
+    h.rt.execute("PlayerFrameAlternateManaBar:Hide(); PetFrame.__point = nil; ClasslessWildcard_API.LayoutPlayerDock()")
+    h.check(pos("PetFrame") == "none", "a pet alone keeps Blizzard's own place (%s)" % pos("PetFrame"))
+    h.rt.execute("PlayerFrameAlternateManaBar:Show(); MultiCastActionBarFrame.numActiveSlots = 3; "
+                 "ClasslessWildcard_API.LayoutPlayerDock()")
+    h.check(pos("TotemFrame") == "TOPLEFT 99 20" and pos("PetFrame") == "TOPLEFT 80 -28",
+            "second mana bar, then the totem row, then the pet: %s / %s" % (pos("TotemFrame"), pos("PetFrame")))
+    h.rt.execute("ClasslessWildcardBars:Show(); ClasslessWildcardBars.GetHeight = function() return 58 end; "
+                 "ClasslessWildcard_API.LayoutPlayerDock()")
+    h.check(pos("ClasslessWildcardBars") == "TOPLEFT 100 20" and pos("TotemFrame") == "TOPLEFT 99 -41"
+            and pos("PetFrame") == "TOPLEFT 80 -89",
+            "the addon's docked bars take their row too: %s / %s / %s"
+            % (pos("ClasslessWildcardBars"), pos("TotemFrame"), pos("PetFrame")))
+    h.rt.execute("ClasslessWildcardDB.barsPos = { point = 'CENTER', x = 0, y = 0 }; ClasslessWildcardBars.__point = nil; "
+                 "ClasslessWildcard_API.LayoutPlayerDock()")
+    h.check(pos("ClasslessWildcardBars") == "none" and pos("TotemFrame") == "TOPLEFT 99 20",
+            "bars moved by hand are left where they were put")
+    h.rt.execute("PetFrame.__point = nil; function InCombatLockdown() return 1 end; ClasslessWildcard_API.LayoutPlayerDock()")
+    h.check(pos("PetFrame") == "none" and h.rt.eval("ClasslessWildcard_API.dockPending") is True,
+            "in combat the stack waits (the pet frame is a secure button)")
+    h.rt.execute("function InCombatLockdown() return nil end; ClasslessWildcardBars:Hide(); ClasslessWildcardDB.barsPos = nil; "
+                 "PlayerFrame = nil; PlayerFrameAlternateManaBar = nil; TotemFrame = nil; PetFrame = nil; "
+                 "MultiCastActionBarFrame = nil")
+
     # forms past ten: the rest of the row exists under Blizzard's own names
     h.rt.execute(
         "NUM_SHAPESHIFT_SLOTS = 10; ShapeshiftBarFrame = CreateFrame('Frame'); "

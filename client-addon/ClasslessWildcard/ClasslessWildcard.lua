@@ -6734,6 +6734,7 @@ function CW.ResetBarsPosition()
     else
         barsFrame:SetPoint("TOPLEFT", UIParent, "TOPLEFT", 20, -180)
     end
+    if CW.LayoutPlayerDock then CW.LayoutPlayerDock() end   -- back in the stack
 end
 
 -- The hairline goes in front of the first section under the pools, whichever
@@ -11065,6 +11066,87 @@ do
     ev:RegisterEvent("PLAYER_REGEN_ENABLED")
     ev:SetScript("OnEvent", function()
         if CW.classBarsPending then CW.LayoutClassBars() end
+    end)
+end
+
+-- What hangs under the player frame: the stock second mana bar (shown when
+-- the displayed power is not mana), this addon's resource bars when they are
+-- docked there, the totem timers, and the pet frame. Blizzard places each for
+-- one class (the pet frame moves down only for a Death Knight, Druid or
+-- Shaman, the totem timers sit where a Shaman's pet is not), so on a Hero they
+-- land on top of one another. They are stacked here instead, top to bottom in
+-- that order. A row is kept whenever it CAN show, not only while it does: the
+-- pet frame is a secure button that cannot move in combat, so a totem dropped
+-- mid-fight has to land in a row already left for it.
+CW.DOCK = { TOP = 38, MANA_BOTTOM = 23, GAP = 3, TOTEM_H = 48, TOTEM_X = 99, PET_X = 80, BARS_X = 100 }
+function CW.LayoutPlayerDock()
+    local pf = rawget(_G, "PlayerFrame")
+    if type(pf) ~= "table" then return end
+    if InCombatLockdown and InCombatLockdown() then
+        CW.dockPending = true
+        return
+    end
+    CW.dockPending = nil
+    local D = CW.DOCK
+    local y = D.TOP
+    local used = false
+    -- the second mana bar keeps Blizzard's own place, at the top
+    local alt = rawget(_G, "PlayerFrameAlternateManaBar")
+    if type(alt) == "table" and alt:IsShown() then
+        y = D.MANA_BOTTOM - D.GAP
+        used = true
+    end
+    -- this addon's bars, while they sit where they dock (not moved by hand)
+    local bars = rawget(_G, "ClasslessWildcardBars")
+    ClasslessWildcardDB = ClasslessWildcardDB or {}
+    if type(bars) == "table" and bars:IsShown() and not ClasslessWildcardDB.barsPos then
+        bars:ClearAllPoints()
+        bars:SetPoint("TOPLEFT", pf, "BOTTOMLEFT", D.BARS_X, math.min(y, 24))
+        y = math.min(y, 24) - (bars:GetHeight() or 0) - D.GAP
+        used = true
+    end
+    -- the totem timers: their row whenever the Hero has totems to drop
+    local tf = rawget(_G, "TotemFrame")
+    local mc = rawget(_G, "MultiCastActionBarFrame")
+    if type(tf) == "table" and (tf:IsShown() or (type(mc) == "table" and (mc.numActiveSlots or 0) > 0)) then
+        tf:ClearAllPoints()
+        tf:SetPoint("TOPLEFT", pf, "BOTTOMLEFT", D.TOTEM_X, y)
+        y = y - D.TOTEM_H
+        used = true
+    end
+    -- the pet frame last; with nothing above it, Blizzard's own place stands
+    local pet = rawget(_G, "PetFrame")
+    if used and type(pet) == "table" then
+        pet:ClearAllPoints()
+        pet:SetPoint("TOPLEFT", pf, "BOTTOMLEFT", D.PET_X, y)
+    end
+end
+function CW.HookPlayerDock()
+    CW.dockHooks = CW.dockHooks or {}
+    if hooksecurefunc and not CW.dockHooks.totem and type(rawget(_G, "TotemFrame_Update")) == "function" then
+        hooksecurefunc("TotemFrame_Update", CW.LayoutPlayerDock)
+        CW.dockHooks.totem = true
+    end
+    for _, name in ipairs({ "PetFrame", "PlayerFrameAlternateManaBar", "TotemFrame", "ClasslessWildcardBars" }) do
+        local f = rawget(_G, name)
+        if not CW.dockHooks[name] and type(f) == "table" and f.HookScript then
+            f:HookScript("OnShow", CW.LayoutPlayerDock)
+            f:HookScript("OnHide", CW.LayoutPlayerDock)
+            if name == "ClasslessWildcardBars" then
+                f:HookScript("OnSizeChanged", CW.LayoutPlayerDock)   -- rows come and go
+            end
+            CW.dockHooks[name] = true
+        end
+    end
+end
+do
+    local ev = CreateFrame("Frame")
+    for _, e in ipairs({ "PLAYER_ENTERING_WORLD", "PLAYER_REGEN_ENABLED", "UNIT_DISPLAYPOWER", "UNIT_PET" }) do
+        ev:RegisterEvent(e)
+    end
+    ev:SetScript("OnEvent", function(_, event)
+        if event == "PLAYER_ENTERING_WORLD" then CW.HookPlayerDock() end
+        if event ~= "PLAYER_REGEN_ENABLED" or CW.dockPending then CW.LayoutPlayerDock() end
     end)
 end
 
