@@ -3365,6 +3365,36 @@ def test_nemesis_titles_and_charms(h):
     h.rt.execute("MultiCastActionBarFrame = nil; ShapeshiftBarFrame = nil; MainMenuBar = nil; PossessBarFrame = nil; "
                  "PetActionBarFrame = nil; ShapeshiftButton3 = nil")
 
+    # forms past ten: the rest of the row exists under Blizzard's own names
+    h.rt.execute(
+        "NUM_SHAPESHIFT_SLOTS = 10; ShapeshiftBarFrame = CreateFrame('Frame'); "
+        "for i = 1, 10 do _G['ShapeshiftButton' .. i] = CreateFrame('CheckButton', 'ShapeshiftButton' .. i, ShapeshiftBarFrame) end; "
+        "for i = 11, 30 do rawset(_G, 'ShapeshiftButton' .. i, nil) end; "
+        "FORMS = {}; for i = 1, 13 do FORMS[i] = { 'Interface\\\\Icons\\\\Form' .. i, 'Form ' .. i, i == 12, i ~= 13 } end; "
+        "function GetNumShapeshiftForms() return #FORMS end; "
+        "function GetShapeshiftFormInfo(i) local f = FORMS[i]; if f then return f[1], f[2], f[3], f[4] end end; "
+        "function InCombatLockdown() return nil end")
+    h.rt.execute("ClasslessWildcard_API.MakeFormButtons(); ClasslessWildcard_API.BuildFormButtons()")
+    b11, b13, b14 = (h.rt.eval("rawget(_G, 'ShapeshiftButton%d')" % i) for i in (11, 13, 14))
+    h.check(b11 is not None and h.rt.eval("rawget(_G, 'ShapeshiftButton30') ~= nil") is True,
+            "ShapeshiftButton11 to 30 exist, so Blizzard's loops over every form find a button")
+    h.check(b11 is not None and b11["__shown"] is True and b13["__shown"] is True and b14["__shown"] is False,
+            "the forms past ten show, and no more than there are")
+    h.check(str(h.rt.eval("ShapeshiftButton11:GetAttribute('type')")) == "spell"
+            and str(h.rt.eval("ShapeshiftButton11:GetAttribute('spell')")) == "Form 11",
+            "each casts its own form's spell, as a secure button")
+    h.check(h.rt.eval("ShapeshiftButton12.__checked") is True and h.rt.eval("ShapeshiftButton11.__checked") is False,
+            "the active form is lit")
+    h.check(h.rt.eval("ShapeshiftButton11.__point[2] == ShapeshiftButton10 and ShapeshiftButton11.__point[3] == 'RIGHT'") is True,
+            "the row carries on from Blizzard's tenth button")
+    h.rt.execute("for i = 12, 13 do FORMS[i] = nil end; function InCombatLockdown() return 1 end; "
+                 "ClasslessWildcard_API.BuildFormButtons()")
+    h.check(b13["__shown"] is True and h.rt.eval("ClasslessWildcard_API.formButtonsPending") is True,
+            "in combat the row waits")
+    h.rt.execute("function InCombatLockdown() return nil end; ClasslessWildcard_API.BuildFormButtons()")
+    h.check(b13["__shown"] is False and b11["__shown"] is True, "and after it, a form unlearned leaves the row")
+    h.rt.execute("ShapeshiftBarFrame = nil; for i = 1, 30 do rawset(_G, 'ShapeshiftButton' .. i, nil) end")
+
     # map pins: the zone shown, and only nemeses there with a spot
     h.rt.execute(
         "WorldMapButton = CreateFrame('Frame'); WorldMapButton.GetWidth = function() return 1000 end; "

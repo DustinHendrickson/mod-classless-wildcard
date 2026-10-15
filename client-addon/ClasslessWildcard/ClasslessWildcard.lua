@@ -11056,6 +11056,97 @@ do
     end)
 end
 
+-- Stances and forms past ten. The client keeps every form a Hero knows (any
+-- spell with the shapeshift aura or the stance flag) in a list with no limit,
+-- and GetNumShapeshiftForms, GetShapeshiftFormInfo and CastShapeshiftForm all
+-- reach past ten. Only Blizzard's bar stops: it has ShapeshiftButton1 to 10.
+-- Worse, two of its loops run to GetNumShapeshiftForms() and index
+-- ShapeshiftButton<n> (UIParent_ManageFramePositions sizes each one's
+-- NormalTexture, PetActionBar_UpdatePositionValues reads the last one's right
+-- edge), so an eleventh form threw a Lua error. The rest of the row is made
+-- here under those names, at load, so both loops find them: secure buttons
+-- that cast the form's spell, laid out like Blizzard's and inside its bar art,
+-- which already stretches to the form count.
+CW.FORM_SLOTS = 30
+-- Blizzard's own button count (BonusActionBarFrame.lua), ten
+function CW.StockFormSlots() return tonumber(rawget(_G, "NUM_SHAPESHIFT_SLOTS")) or 10 end
+function CW.MakeFormButtons()
+    local stock = CW.StockFormSlots()
+    if type(rawget(_G, "ShapeshiftBarFrame")) ~= "table" or not rawget(_G, "ShapeshiftButton" .. stock) then return end
+    for i = stock + 1, CW.FORM_SLOTS do
+        local name = "ShapeshiftButton" .. i
+        if not rawget(_G, name) then
+            local b = CreateFrame("CheckButton", name, ShapeshiftBarFrame,
+                "ActionButtonTemplate, SecureActionButtonTemplate")
+            b:SetID(i)
+            b:SetWidth(30); b:SetHeight(30)
+            b:SetPoint("LEFT", _G["ShapeshiftButton" .. (i - 1)], "RIGHT", 7, 0)
+            b:SetAttribute("type", "spell")
+            b:SetScript("OnEnter", function(self)
+                GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
+                GameTooltip:SetShapeshift(self:GetID())
+            end)
+            b:SetScript("OnLeave", function() GameTooltip:Hide() end)
+            b:Hide()
+        end
+    end
+end
+-- which forms the extra buttons cast, and which show: out of combat only
+function CW.BuildFormButtons()
+    if InCombatLockdown and InCombatLockdown() then
+        CW.formButtonsPending = true
+        return
+    end
+    CW.formButtonsPending = nil
+    local n = GetNumShapeshiftForms and GetNumShapeshiftForms() or 0
+    for i = CW.StockFormSlots() + 1, CW.FORM_SLOTS do
+        local b = rawget(_G, "ShapeshiftButton" .. i)
+        if b then
+            local _, spell = nil, nil
+            if i <= n then _, spell = GetShapeshiftFormInfo(i) end
+            b:SetAttribute("spell", spell)
+            if spell then b:Show() else b:Hide() end
+        end
+    end
+    CW.UpdateFormButtons()
+end
+-- their look: icon, active, usable, cooldown (allowed in combat)
+function CW.UpdateFormButtons()
+    local n = GetNumShapeshiftForms and GetNumShapeshiftForms() or 0
+    for i = CW.StockFormSlots() + 1, math.min(n, CW.FORM_SLOTS) do
+        local b = rawget(_G, "ShapeshiftButton" .. i)
+        if b then
+            local texture, _, isActive, isCastable = GetShapeshiftFormInfo(i)
+            local icon = _G["ShapeshiftButton" .. i .. "Icon"]
+            if icon then
+                icon:SetTexture(texture)
+                if isCastable then icon:SetVertexColor(1, 1, 1) else icon:SetVertexColor(0.4, 0.4, 0.4) end
+            end
+            b:SetChecked(isActive and true or false)
+            local cooldown = _G["ShapeshiftButton" .. i .. "Cooldown"]
+            if cooldown and GetShapeshiftFormCooldown and CooldownFrame_SetTimer then
+                CooldownFrame_SetTimer(cooldown, GetShapeshiftFormCooldown(i))
+            end
+        end
+    end
+end
+CW.MakeFormButtons()
+do
+    local ev = CreateFrame("Frame")
+    for _, e in ipairs({ "PLAYER_ENTERING_WORLD", "UPDATE_SHAPESHIFT_FORMS", "PLAYER_REGEN_ENABLED" }) do
+        ev:RegisterEvent(e)
+    end
+    ev:SetScript("OnEvent", function(_, event)
+        if event ~= "PLAYER_REGEN_ENABLED" or CW.formButtonsPending then CW.BuildFormButtons() end
+    end)
+    local look = CreateFrame("Frame")
+    for _, e in ipairs({ "UPDATE_SHAPESHIFT_FORM", "UPDATE_SHAPESHIFT_USABLE", "UPDATE_SHAPESHIFT_COOLDOWN",
+                         "SPELL_UPDATE_COOLDOWN", "ACTIONBAR_UPDATE_USABLE" }) do
+        look:RegisterEvent(e)
+    end
+    look:SetScript("OnEvent", function() CW.UpdateFormButtons() end)
+end
+
 -- Where each nemesis lives, as a skull on the world map when its zone is the
 -- one shown. The server sends the zone's name and the spot in percent.
 function CW.NemesisPinsNow()

@@ -415,6 +415,19 @@ whenever the stance bar shows, since no shaman has both. The addon's
 pet bar (or a row up when the main bar is full), and moves nothing of
 Blizzard's.
 
+#### Stances and forms past ten
+
+No exe change. The client's form list (`0xbe8e28` count, `0xbe8e2c` entries of
+8 bytes, filled in `0x542030` for a spell with aura 36 or the stance flag, then
+sorted) grows without a limit, and `GetNumShapeshiftForms` (`0x53c0b0`),
+`GetShapeshiftFormInfo` (`0x53de90`) and `CastShapeshiftForm` (`0x53c0f0`) all
+take any index below the count. Only FrameXML stops at ten (`ShapeshiftButton1`
+to `10`), and two of its loops index `ShapeshiftButton<n>` up to the count
+(`UIParent_ManageFramePositions`, `PetActionBar_UpdatePositionValues`), which
+threw on an eleventh form. The addon makes `ShapeshiftButton11` to `30` at
+load (`CW.MakeFormButtons`): secure `type = spell` buttons in the bar's own row
+and art, filled out of combat (`CW.BuildFormButtons`).
+
 #### Death Knight skins from any face
 
 The skin arrows are stock; the filled-in faces do their work. The Face arrows
