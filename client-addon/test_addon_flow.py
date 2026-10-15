@@ -3350,6 +3350,17 @@ def test_nemesis_titles_and_charms(h):
     h.check(mcp() == "BOTTOMLEFT stance 0 4", "when the row is full it goes up a row (%s)" % mcp())
     h.rt.execute("function PetActionBarFrame_IsAboveShapeshift() return 1 end; ClasslessWildcard_API.LayoutClassBars()")
     h.check(mcp() == "BOTTOMLEFT bar 162 0", "a pet bar on the row above takes no room on this one (%s)" % mcp())
+    # Blizzard's ShowMultiCastActionBar (the totem bar's own update event, as a
+    # dismissed pet fires it) slides the bar back to its stock spot under the
+    # stance bar: the row is laid out again after it
+    h.rt.execute("function PetActionBarFrame_IsAboveShapeshift() return nil end; PetActionBarFrame:Hide(); "
+                 "ClasslessWildcard_API.LayoutClassBars(); "
+                 "function ShowMultiCastActionBar() MultiCastActionBarFrame.mode = 'show'; "
+                 "MultiCastActionBarFrame:SetPoint('BOTTOMLEFT', MainMenuBar, 'TOPLEFT', 30, 0) end; "
+                 "ClasslessWildcard_API.HookClassBars(); ShowMultiCastActionBar()")
+    h.check(mcp() == "BOTTOMLEFT bar 162 0" and str(mc.mode) == "none",
+            "a stock re-show does not put it back under the stance bar (%s, %s)" % (mcp(), mc.mode))
+    h.rt.execute("ShowMultiCastActionBar = nil; ClasslessWildcard_API.classBarHooks = {}")
     h.rt.execute("MultiCastActionBarFrame:Hide(); MultiCastActionBarFrame.mode = 'hide'; "
                  "function InCombatLockdown() return 1 end; ClasslessWildcard_API.LayoutClassBars()")
     h.check(mc["__shown"] is False and str(mc.mode) == "hide"

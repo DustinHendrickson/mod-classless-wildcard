@@ -11045,9 +11045,21 @@ function CW.LayoutClassBars()
     end
     mc:Show()
 end
-if hooksecurefunc and type(UIParent_ManageFramePositions) == "function" then
-    hooksecurefunc("UIParent_ManageFramePositions", CW.LayoutClassBars)
+-- Blizzard puts the totem bar back in two places: its layout pass, and
+-- ShowMultiCastActionBar, which the totem bar's own update event calls (a pet
+-- dismissed fires it). That one slides the bar to its stock spot under the
+-- stance bar, so the row is laid out again after either.
+CW.classBarHooks = {}
+function CW.HookClassBars()
+    if not hooksecurefunc then return end
+    for _, fn in ipairs({ "UIParent_ManageFramePositions", "ShowMultiCastActionBar" }) do
+        if not CW.classBarHooks[fn] and type(rawget(_G, fn)) == "function" then
+            hooksecurefunc(fn, CW.LayoutClassBars)
+            CW.classBarHooks[fn] = true
+        end
+    end
 end
+CW.HookClassBars()
 do
     local ev = CreateFrame("Frame")
     ev:RegisterEvent("PLAYER_REGEN_ENABLED")
