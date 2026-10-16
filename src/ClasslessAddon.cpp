@@ -862,7 +862,7 @@ namespace
         {
             SendState(player);
             SendSpellCorrections(player);
-            // Combo points and runes are pushed only when they CHANGE, which
+            // Runes are pushed only when they CHANGE, which
             // is right for the traffic and wrong for the first draw: the first
             // push goes out on the first update tick after entering the world,
             // which can beat the addon to being ready, and nothing sends it
@@ -871,7 +871,6 @@ namespace
             // a /reload lost it the same way. Forgetting what was last sent
             // makes the next tick send the current state, so the addon can ask.
             CharState& st = sClasslessMgr->GetState(player);
-            st.lastComboPush = 255;
             st.lastRuneSig = 0xFFFFFFFF;
             st.nemesisGuidsSent = "?";   // matches no list, so the next push goes out
             st.nemesisListSent = "?";

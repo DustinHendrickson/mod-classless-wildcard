@@ -860,11 +860,6 @@ public:
         if (!player->IsInWorld() || !player->IsAlive())
             return;
 
-        // The stock 3.3.5 client only shows combo points for rogues and cat
-        // druids -- Wow.exe gates GetComboPoints by class, so a Hero never SEES
-        // the points the server tracks (retail warriors had the same hidden
-        // Overpower combo points). Mirror them over the addon channel whenever
-        // they change; the addon lights its own pips from this.
         // FindState, not GetState. GetState CREATES the entry when it is
         // missing, and this runs for every player on every map update -- an
         // unordered_map insert on the hottest path in the module, from
@@ -879,22 +874,15 @@ public:
             CharState& cpSt = *state;
             if (!cpSt.exempt)
             {
-                // Report points for the CURRENT target only, matching what the
-                // client would show: combo points stay attached to the unit
-                // they were built on, so selecting another mob (or deselecting)
-                // must read as zero rather than leaving stale pips lit.
-                Unit* selected = player->GetSelectedUnit();
-                uint8 cp = selected ? player->GetComboPoints(selected) : 0;
-                if (cp != cpSt.lastComboPush)
-                {
-                    cpSt.lastComboPush = cp;
-                    PushAddon(player, Acore::StringFormat("CP|{}", uint32(cp)));
-                }
-
-                // Runes have the same problem, one step worse: the stock UI
-                // draws the rune bar only for real Death Knight characters, so
-                // a Hero with rune-cost abilities gets no way at all to see
-                // which runes are up. Mirror the block over the addon channel
+                // Combo points need nothing here: the client patch opens
+                // GetComboPoints to every class, and the core already sends
+                // SMSG_UPDATE_COMBO_POINTS to any player, so Blizzard's own
+                // ComboFrame shows a Hero's points as it does a Rogue's.
+                //
+                // Runes are another matter: the stock UI draws the rune bar
+                // only for real Death Knight characters, so a Hero with
+                // rune-cost abilities gets no way at all to see which runes
+                // are up. Mirror the block over the addon channel
                 // and let the addon draw it.
                 //
                 // Guarded by the character's own snapshot, which is exactly

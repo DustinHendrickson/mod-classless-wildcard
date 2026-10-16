@@ -58,7 +58,6 @@ local CW = {
               -- until the server has told us this character actually has the
               -- extra pools, rather than flashing up on a non-module realm
               universalResources = 0,
-              comboPoints = 0,
               -- runes, mirrored from the server. nil until the first RU
               -- message, which is how the bar stays invisible on realms that
               -- do not run Death Knight abilities at all.
@@ -5060,7 +5059,7 @@ function CW.HelpSections()
     })
 
     page("both", "Both paths", ICON .. "Spell_Arcane_ArcaneResilience", "What every Hero has, whichever path they walk.", {
-        b("Universal resources", "You carry mana, rage and energy at once, and each spell draws its own. The extra bars sit under your player frame and remember where you drag them. |cffffd100Settings|r on this panel picks which to show, including runes, runic power and combo points; |cffffd100/cwbars|r toggles them all."),
+        b("Universal resources", "You carry mana, rage and energy at once, and each spell draws its own. The extra bars sit under your player frame and remember where you drag them. |cffffd100Settings|r on this panel picks which to show, including runes and runic power; |cffffd100/cwbars|r toggles them all. Combo points show on your target's frame, as they do for a Rogue."),
         b("Primary stats", "You get points every level to spend across Strength, Agility, Stamina, Intellect and Spirit, and moving them is free at any time. Open |cffffd100Stats|r and hover a stat to see what it is doing for you right now. Each point gives:\n"
             .. "   |cffffd100Strength:|r " .. StatPerPoint(1) .. ".\n"
             .. "   |cffffd100Agility:|r " .. StatPerPoint(2) .. ".\n"
@@ -6609,23 +6608,19 @@ local POWER_INFO = {
 
 -- Every layout number for this frame in one place, and every row centred from
 -- them instead of placed with a hand-written offset. The old offsets are what
--- made the block look crooked: the combo row sat 12px from the left edge and
--- 56 from the right, and the rune row 14 from the left and 18 from the right
--- with its rings hanging up into the row above.
+-- made the block look crooked: the rune row sat 14 from the left and 18 from
+-- the right with its rings hanging up into the row above.
 --
 -- The pip sizes are taken from the client's own frames rather than from taste.
--- ComboFrame's point is a 12x16 cell holding a 12x12 socket, with a 6x5 gem
--- inside it drawn 8 wide and a 14x16 star flashed over it on the way in.
 -- RuneFrame's button is 18x18 with the rune AND its ring both drawn at 24, so
 -- the art is meant to overhang its cell; the old code drew the rune at 18 and
--- the ring at 26, which is why the two never sat together. Everything here is
--- those proportions, the combo art at 1.5x so a pip reads at the same weight
--- as a rune.
+-- the ring at 26, which is why the two never sat together.
+--
+-- Combo points are not drawn here: the client patch opens them to every class,
+-- so Blizzard's own ComboFrame on the target frame shows them, as for a Rogue.
 local BARS = {
     W = 160, PAD = 7, TOP = 7, BOTTOM = 8, GAP = 6,
     BAR_H = 14, BAR_STEP = 17,
-    CP = 18, CP_GAP = 5, CP_GEM_W = 12, CP_GEM_H = 8,
-    CP_SHINE_W = 21, CP_SHINE_H = 24, CP_LINGER = 1.5,
     RUNE = 18, RUNE_GAP = 4, RUNE_ART = 24, RUNE_OVER = 3,
     RUNE_SHINE_W = 40, RUNE_SHINE_H = 24,
     RUNIC_H = 13, FLASH = 0.45,
@@ -6638,7 +6633,6 @@ BARS.ROWS = {
     { key = "energy", label = "Energy" },
     { key = "runes",  label = "Runes" },
     { key = "runic",  label = "Runic Power" },
-    { key = "combo",  label = "Combo Points" },
 }
 
 -- A row the player has switched off is stored by its presence in barsOff, so a
@@ -6655,20 +6649,6 @@ function CW.SetBarRow(key, on)
     ClasslessWildcardDB.barsOff = ClasslessWildcardDB.barsOff or {}
     ClasslessWildcardDB.barsOff[key] = (not on) or nil
     CW.UpdateBarsVisibility()
-    -- the combo row off hands combo points back to Blizzard's target frame pips
-    if key == "combo" and type(ComboFrame_Update) == "function" then ComboFrame_Update() end
-end
-
--- With the client patch, GetComboPoints answers for a Hero, so Blizzard's
--- ComboFrame on the target frame lights up as well as the combo row. Only one
--- is shown: the row while it is on, Blizzard's pips when it is turned off.
-function CW.HideStockCombo()
-    if ComboFrame and ComboFrame:IsShown() and CW.BarRowOn("combo") then
-        ComboFrame:Hide()
-    end
-end
-if hooksecurefunc and type(ComboFrame_Update) == "function" then
-    hooksecurefunc("ComboFrame_Update", CW.HideStockCombo)
 end
 
 -- x of the first item in a row of `count` items `w` wide, `gap` apart, so the
@@ -6821,45 +6801,13 @@ end
 CW.powerBars = powerBars
 CW.barsFrame = barsFrame
 
--- A hairline under the pools. Combo points and runes are not more resources,
--- and with nothing between them the block read as one long list of bars.
+-- A hairline under the pools. Runes are not more resources, and with nothing
+-- between them the block read as one long list of bars.
 barsFrame.divider = barsFrame:CreateTexture(nil, "ARTWORK")
 barsFrame.divider:SetTexture(1, 1, 1, 0.14)
 barsFrame.divider:SetWidth(BARS.W - BARS.PAD * 2)
 barsFrame.divider:SetHeight(1)
 barsFrame.divider:Hide()
-
--- Combo points, drawn the way ComboFrame draws them: an always-there socket,
--- a gem that lights inside it, and a star that flashes on the way in. Like
--- ComboFrame the row only exists while there are points to show, so every
--- character that never builds one is not carrying an empty row around.
-local comboDots = {}
-for i = 1, 5 do
-    local bg = barsFrame:CreateTexture(nil, "ARTWORK")
-    bg:SetWidth(BARS.CP); bg:SetHeight(BARS.CP)
-    bg:SetTexture("Interface\\ComboFrame\\ComboPoint")
-    bg:SetTexCoord(0, 0.375, 0, 0.75)      -- the 12x12 socket, without its 4 blank rows
-    bg:Hide()
-
-    local shine = barsFrame:CreateTexture(nil, "OVERLAY")
-    shine:SetWidth(BARS.CP_GEM_W); shine:SetHeight(BARS.CP_GEM_H)
-    shine:SetPoint("CENTER", bg, "CENTER", 0, 0)
-    shine:SetTexture("Interface\\ComboFrame\\ComboPoint")
-    shine:SetTexCoord(0.375, 0.5625, 0.1875, 0.5)   -- the 6x5 gem, likewise
-    shine:SetAlpha(0)
-    shine:Hide()
-
-    local flash = barsFrame:CreateTexture(nil, "OVERLAY")
-    flash:SetWidth(BARS.CP_SHINE_W); flash:SetHeight(BARS.CP_SHINE_H)
-    flash:SetPoint("CENTER", bg, "CENTER", 0, 0)
-    flash:SetTexture("Interface\\ComboFrame\\ComboPoint")
-    flash:SetTexCoord(0.5625, 1, 0, 1)
-    flash:SetBlendMode("ADD")
-    flash:SetAlpha(0)
-
-    comboDots[i] = { bg = bg, shine = shine, flash = flash, lit = false }
-end
-CW.comboDots = comboDots
 
 -- Runes. The stock UI draws the rune bar only for real Death Knight
 -- characters, so a Hero with rune-cost abilities would have no way to see
@@ -6944,9 +6892,9 @@ end)
 runicBar:SetScript("OnLeave", function() GameTooltip:Hide() end)
 CW.runicBar = runicBar
 
--- Invisible catchers so the two picture rows can answer a hover the way the
--- bars above them do, and can be dragged like the rest of the frame.
-for _, key in ipairs({ "comboMouse", "runeMouse" }) do
+-- An invisible catcher so the rune row can answer a hover the way the bars
+-- above it do, and can be dragged like the rest of the frame.
+for _, key in ipairs({ "runeMouse" }) do
     local m = CreateFrame("Frame", nil, barsFrame)
     m:EnableMouse(true)
     m:Hide()
@@ -6954,15 +6902,6 @@ for _, key in ipairs({ "comboMouse", "runeMouse" }) do
     CW.BarsDragProxy(m)
     barsFrame[key] = m
 end
-barsFrame.comboMouse:SetScript("OnEnter", function(self)
-    GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
-    GameTooltip:AddLine("Combo Points")
-    GameTooltip:AddLine(string.format("%d of 5 on your target.", barsFrame.comboCount or 0),
-        1, 1, 1)
-    GameTooltip:AddLine("Any ability that builds combo points builds them for you.",
-        0.7, 0.7, 0.7, true)
-    GameTooltip:Show()
-end)
 barsFrame.runeMouse:SetScript("OnEnter", function(self)
     GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
     GameTooltip:AddLine("Runes")
@@ -7080,51 +7019,6 @@ function CW.RefreshBars()
         rows = rows + 1
     else
         runicBar:Hide()
-    end
-
-    -- The stock client hides combo points for non-rogue classes (Wow.exe gates
-    -- GetComboPoints; the client patch opens it), so the server also mirrors
-    -- the real count over the addon channel ("CP|n"). Use whichever source
-    -- knows more. While this row is on, Blizzard's own pips on the target
-    -- frame are kept hidden (CW.HideStockCombo), so the points show once.
-    local cp = CW.state.comboPoints or 0
-    local ok, ccp = pcall(GetComboPoints, "player", "target")
-    if ok and ccp and ccp > cp then cp = ccp end
-    barsFrame.comboCount = cp
-    local now = GetTime()
-    if cp > 0 then barsFrame.cpAt = now end
-    -- hold the row a moment after the last point is spent, so a finisher shows
-    -- the sockets going dark instead of the row vanishing mid-swing
-    local showCombo = CW.BarRowOn("combo")
-        and (cp > 0 or (barsFrame.cpAt and now - barsFrame.cpAt < BARS.CP_LINGER))
-    if showCombo then
-        y = CW.BarsRule(y + BARS.GAP)
-        local x = CW.RowStart(5, BARS.CP, BARS.CP_GAP)
-        for i = 1, 5 do
-            local dot = comboDots[i]
-            local lit = i <= cp
-            dot.bg:ClearAllPoints()
-            dot.bg:SetPoint("TOPLEFT", x + (i - 1) * (BARS.CP + BARS.CP_GAP), -y)
-            dot.bg:Show()
-            dot.shine:SetAlpha(lit and 1 or 0)
-            dot.shine:Show()
-            if lit and not dot.lit then CW.FlashPip(dot.flash) end
-            dot.lit = lit
-        end
-        barsFrame.comboMouse:ClearAllPoints()
-        barsFrame.comboMouse:SetPoint("TOPLEFT", x, -y)
-        barsFrame.comboMouse:SetWidth(5 * BARS.CP + 4 * BARS.CP_GAP)
-        barsFrame.comboMouse:SetHeight(BARS.CP)
-        barsFrame.comboMouse:Show()
-        y = y + BARS.CP
-        rows = rows + 1
-    else
-        for i = 1, 5 do
-            comboDots[i].bg:Hide()
-            comboDots[i].shine:Hide()
-            comboDots[i].lit = false
-        end
-        barsFrame.comboMouse:Hide()
     end
 
     if barsFrame.needRule then barsFrame.divider:Hide() end
@@ -7352,8 +7246,8 @@ do
 end
 
 -- The tick lives on its own always-shown frame rather than on the bar frame.
--- The bar frame hides itself when it has nothing to draw -- every row off, or
--- only combo points and none on the target -- and a hidden frame gets no
+-- The bar frame hides itself when it has nothing to draw -- every row off --
+-- and a hidden frame gets no
 -- OnUpdate, so driving the poll from it would mean it could never come back.
 CW.barsTicker = CreateFrame("Frame", nil, UIParent)
 local barsElapsed = 0
@@ -10086,12 +9980,6 @@ local function HandleMessage(msg)
         num(31, "otherXpPerRank"); num(32, "otherXpMax")
         if CW.RefreshHelpText then CW.RefreshHelpText() end
         RenderList()
-
-    elseif kind == "CP" then
-        -- server-mirrored combo points (the stock client hides them for
-        -- non-rogue classes); light the pips under the resource bars
-        CW.state.comboPoints = tonumber(p[2]) or 0
-        if barsFrame:IsShown() then CW.RefreshBars() end
 
     elseif kind == "RV" then
         -- a wildcard roll happened: refresh state (reroll charges/scrolls

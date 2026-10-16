@@ -31,6 +31,8 @@ Required for every player on a Classless Wildcard realm. The
 - your **stance, pet and totem bars share one row** under the action bar, more
   than ten forms included, laid out by the game's own code so nothing is
   blocked in combat
+- **combo points** show on your target's frame, the stock way, as they do for a
+  Rogue, and in floating combat text when that option is on
 - **rage and runic power off your main bar** show what the server has, instead
   of freezing at their peak after a fight
 - **reagent-free auras** such as Decimation and the reagent glyphs let the

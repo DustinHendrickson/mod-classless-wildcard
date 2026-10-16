@@ -2693,11 +2693,9 @@ def test_resource_bars(h):
         CW.state.universalResources = 1
         CW.state.runes = nil
         CW.state.runicMax = 0
-        CW.state.comboPoints = 0
         ClasslessWildcardDB = ClasslessWildcardDB or {}
         ClasslessWildcardDB.hideBars = false
         ClasslessWildcardDB.barsLocked = nil
-        ClasslessWildcardBars.cpAt = nil
         ClasslessWildcardBars.flashes = nil
         CW.UpdateBarsVisibility()
     """)
@@ -2709,38 +2707,26 @@ def test_resource_bars(h):
             "and they stack from the top inset (%s)" % [xy(b) for b in pools])
     h.check(bars["__h"] == 63, "frame height is exactly the three pools (%s)" % bars["__h"])
     h.check(bars.divider["__shown"] is False, "no divider while there is nothing to divide")
-    h.check(CW.comboDots[1].bg["__shown"] is False,
-            "and no combo row on a character with no combo points")
+    # combo points are Blizzard's (ComboFrame on the target frame, opened to
+    # every class by the client patch): the bars draw no row for them, and no
+    # setting offers one
+    h.check(h.rt.eval("ClasslessWildcard_API.comboDots") is None
+            and h.rt.eval("ClasslessWildcardBars.comboMouse") is None,
+            "the bars draw no combo point row")
 
-    # ---- combo points appear, centred, and only while they are there
-    h.rt.execute("ClasslessWildcard_API.state.comboPoints = 3; ClasslessWildcard_API.RefreshBars()")
-    dots = [CW.comboDots[i] for i in range(1, 6)]
-    xs = [xy(d.bg)[0] for d in dots]
-    h.check(all(d.bg["__shown"] for d in dots), "all five sockets show, not just the earned ones")
-    h.check(xs == [25, 48, 71, 94, 117], "the row is centred in the frame (%s)" % xs)
-    h.check(160 - (xs[-1] + 18) == xs[0], "same margin either side (%d)" % (160 - (xs[-1] + 18)))
-    h.check([d.shine["__alpha"] for d in dots] == [1, 1, 1, 0, 0],
-            "three gems lit, two dark (%s)" % [d.shine["__alpha"] for d in dots])
-    h.check(list(dots[0].bg["__coord"].values()) == [0, 0.375, 0, 0.75],
-            "the socket is read without its four blank rows (%s)"
-            % list(dots[0].bg["__coord"].values()))
-    h.check(bars.divider["__shown"] is True, "a hairline separates the pools from the pips")
-    h.check(bars["__h"] == 94, "and the frame grew by exactly that row (%s)" % bars["__h"])
-    h.check(len(list(bars.flashes.values())) == 3, "each point that landed flashed (%d)"
+    # ---- runes: the Death Knight block, sized from the client's own frame
+    h.recv("RU|30|100|0,1|0,1|1,0|1,1|2,1|2,0")
+    pips = [CW.runePips[i] for i in range(1, 7)]
+    h.check(bars.divider["__shown"] is True, "a hairline separates the pools from the runes")
+    h.check(len(list(bars.flashes.values())) == 4, "each rune that came up flashed (%d)"
             % len(list(bars.flashes.values())))
-    h.check(bars.comboMouse["__shown"] is True and bars.comboMouse["__w"] == 110,
-            "the row answers a hover across its whole width (%s)" % bars.comboMouse["__w"])
 
     # ---- the flashes fade out on their own; the tick lives on its own frame,
     #      because the bar frame hides itself when it has nothing to draw
     tick = CW.barsTicker
     tick["__scripts"]["OnUpdate"](tick, 0.5)
     h.check(len(list(bars.flashes.values())) == 0, "and faded out again")
-    h.check(dots[0].flash["__alpha"] == 0, "leaving nothing behind")
-
-    # ---- runes: the Death Knight block, sized from the client's own frame
-    h.recv("RU|30|100|0,1|0,1|1,0|1,1|2,1|2,0")
-    pips = [CW.runePips[i] for i in range(1, 7)]
+    h.check(pips[0].flash["__alpha"] == 0, "leaving nothing behind")
     rxs = [xy(p.frame)[0] for p in pips]
     h.check(all(p.frame["__shown"] for p in pips), "all six runes drawn")
     h.check(rxs == [16, 38, 60, 82, 104, 126], "the rune row is centred too (%s)" % rxs)
@@ -2761,19 +2747,10 @@ def test_resource_bars(h):
             "and carries its value like they do (%s)" % runic.label["__text"])
 
     # ---- everything at once, in order, with no gaps left over
-    ys = dict(pool=xy(pools[2])[1], rune=xy(pips[0].frame)[1],
-              runic=xy(runic)[1], combo=xy(dots[0].bg)[1])
-    h.check(ys["pool"] > ys["rune"] > ys["runic"] > ys["combo"],
-            "pools, then runes, then runic power, then combo points (%s)" % ys)
-    h.check(bars["__h"] == 141, "and the frame is exactly as tall as its contents (%s)" % bars["__h"])
-
-    # ---- spending the last point holds the row briefly, then drops it
-    h.rt.execute("ClasslessWildcard_API.state.comboPoints = 0; ClasslessWildcard_API.RefreshBars()")
-    h.check(dots[0].bg["__shown"] is True and dots[0].shine["__alpha"] == 0,
-            "the sockets go dark before they go away")
-    h.rt.execute("NOW = NOW + 2; ClasslessWildcard_API.RefreshBars()")
-    h.check(dots[0].bg["__shown"] is False, "and then the row leaves")
-    h.check(bars["__h"] == 117, "closing the gap behind it (%s)" % bars["__h"])
+    ys = dict(pool=xy(pools[2])[1], rune=xy(pips[0].frame)[1], runic=xy(runic)[1])
+    h.check(ys["pool"] > ys["rune"] > ys["runic"],
+            "pools, then runes, then runic power (%s)" % ys)
+    h.check(bars["__h"] == 117, "and the frame is exactly as tall as its contents (%s)" % bars["__h"])
 
     # ---- runes gone: back to just the pools
     h.recv("RU|0|0|-|-|-|-|-|-")
@@ -2835,10 +2812,8 @@ def test_settings(h):
         ClasslessWildcardDB.hideBars = nil
         ClasslessWildcardDB.barsLocked = nil
         CW.state.universalResources = 1
-        CW.state.comboPoints = 0
         CW.state.runes = nil
         CW.state.runicMax = 0
-        ClasslessWildcardBars.cpAt = nil
         CW.UpdateBarsVisibility()
     """)
 
@@ -2848,8 +2823,11 @@ def test_settings(h):
     h.check(CW.helpFly["__shown"] is False and CW.statFly["__shown"] is False,
             "and closes the other flyouts, as they close it")
     h.check(all(box(k)["__checked"] is True
-                for k in ("mana", "rage", "energy", "runes", "runic", "combo")),
+                for k in ("mana", "rage", "energy", "runes", "runic")),
             "a saved file with no settings in it starts with every row on")
+    keys = [str(CW.settingsChecks[i].rowKey) for i in range(1, 20) if CW.settingsChecks[i] is not None]
+    h.check("runic" in keys and "combo" not in keys,
+            "and none of them is a combo point row: those are Blizzard's (%s)" % keys)
 
     # ---- one pool off
     toggle("rage", False)
@@ -2882,18 +2860,8 @@ def test_settings(h):
     toggle("runic", True)
     h.check(bars["__h"] == 117, "both back on restores the block (%s)" % bars["__h"])
 
-    # ---- combo points
-    h.rt.execute("ClasslessWildcard_API.state.comboPoints = 3; ClasslessWildcard_API.RefreshBars()")
-    h.check(CW.comboDots[1].bg["__shown"] is True, "three points on the target draw the row")
-    toggle("combo", False)
-    h.check(CW.comboDots[1].bg["__shown"] is False,
-            "unticking Combo Points drops it even with points up")
-    h.check(bars["__h"] == 117, "and the frame shrinks to match (%s)" % bars["__h"])
-    toggle("combo", True)
-
     # ---- turning everything off is the same as turning the frame off
-    h.rt.execute("ClasslessWildcard_API.state.comboPoints = 0; ClasslessWildcardBars.cpAt = nil")
-    for k in ("mana", "rage", "energy", "runes", "runic", "combo"):
+    for k in ("mana", "rage", "energy", "runes", "runic"):
         toggle(k, False)
     h.check(bars["__shown"] is False, "with nothing left to draw the frame goes away")
     h.check(h.g.ClasslessWildcardDB.hideBars is None,
@@ -2904,7 +2872,7 @@ def test_settings(h):
     tick = CW.barsTicker
     tick["__scripts"]["OnUpdate"](tick, 0.5)
     h.check(bars["__shown"] is True, "and comes back the moment a row is ticked again")
-    for k in ("rage", "energy", "runes", "runic", "combo"):
+    for k in ("rage", "energy", "runes", "runic"):
         toggle(k, True)
 
     # ---- the frame's own two boxes

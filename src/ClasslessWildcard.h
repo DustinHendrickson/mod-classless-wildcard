@@ -436,9 +436,6 @@ namespace ClasslessWildcard
         int32 usRangedAP = 0;
         int32 usSpellPower = 0;
 
-        // last combo-point count mirrored to the addon (runtime only; 255 =
-        // nothing pushed yet, so the first update always syncs)
-        uint8 lastComboPush = 255;
 
         // The spell modifier totals this client was last told, keyed by
         // ClientSpellModKey, and whether a resync is already on its way.
