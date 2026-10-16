@@ -56,6 +56,7 @@ ITEM = "DBFilesClient\\Item.dbc"
 # new cooldown group, so this one IS in _OUR_FILES.
 SPELLCATEGORY = "DBFilesClient\\SpellCategory.dbc"
 TALENTTAB = "DBFilesClient\\TalentTab.dbc"
+SPELLSHAPESHIFTFORM = "DBFilesClient\\SpellShapeshiftForm.dbc"
 # the same path elemental.py uses, kept in one place so the two never diverge
 SPELL = elemental.SPELL
 GLUESTRINGS = "Interface\\GlueXML\\GlueStrings.lua"
@@ -202,6 +203,16 @@ def build_data_patch(files, name, report, theme=False, keep_totems=False):
                   % (len(renamed), name, os.path.basename(source)))
     report.append("  ChrClasses.dbc   ranged slot restored on %d relic classes "
                   "(bows, guns and wands now show)" % len(unrelic))
+
+    # A stance pages the action bar out, and a Warrior's stances cannot be
+    # clicked off (a Warrior is never out of one). A Hero with one stance had no
+    # way back to their normal bar.
+    raw, source = files.find(SPELLSHAPESHIFTFORM)
+    patched, stances = dbc.open_stance_cancel(raw)
+    if stances:
+        payload[SPELLSHAPESHIFTFORM] = patched
+    report.append("  SpellShapeshiftForm.dbc  %d stances can be clicked off (from %s)"
+                  % (len(stances), os.path.basename(source)))
 
     raw, source = files.find(CHARBASEINFO)
     patched, races = dbc.single_class_combos(raw, SHELL_CLASS)
@@ -887,6 +898,7 @@ def do_install(args, wow_dir):
 # has something else in it, so it can never be matched by luck of the letter.
 _OUR_FILES = frozenset(x.lower() for x in (
     CHRCLASSES, CHARBASEINFO, CHARSTARTOUTFIT, SKILLRACECLASSINFO, SKILLLINEABILITY,
+    SPELLSHAPESHIFTFORM,
     CHARSECTIONS,
     ITEM,
     TALENTTAB,

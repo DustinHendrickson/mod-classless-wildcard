@@ -219,6 +219,52 @@ def clear_relic_slot(data: bytes):
     return header + bytes(records) + data[strings_off:], changed
 
 
+# SpellShapeshiftForm.dbc, 3.3.5a: 35 uint32 fields per record; field 19 is
+# Flags. 0x1 makes a form a stance (the server's SHAPESHIFT_FLAG_STANCE: spells
+# still cast as if unshifted) and 0x2 makes it one the client will not cancel:
+# Spell_C_CancelAura (0x802F80) returns before sending CMSG_CANCEL_AURA when
+# the form has it, so clicking the active form does nothing. Nothing else in
+# the client reads 0x2, and the server never does.
+SPELLSHAPESHIFTFORM_FIELDS = 35
+SPELLSHAPESHIFTFORM_FLAGS_FIELD = 19
+FORM_FLAG_STANCE = 0x1
+FORM_FLAG_NO_CANCEL = 0x2
+
+
+def open_stance_cancel(data: bytes):
+    """Let a stance be clicked off, the way a druid form is.
+
+    A Warrior is never out of a stance, so Battle, Defensive and Berserker
+    Stance carry the no-cancel flag. A Hero has a normal action bar to go back
+    to, and a stance pages it out (its bonus bar), so with one stance and no
+    other there was no way back. Clearing 0x2 on the stance forms lets the
+    client send the cancel; the server already accepts it (the stance spells
+    are positive, not passive, and have no SPELL_ATTR0_NO_AURA_CANCEL).
+
+    Returns (new_dbc_bytes, [form_id, ...]) for the forms that changed.
+    """
+    record_count, field_count, record_size, string_size = parse_header(data)
+    if field_count != SPELLSHAPESHIFTFORM_FIELDS:
+        raise DbcError(
+            "SpellShapeshiftForm.dbc has %d fields, expected %d. This client "
+            "build is not the 3.3.5a layout this patch understands."
+            % (field_count, SPELLSHAPESHIFTFORM_FIELDS))
+    records_off = 20
+    strings_off = records_off + record_count * record_size
+    records = bytearray(data[records_off:strings_off])
+    changed = []
+    for index in range(record_count):
+        base = index * record_size
+        offset = base + SPELLSHAPESHIFTFORM_FLAGS_FIELD * 4
+        flags = struct.unpack_from("<I", records, offset)[0]
+        if (flags & FORM_FLAG_STANCE) and (flags & FORM_FLAG_NO_CANCEL):
+            struct.pack_into("<I", records, offset, flags & ~FORM_FLAG_NO_CANCEL)
+            changed.append(struct.unpack_from("<I", records, base)[0])
+    header = WDBC_MAGIC + struct.pack("<4I", record_count, field_count,
+                                      record_size, string_size)
+    return header + bytes(records) + data[strings_off:], changed
+
+
 # CharSections.dbc, 3.3.5a: 10 uint32 fields per record.
 #   0 ID  1 Race  2 Sex  3 BaseSection (0 skin, 1 face, 2 facial hair, 3 hair,
 #   4 underwear)  4-6 Texture names  7 Flags  8 VariationIndex  9 ColorIndex

@@ -500,6 +500,28 @@ def main(argv):
             check("keeping the totem categories is idempotent",
                   not dbc.clear_spell_tools(kept_dbc, class_spells, keep_totem_categories=True)[1])
 
+            # --- stances can be clicked off --------------------------------
+            # Exactly the three warrior stances lose the no-cancel flag, they
+            # stay stances (0x1), and no other form or field moves.
+            import install as installer
+            ssf_raw = files.find(installer.SPELLSHAPESHIFTFORM)[0]
+            ssf_new, stances = dbc.open_stance_cancel(ssf_raw)
+            check("the three warrior stances become cancellable", sorted(stances) == [17, 18, 19],
+                  str(stances))
+            ffn, fff, ffrs, _ffss = dbc.parse_header(ssf_raw)
+            moved = []
+            for index in range(ffn):
+                old_row = struct.unpack_from("<%dI" % fff, ssf_raw, 20 + index * ffrs)
+                new_row = struct.unpack_from("<%dI" % fff, ssf_new, 20 + index * ffrs)
+                for col in range(fff):
+                    if old_row[col] != new_row[col]:
+                        moved.append((old_row[0], col, old_row[col], new_row[col]))
+            check("only their flags lose 0x2, and they stay stances",
+                  len(moved) == 3 and all(c == dbc.SPELLSHAPESHIFTFORM_FLAGS_FIELD
+                                          and o & ~n == dbc.FORM_FLAG_NO_CANCEL and n & dbc.FORM_FLAG_STANCE
+                                          for _f, c, o, n in moved), str(moved))
+            check("clearing it twice changes nothing", not dbc.open_stance_cancel(ssf_new)[1])
+
             # Class gates in the interface's own code: each edit lands on this
             # client's file, takes its gate out, and a second pass changes nothing.
             from lib import framexml

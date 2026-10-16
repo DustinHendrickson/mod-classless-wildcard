@@ -235,6 +235,18 @@ The remaining three edits below are the `--creation-text` / `--hero-icon`
 visual extras. Text and hide-class ride in the locale patch and need the exe
 patch; the outfit and icon are plain data and do not.
 
+### `SpellShapeshiftForm.dbc` — stances can be clicked off
+
+A stance pages the main action bar out to its bonus bar, and Battle, Defensive
+and Berserker Stance (forms 17 to 19) carry flag `0x2`, which makes the client
+refuse to cancel them: `Spell_C_CancelAura` (`0x802F80`) returns before sending
+`CMSG_CANCEL_AURA` for a form with it. A Warrior is never out of a stance, so
+that costs a Warrior nothing; a Hero with one stance could never get their bar
+back. `dbc.open_stance_cancel` clears `0x2` on every form flagged a stance
+(`0x1`), which is exactly those three. Nothing else in the client reads `0x2`
+and the server never does; its cancel handler already accepts the stance
+spells (positive, not passive, no `SPELL_ATTR0_NO_AURA_CANCEL`).
+
 ### `CharacterCreate.lua` — hide the single-class selector (`--creation-text`)
 
 The server offers one class per race, so the creation screen shows a lone class
