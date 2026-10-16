@@ -11018,10 +11018,21 @@ function CW.LayoutClassBars()
         return
     end
     CW.classBarsPending = nil
-    if (mc.numActiveSlots or 0) == 0 or not ss:IsShown()
+    if (mc.numActiveSlots or 0) == 0
             or (PossessBarFrame and PossessBarFrame:IsShown())
             or (UnitHasVehicleUI and UnitHasVehicleUI("player")) then
-        return   -- one bar, or none: Blizzard's own layout is right
+        return   -- no totem bar to place, or the bars are taken over on purpose
+    end
+    if not ss:IsShown() then
+        -- The totem bar alone sits in Blizzard's own place, but it has to be
+        -- up: a hide Blizzard's pass made while a stance bar showed, during a
+        -- combat this waited out, is otherwise never undone (a death or a ghost
+        -- run takes the stance bar away, and nothing re-shows the totem bar).
+        if not mc:IsShown() or mc.mode == "hide" then
+            mc.mode = "none"
+            mc:Show()
+        end
+        return
     end
     local left = bar:GetLeft() or 0
     -- the row starts where Blizzard put the stance bar this pass (it moves up
@@ -11063,10 +11074,13 @@ end
 CW.HookClassBars()
 do
     local ev = CreateFrame("Frame")
-    ev:RegisterEvent("PLAYER_REGEN_ENABLED")
-    ev:SetScript("OnEvent", function()
-        if CW.classBarsPending then CW.LayoutClassBars() end
-    end)
+    -- after combat, a death or a level, and the totem bar's own update: each
+    -- can change which bars are up without a layout pass of Blizzard's
+    for _, e in ipairs({ "PLAYER_REGEN_ENABLED", "PLAYER_ALIVE", "PLAYER_UNGHOST", "PLAYER_LEVEL_UP",
+                         "UPDATE_MULTI_CAST_ACTIONBAR" }) do
+        ev:RegisterEvent(e)
+    end
+    ev:SetScript("OnEvent", function() CW.LayoutClassBars() end)
 end
 
 -- What hangs under the player frame: the stock second mana bar (shown when

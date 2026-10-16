@@ -3366,6 +3366,13 @@ def test_nemesis_titles_and_charms(h):
     h.check(mc["__shown"] is False and str(mc.mode) == "hide"
             and h.rt.eval("ClasslessWildcard_API.classBarsPending") is True,
             "in combat it waits")
+    # waited out in combat, and the stance bar gone after it (a death, a ghost
+    # run): the totem bar alone comes back up in Blizzard's place
+    h.rt.execute("function InCombatLockdown() return nil end; ShapeshiftBarFrame:Hide(); "
+                 "ClasslessWildcard_API.LayoutClassBars()")
+    h.check(mc["__shown"] is True and str(mc.mode) == "none",
+            "a totem bar hidden in combat comes back when there is no stance bar after it (%s)" % mc.mode)
+    h.rt.execute("ShapeshiftBarFrame:Show(); MultiCastActionBarFrame:Hide(); MultiCastActionBarFrame.mode = 'hide'")
     h.rt.execute("function InCombatLockdown() return nil end; PossessBarFrame:Show(); "
                  "ClasslessWildcard_API.LayoutClassBars()")
     h.check(mc["__shown"] is False and h.rt.eval("ClasslessWildcard_API.classBarsPending") is None,
