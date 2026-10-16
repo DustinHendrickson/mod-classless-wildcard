@@ -6655,6 +6655,20 @@ function CW.SetBarRow(key, on)
     ClasslessWildcardDB.barsOff = ClasslessWildcardDB.barsOff or {}
     ClasslessWildcardDB.barsOff[key] = (not on) or nil
     CW.UpdateBarsVisibility()
+    -- the combo row off hands combo points back to Blizzard's target frame pips
+    if key == "combo" and type(ComboFrame_Update) == "function" then ComboFrame_Update() end
+end
+
+-- With the client patch, GetComboPoints answers for a Hero, so Blizzard's
+-- ComboFrame on the target frame lights up as well as the combo row. Only one
+-- is shown: the row while it is on, Blizzard's pips when it is turned off.
+function CW.HideStockCombo()
+    if ComboFrame and ComboFrame:IsShown() and CW.BarRowOn("combo") then
+        ComboFrame:Hide()
+    end
+end
+if hooksecurefunc and type(ComboFrame_Update) == "function" then
+    hooksecurefunc("ComboFrame_Update", CW.HideStockCombo)
 end
 
 -- x of the first item in a row of `count` items `w` wide, `gap` apart, so the
@@ -7069,8 +7083,10 @@ function CW.RefreshBars()
     end
 
     -- The stock client hides combo points for non-rogue classes (Wow.exe gates
-    -- GetComboPoints), so the server mirrors the real count over the addon
-    -- channel ("CP|n"). Use whichever source knows more.
+    -- GetComboPoints; the client patch opens it), so the server also mirrors
+    -- the real count over the addon channel ("CP|n"). Use whichever source
+    -- knows more. While this row is on, Blizzard's own pips on the target
+    -- frame are kept hidden (CW.HideStockCombo), so the points show once.
     local cp = CW.state.comboPoints or 0
     local ok, ccp = pcall(GetComboPoints, "player", "target")
     if ok and ccp and ccp > cp then cp = ccp end
@@ -7115,6 +7131,24 @@ function CW.RefreshBars()
     barsFrame.rowsShown = rows
     barsFrame:SetHeight(y + BARS.BOTTOM)
     return shown
+end
+
+-- Between layout passes: each shown pool's fill, and its number when it moves.
+function CW.TickBarValues()
+    if not barsFrame:IsShown() then return end
+    local displayed = UnitPowerType("player")
+    for _, bar in ipairs(powerBars) do
+        if bar:IsShown() then
+            local cur = UnitPower("player", bar.powerIndex) or 0
+            if cur ~= bar.lastValue then
+                bar.lastValue = cur
+                bar:SetValue(cur)
+                local marker = (bar.powerIndex == displayed) and "|cffffd100\194\187|r " or ""
+                bar.label:SetText(marker .. bar.powerName .. ": " .. cur .. "/"
+                    .. (UnitPowerMax("player", bar.powerIndex) or 0))
+            end
+        end
+    end
 end
 
 function CW.UpdateBarsVisibility()
@@ -7230,15 +7264,23 @@ do
         statFrame:Show()
     end
 
-    -- Ranged Attack Power carries two pet lines in the stock UI, and
+    -- Ranged Attack Power carries two pet lines in the stock UI, and stock
     -- ComputePetBonus answers 0 for any chassis that is not Warlock or Hunter,
-    -- so a Hero with a tamed beast never saw them. The relationship is real --
+    -- so a Hero with a tamed beast never saw them (the client patch now edits
+    -- that function, and these are written only where it has not). The
+    -- relationship is real --
     -- spell_hun_generic_scaling gives the pet 22% of the owner's ranged attack
     -- power and 12.87% of it as spell power, with no class test -- so this
     -- writes the lines the row should have had, from the server's numbers.
     local function FixRangedAP(statFrame)
         if not statFrame or not (CW.state and CW.state.universalResources == 1) then return end
         if not CW.HasTamedPet() then return end
+        -- The client patch teaches ComputePetBonus a Hero's pet, and then the
+        -- stock code writes both lines itself (with the same 22% and 12.87%).
+        if type(ComputePetBonus) == "function"
+           and (tonumber(ComputePetBonus("PET_BONUS_RAP_TO_AP", 100)) or 0) > 0 then
+            return
+        end
         local base, pos, neg = UnitRangedAttackPower("player")
         local total = math.max(0, (tonumber(base) or 0) + (tonumber(pos) or 0)
                                   + (tonumber(neg) or 0))
@@ -7336,6 +7378,10 @@ CW.barsTicker:SetScript("OnUpdate", function(self, elapsed)
     if barsElapsed >= 0.2 then
         barsElapsed = 0
         CW.UpdateBarsVisibility()
+    elseif CW.TickBarValues then
+        -- the client predicts every pool between server updates (the regen
+        -- patch), so the fill follows it each frame like the stock bar does
+        CW.TickBarValues()
     end
 end)
 
@@ -11010,9 +11056,29 @@ end
 -- both replace the bars on purpose. Frames with secure buttons cannot be moved
 -- in combat, so a pass then waits for combat to end.
 CW.CLASS_BAR_GAP = 12
+-- The border of the stance buttons past ten. Blizzard's layout pass sizes the
+-- stock ten (50 over the bottom-left bar, 64 without it); with the client patch
+-- it reads only those ten, so these follow it here. A texture size is not
+-- protected, so this runs in combat too.
+function CW.SizeFormButtons()
+    local small = MultiBarBottomLeft and MultiBarBottomLeft:IsShown()
+    for i = CW.StockFormSlots() + 1, CW.FORM_SLOTS do
+        local tex = rawget(_G, "ShapeshiftButton" .. i .. "NormalTexture")
+        if tex then
+            tex:SetWidth(small and 50 or 64)
+            tex:SetHeight(small and 50 or 64)
+        end
+    end
+end
+
 function CW.LayoutClassBars()
     local mc, ss, pet, bar = MultiCastActionBarFrame, ShapeshiftBarFrame, PetActionBarFrame, MainMenuBar
     if type(mc) ~= "table" or type(ss) ~= "table" or type(bar) ~= "table" then return end
+    CW.SizeFormButtons()
+    -- With the client patch, Blizzard's own layout puts the totem bar in the
+    -- row (ShapeshiftBar_RowRight is its helper). Writing the bar's fields or
+    -- anchor from here would taint that secure code, so it is left to it.
+    if type(rawget(_G, "ShapeshiftBar_RowRight")) == "function" then return end
     if InCombatLockdown and InCombatLockdown() then
         CW.classBarsPending = true
         return
@@ -11213,7 +11279,9 @@ function CW.MakeFormButtons()
                 "ActionButtonTemplate, SecureActionButtonTemplate")
             b:SetID(i)
             b:SetWidth(30); b:SetHeight(30)
-            b:SetPoint("LEFT", _G["ShapeshiftButton" .. (i - 1)], "RIGHT", 7, 0)
+            -- the stock stride (BonusActionBarFrame.xml: 8 apart): the client
+            -- patch's layout works out where the row ends from it
+            b:SetPoint("LEFT", _G["ShapeshiftButton" .. (i - 1)], "RIGHT", 8, 0)
             b:SetAttribute("type", "spell")
             b:SetScript("OnEnter", function(self)
                 GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
@@ -11798,11 +11866,20 @@ do
         if tab:GetText() ~= _G.PET_TYPE_PET then
             tab:SetText(_G.PET_TYPE_PET)
         end
-        SpellBookFrame.petTitle = _G.PET_TYPE_PET
+        -- The title is set as text. SpellBookFrame.petTitle is Blizzard's own
+        -- field: the page buttons read it and go on to write the pet book's page
+        -- number, which SpellButton_OnClick reads before CastSpell, so an addon
+        -- value there would taint casting a pet spell from the book.
+        if SpellBookFrame.bookType == BOOKTYPE_PET and SpellBookTitleText then
+            SpellBookTitleText:SetText(_G.PET_TYPE_PET)
+        end
     end
 
-    if hooksecurefunc and type(_G.SpellBookFrame_Update) == "function" then
-        hooksecurefunc("SpellBookFrame_Update", relabel)
+    if hooksecurefunc then
+        for _, fn in ipairs({ "SpellBookFrame_Update", "SpellBookPrevPageButton_OnClick",
+                              "SpellBookNextPageButton_OnClick" }) do
+            if type(_G[fn]) == "function" then hooksecurefunc(fn, relabel) end
+        end
     end
 end
 
@@ -11851,16 +11928,33 @@ do
     end
 
     -- Any route onto a player spec -- the frame's own default on show, the
-    -- fallback when a pet is dismissed -- goes through PlayerSpecTab_OnClick.
-    -- Turn it to the pet's spec while there is one. With none, close the frame
-    -- a frame later: closing it here would run inside its own OnShow, before
-    -- the Toggle hook above has had the chance to open the browser instead.
+    -- fallback when a pet is dismissed, a glyph being put in -- goes through
+    -- PlayerSpecTab_OnClick. A frame later, turn it to the pet's spec while
+    -- there is one, or close it: closing it here would run inside its own
+    -- OnShow, before the Toggle hook above has had the chance to open the
+    -- browser instead.
+    --
+    -- Glyphs live on the player's spec too, and every way in goes through the
+    -- same click: right-clicking a glyph (USE_GLYPH) runs
+    -- PlayerTalentFrame_OpenGlyphFrame, which shows the window, clicks the
+    -- player spec and only THEN selects the Glyphs tab. So the turn to the
+    -- pet's spec waits a frame as well, and neither it nor the close happens
+    -- while the Glyphs tab is the one selected. Turning or closing at once sent
+    -- every glyph away before it could be put in a socket.
+    function P.onGlyphs()
+        return GLYPH_TALENT_TAB ~= nil and type(PanelTemplates_GetSelectedTab) == "function"
+            and PanelTemplates_GetSelectedTab(PlayerTalentFrame) == GLYPH_TALENT_TAB
+    end
+
     P.later = CreateFrame("Frame")
     P.later:Hide()
     P.later:SetScript("OnUpdate", function(self)
         self:Hide()
-        if PlayerTalentFrame and PlayerTalentFrame:IsShown() and not PlayerTalentFrame.pet
-           and not P.petHasTalents() and not InCombatLockdown() then
+        if not PlayerTalentFrame or not PlayerTalentFrame:IsShown() or PlayerTalentFrame.pet then return end
+        if P.onGlyphs() then return end
+        if P.petHasTalents() then
+            PlayerTalentFrame_Open(true, 1)
+        elseif not InCombatLockdown() then
             HideUIPanel(PlayerTalentFrame)
         end
     end)
@@ -11868,11 +11962,7 @@ do
     function P.onSpecClick(tab)
         if not tab or not PlayerTalentFrame or not PlayerTalentFrame:IsShown() then return end
         if PlayerTalentFrame.pet then return end
-        if P.petHasTalents() then
-            PlayerTalentFrame_Open(true, 1)
-        else
-            P.later:Show()
-        end
+        P.later:Show()
     end
 
     -- the side tabs for the player's own specs: there is nothing on them

@@ -51,6 +51,48 @@ Master Totem) and nothing else, reads as carried. Every other tool (skinning
 knife, mining pick, runed rods) still asks the bags. The client patch then
 keeps those categories on totem spells (dbc.clear_spell_tools), so the bar
 fills; the server never asks for them.
+
+And the class checks a Hero trips over (CLASS_GATES). Every Hero is a Paladin
+to the client, so a branch it keeps for another class never runs, however many
+of that class's abilities the Hero has. Found by reading the decompiled client
+(B:\\code\\wowdecomp, each function tagged with its address):
+  - combo points: GetComboPoints("player") answers only a Rogue or a Druid
+    (0x611670); the `je` past the class test becomes a `jmp`.
+  - regeneration: DoPowerRegen (0x728A20) predicts mana and energy off the
+    displayed bar only for a Druid; the class test is dropped, so a Hero's
+    other pools tick between server updates instead of stepping.
+  - hunter pets: CanGainXP (0x71B630) and GetPetPersonality (0x71F390) treat
+    a pet as a hunter pet only when its owner is a Hunter, so a Hero's tamed
+    pet had no experience bar and no happiness. They test the pet itself now:
+    a hunter pet's power is focus (2), a demon's is mana.
+  - minimap tracking: the Stable Master, Ammunition and Poisons entries of
+    s_trackingTypes carried class masks (Hunter; Warrior, Hunter, Rogue;
+    Rogue); the masks are cleared.
+  - feral weapons: the tooltip line "increases attack power by N in Cat,"
+    Bear and Moonkin form" and the item comparison sums show only to a Druid;
+    the three class tests ask for the Paladin chassis instead, every Hero.
+  - reagent waivers: Spell_C_HasNoReagentCost (0x800D60) honours a "no
+    reagent" aura only for a spell of the character's own class family, the
+    Paladin's, so Decimation and the reagent glyphs (Unburdened Rebirth,
+    Levitate, Water Walking...) still said "Missing reagent" and the cast was
+    never sent. The family test goes; the server tests the mask alone too.
+  - the relic slot: CGItem_C::CanGoInSlot (0x7082B0) lets slot 17 take a relic
+    only for a class flagged for one (cleared by dbc.clear_relic_slot), so a
+    relic could not be dragged onto it or picked from the flyout. The slot now
+    takes what the inventory-type table allows; the server decides.
+  - a pool off the main bar: UnitPowerUpdateHandler (0x7234D0) throws away a
+    server value at or below the client's own prediction, and nothing lowers
+    the prediction of a pool that is not on the bar, so rage and runic power
+    earned on the mana bar froze at their peak, and spells read as castable
+    with rage the server had already decayed. The guard now applies only to
+    health and to the pool on the bar; any other pool takes the server's
+    value. It reuses a dead branch (the predictedPower cvar is tested twice).
+
+And the Hero's class color on nameplates (HERO_COLOR): s_classColors
+(0xB2DA20, read only by CGNamePlateFrame::UpdateColorDisplay, 0x98EE30) gives
+an enemy player's health bar its class color, the Paladin's pink for every
+Hero. Its Paladin entry becomes the Hero color, the same one the interface's
+RAID_CLASS_COLORS gets (framexml.HERO_RGB).
 """
 
 from __future__ import annotations
@@ -58,6 +100,8 @@ from __future__ import annotations
 import hashlib
 import os
 import shutil
+
+from .framexml import HERO_RGB
 
 # The stock 3.3.5a build 12340 client (for labelling only; patching does not
 # depend on it -- the pattern match is the real gate).
@@ -94,6 +138,59 @@ TOTEM_TOOL = [
     (0x353CF3,
      "8B 45 08 8B 15 8C 4C AD 00 3B C2 7C 17 3B 05 88 4C AD 00 7F 0F 2B C2 8B 15 9C 4C AD 00 8B 04 82 85 C0 75 06 32 C0 5D C2 08 00 8B 50 0C 89 55 08 8B 55 0C 8B 40 08 52 6A 01 8D 55 08 52 50 E8 BA F8 FF FF 5D C2 08 00 CC CC CC CC CC CC",
      "8B 45 08 8B 15 8C 4C AD 00 3B C2 7C 36 3B 05 88 4C AD 00 7F 2E 2B C2 8B 15 9C 4C AD 00 8B 04 82 85 C0 74 1F 83 78 08 02 74 1D 8B 50 0C 89 55 08 FF 75 0C 6A 01 8D 55 08 52 FF 70 08 E8 BC F8 FF FF EB 06 32 C0 EB 02 B0 01 5D C2 08 00"),
+]
+
+CLASS_GATES = [
+    # combo
+    (0x210B0F, "8A 40 45 3C 04 74 04 3C 0B 75 42",
+     "8A 40 45 3C 04 EB 04 3C 0B 75 42"),
+    # regen
+    (0x327E69, "80 7A 45 0B 75 1D 85 DB",
+     "80 7A 45 0B 90 90 85 DB"),
+    # cangainxp
+    (0x31AA30, "8B 81 D0 00 00 00 83 B8 14 01 00 00 00 75 03 32 C0 C3 8B 48 2C 8B 50 28 68 4B 4F 00 00 68 10 4B A3 00 6A 10 51 52 E8 55 97 DB FF 83 C4 14 85 C0 74 DD 8B 80 D0 00 00 00 33 C9 80 78 45 03 0F 94 C1 8A C1 C3",
+     "8B 81 D0 00 00 00 83 B8 14 01 00 00 00 75 03 32 C0 C3 80 78 47 02 0F 94 C0 C3 CC CC CC CC CC CC CC CC CC CC CC CC CC CC CC CC CC CC CC CC CC CC CC CC CC CC CC CC CC CC CC CC CC CC CC CC CC CC CC CC CC CC"),
+    # personality
+    (0x31E79F, "8B 48 2C 8B 50 28 68 4B",
+     "80 78 47 02 75 51 EB 29"),
+    # track poisons
+    (0x610488, "10 00 00 00",
+     "00 00 00 00"),
+    # track ammo
+    (0x61049C, "1A 00 00 00",
+     "00 00 00 00"),
+    # track stable
+    (0x6104EC, "08 00 00 00",
+     "00 00 00 00"),
+    # feral tooltip: item stat summary (dps): a Druid's (11), now a Hero's (the Paladin chassis, 2)
+    (0x21E893, "80 78 45 0B 75 16",
+     "80 78 45 02 75 16"),
+    # feral tooltip: item stat summary (scaling): a Druid's (11), now a Hero's (the Paladin chassis, 2)
+    (0x21EBAA, "80 7A 45 0B 75 20",
+     "80 7A 45 02 75 20"),
+    # feral tooltip: the weapon's feral attack power line: a Druid's (11), now a Hero's (the Paladin chassis, 2)
+    (0x22AF5E, "80 78 45 0B 0F 85",
+     "80 78 45 02 0F 85"),
+    # reagent waiver: the jne past `cmp ecx, s_spellClassSet` goes (mask only)
+    (0x400199, "75 29 8D 90 44 02 00 00",
+     "90 90 8D 90 44 02 00 00"),
+    # relic slot: `je` on bypass == relic becomes a `jmp` to the slot-table test
+    (0x307728, "0F 84 A5 01 00 00",
+     "E9 A6 01 00 00 90"),
+    # power sync: keep the prediction guard for health and the bar's own pool only
+    #   mov eax,[edi+esi*4+0xFB4] / cmp ecx,eax / jg take / cmp esi,-2 / je keep
+    #   mov edx,[edi+0xD0] / movzx edx,byte [edx+0x47] / cmp esi,edx / je keep
+    #   jmp take / nop x13
+    (0x32294A,
+     "83 7A 30 00 74 09 8B 84 B7 B4 0F 00 00 EB 1A 83 FE FE 75 0B 8B 87 D0 00 00 00 8B 40 48 EB 0A 8B 97 D0 00 00 00 8B 44 B2 4C 3B C8 7E 32",
+     "8B 84 B7 B4 0F 00 00 39 C1 7F 22 83 FE FE 74 4F 8B 97 D0 00 00 00 0F B6 52 47 39 D6 74 41 EB 0D 90 90 90 90 90 90 90 90 90 90 90 90 90"),
+]
+
+# s_classColors[CLASS_PALADIN], in .data (file offset = VA - 0x402000); a
+# CImVector is stored blue, green, red, alpha
+HERO_COLOR = [
+    (0x72BA28, "BA 8C F4 FF",
+     "%02X %02X %02X FF" % (HERO_RGB[2], HERO_RGB[1], HERO_RGB[0])),
 ]
 
 _PATCHES = [
@@ -295,7 +392,9 @@ def inspect(exe):
         # glow site existed), means apply() has work to do
         if any(st == "apply" for st, *_ in states) \
                 or _face_arrow_state(data) == "apply" \
-                or _group_state(data, TOTEM_TOOL) == "apply":
+                or _group_state(data, TOTEM_TOOL) == "apply" \
+                or _group_state(data, CLASS_GATES) == "apply" \
+                or _group_state(data, HERO_COLOR) == "apply":
             return UNPATCHED, None, digest, label
         return PATCHED, None, digest, label
     return UNKNOWN, None, digest, label
@@ -346,8 +445,19 @@ def apply(exe):
                   "done": "; the totem bar already works without totems",
                   }.get(totem_state, "; totem tool site not found, left alone")
 
+    gates_state = _group_state(data, CLASS_GATES)
+    glow_note += {"apply": "; class checks opened for Heroes (combo points, regen, hunter pets, tracking, reagents, relics, power sync)",
+                  "done": "; class checks already opened for Heroes",
+                  }.get(gates_state, "; class check sites not found, left alone")
+
+    color_state = _group_state(data, HERO_COLOR)
+    glow_note += {"apply": "; nameplates show the Hero class color",
+                  "done": "; nameplates already show the Hero class color",
+                  }.get(color_state, "; nameplate color site not found, left alone")
+
     if not any(st == "apply" for (st, sb, rb, core) in states) \
-            and skin_state != "apply" and totem_state != "apply":
+            and skin_state != "apply" and totem_state != "apply" and gates_state != "apply" \
+            and color_state != "apply":
         return "already accepts custom interface files%s; left alone" % glow_note
 
     backup = backup_path(exe)
@@ -370,6 +480,10 @@ def apply(exe):
         _group_write(data, FACE_ARROW, patched=True)
     if totem_state == "apply":
         _group_write(data, TOTEM_TOOL, patched=True)
+    if gates_state == "apply":
+        _group_write(data, CLASS_GATES, patched=True)
+    if color_state == "apply":
+        _group_write(data, HERO_COLOR, patched=True)
 
     with open(exe, "wb") as handle:
         handle.write(bytes(data))
@@ -398,6 +512,8 @@ def has_changes(exe) -> bool:
     return _group_state(data, FACE_ARROW) == "done" or \
         _group_state(data, LEGACY_SKIN_FACE) == "done" or \
         _group_state(data, TOTEM_TOOL) == "done" or \
+        _group_state(data, CLASS_GATES) == "done" or \
+        _group_state(data, HERO_COLOR) == "done" or \
         any(_count(data, _bytes(replace)) == 1
             and _count(data, _bytes(search)) == 0
             for search, replace, _core in _PATCHES)
@@ -423,7 +539,7 @@ def restore(exe):
             i = data.find(rb)
             data[i:i + len(rb)] = sb
             reverted += 1
-    for group in (FACE_ARROW, LEGACY_SKIN_FACE, TOTEM_TOOL):
+    for group in (FACE_ARROW, LEGACY_SKIN_FACE, TOTEM_TOOL, CLASS_GATES, HERO_COLOR):
         if _group_state(data, group) == "done":
             _group_write(data, group, patched=False)
             reverted += len(group)

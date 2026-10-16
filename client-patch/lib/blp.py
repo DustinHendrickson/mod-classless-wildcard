@@ -172,6 +172,55 @@ def encode_palettized_opaque(image) -> bytes:
     return bytes(out)
 
 
+def encode_argb8888(image) -> bytes:
+    """Encode a Pillow RGBA image as an uncompressed BLP2 (encoding 3, 8-bit
+    alpha, full mip chain): BGRA pixels, no palette, so nothing is lost.
+
+    For a class-icon atlas, where only one cell is repainted: a 256-colour
+    palette over ten unrelated icons shifts the colours of the other nine. The
+    client copies encoding 3 straight through as ARGB8888 (CBLPFile::Lock,
+    0x6AF990 in the decompiled client; TextureLoadBlpMips asks for ARGB8888 for
+    anything not DXT). Character skins read only palettized files, through
+    TextureCacheGetPal; interface textures do not.
+    """
+    from PIL import Image
+
+    rgba = image.convert("RGBA")
+    width, height = rgba.size
+
+    def bgra(img):
+        r, g, b, a = img.split()
+        return Image.merge("RGBA", (b, g, r, a)).tobytes()
+
+    levels = [bgra(rgba)]
+    mip = rgba
+    w, h = width, height
+    while w > 1 or h > 1:
+        w, h = max(1, w // 2), max(1, h // 2)
+        mip = mip.resize((w, h), Image.LANCZOS)
+        levels.append(bgra(mip))
+
+    mip_offsets = [0] * 16
+    mip_sizes = [0] * 16
+    offset = _PIXELS_OFFSET                        # past the (unused) palette
+    for i, pixels in enumerate(levels):
+        mip_offsets[i] = offset
+        mip_sizes[i] = len(pixels)
+        offset += len(pixels)
+
+    out = bytearray()
+    out += b"BLP2"
+    out += struct.pack("<I", 1)                    # type
+    out += bytes((3, 8, 8, 1))                     # enc, alphaDepth, alphaType, hasMips
+    out += struct.pack("<II", width, height)
+    out += struct.pack("<16I", *mip_offsets)
+    out += struct.pack("<16I", *mip_sizes)
+    out += bytes(_PALETTE_BYTES)
+    for pixels in levels:
+        out += pixels
+    return bytes(out)
+
+
 def _nearest(palette, key):
     r, g, b = key
     best, bd = 0, 1 << 30
@@ -195,13 +244,13 @@ def build_addon_class_atlas(original_blp):
     except ImportError:
         return None
     w, h, rgba = decode_blp(original_blp)
-    return encode_palettized(Image.frombytes("RGBA", (w, h), rgba))
+    return encode_argb8888(Image.frombytes("RGBA", (w, h), rgba))
 
 
 # ----------------------------------------------------------------- decoding
 
 def decode_blp(data):
-    """Decode a BLP2 (palettized or DXT1/3/5) into (width, height, RGBA bytes).
+    """Decode a BLP2 (palettized, DXT1/3/5 or uncompressed) into (width, height, RGBA bytes).
 
     Only mip level 0 is decoded -- that is all we need to re-skin one cell.
     """
@@ -226,6 +275,12 @@ def decode_blp(data):
             out[i * 4 + 1] = palette[p + 1]  # G
             out[i * 4 + 2] = palette[p]      # B
             out[i * 4 + 3] = alpha[i] if alpha else 255
+        return width, height, bytes(out)
+
+    if encoding == 3:  # uncompressed BGRA
+        raw = data[off:off + width * height * 4]
+        out = bytearray(raw)
+        out[0::4], out[2::4] = raw[2::4], raw[0::4]
         return width, height, bytes(out)
 
     if encoding == 2:  # DXT
@@ -298,12 +353,12 @@ def _dxt5_alpha_table(a0, a1):
     return a
 
 
-# The Hero emblem goes on the Paladin cell of UI-Classes-Circles -- Heroes run
-# the Paladin chassis, so that is the class icon their unit frame / character
-# select draws. Only the Paladin cell is touched; every other class icon
-# (Warrior included) is left exactly as it was. This atlas is NOT the one the
-# addon uses for its by-class ability grouping (that is
-# UI-CharacterCreate-Classes), so nothing about the addon is disturbed.
+# The Hero emblem goes on the Paladin cell of a class-icon atlas -- Heroes run
+# the Paladin chassis, so that is the class icon the interface draws for them.
+# Only the Paladin cell is touched; every other class icon (Warrior included)
+# is left exactly as it was. UI-Classes-Circles, UI-CharacterCreate-Classes
+# and Icons-Classes all share this cell layout. The addon's by-class ability
+# grouping reads its own copy of the stock atlas, so it is not disturbed.
 # CLASS_ICON_TCOORDS: PALADIN = {0,.25,.5,.75}
 _HERO_CELLS_TC = ((0.0, 0.25, 0.5, 0.75),)   # Paladin (chassis / in-game class)
 
@@ -327,7 +382,7 @@ def reskin_hero_cell(original_blp):
         cw, ch = round((right - left) * w), round((bottom - top) * h)
         emblem = _draw_emblem(max(cw, ch)).resize((cw, ch), Image.LANCZOS)
         atlas.paste(emblem, (x0, y0), emblem)
-    return encode_palettized(atlas)
+    return encode_argb8888(atlas)
 
 
 def have_pillow() -> bool:

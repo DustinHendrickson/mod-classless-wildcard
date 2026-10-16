@@ -27,6 +27,7 @@
 #include "Item.h"
 #include "Mail.h"
 #include "ObjectMgr.h"
+#include "Group.h"
 #include "Pet.h"
 #include "Player.h"
 #include "Random.h"
@@ -5447,13 +5448,22 @@ bool ClasslessMgr::SetDisplayPower(Player* player, uint8 powerIdx, std::string* 
     return true;
 }
 
+// Only the bar's power type changes. Unit::setPowerType also resets the pool
+// it switches to (rage to 0, energy's maximum back to 100), and this runs after
+// every form change, because Player::InitDataForForm puts the bar back on the
+// class's mana: a Hero on the rage bar lost all their rage to Stealth, Ghost
+// Wolf or leaving Bear Form, and a Vigor build lost its extra energy. Every
+// Hero already has a real maximum in each pool (UniversalResources).
 void ClasslessMgr::ApplyDisplayPower(Player* player)
 {
     CharState& st = GetState(player);
     if (st.exempt || st.displayPower == 255)
         return;
-    if (player->getPowerType() != Powers(st.displayPower))
-        player->setPowerType(Powers(st.displayPower));
+    if (player->getPowerType() == Powers(st.displayPower))
+        return;
+    player->SetByteValue(UNIT_FIELD_BYTES_0, 3, st.displayPower);
+    if (player->GetGroup())
+        player->SetGroupUpdateFlag(GROUP_UPDATE_FLAG_POWER_TYPE);
 }
 
 void ClasslessMgr::SaveBans(ObjectGuid guid, CharState const& st)

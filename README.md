@@ -150,7 +150,18 @@ with your build on the right. Lock or reroll anything you own from the same wind
   Counterattack all fire, feral attack power works in Cat and Bear form, and pets inherit your
   hit and expertise. Overpower opens for 5 seconds when your target dodges and uses no combo
   points, so a rogue or cat build's points are never lit up by it or spent on it. Item and set bonuses that pick their effect by class (Eye of Gruul, Soul
-  Preserver, Flask of the North, the T3 six-piece bonuses) treat a Hero as every class.
+  Preserver, Flask of the North, the T3 six-piece bonuses) treat a Hero as every class, and
+  Deathbringer's Will and Darkmoon Card: Madness roll from the list for your highest stat.
+  Your heals draw normal threat (the core halves a Paladin's), and a Stable Master always
+  offers the stable, whatever pet you have out.
+- **Stances keep your rage.** Changing warrior stance keeps what your talents let a Warrior
+  keep, entering one from no stance keeps it all, and switching your main bar or leaving a form never empties a pool.
+  Stealth or Shadow Dance in a stance puts you back in that stance when it ends.
+- **Class gates on vendors and trainers are open.** Every tier-10 vendor in Icecrown Citadel
+  sells to you, any pet trainer resets a tamed beast's talents, and the holiday achievements
+  that ask for a race and class of target ask for the race.
+- **Pets do not mix.** Call Pet and the Stable Master only ever see your tamed beasts; a demon,
+  ghoul or water elemental you put away is summoned fresh next time.
 - **Tooltips count your talents.** Cost, cooldown, cast time, range, duration and values show what
   your build gives, including talents from other classes, and talent-reduced costs can be paid.
   Action buttons light up only when you can pay the cost the server will charge.

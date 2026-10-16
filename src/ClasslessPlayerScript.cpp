@@ -14,14 +14,17 @@
  */
 
 #include "Chat.h"
+#include "ConditionMgr.h"
 #include "ClasslessBots.h"
 #include "ClasslessMgr.h"
 #include "Containers.h"
 #include "DBCStores.h"
 #include "DatabaseEnv.h"
 #include "Duration.h"
+#include "GossipDef.h"
 #include "GameTime.h"
 #include "Item.h"
+#include "ObjectMgr.h"
 #include "Optional.h"
 #include "Pet.h"
 #include <algorithm>
@@ -57,6 +60,71 @@ public:
         ClasslessBots::Register();
     }
 };
+
+// The feral attack power the core gives a druid's weapons (Player::_ApplyItemMods:
+// from the weapon's DPS, an heirloom's from its scaling at this level). The core
+// stores it in m_baseFeralAP, which only its druid melee formula reads, and the
+// Paladin chassis never reaches that formula.
+static int32 CW_FeralWeaponAP(Player* player)
+{
+    int32 total = 0;
+    for (uint8 slot : { uint8(EQUIPMENT_SLOT_MAINHAND), uint8(EQUIPMENT_SLOT_OFFHAND) })
+    {
+        Item* item = player->GetItemByPos(INVENTORY_SLOT_BAG_0, slot);
+        if (!item || item->IsBroken())
+            continue;
+        ItemTemplate const* proto = item->GetTemplate();
+        int32 dpsMod = 0;
+        int32 bonus = 0;
+        if (proto->ScalingStatValue)
+        {
+            ScalingStatDistributionEntry const* ssd = proto->ScalingStatDistribution
+                ? sScalingStatDistributionStore.LookupEntry(proto->ScalingStatDistribution) : nullptr;
+            uint32 level = player->GetLevel();
+            if (ssd && level > ssd->MaxLevel)
+                level = ssd->MaxLevel;
+            if (ScalingStatValuesEntry const* ssv = sScalingStatValuesStore.LookupEntry(level))
+            {
+                dpsMod = ssv->getDPSMod(proto->ScalingStatValue);
+                bonus += ssv->getFeralBonus(proto->ScalingStatValue);
+            }
+        }
+        total += bonus + proto->getFeralBonus(dpsMod);
+    }
+    return total;
+}
+
+// The pets a Hero has put away, as the core keeps them: one list
+// (PetStable::UnslottedPets, PET_SAVE_NOT_IN_SLOT) for a dismissed beast AND
+// every demon, ghoul and water elemental a summon replaced. A Hunter never has
+// a demon and a Warlock never has a beast, so the core reads that list as one
+// or the other, and for a Hero it is both:
+//   - Call Pet and Revive Pet with no beast out take the list's FIRST entry
+//     (Pet::GetLoadPetInfo), the oldest pet, so they brought back an Imp;
+//   - the Stable Master stables or unstables only when the list holds exactly
+//     one beast (WorldSession::HandleStablePet, HandleUnstablePet), so a Hero
+//     with a demon in it could not get a stabled beast back;
+//   - Tame Beast's "you already have a pet" test (GetUnslottedHunterPet) is
+//     also a size-one test, so it let a Hero tame without limit.
+// So only beasts stay in it. A summon pet that is put away is deleted, and its
+// spell summons a new one next time, as for a first summon.
+static void CW_PruneUnslottedPets(Player* player)
+{
+    PetStable* stable = player->GetPetStable();
+    if (!stable)
+        return;
+    std::vector<PetStable::PetInfo>& list = stable->UnslottedPets;
+    for (auto it = list.begin(); it != list.end();)
+    {
+        if (it->Type == HUNTER_PET)
+        {
+            ++it;
+            continue;
+        }
+        Pet::DeleteFromDB(it->PetNumber);
+        it = list.erase(it);
+    }
+}
 
 class ClasslessPlayerScript : public PlayerScript
 {
@@ -388,9 +456,11 @@ public:
             // already accounted for. Druid is the one exception worth making,
             // and only for the three sites that ask it:
             //
-            //   Player.cpp    the feral attack power carried on a WEAPON. Only
-            //                 the druid branch reads it, so a Hero in Cat or
-            //                 Bear got nothing at all from a feral weapon.
+            //   Player.cpp    the feral attack power carried on a WEAPON. The
+            //                 core stores it, but only its druid melee formula
+            //                 reads it, and that is unreachable (below), so the
+            //                 universal stat layer adds it in a feral form
+            //                 (CW_FeralWeaponAP).
             //   StatSystem    ranged attack power, which the druid branch puts
             //                 at zero in a feral form and leaves at Agility-10
             //                 outside one -- the same as the default branch.
@@ -515,6 +585,17 @@ public:
             // restored and the Hero therefore has none, so returning nullopt
             // when there is no pet keeps that path on the real class -- the
             // hazard is closed by construction rather than by remembering.
+            // The questions asked with no context. The only Paladin ones are the
+            // halved heal threat (Spell.cpp direct heals, SpellAuraEffects.cpp
+            // heal-over-time ticks and leech): every Hero is a Paladin, so every
+            // Hero's heals drew half threat. A Hero is answered "no" and heals
+            // for the normal amount. Any other class asked here is the core's.
+            case CLASS_CONTEXT_NONE:
+                if (playerClass != CLASS_PALADIN)
+                    return std::nullopt;
+                if (sClasslessMgr->IsExempt(const_cast<Player*>(player)))
+                    return std::nullopt;
+                return false;
             case CLASS_CONTEXT_PET:
             {
                 // answers inline below, so it checks the exemption itself
@@ -958,6 +1039,9 @@ public:
         // known-spell check every two seconds.
         sClasslessMgr->DismissOrphanedSummons(player);
 
+        // demons, ghouls and water elementals out of the put-away pet list
+        CW_PruneUnslottedPets(player);
+
         // the trophies and the Nemesis Charm in the bags, as stat changes
         sClasslessMgr->ApplyNemesisFx(player);
 
@@ -986,6 +1070,27 @@ public:
         // Intellect do nothing for most builds without it, and a Hero who spent
         // points there would have spent them on nothing.
         {
+            // A feral weapon's attack power in Cat, Bear, Dire Bear and Moonkin
+            // form, on top of the chassis's own formula (which already gives
+            // more base attack power than the druid one it replaces).
+            int32 feralAP = 0;
+            switch (player->GetShapeshiftForm())
+            {
+                case FORM_CAT:
+                case FORM_BEAR:
+                case FORM_DIREBEAR:
+                case FORM_MOONKIN:
+                    feralAP = CW_FeralWeaponAP(player);
+                    break;
+                default:
+                    break;
+            }
+            if (feralAP != st.usFeralAP)
+            {
+                player->HandleStatFlatModifier(UNIT_MOD_ATTACK_POWER, TOTAL_VALUE, float(feralAP - st.usFeralAP), true);
+                st.usFeralAP = feralAP;
+            }
+
             int32 agi = int32(player->GetStat(STAT_AGILITY));
             int32 intel = int32(player->GetStat(STAT_INTELLECT));
             int32 meleeAP = int32(agi * cfg.usMeleeAPPerAgi);
@@ -1468,6 +1573,84 @@ class spell_cw_dk_death_rune : public AuraScript
     }
 };
 
+// 2457 Battle Stance, 71 Defensive Stance, 2458 Berserker Stance.
+//
+// A stance's shapeshift handler sets the bar to rage when it is not already
+// (HandleAuraModShapeshift), and Unit::setPowerType empties the rage pool when
+// it does. A Warrior's bar is always rage, so that never happens to one; a
+// Hero's bar is mana again between stances (Player::InitDataForForm), so every
+// stance a Hero entered emptied their rage, and Tactical Mastery and Stance
+// Mastery kept nothing. The rage is held across that reset and given back.
+//
+// On a stance change the order is: the new stance's OnEffectApply (held), the
+// old stance coming off inside its handler (its AfterEffectRemove holds the
+// rage the core has just capped to what the talents keep), the reset, and the
+// new stance's AfterEffectApply (given back). From no stance, all of it.
+class spell_cw_warrior_stance : public AuraScript
+{
+    PrepareAuraScript(spell_cw_warrior_stance);
+
+    static CharState* HeroState(Unit* unit)
+    {
+        Player* player = unit ? unit->ToPlayer() : nullptr;
+        if (!player || sClasslessMgr->IsExempt(player))
+            return nullptr;
+        return sClasslessMgr->FindState(player);
+    }
+
+    void Hold(AuraEffect const* /*aurEff*/, AuraEffectHandleModes /*mode*/)
+    {
+        if (CharState* st = HeroState(GetTarget()))
+            st->stanceRage = GetTarget()->GetPower(POWER_RAGE);
+    }
+
+    void GiveBack(AuraEffect const* /*aurEff*/, AuraEffectHandleModes /*mode*/)
+    {
+        CharState* st = HeroState(GetTarget());
+        if (!st)
+            return;
+        Unit* target = GetTarget();
+        uint32 const kept = std::min<uint32>(st->stanceRage, target->GetMaxPower(POWER_RAGE));
+        if (target->GetPower(POWER_RAGE) < kept)
+            target->SetPower(POWER_RAGE, kept);
+    }
+
+    void Register() override
+    {
+        OnEffectApply += AuraEffectApplyFn(spell_cw_warrior_stance::Hold,
+            EFFECT_0, SPELL_AURA_MOD_SHAPESHIFT, AURA_EFFECT_HANDLE_REAL);
+        AfterEffectRemove += AuraEffectRemoveFn(spell_cw_warrior_stance::Hold,
+            EFFECT_0, SPELL_AURA_MOD_SHAPESHIFT, AURA_EFFECT_HANDLE_REAL);
+        AfterEffectApply += AuraEffectApplyFn(spell_cw_warrior_stance::GiveBack,
+            EFFECT_0, SPELL_AURA_MOD_SHAPESHIFT, AURA_EFFECT_HANDLE_REAL);
+    }
+};
+
+// 70656 Advantage, the Death Knight tier-10 melee 4-piece. The core's script
+// gives it to a Death Knight by getClass() only, so a Hero in the set never got
+// it. It asks for runes instead, the way the module answers a Death Knight's
+// abilities (CharState::runes): the rune block it reads exists only then.
+class spell_cw_dk_advantage_t10_4p : public AuraScript
+{
+    PrepareAuraScript(spell_cw_dk_advantage_t10_4p);
+
+    bool CheckProc(ProcEventInfo& eventInfo)
+    {
+        Player* player = eventInfo.GetActor() ? eventInfo.GetActor()->ToPlayer() : nullptr;
+        if (!player || !player->IsClass(CLASS_DEATH_KNIGHT, CLASS_CONTEXT_ABILITY))
+            return false;
+        for (uint8 i = 0; i < MAX_RUNES; ++i)
+            if (player->GetRuneCooldown(i) == 0)
+                return false;
+        return true;
+    }
+
+    void Register() override
+    {
+        DoCheckProc += AuraCheckProcFn(spell_cw_dk_advantage_t10_4p::CheckProc);
+    }
+};
+
 // Item and set procs that pick their reward by CLASS. The core switches on
 // getClass() directly, so a Hero always took the chassis's answer: Eye of
 // Gruul and Soul Preserver cheapened Paladin heals only, whatever the Hero
@@ -1667,6 +1850,212 @@ class spell_cw_t3_6p_bonus : public AuraScript
     }
 };
 
+// Which list a Hero's trinket rolls from: the one for the stat the Hero has the
+// most of, Strength, Agility or Intellect.
+enum class CW_BestStat { Strength, Agility, Intellect };
+
+static CW_BestStat CW_HeroBestStat(Unit const* unit)
+{
+    float const str = unit->GetStat(STAT_STRENGTH);
+    float const agi = unit->GetStat(STAT_AGILITY);
+    float const intel = unit->GetStat(STAT_INTELLECT);
+    if (intel > str && intel > agi)
+        return CW_BestStat::Intellect;
+    return agi > str ? CW_BestStat::Agility : CW_BestStat::Strength;
+}
+
+// 71519 Deathbringer's Will, 71562 heroic. The core rolls from a per-class list,
+// so a Hero always rolled the Paladin's (Strength, crit, haste), even an Agility
+// build. A Hero rolls from the Strength list (the Warrior's) or the Agility list
+// (the Rogue's), whichever stat is higher; the trinket has no caster list.
+class spell_cw_deathbringers_will : public AuraScript
+{
+    PrepareAuraScript(spell_cw_deathbringers_will);
+
+    // strength, agility, attack power, crit, haste
+    static constexpr uint32 NORMAL[5] = { 71484, 71485, 71486, 71491, 71492 };
+    static constexpr uint32 HEROIC[5] = { 71561, 71556, 71558, 71559, 71560 };
+    enum { STR, AGI, AP, CRIT, HASTE };
+
+    bool Validate(SpellInfo const* /*spellInfo*/) override
+    {
+        return ValidateSpellInfo({ 71484, 71485, 71486, 71491, 71492, 71561, 71556, 71558, 71559, 71560 });
+    }
+
+    void HandleProc(AuraEffect const* aurEff, ProcEventInfo& eventInfo)
+    {
+        PreventDefaultAction();
+        Unit* caster = eventInfo.GetActor();
+        if (!caster)
+            return;
+        uint32 const* s = GetSpellInfo()->Id == 71562 ? HEROIC : NORMAL;
+        std::vector<uint32> possible;
+        if (IsHeroUnit(caster))
+            possible = CW_HeroBestStat(caster) == CW_BestStat::Agility
+                ? std::vector<uint32>{ s[AGI], s[HASTE], s[AP] }
+                : std::vector<uint32>{ s[STR], s[CRIT], s[HASTE] };
+        else
+            switch (caster->getClass())
+            {
+                case CLASS_WARRIOR: case CLASS_PALADIN: case CLASS_DEATH_KNIGHT:
+                    possible = { s[STR], s[CRIT], s[HASTE] };
+                    break;
+                case CLASS_HUNTER:
+                    possible = { s[AGI], s[CRIT], s[AP] };
+                    break;
+                case CLASS_ROGUE: case CLASS_SHAMAN:
+                    possible = { s[AGI], s[HASTE], s[AP] };
+                    break;
+                case CLASS_DRUID:
+                    possible = { s[STR], s[AGI], s[HASTE] };
+                    break;
+                default:
+                    break;
+            }
+        if (!possible.empty())
+            caster->CastSpell(caster, Acore::Containers::SelectRandomContainerElement(possible), true, nullptr, aurEff);
+    }
+
+    void Register() override
+    {
+        OnEffectProc += AuraEffectProcFn(spell_cw_deathbringers_will::HandleProc, EFFECT_0, SPELL_AURA_DUMMY);
+    }
+};
+
+// 39446 Aura of Madness, Darkmoon Card: Madness. The core gives the Paladin all
+// nine madnesses, melee and caster alike. A Hero rolls the caster list when
+// Intellect is the highest stat, otherwise the melee list.
+class spell_cw_aura_of_madness : public AuraScript
+{
+    PrepareAuraScript(spell_cw_aura_of_madness);
+
+    enum
+    {
+        SOCIOPATH = 39511, DELUSIONAL = 40997, KLEPTOMANIA = 40998, MEGALOMANIA = 40999,
+        PARANOIA = 41002, MANIC = 41005, NARCISSISM = 41009, MARTYR_COMPLEX = 41011,
+        DEMENTIA = 41404, SAY_MADNESS = 21954
+    };
+
+    bool Validate(SpellInfo const* /*spellInfo*/) override
+    {
+        return ValidateSpellInfo({ SOCIOPATH, DELUSIONAL, KLEPTOMANIA, MEGALOMANIA,
+                                   PARANOIA, MANIC, NARCISSISM, MARTYR_COMPLEX, DEMENTIA })
+            && sObjectMgr->GetBroadcastText(SAY_MADNESS);
+    }
+
+    void HandleProc(AuraEffect const* aurEff, ProcEventInfo& eventInfo)
+    {
+        static std::vector<uint32> const MELEE  = { SOCIOPATH, DELUSIONAL, KLEPTOMANIA, PARANOIA, MANIC, MARTYR_COMPLEX };
+        static std::vector<uint32> const CASTER = { MEGALOMANIA, PARANOIA, MANIC, NARCISSISM, MARTYR_COMPLEX, DEMENTIA };
+        static std::vector<uint32> const HUNTER = { DELUSIONAL, MEGALOMANIA, PARANOIA, MANIC, NARCISSISM, MARTYR_COMPLEX, DEMENTIA };
+        static std::vector<uint32> const ALL    = { SOCIOPATH, DELUSIONAL, KLEPTOMANIA, MEGALOMANIA, PARANOIA, MANIC, NARCISSISM, MARTYR_COMPLEX, DEMENTIA };
+
+        PreventDefaultAction();
+        Unit* caster = eventInfo.GetActor();
+        if (!caster)
+            return;
+        std::vector<uint32> const* possible = nullptr;
+        if (IsHeroUnit(caster))
+            possible = CW_HeroBestStat(caster) == CW_BestStat::Intellect ? &CASTER : &MELEE;
+        else
+            switch (caster->getClass())
+            {
+                case CLASS_WARRIOR: case CLASS_ROGUE: case CLASS_DEATH_KNIGHT:
+                    possible = &MELEE;
+                    break;
+                case CLASS_PRIEST: case CLASS_SHAMAN: case CLASS_MAGE: case CLASS_WARLOCK:
+                    possible = &CASTER;
+                    break;
+                case CLASS_HUNTER:
+                    possible = &HUNTER;
+                    break;
+                case CLASS_PALADIN: case CLASS_DRUID:
+                    possible = &ALL;
+                    break;
+                default:
+                    break;
+            }
+        if (!possible)
+            return;
+
+        caster->CastSpell(caster, Acore::Containers::SelectRandomContainerElement(*possible), true, nullptr, aurEff);
+        if (roll_chance_i(10))
+            caster->Unit::Say(SAY_MADNESS);
+    }
+
+    void Register() override
+    {
+        OnEffectProc += AuraEffectProcFn(spell_cw_aura_of_madness::HandleProc, EFFECT_0, SPELL_AURA_DUMMY);
+    }
+};
+
+// The Stable Master's "stable my pets" option. PrepareGossipMenu shows it only
+// when IsClass(CLASS_HUNTER, CLASS_CONTEXT_PET) says yes, and for a Hero that
+// answer follows the pet that is out (a beast is a hunter pet, a demon is not).
+// So a Hero with a demon or a ghoul out lost the option, and with it the
+// stabled beasts. A Hero always gets it: the menu is built the core's way, and
+// the option is put back in its own place.
+class ClasslessStableMasterScript : public AllCreatureScript
+{
+public:
+    ClasslessStableMasterScript() : AllCreatureScript("ClasslessStableMasterScript") { }
+
+    bool CanCreatureGossipHello(Player* player, Creature* creature) override
+    {
+        if (!player || !creature || !creature->HasNpcFlag(UNIT_NPC_FLAG_STABLEMASTER))
+            return false;
+        // a creature with its own gossip script builds its own menu
+        if (creature->GetScriptId())
+            return false;
+        if (!IsHeroUnit(player) || player->IsClass(CLASS_HUNTER, CLASS_CONTEXT_PET))
+            return false;
+
+        uint32 const menuId = creature->GetGossipMenuId();
+        player->PrepareGossipMenu(creature, menuId, true);
+
+        GossipMenuItemsMapBounds bounds = sObjectMgr->GetGossipMenuItemsMapBounds(menuId);
+        if (bounds.first == bounds.second && menuId == Player::GetDefaultGossipMenuForSource(creature))
+            bounds = sObjectMgr->GetGossipMenuItemsMapBounds(0);
+
+        GossipMenu& menu = player->PlayerTalkClass->GetGossipMenu();
+        for (auto itr = bounds.first; itr != bounds.second; ++itr)
+        {
+            GossipMenuItems const& item = itr->second;
+            if (item.OptionType != GOSSIP_OPTION_STABLEPET || !(item.OptionNpcFlag & creature->GetNpcFlags()))
+                continue;
+            if (!sConditionMgr->IsObjectMeetToConditions(player, creature, item.Conditions))
+                continue;
+            if (menu.GetItem(item.OptionID))
+                continue;
+
+            // the option's text the way PrepareGossipMenu finds it
+            std::string optionText = item.OptionText;
+            std::string boxText = item.BoxText;
+            LocaleConstant const locale = player->GetSession()->GetSessionDbLocaleIndex();
+            BroadcastText const* optionBroadcast = sObjectMgr->GetBroadcastText(item.OptionBroadcastTextID);
+            BroadcastText const* boxBroadcast = sObjectMgr->GetBroadcastText(item.BoxBroadcastTextID);
+            if (optionBroadcast)
+                ObjectMgr::GetLocaleString(player->getGender() == GENDER_MALE ? optionBroadcast->MaleText : optionBroadcast->FemaleText, locale, optionText);
+            if (boxBroadcast)
+                ObjectMgr::GetLocaleString(player->getGender() == GENDER_MALE ? boxBroadcast->MaleText : boxBroadcast->FemaleText, locale, boxText);
+            if (locale != DEFAULT_LOCALE)
+                if (GossipMenuItemsLocale const* loc = sObjectMgr->GetGossipMenuItemsLocale(MAKE_PAIR32(menuId, item.OptionID)))
+                {
+                    if (!optionBroadcast)
+                        ObjectMgr::GetLocaleString(loc->OptionText, locale, optionText);
+                    if (!boxBroadcast)
+                        ObjectMgr::GetLocaleString(loc->BoxText, locale, boxText);
+                }
+
+            menu.AddMenuItem(item.OptionID, item.OptionIcon, optionText, 0, item.OptionType, boxText, item.BoxMoney, item.BoxCoded);
+            menu.AddGossipMenuItemData(item.OptionID, item.ActionMenuID, item.ActionPoiID);
+        }
+
+        player->SendPreparedGossip(creature);
+        return true;
+    }
+};
+
 // Which shapeshift form a Hero holds, for the druid answer in OnPlayerIsClass.
 // Both hooks run with the form already settled: apply after the new form's
 // handler has set it, remove after the old one's has cleared it. So in between
@@ -1684,11 +2073,42 @@ public:
 
     void OnAuraRemove(Unit* unit, AuraApplication* aurApp, AuraRemoveMode /*mode*/) override
     {
-        if (aurApp && aurApp->GetBase()->GetSpellInfo()->HasAura(SPELL_AURA_MOD_SHAPESHIFT))
-            Track(unit);
+        if (!aurApp || !aurApp->GetBase()->GetSpellInfo()->HasAura(SPELL_AURA_MOD_SHAPESHIFT))
+            return;
+        RestoreUnderlyingForm(unit, aurApp->GetBase());
+        Track(unit);
     }
 
 private:
+    // A rogue shapeshift (Stealth, Shadow Dance) does not take a stance or a
+    // form off (HandleAuraModShapeshift skips that for SPELLFAMILY_ROGUE), and
+    // a stance, Shadowform or Moonkin Form does not stop Stealth from being
+    // cast. When the rogue one ends, the core resets the form only if no other
+    // shapeshift is left, so a Hero who stealthed in Battle Stance came out
+    // still marked "in Stealth": stance abilities failed until another stance
+    // was clicked. The form underneath is put back.
+    static void RestoreUnderlyingForm(Unit* unit, Aura const* removed)
+    {
+        Player* player = unit ? unit->ToPlayer() : nullptr;
+        SpellInfo const* info = removed->GetSpellInfo();
+        if (!player || info->SpellFamilyName != SPELLFAMILY_ROGUE)
+            return;
+        int32 removedForm = -1;
+        for (SpellEffectInfo const& effect : info->GetEffects())
+            if (effect.ApplyAuraName == SPELL_AURA_MOD_SHAPESHIFT)
+                removedForm = effect.MiscValue;
+        if (removedForm < 0 || int32(player->GetShapeshiftForm()) != removedForm)
+            return;
+        for (AuraEffect const* left : player->GetAuraEffectsByType(SPELL_AURA_MOD_SHAPESHIFT))
+        {
+            if (left->GetBase() == removed)
+                continue;
+            player->SetShapeshiftForm(ShapeshiftForm(left->GetMiscValue()));
+            player->InitDataForForm();
+            return;
+        }
+    }
+
     static void Track(Unit* unit)
     {
         Player* player = unit ? unit->ToPlayer() : nullptr;
@@ -1842,6 +2262,7 @@ void AddClasslessPlayerScripts()
     new ClasslessServerScript();
     new ClasslessFormScript();
     new ClasslessPlayerScript();
+    new ClasslessStableMasterScript();
     RegisterSpellScript(spell_cw_frenzied_regeneration);
     RegisterSpellScript(spell_cw_judgement_of_wisdom);
     RegisterSpellScript(spell_cw_pet_hit_expertise_scaling);
@@ -1851,4 +2272,8 @@ void AddClasslessPlayerScripts()
     RegisterSpellScript(spell_cw_blessing_of_faith);
     RegisterSpellScript(spell_cw_flask_of_the_north);
     RegisterSpellScript(spell_cw_t3_6p_bonus);
+    RegisterSpellScript(spell_cw_deathbringers_will);
+    RegisterSpellScript(spell_cw_aura_of_madness);
+    RegisterSpellScript(spell_cw_warrior_stance);
+    RegisterSpellScript(spell_cw_dk_advantage_t10_4p);
 }

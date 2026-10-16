@@ -3380,6 +3380,15 @@ def test_nemesis_titles_and_charms(h):
     h.rt.execute("PossessBarFrame:Hide(); MultiCastActionBarFrame.numActiveSlots = 0; "
                  "ClasslessWildcard_API.LayoutClassBars()")
     h.check(mc["__shown"] is False, "with no totem slots there is no totem bar to place")
+    # with the client patch, Blizzard's own layout places the totem bar in the
+    # row: the addon writes nothing to it, so the secure pass stays untainted
+    h.rt.execute("MultiCastActionBarFrame.numActiveSlots = 2; MultiCastActionBarFrame:Show(); "
+                 "MultiCastActionBarFrame.mode = 'show'; "
+                 "MultiCastActionBarFrame:SetPoint('BOTTOMLEFT', MainMenuBar, 'TOPLEFT', 30, 0); "
+                 "function ShapeshiftBar_RowRight() return 150 end; ClasslessWildcard_API.LayoutClassBars()")
+    h.check(str(mc.mode) == "show" and mcp() == "BOTTOMLEFT bar 30 0",
+            "with the patched layout the addon leaves the totem bar to Blizzard (%s, %s)" % (mc.mode, mcp()))
+    h.rt.execute("ShapeshiftBar_RowRight = nil")
     h.rt.execute("MultiCastActionBarFrame = nil; ShapeshiftBarFrame = nil; MainMenuBar = nil; PossessBarFrame = nil; "
                  "PetActionBarFrame = nil; ShapeshiftButton3 = nil")
 
@@ -4130,6 +4139,14 @@ def test_pet_talents(h):
             ShowUIPanel(PlayerTalentFrame)
             PlayerSpecTab_OnClick(pet and PlayerSpecTab3 or PlayerSpecTab1)
         end
+        -- the Glyphs tab, as Blizzard_TalentUI selects it: after the spec click
+        GLYPH_TALENT_TAB = 4
+        function PanelTemplates_GetSelectedTab(f) return f.selectedTab end
+        function PlayerTalentFrame_OpenGlyphFrame(group)
+            ShowUIPanel(PlayerTalentFrame)
+            PlayerSpecTab_OnClick(PlayerSpecTab1)
+            PlayerTalentFrame.selectedTab = GLYPH_TALENT_TAB
+        end
     """)
     # Blizzard_TalentUI loads on demand: the addon attaches when it does
     for f in g.FRAMES.values():
@@ -4173,9 +4190,25 @@ def test_pet_talents(h):
     h.check(player_tabs_hidden() and shown(g.PlayerSpecTab3),
             "the player spec tabs are hidden, the pet's is not")
 
-    # clicking onto a player spec some other way turns straight back
+    # clicking onto a player spec some other way turns back a frame later
     g.PlayerSpecTab_OnClick(g.PlayerSpecTab1)
+    P.later["__scripts"]["OnUpdate"](P.later)
     h.check(talent["pet"] and shown(talent), "a player spec turns back to the pet's")
+
+    # right-clicking a glyph: the window stays on the player's spec, on the
+    # Glyphs tab, with a pet out and without one
+    for pets in (1, 0):
+        g.PET_TALENT_GROUPS = pets
+        talent.Hide(talent)
+        g.PlayerTalentFrame_OpenGlyphFrame(1)
+        P.later["__scripts"]["OnUpdate"](P.later)
+        h.check(shown(talent) and not talent["pet"],
+                "a glyph opens the Glyphs tab and it stays (pet talents: %d): shown=%r pet=%r"
+                % (pets, shown(talent), talent["pet"]))
+        talent["selectedTab"] = 1
+    g.PET_TALENT_GROUPS = 1
+    talent.Hide(talent)
+    g.PlayerTalentFrame_Toggle(False, 1)
 
     # the pet goes while the window is up: Blizzard falls back to a player
     # spec, and the window closes a frame later

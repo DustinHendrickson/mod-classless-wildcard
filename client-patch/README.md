@@ -21,8 +21,21 @@ Required for every player on a Classless Wildcard realm. The
 - the creation-screen **class description** is the Hero pitch, and the leftover
   class selector is hidden
 - new characters wear an **armored Hero outfit** on the creation screen
-- the **Hero emblem** replaces the class icon *for the Hero only*. Every other
-  class icon is kept, so your addon can still group abilities by class
+- the **Hero emblem** replaces the class icon *for the Hero only*: on unit
+  frames, the raid window, calendar invites and the battleground scoreboard.
+  Every other class icon is kept, so your addon can still group abilities by class
+- Heroes get their own **class color**, jade, in place of the Paladin's pink:
+  class-colored chat names, the raid and party frames, and enemy nameplates
+- a Hero's **pet** shows in the raid window's Pets group, and the character
+  sheet shows what a hunter pet or a demon gains from your stats
+- your **stance, pet and totem bars share one row** under the action bar, more
+  than ten forms included, laid out by the game's own code so nothing is
+  blocked in combat
+- **rage and runic power off your main bar** show what the server has, instead
+  of freezing at their peak after a fight
+- **reagent-free auras** such as Decimation and the reagent glyphs let the
+  spell cast without the reagent
+- a **relic** can be dragged onto the ranged slot and shows in its flyout
 - the **elemental ability variants**: the spell rows, tooltips and badged icons
   for the Fiery, Frozen, Earthen, Venomous, Arcane, Shadow and Holy versions of
   the physical strikes that have them (`--no-elemental` leaves them out)

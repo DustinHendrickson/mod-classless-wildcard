@@ -500,6 +500,72 @@ def main(argv):
             check("keeping the totem categories is idempotent",
                   not dbc.clear_spell_tools(kept_dbc, class_spells, keep_totem_categories=True)[1])
 
+            # Class gates in the interface's own code: each edit lands on this
+            # client's file, takes its gate out, and a second pass changes nothing.
+            from lib import framexml
+            for path, edit, gate in (
+                    (framexml.TOTEMFRAME_LUA, framexml.open_totem_frame, "TotemFrame:Hide();"),
+                    (framexml.OPTIONS_LUA, lambda s: framexml.open_combo_option(s, 2), 'class ~= "ROGUE"'),
+                    (framexml.OPTIONS_XML, lambda s: framexml.open_combo_option(s, 1), 'class ~= "ROGUE"'),
+                    (framexml.CONSTANTS_LUA, framexml.hero_class_color, "r = 0.96, g = 0.55, b = 0.73"),
+                    (framexml.RAIDUI_LUA, framexml.open_raid_pets, 'fileName == "WARLOCK" ) then'),
+                    (framexml.PAPERDOLL_LUA, framexml.open_pet_bonus, '\tunitClass = strupper(unitClass);\n\tif( unitClass == "WARLOCK" )'),
+                    (framexml.UIPARENT_LUA, framexml.open_bar_row, 'for i=1, GetNumShapeshiftForms() do'),
+                    (framexml.PETBAR_LUA, framexml.open_pet_bar_row, '_G["ShapeshiftButton"..GetNumShapeshiftForms()]:GetRight() + 20;\n\telseif')):
+                fx_text = files.find(path)[0].decode("utf-8", "surrogateescape")
+                fx_new, fx_changed = edit(fx_text)
+                name_only = path.split(chr(92))[-1]
+                lf = lambda s: s.replace(chr(13) + chr(10), chr(10))
+                check("%s: the class gate is opened" % name_only,
+                      fx_changed and lf(fx_new).count(gate) < lf(fx_text).count(gate)
+                      and lf(fx_text).count(gate) > 0)
+                check("%s: opening it again changes nothing" % name_only, not edit(fx_new)[1])
+            check("the Hero color is the one the nameplate patch writes",
+                  "r = %.2f, g = %.2f, b = %.2f" % tuple(c / 255 for c in framexml.HERO_RGB)
+                  in framexml.hero_class_color(files.find(framexml.CONSTANTS_LUA)[0]
+                                               .decode("utf-8", "surrogateescape"))[0]
+                  and exepatch.HERO_COLOR[0][2].split()[:3]
+                  == ["%02X" % c for c in reversed(framexml.HERO_RGB)])
+
+            # The locale archive as the installer builds it: every file in it is
+            # one uninstall recognises as ours, and each class-icon atlas has the
+            # emblem on the Paladin cell and nothing else touched.
+            import install as installer
+            locale_payload = installer.build_locale_patch(files, "Hero", [], locale,
+                                                          theme=True, icon=True)
+            from install import _is_ours as _ours
+            check("every file in the locale archive is one uninstall knows",
+                  all(_ours(n.lower()) for n in locale_payload),
+                  ", ".join(n for n in locale_payload if not _ours(n.lower())))
+            for atlas_path in (installer.CLASSICONS_INGAME, installer.CLASSICONS_CREATE,
+                               installer.CLASSICONS_SCORE):
+                atlas_name = atlas_path.split(chr(92))[-1]
+                if atlas_path not in locale_payload:
+                    check("%s: the Hero emblem is painted" % atlas_name, False, "not in the archive")
+                    continue
+                aw, ah, new_px = blp.decode_blp(locale_payload[atlas_path])
+                sw2, sh2, old_px = blp.decode_blp(files.find(atlas_path)[0])
+
+                # how many sampled pixels changed at all (the atlas is written
+                # uncompressed, so an untouched cell comes back exactly)
+                def cell_diff(x0, y0, cw=aw // 4, ch=ah // 4):
+                    moved = 0
+                    for y in range(y0, y0 + ch, 2):
+                        for x in range(x0, x0 + cw, 2):
+                            i = ((y * aw) + x) * 4
+                            if new_px[i:i + 4] != old_px[i:i + 4]:
+                                moved += 1
+                    return moved
+                paladin = cell_diff(0, ah // 2)
+                # Warrior (top left) and Death Knight (beside the Paladin)
+                others = cell_diff(0, 0) + cell_diff(aw // 4 + 2, ah // 2)
+                cell_px = (aw // 8) * (ah // 8)
+                check("%s: the Hero emblem is on the Paladin cell" % atlas_name,
+                      (aw, ah) == (sw2, sh2) and paladin > cell_px // 4,
+                      "%d of %d sampled pixels changed" % (paladin, cell_px))
+                check("%s: the other class cells are left alone" % atlas_name,
+                      others == 0, "%d sampled pixels changed" % others)
+
             # --- Overpower on a dodge, not a combo point -------------------
             # The server opens Overpower with aura state 21 and has taken its
             # finishing-move flag off; the client copy must agree or it asks for
@@ -992,6 +1058,12 @@ def main(argv):
                 check("the totem tool reads the shaman totems as carried",
                       exepatch._group_state(patched_exe, exepatch.TOTEM_TOOL) == "done",
                       exepatch._group_state(patched_exe, exepatch.TOTEM_TOOL))
+                check("the class checks a Hero trips over are opened",
+                      exepatch._group_state(patched_exe, exepatch.CLASS_GATES) == "done",
+                      exepatch._group_state(patched_exe, exepatch.CLASS_GATES))
+                check("nameplates give the Paladin slot the Hero color",
+                      exepatch._group_state(patched_exe, exepatch.HERO_COLOR) == "done",
+                      exepatch._group_state(patched_exe, exepatch.HERO_COLOR))
                 changed = [i for i in range(len(original))
                            if original[i] != patched_exe[i]] \
                     if len(original) == len(patched_exe) else None
@@ -1005,7 +1077,8 @@ def main(argv):
                     at = original.find(sb)
                     if at >= 0 and original.count(sb) == 1:
                         allowed.update(range(at, at + len(sb)))
-                for group in (exepatch.FACE_ARROW, exepatch.LEGACY_SKIN_FACE, exepatch.TOTEM_TOOL):
+                for group in (exepatch.FACE_ARROW, exepatch.LEGACY_SKIN_FACE, exepatch.TOTEM_TOOL,
+                              exepatch.CLASS_GATES, exepatch.HERO_COLOR):
                     for offset, search, _replace in group:
                         allowed.update(range(offset, offset + len(exepatch._bytes(search))))
                 check("Face arrow copy filter in place",

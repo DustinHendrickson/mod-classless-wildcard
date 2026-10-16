@@ -40,7 +40,33 @@ DELIMITER ;
 CALL cw_uninstall_item_classes();
 DROP PROCEDURE IF EXISTS cw_uninstall_item_classes;
 
+-- Class gates on gossip options and achievement criteria
+-- (cw_world_class_gossip.sql), put back from the rows it copied.
+DROP PROCEDURE IF EXISTS cw_uninstall_class_gossip;
+DELIMITER //
+CREATE PROCEDURE cw_uninstall_class_gossip()
+BEGIN
+    IF EXISTS (SELECT 1 FROM information_schema.TABLES
+               WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'cw_conditions_class_backup') THEN
+        DELETE FROM `conditions`
+          WHERE `SourceTypeOrReferenceId` = 15 AND `SourceGroup` = 4783 AND `SourceEntry` = 1
+            AND `ConditionTypeOrReference` = 45;
+        INSERT IGNORE INTO `conditions` SELECT * FROM `cw_conditions_class_backup`;
+    END IF;
+    IF EXISTS (SELECT 1 FROM information_schema.TABLES
+               WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'cw_criteria_class_backup') THEN
+        UPDATE `achievement_criteria_data` `acd`
+          JOIN `cw_criteria_class_backup` `b` ON `b`.`criteria_id` = `acd`.`criteria_id` AND `b`.`type` = `acd`.`type`
+          SET `acd`.`value1` = `b`.`value1`;
+    END IF;
+END//
+DELIMITER ;
+CALL cw_uninstall_class_gossip();
+DROP PROCEDURE IF EXISTS cw_uninstall_class_gossip;
+
 -- module tables
+DROP TABLE IF EXISTS `cw_conditions_class_backup`;
+DROP TABLE IF EXISTS `cw_criteria_class_backup`;
 DROP TABLE IF EXISTS `cw_quest_class_backup`;
 DROP TABLE IF EXISTS `cw_item_class_backup`;
 DROP TABLE IF EXISTS `cw_form_kits`;
@@ -110,6 +136,8 @@ DELETE FROM `spell_script_names` WHERE `ScriptName` IN
      'spell_cw_dk_blade_barrier', 'spell_cw_dk_death_rune',
      'spell_cw_healing_trance', 'spell_cw_blessing_of_faith',
      'spell_cw_flask_of_the_north', 'spell_cw_t3_6p_bonus',
+     'spell_cw_deathbringers_will', 'spell_cw_aura_of_madness',
+     'spell_cw_warrior_stance', 'spell_cw_dk_advantage_t10_4p',
      'spell_cw_swear_vendetta');
 INSERT IGNORE INTO `spell_script_names` (`spell_id`, `ScriptName`) VALUES
 (37705, 'spell_item_healing_trance'),
@@ -118,6 +146,10 @@ INSERT IGNORE INTO `spell_script_names` (`spell_id`, `ScriptName`) VALUES
 (67019, 'spell_item_flask_of_the_north'),
 (28789, 'spell_pal_t3_6p_bonus'),
 (28823, 'spell_sha_t3_6p_bonus'),
+(71519, 'spell_item_deathbringers_will_normal'),
+(71562, 'spell_item_deathbringers_will_heroic'),
+(39446, 'spell_item_aura_of_madness'),
+(70656, 'spell_dk_advantage_t10_4p'),
 (22842, 'spell_dru_frenzied_regeneration'),
 (20186, 'spell_pal_judgement_of_wisdom_mana'),
 -- these two were taken over but never put back: without them a realm that

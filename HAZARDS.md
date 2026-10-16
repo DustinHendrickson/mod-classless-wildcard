@@ -53,6 +53,19 @@ character that has never touched the module.
 
 ---
 
+## 1b. Put-away summon pets are deleted on purpose
+
+`CW_PruneUnslottedPets` (ClasslessPlayerScript.cpp, the 2 s tick) deletes every
+`character_pet` row in the put-away list (`PET_SAVE_NOT_IN_SLOT`, slot 100)
+that is not a hunter pet, with `Pet::DeleteFromDB`. The core keeps a dismissed
+beast and every replaced demon, ghoul and water elemental in that one list and
+reads it as one kind or the other: Call Pet took the oldest entry (an Imp), the
+Stable Master refused while it held more than one pet, and Tame Beast's limit
+was a size-one test. A demon is summoned fresh next time, as on a first
+summon: a new name and default autocast. Tamed beasts (`HUNTER_PET`), the
+current pet (slot 0) and the stable (slots 1 to 4) are never touched. If this
+ever needs to change, the beasts must still be the only thing in slot 100.
+
 ## 2. Where to look
 
 The bug was hard to trace because the deciding facts are spread across four

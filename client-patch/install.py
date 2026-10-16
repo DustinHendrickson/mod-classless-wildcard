@@ -31,7 +31,7 @@ import sys
 HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, HERE)
 
-from lib import (blp, charcreate, clientfs, dbc, dkfaces, elemental, exepatch,  # noqa: E402
+from lib import (blp, charcreate, clientfs, dbc, dkfaces, elemental, exepatch, framexml,  # noqa: E402
                  forged, gluestrings, mpq, outfit)
 
 MANIFEST_NAME = "ClasslessWildcard-install.json"
@@ -62,6 +62,8 @@ GLUESTRINGS = "Interface\\GlueXML\\GlueStrings.lua"
 CHARCREATE_LUA = "Interface\\GlueXML\\CharacterCreate.lua"
 CLASSICONS_INGAME = "Interface\\TargetingFrame\\UI-Classes-Circles.blp"
 CLASSICONS_CREATE = "Interface\\Glues\\CharacterCreate\\UI-CharacterCreate-Classes.blp"
+# the battleground scoreboard's class column
+CLASSICONS_SCORE = "Interface\\WorldStateFrame\\Icons-Classes.blp"
 
 COMMON_INSTALL_DIRS = [
     r"C:\World of Warcraft",
@@ -486,26 +488,62 @@ def build_locale_patch(files, name, report, locale, theme=False, icon=False):
             report.append("  CharacterCreate.lua  class selector hidden (from %s)"
                           % os.path.basename(source))
 
+        # class gates in the interface's own code, opened for a Hero
+        # (lib/framexml.py); custom interface files load with the exe patch
+        for path, edit, what in (
+                (framexml.TOTEMFRAME_LUA, framexml.open_totem_frame,
+                 "totem timers stay up with a pet out"),
+                (framexml.OPTIONS_LUA, lambda t: framexml.open_combo_option(t, 2),
+                 "combo point combat text option open"),
+                (framexml.OPTIONS_XML, lambda t: framexml.open_combo_option(t, 1),
+                 "combo point combat text option open"),
+                (framexml.CONSTANTS_LUA, framexml.hero_class_color,
+                 "the Hero class color in place of the Paladin's"),
+                (framexml.RAIDUI_LUA, framexml.open_raid_pets,
+                 "a Hero's pet joins the raid Pets group"),
+                (framexml.PAPERDOLL_LUA, framexml.open_pet_bonus,
+                 "a Hero's pet bonus lines on the character sheet"),
+                (framexml.UIPARENT_LUA, framexml.open_bar_row,
+                 "the totem bar joins the stance row; forms past ten are laid out"),
+                (framexml.PETBAR_LUA, framexml.open_pet_bar_row,
+                 "the pet bar starts after the whole stance row")):
+            try:
+                raw, source = files.find(path)
+            except FileNotFoundError:
+                report.append("  %s  not found; left alone" % path.split("\\")[-1])
+                continue
+            text = raw.decode("utf-8", "surrogateescape")
+            new_text, changed = edit(text)
+            if changed:
+                payload[path] = new_text.encode("utf-8", "surrogateescape")
+            report.append("  %s  %s (from %s)" % (path.split("\\")[-1],
+                          what if changed else "stock text not found; left alone",
+                          os.path.basename(source)))
+
     if icon:
-        try:
-            raw, source = files.find(CLASSICONS_INGAME)
-        except FileNotFoundError:
-            raw = None
-        atlas = blp.reskin_hero_cell(raw) if raw else None
-        if atlas is None and raw is not None:
-            raise Abort("The Hero class icon could not be painted: the Python library "
-                        "'Pillow' is missing. Run:  python -m pip install --user pillow")
-        elif atlas is None:
-            report.append("  Hero class icon      skipped (class-icon atlas not found)")
-        else:
-            # ONLY UI-Classes-Circles (the player's own class icon: unit frames,
-            # character select). The addon draws its ability-group tabs from
-            # UI-CharacterCreate-Classes, which is deliberately left alone, so
-            # every class icon there stays intact for by-class grouping.
-            payload[CLASSICONS_INGAME] = atlas
-            report.append("  Hero class icon      emblem on the Hero's own class "
-                          "icon; addon class icons untouched (from %s)"
-                          % os.path.basename(source))
+        # The Hero emblem on the Paladin cell of each class-icon atlas, the cell
+        # every Hero is drawn with: UI-Classes-Circles (unit frames, arena),
+        # UI-CharacterCreate-Classes (the raid window's class buttons, calendar
+        # invites) and Icons-Classes (the battleground scoreboard). All three
+        # share one cell layout. The addon's ability-group tabs keep every class
+        # icon: it gets its own copy of the stock atlas (install_addon).
+        for path, what in ((CLASSICONS_INGAME, "unit frames"),
+                           (CLASSICONS_CREATE, "raid window and calendar"),
+                           (CLASSICONS_SCORE, "battleground scoreboard")):
+            try:
+                raw, source = files.find(path)
+            except FileNotFoundError:
+                raw = None
+            atlas = blp.reskin_hero_cell(raw) if raw else None
+            if atlas is None and raw is not None:
+                raise Abort("The Hero class icon could not be painted: the Python library "
+                            "'Pillow' is missing. Run:  python -m pip install --user pillow")
+            elif atlas is None:
+                report.append("  Hero class icon      %s skipped (atlas not found)" % what)
+            else:
+                payload[path] = atlas
+                report.append("  Hero class icon      emblem on the Hero's cell, %s (from %s)"
+                              % (what, os.path.basename(source)))
 
     return payload
 
@@ -853,7 +891,10 @@ _OUR_FILES = frozenset(x.lower() for x in (
     ITEM,
     TALENTTAB,
     GLUESTRINGS, CHARCREATE_LUA,
-    CLASSICONS_INGAME, CLASSICONS_CREATE,
+    CLASSICONS_INGAME, CLASSICONS_CREATE, CLASSICONS_SCORE,
+    framexml.TOTEMFRAME_LUA, framexml.OPTIONS_LUA, framexml.OPTIONS_XML,
+    framexml.CONSTANTS_LUA, framexml.RAIDUI_LUA, framexml.PAPERDOLL_LUA,
+    framexml.UIPARENT_LUA, framexml.PETBAR_LUA,
     elemental.SPELL, elemental.SPELLVISUAL, elemental.SPELLICON,
     SPELLCATEGORY,
     forged.SKILLLINE, forged.CHARTITLES,

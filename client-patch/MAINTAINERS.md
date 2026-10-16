@@ -263,42 +263,54 @@ added for every race+gender that lacks one (six races cannot be Paladins in
 vanilla), so no Hero previews naked. If a realm changes StarterKit.Equip, update
 STARTER_ITEMS to match.
 
-### `UI-Classes-Circles.blp` — the Hero emblem (`--hero-icon`)
+### The class-icon atlases — the Hero emblem (`--hero-icon`)
 
-The class icon is a 4×4 grid in a 256×256 atlas (`CLASS_ICON_TCOORDS` maps each
-token to a cell). `lib/blp.py` **decodes** the client's own atlas (`decode_blp`,
-handling palettized and DXT1/3/5), pastes the gold emblem into the
-**Paladin** cell (`_HERO_CELLS_TC`) -- Paladin is the Hero's class (shell and
-chassis), so that is the cell its own class icon is drawn from -- and re-encodes.
-Every other class icon is preserved untouched.
+A class icon is a cell of a 4×4 grid in a 256×256 atlas (`CLASS_ICON_TCOORDS`
+maps each token to a cell). `lib/blp.py` **decodes** the client's own atlas
+(`decode_blp`: palettized, DXT1/3/5 or uncompressed), pastes the gold emblem
+into the **Paladin** cell (`_HERO_CELLS_TC`) -- Paladin is the Hero's class
+(shell and chassis), so that is the cell the interface draws a Hero with -- and
+re-encodes. Every other class icon comes back exactly as it was.
 
-Only `UI-Classes-Circles` is rewritten -- that is the atlas the game uses for a
-unit's own class icon (unit frames, character select, the creation-screen class
-icon). The addon draws its by-class ability tabs from a DIFFERENT atlas,
-`UI-CharacterCreate-Classes` (see `CLASS_TCOORDS` in ClasslessWildcard.lua),
-which is left alone, so putting the Hero mark on the Paladin cell shows
-it on the Hero's frame WITHOUT touching the addon's class grouping. This keeps
-the Paladin chassis (real native mana) and a Hero emblem at the same time. Writes over
-`Interface\TargetingFrame\UI-Classes-Circles.blp` (in-game, character select,
-the addon's icons) and the creation-screen atlas.
+Three atlases share that layout, and all three get the emblem:
+
+| Atlas | Where the game draws it |
+|---|---|
+| `Interface\TargetingFrame\UI-Classes-Circles` | unit frames, arena frames |
+| `Interface\Glues\CharacterCreate\UI-CharacterCreate-Classes` | the raid window's class buttons, calendar invites |
+| `Interface\WorldStateFrame\Icons-Classes` | the battleground scoreboard |
+
+The addon's by-class ability tabs keep every class icon: `install_addon` gives
+the addon its own copy of the **stock** `UI-CharacterCreate-Classes`
+(`classicons.blp`, read with our own archives excluded), and the addon falls
+back to the game's file only if that copy is missing.
 
 > Earlier tries got this wrong twice: filling *every* cell erased the icons the
 > addon needs, and rewriting `UI-CharacterCreate-Classes` broke the addon's
-> class tabs. The addon reads `UI-CharacterCreate-Classes`; leave it alone and
-> only reskin `UI-Classes-Circles`.
+> class tabs, back when the addon read the game's file. It reads its own copy
+> now, so the game's file can carry the emblem.
 
 To read the pristine original on a reinstall (not the installer's own previous
 output), `install.py` builds its `ClientFiles` with `exclude=` set to the patch
 archives it is about to write.
 
+The atlases are written **uncompressed** (`encode_argb8888`: BLP2 header
+`03 08 08 01`, encoding 3, BGRA pixels, a full mip chain). A 256-colour palette
+over ten unrelated icons shifted the other nine cells' colours (the Rogue's
+yellows went brown); encoding 3 is lossless. The client copies encoding 3
+straight through as ARGB8888 (`CBLPFile::Lock`, `0x6AF990`; `TextureLoadBlpMips`
+asks for ARGB8888 for anything not DXT). Only character skins insist on a
+palettized file (`TextureCacheGetPal`), and these are not skins.
+
 The BLP **format matters** — a wrong header makes the client draw a green
-"missing texture" box everywhere the icon is used. Matched byte-for-byte against
-the genuine enc=1 textures the client ships: header `01 08 08 01` (encoding 1
-palettized, alphaDepth 8, **alphaType 8**, **hasMips 1**) with a **full mip
-chain** (256→1, `w*h` index bytes + `w*h` alpha bytes per level). alphaType 0 or
-a missing mip chain both fail to load. Pillow is required: `install.py` installs
-it with pip when missing and aborts if it cannot, because a client without the
-painted icons is not the full install.
+"missing texture" box everywhere the icon is used. For the palettized textures
+the installer writes elsewhere (`encode_palettized`, the element icons), the
+header is matched byte-for-byte against the genuine enc=1 textures the client
+ships: `01 08 08 01` (encoding 1 palettized, alphaDepth 8, **alphaType 8**,
+**hasMips 1**) with a **full mip chain** (256→1, `w*h` index bytes + `w*h`
+alpha bytes per level). alphaType 0 or a missing mip chain both fail to load.
+Pillow is required: `install.py` installs it with pip when missing and aborts if
+it cannot, because a client without the painted icons is not the full install.
 
 The full Hero client -- name, single-class list, text, outfit, icon, exe patch,
 addon -- installs by **default**; the `--no-*` flags turn single pieces off
@@ -415,6 +427,81 @@ whenever the stance bar shows, since no shaman has both. The addon's
 pet bar (or a row up when the main bar is full), and moves nothing of
 Blizzard's.
 
+#### Class checks a Hero trips over
+
+Every Hero is a Paladin to the client, so a branch kept for another class never
+runs. The decompiled client (`B:\\code\\wowdecomp`, every function tagged with
+its address) lists ~90 reads of the class byte (`m_unitFieldBytes0[1]`); most
+are per-class tables the Paladin chassis is meant to use, or lookups the
+SkillLineAbility patch already opened. `CLASS_GATES` opens the ones that take a
+feature away from a Hero who has it:
+
+- `Script_GetComboPoints` (`0x611670`): Rogue or Druid only; the `je` past the
+  class test becomes a `jmp`.
+- `CGUnit_C::DoPowerRegen` (`0x728A20`): predicts mana and energy off the
+  displayed bar only for a Druid; the `jne` goes, so every class predicts them.
+- `CGUnit_C::CanGainXP` (`0x71B630`) and `GetPetPersonality` (`0x71F390`): a
+  hunter pet only when the owner is a Hunter. Both now test the pet's own power
+  type, focus (2), which a hunter pet has and a demon does not.
+- `CGMinimapFrame::s_trackingTypes`: the Stable Master (Hunter), Ammunition
+  (Warrior, Hunter, Rogue) and Poisons (Rogue) masks are cleared.
+- Feral weapons: the tooltip line "increases attack power by N in Cat, Bear
+  and Moonkin form" (`AddItemSpellStatLines`, inlined at `0x62BB5E`) and the
+  item comparison sums (`0x61F493`, `0x61F7AA`) test for a Druid (11); they ask
+  for the Paladin chassis (2) now. The server adds that attack power in a feral
+  form (`CW_FeralWeaponAP`, ClasslessPlayerScript.cpp).
+
+- `Spell_C_HasNoReagentCost` (`0x800D60`): a "no reagent" aura counts only for
+  a spell of the character's own class family (`ChrClasses.spellClassSet`, the
+  Paladin's), so Decimation and the reagent glyphs still asked for the reagent
+  and the cast was refused before it was sent. The `jne` after
+  `cmp ecx, [0xD397B4]` goes; the server's `CanNoReagentCast` tests the mask
+  alone, so the two agree.
+- `CGItem_C::CanGoInSlot` (`0x7082B0`): slot 17 took a relic only when the
+  `bypass` argument (ChrClasses flag `0x08`, cleared by `dbc.clear_relic_slot`)
+  matched. The `je` becomes a `jmp` to the slot-table test, so a relic can be
+  dragged there and shows in the flyout; the server's EQUIP_RELIC answer decides.
+- `UnitPowerUpdateHandler` (`0x7234D0`): for the player and the pet the client
+  drops a server power value at or below its own prediction. Only the pool on
+  the bar (and mana and energy, via `DoPowerRegen`) is ever predicted down, so
+  a Hero's rage or runic power off the bar stayed at its peak after the server
+  decayed it, and `IsUsableSpell` agreed with the stale number. The guard now
+  covers health and the bar's own pool only. The rewrite sits in a dead branch:
+  the `predictedPower` cvar is tested at `0x723501` and again at `0x72354A`, so
+  the second test's fallback never runs.
+
+The ranged slot's relic rule (ChrClasses flag `0x08`) was already handled by
+`dbc.clear_relic_slot`.
+
+#### The Hero class color
+
+Every Hero wore the Paladin's pink: in chat, the raid and party frames, the who
+and guild lists (`RAID_CLASS_COLORS` in `Constants.lua`) and on enemy players'
+nameplates (`s_classColors`, `0xB2DA20` in `.data`, read only by
+`CGNamePlateFrame::UpdateColorDisplay`, `0x98EE30`). The Paladin entry of both
+becomes the Hero color, jade `1AE6B3` (`framexml.HERO_RGB`, one constant for
+both). No stock class uses that hue, and neither path color in the addon
+(Classless `00ccff`, Wildcard `ff8800`) is near it. The exe table stores a
+`CImVector` as blue, green, red, alpha; `HERO_COLOR` is the one 4-byte entry.
+
+The interface half is one of the install-time edits in `lib/framexml.py`, made
+to the client's own files so the code stays Blizzard's (an addon doing the same
+from outside would taint it). Each matches exact stock text and is skipped when
+the text is not there:
+
+- `TotemFrame.lua`: the totem timers stay up with a pet out.
+- `InterfaceOptionsPanels.lua`/`.xml`: the combo point combat text option is
+  open to a Hero.
+- `Constants.lua`: the Hero class color above.
+- `Blizzard_RaidUI.lua`: the raid window's Pets group lists a Hero's pet (it
+  listed Hunters' and Warlocks' only).
+- `PaperDollFrame.lua`: `ComputePetBonus` knew only the Warlock and the Hunter,
+  so a Hero's pet lines on the character sheet read 0 and were left out. A
+  Hero's pet takes the bonus of its own kind: a hunter pet (`HasPetUI`'s second
+  return) the Hunter's, a demon (a named creature family and a mana bar) the
+  Warlock's. A ghoul runs on energy and a water elemental has no family, so
+  neither gets a line, as for a Death Knight or a Mage.
+
 #### Stances and forms past ten
 
 No exe change. The client's form list (`0xbe8e28` count, `0xbe8e2c` entries of
@@ -426,7 +513,30 @@ to `10`), and two of its loops index `ShapeshiftButton<n>` up to the count
 (`UIParent_ManageFramePositions`, `PetActionBar_UpdatePositionValues`), which
 threw on an eleventh form. The addon makes `ShapeshiftButton11` to `30` at
 load (`CW.MakeFormButtons`): secure `type = spell` buttons in the bar's own row
-and art, filled out of combat (`CW.BuildFormButtons`).
+and art, filled out of combat (`CW.BuildFormButtons`), at the stock stride
+(8 apart, as `BonusActionBarFrame.xml` spaces 1 to 10).
+
+Those two loops read the addon's buttons by global name from Blizzard's secure
+layout pass (`FramePositionDelegate`), and a global an addon created taints
+everything after the read: the pet bar's `SetPoint`, the totem bar's slide and
+`PETACTIONBAR_XPOS`. The layout pass also hid the totem bar whenever a stance
+bar showed, which the addon used to undo by writing
+`MultiCastActionBarFrame.mode`, tainting the totem bar's own slide code. Both
+are now install-time edits in `lib/framexml.py`:
+
+- `UIParent.lua` (`open_bar_row`): the two stance loops stop at
+  `NUM_SHAPESHIFT_SLOTS`; the "too many bars" hide becomes a placement, after
+  the stance row and the pet bar, or one row up when the row is full (the
+  possess bar still hides it); and `ShapeshiftBar_RowRight()` is appended,
+  which finds the row's right edge from `ShapeshiftButton1`, `ShapeshiftButton2`
+  and `GetNumShapeshiftForms()` alone.
+- `PetActionBarFrame.lua` (`open_pet_bar_row`): the pet bar starts after
+  `ShapeshiftBar_RowRight()`, falling back to the stock read if the
+  `UIParent.lua` edit is missing.
+
+The addon sizes its own buttons' borders (`CW.SizeFormButtons`) and leaves the
+totem bar alone whenever `ShapeshiftBar_RowRight` exists. `test_bar_row.py`
+runs both edits under Lua 5.1 against the client's own files.
 
 #### Death Knight skins from any face
 
@@ -482,6 +592,15 @@ to the client:
 
 ```bash
 python3 test_skin_arrows.py "B:/World.of.Warcraft.3.3.5a"
+```
+
+`test_power_sync.py` (unicorn) runs the patched power-update guard from a
+patched copy of the client's bytes, for every pool against the bar's pool, and
+the stock bytes for contrast. `test_bar_row.py` (lupa) runs the bar-row edits:
+
+```bash
+python3 test_power_sync.py "B:/World.of.Warcraft.3.3.5a"
+python3 test_bar_row.py "B:/World.of.Warcraft.3.3.5a"
 ```
 
 `test_elemental.py` checks the elemental-variant step against a DBC extract, no

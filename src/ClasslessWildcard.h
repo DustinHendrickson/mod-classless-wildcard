@@ -432,6 +432,7 @@ namespace ClasslessWildcard
 
         // universal stat layer bonuses currently applied (runtime only)
         int32 usMeleeAP = 0;
+        int32 usFeralAP = 0;      // runtime: a feral weapon's attack power, while in a feral form
         int32 usRangedAP = 0;
         int32 usSpellPower = 0;
 
@@ -449,6 +450,10 @@ namespace ClasslessWildcard
         // ClasslessFormScript so a form that is being LEFT can still be named
         // after the core has already reset it to none. Runtime only.
         uint8 heldForm = 0;
+
+        // The rage a warrior stance keeps through a stance change, kept by
+        // spell_cw_warrior_stance across the core zeroing it. Runtime only.
+        uint32 stanceRage = 0;
 
         std::unordered_map<uint32 /*firstSpellId*/, OwnedAbility> abilities;
         std::unordered_map<uint32 /*talentId*/, uint8 /*rank*/>   talents;

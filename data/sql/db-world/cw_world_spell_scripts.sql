@@ -61,8 +61,9 @@ DELETE FROM `spell_script_names` WHERE `spell_id` IN (-49208, -49467, -54639) AN
 -- Item and set procs that pick a reward by class with getClass(), so a Hero
 -- always took the Paladin's: Eye of Gruul and Soul Preserver cheapened Paladin
 -- heals only, Blessing of Faith the same, Flask of the North never rolled
--- attack power, and the T3 6-piece Holy and Totemic Power gave a Hero target
--- mp5 every time. The module's versions treat a Hero as every class and leave
+-- attack power, the T3 6-piece Holy and Totemic Power gave a Hero target mp5
+-- every time, Deathbringer's Will rolled Strength even for an Agility build, and
+-- Darkmoon Card: Madness rolled from all nine. The module's versions treat a Hero as every class and leave
 -- everyone else exactly as the core has them.
 --
 -- 60510 has been bound to both spell_item_healing_trance and
@@ -73,6 +74,10 @@ DELETE FROM `spell_script_names` WHERE `spell_id` = 37877 AND `ScriptName` = 'sp
 DELETE FROM `spell_script_names` WHERE `spell_id` = 67019 AND `ScriptName` = 'spell_item_flask_of_the_north';
 DELETE FROM `spell_script_names` WHERE `spell_id` = 28789 AND `ScriptName` = 'spell_pal_t3_6p_bonus';
 DELETE FROM `spell_script_names` WHERE `spell_id` = 28823 AND `ScriptName` = 'spell_sha_t3_6p_bonus';
+DELETE FROM `spell_script_names` WHERE `spell_id` = 71519 AND `ScriptName` = 'spell_item_deathbringers_will_normal';
+DELETE FROM `spell_script_names` WHERE `spell_id` = 71562 AND `ScriptName` = 'spell_item_deathbringers_will_heroic';
+DELETE FROM `spell_script_names` WHERE `spell_id` = 39446 AND `ScriptName` = 'spell_item_aura_of_madness';
+DELETE FROM `spell_script_names` WHERE `spell_id` = 70656 AND `ScriptName` = 'spell_dk_advantage_t10_4p';
 
 DELETE FROM `spell_script_names` WHERE `ScriptName` IN
     ('spell_cw_frenzied_regeneration', 'spell_cw_judgement_of_wisdom',
@@ -80,6 +85,8 @@ DELETE FROM `spell_script_names` WHERE `ScriptName` IN
      'spell_cw_dk_blade_barrier', 'spell_cw_dk_death_rune',
      'spell_cw_healing_trance', 'spell_cw_blessing_of_faith',
      'spell_cw_flask_of_the_north', 'spell_cw_t3_6p_bonus',
+     'spell_cw_deathbringers_will', 'spell_cw_aura_of_madness',
+     'spell_cw_warrior_stance', 'spell_cw_dk_advantage_t10_4p',
      'spell_cw_swear_vendetta');
 INSERT INTO `spell_script_names` (`spell_id`, `ScriptName`) VALUES
 (36779, 'spell_cw_swear_vendetta'),
@@ -89,6 +96,13 @@ INSERT INTO `spell_script_names` (`spell_id`, `ScriptName`) VALUES
 (67019, 'spell_cw_flask_of_the_north'),
 (28789, 'spell_cw_t3_6p_bonus'),
 (28823, 'spell_cw_t3_6p_bonus'),
+(71519, 'spell_cw_deathbringers_will'),
+(71562, 'spell_cw_deathbringers_will'),
+(39446, 'spell_cw_aura_of_madness'),
+(2457, 'spell_cw_warrior_stance'),
+(71, 'spell_cw_warrior_stance'),
+(2458, 'spell_cw_warrior_stance'),
+(70656, 'spell_cw_dk_advantage_t10_4p'),
 (22842, 'spell_cw_frenzied_regeneration'),
 (20186, 'spell_cw_judgement_of_wisdom'),
 (61013, 'spell_cw_pet_hit_expertise_scaling'),
