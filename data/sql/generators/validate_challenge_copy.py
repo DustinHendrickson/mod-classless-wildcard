@@ -143,7 +143,12 @@ says(n, "rule", "{nemesis_levels} levels above you", "MarkNemesis: the Hero's le
 need("ChallengeText(ch.rule)" in read("src", "ClasslessAddon.cpp") and "SanitizeText(sClasslessMgr->ChallengeText(raw))"
      in read("src", "ClasslessAddon.cpp"), "the addon is sent the filled text")
 says(n, "detail", "a death takes nothing from you", "MarkNemesis takes no experience")
-says(n, "detail", "stays that far above you as you level", "ResyncNemesisCopy follows the Hero's level")
+says(n, "detail", "stays at least that far above you as you level", "ResyncNemesisCopy follows the Hero's level")
+# never below the creature's own level: dying to something far above you must not make it easy
+says(n, "detail", "or at its own level if that is higher", "NemesisCopyLevel floors at the template's maxlevel")
+need("level = std::max<uint32>(level, tmpl->maxlevel);" in mgr and mgr.count("NemesisCopyLevel(player, mark)") >= 3,
+     "every nemesis level is floored at the creature's own (copy, Marked message, Sworn message)")
+need("+ mark.levels, NEMESIS_LEVEL_CAP" not in mgr, "no nemesis level is worked out without the floor")
 says(n, "detail", "real higher level foe", "the copy's real level sets every roll")
 need("player->SummonCreature(mark.entry, at ? *at : pos, TEMPSUMMON_CORPSE_TIMED_DESPAWN" in mgr
      and "nullptr, true);" in mgr, "the nemesis is a private copy, visible to its Hero alone")

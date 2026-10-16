@@ -267,6 +267,10 @@ public:
     bool IsNemesisOriginalOf(Player* viewer, Creature const* creature);
     // `at`: where it appears, when not at its spawn point (a vendetta sworn
     // on it where it stands). It goes home to its spawn point either way.
+    // The level its copy fights at: the Hero's plus its offset, never below
+    // the creature's own (its template's highest), up to NEMESIS_LEVEL_CAP. A
+    // creature far above the Hero is not made easier by killing them.
+    uint8 NemesisCopyLevel(Player* player, ClasslessWildcard::NemesisMark const& mark) const;
     Creature* SpawnNemesisCopy(Player* player, uint32 spawnId, ClasslessWildcard::NemesisMark const& mark,
                                Position const* at = nullptr);
 

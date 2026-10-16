@@ -11078,7 +11078,8 @@ end
 -- that order. A row is kept whenever it CAN show, not only while it does: the
 -- pet frame is a secure button that cannot move in combat, so a totem dropped
 -- mid-fight has to land in a row already left for it.
-CW.DOCK = { TOP = 38, MANA_BOTTOM = 23, GAP = 3, TOTEM_H = 48, TOTEM_X = 99, PET_X = 80, BARS_X = 100 }
+CW.DOCK = { TOP = 38, MANA_BOTTOM = 23, GAP = 3, TOTEM_H = 48, TOTEM_X = 99, PET_X = 80, BARS_X = 100,
+            PARTY_X = 10, PARTY_Y = -160 }
 function CW.LayoutPlayerDock()
     local pf = rawget(_G, "PlayerFrame")
     if type(pf) ~= "table" then return end
@@ -11116,9 +11117,33 @@ function CW.LayoutPlayerDock()
     end
     -- the pet frame last; with nothing above it, Blizzard's own place stands
     local pet = rawget(_G, "PetFrame")
+    local stackBottom = y
     if used and type(pet) == "table" then
         pet:ClearAllPoints()
         pet:SetPoint("TOPLEFT", pf, "BOTTOMLEFT", D.PET_X, y)
+        if pet:IsShown() then stackBottom = y - (pet:GetHeight() or 53) end
+    end
+    -- The party frames sit at a fixed spot under the player frame
+    -- (PartyMemberFrame1 at UIParent TOPLEFT 10,-160, the others hang from
+    -- it), so a taller stack ran into them: they move down just far enough,
+    -- and back when the room is not needed.
+    local party, ui = rawget(_G, "PartyMemberFrame1"), rawget(_G, "UIParent")
+    if type(party) == "table" and type(ui) == "table" then
+        local need
+        local bottom, top = pf:GetBottom(), ui:GetTop()
+        if used and bottom and top then
+            local partyY = -(top - (bottom + stackBottom - D.GAP))
+            if partyY < D.PARTY_Y then need = partyY end
+        end
+        if need then
+            party:ClearAllPoints()
+            party:SetPoint("TOPLEFT", ui, "TOPLEFT", D.PARTY_X, need)
+            CW.partyMoved = true
+        elseif CW.partyMoved then
+            party:ClearAllPoints()
+            party:SetPoint("TOPLEFT", ui, "TOPLEFT", D.PARTY_X, D.PARTY_Y)
+            CW.partyMoved = nil
+        end
     end
 end
 function CW.HookPlayerDock()

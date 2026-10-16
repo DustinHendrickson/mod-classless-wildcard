@@ -469,9 +469,11 @@ Vengeance, earned by slaying them, to finish.
 
 There are two ways.
 
-- **Marked.** The creature that kills you is marked. It becomes a rare elite two levels above you.
+- **Marked.** The creature that kills you is marked. It becomes a rare elite two levels above you,
+  or at its own level if that is higher.
 - **Sworn.** On a Nemesis run you learn *Swear Vendetta* (instant, 30 yards). Cast it on a creature
-  to make it your nemesis on purpose. A Sworn nemesis fights four levels above you and starts
+  to make it your nemesis on purpose. A Sworn nemesis fights four levels above you (or at its own
+  level, if higher) and starts
   stronger, with Bloodlust and one more strength. It pays more for the kill. The target must be
   in the open world, at your level or above, and can't be an elite or a boss.
   You can have one Sworn nemesis at a time, and the spell has a 30-minute cooldown.

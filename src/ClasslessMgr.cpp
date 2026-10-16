@@ -3276,8 +3276,8 @@ namespace
         // last two, " ^ " starts a new paragraph and ~Words~ is a heading: the addon draws them. Lives follow how often the rule itself kills:
         // five where the world is turned up, three where the fight changes shape, one only where
         // the rule IS death. The list is in the order the picker shows it.
-        { 1,  "nemesis",         "Nemesis",         UNLIMITED_LIVES, "Unlimited lives. The creature that kills you becomes your nemesis, a rare elite {nemesis_levels} levels above you that only you can see. Every nemesis you slay adds its level to your Vengeance. Reach level 80 with {vengeance} Vengeance to finish.", 500, 186, "mark_of_the_nemesis",
-          "~Your nemesis~ You have unlimited lives on this run, and a death takes nothing from you. The creature that kills you becomes your nemesis instead, that one creature, for you alone. It waits for you where it lives as a rare elite {nemesis_levels} levels above you, and it stays that far above you as you level, so every miss, dodge and resist in the fight is a real higher level foe's. ^ It wears a red arrow over its head, shows as a rare elite on your target frame and is on your minimap. Other players see and fight it as it always was. ^ ~Strengths and weaknesses~ Each nemesis has a strength and a weakness. You learn its strengths when a fight with it starts, and its weakness when you find it. Each time it kills you again it grows larger, up to twice its size, and gains another strength, up to three. ^ ~Swear Vendetta~ You learn it on this run. It makes a nemesis of a creature you choose in the open world, at your level or above, and not an elite or a boss. It becomes a Sworn nemesis, {sworn_levels} levels above you, with Bloodlust, one more strength and a weakness. You can have one Sworn nemesis at a time, and swear again every {sworn_cooldown} minutes. ^ ~The kill~ Kill a nemesis, alone or with your pet, and you get the experience of an elite of its level with {nemesis_bonus} more, or {sworn_bonus} more for a Sworn one. It drops classless gear as often as a rare, heirloom roll included, and a Sworn one always drops a piece. It gives Vengeance: {marked_vengeance}, or {sworn_vengeance} for a Sworn one. If you are dead when it falls, the mark stays. ^ ~Trophies~ Each kill also drops a trophy of one of its strengths, chosen at random, with a star for each strength it had and one more if it was Sworn, up to three. Trophies work from your bags for the rest of the run, and all of them add up. You can carry {trophy_max}. Another waits until you destroy one, and one that finds your bags full waits for room. They cannot leave your bags: no bank, trade, mail or sale. ^ ~Finishing~ Reach level 80 with {vengeance} Vengeance. Reaching 80 first does not end the run, it ends when your Vengeance reaches the mark. When you finish, the best trophy of each kind adds its stars to your Nemesis Charm, up to five in each. The charm is yours for good: it works from your bags, and it cannot leave them or be destroyed. A run that ends unfinished loses its trophies. ^ ~No nemesis~ Deaths in dungeons and raids make no nemesis, and neither do deaths to elites, bosses, pets, totems or summoned creatures.",
+        { 1,  "nemesis",         "Nemesis",         UNLIMITED_LIVES, "Unlimited lives. The creature that kills you becomes your nemesis, a rare elite at least {nemesis_levels} levels above you that only you can see. Every nemesis you slay adds its level to your Vengeance. Reach level 80 with {vengeance} Vengeance to finish.", 500, 186, "mark_of_the_nemesis",
+          "~Your nemesis~ You have unlimited lives on this run, and a death takes nothing from you. The creature that kills you becomes your nemesis instead, that one creature, for you alone. It waits for you where it lives as a rare elite {nemesis_levels} levels above you, or at its own level if that is higher, and it stays at least that far above you as you level, so every miss, dodge and resist in the fight is a real higher level foe's. ^ It wears a red arrow over its head, shows as a rare elite on your target frame and is on your minimap. Other players see and fight it as it always was. ^ ~Strengths and weaknesses~ Each nemesis has a strength and a weakness. You learn its strengths when a fight with it starts, and its weakness when you find it. Each time it kills you again it grows larger, up to twice its size, and gains another strength, up to three. ^ ~Swear Vendetta~ You learn it on this run. It makes a nemesis of a creature you choose in the open world, at your level or above, and not an elite or a boss. It becomes a Sworn nemesis, {sworn_levels} levels above you (or at its own level if that is higher), with Bloodlust, one more strength and a weakness. You can have one Sworn nemesis at a time, and swear again every {sworn_cooldown} minutes. ^ ~The kill~ Kill a nemesis, alone or with your pet, and you get the experience of an elite of its level with {nemesis_bonus} more, or {sworn_bonus} more for a Sworn one. It drops classless gear as often as a rare, heirloom roll included, and a Sworn one always drops a piece. It gives Vengeance: {marked_vengeance}, or {sworn_vengeance} for a Sworn one. If you are dead when it falls, the mark stays. ^ ~Trophies~ Each kill also drops a trophy of one of its strengths, chosen at random, with a star for each strength it had and one more if it was Sworn, up to three. Trophies work from your bags for the rest of the run, and all of them add up. You can carry {trophy_max}. Another waits until you destroy one, and one that finds your bags full waits for room. They cannot leave your bags: no bank, trade, mail or sale. ^ ~Finishing~ Reach level 80 with {vengeance} Vengeance. Reaching 80 first does not end the run, it ends when your Vengeance reaches the mark. When you finish, the best trophy of each kind adds its stars to your Nemesis Charm, up to five in each. The charm is yours for good: it works from your bags, and it cannot leave them or be destroyed. A run that ends unfinished loses its trophies. ^ ~No nemesis~ Deaths in dungeons and raids make no nemesis, and neither do deaths to elites, bosses, pets, totems or summoned creatures.",
           "Remember what killed you and where. Your nemesis waits where it lives and stays above your level, so go back when you are ready for a harder fight rather than waiting for it to be easy. ^ Every death to it makes it larger and stronger. ^ Hover the challenge tracker for what you have learned of each nemesis and where it lives. The world map marks it too. ^ A Sworn nemesis is worth more Vengeance and a better trophy." },
         { 2,  "elite_world",     "Elite World",     5, "Every enemy is an elite for you, with elite health, damage and experience.", 750, 187, "giantsbane",
           "Every enemy you can fight is an elite for you alone, from the moment it comes into sight. You see the health this realm gives elites and the elite border on your target frame, it hits you and your pet with an elite's damage, melee and spells alike, it takes as many hits as an elite to bring down, and it pays you elite experience and drops classless gear as often as a rare, heirloom roll included. Rares are rare elites. Enemies that are already elite, rare elite or bosses are left as they are, in dungeons too, and pets, totems, summoned creatures, critters and civilians never change. Other players see and fight every one of them as it always was. Pull one at a time, and use every stun, slow and snare you own.",
@@ -3838,9 +3838,17 @@ Creature* ClasslessMgr::SpawnNemesisCopy(Player* player, uint32 spawnId, Nemesis
 // Its level follows the Hero's, its size its deaths. Rebuilt when it is made,
 // and after that only when the Hero's level has moved and it is not fighting
 // (rebuilding fills its health).
+uint8 ClasslessMgr::NemesisCopyLevel(Player* player, NemesisMark const& mark) const
+{
+    uint32 level = uint32(player->GetLevel()) + mark.levels;
+    if (CreatureTemplate const* tmpl = sObjectMgr->GetCreatureTemplate(mark.entry))
+        level = std::max<uint32>(level, tmpl->maxlevel);
+    return uint8(std::min<uint32>(level, NEMESIS_LEVEL_CAP));
+}
+
 void ClasslessMgr::ResyncNemesisCopy(Player* player, Creature* copy, NemesisMark const& mark, bool made)
 {
-    uint8 const level = uint8(std::min<uint32>(uint32(player->GetLevel()) + mark.levels, NEMESIS_LEVEL_CAP));
+    uint8 const level = NemesisCopyLevel(player, mark);
     if (made || (copy->GetLevel() != level && !copy->IsInCombat()))
         CW_ReLevelCreature(copy, level, CREATURE_ELITE_RAREELITE);
     uint32 const deaths = std::max<uint32>(mark.kills, 1);
@@ -3993,7 +4001,7 @@ void ClasslessMgr::SwearVendetta(Player* player, Creature* target)
     SaveNemeses(player->GetGUID(), st);
     CW_DropFight(target, player);   // the original: its fight is with the copy now
     ApplyNemesisTo(target, mark);   // hidden from this Hero from now on
-    uint32 const level = std::min<uint32>(uint32(player->GetLevel()) + mark.levels, NEMESIS_LEVEL_CAP);
+    uint32 const level = NemesisCopyLevel(player, mark);
 
     // The moment: the Hero's war cry, and the nemesis taking the creature's
     // place where it stands, marked in blood, roaring in its fury. The banner
@@ -4378,7 +4386,8 @@ void ClasslessMgr::PushNemesisList(Player* player)
         }
         lines.push_back(Acore::StringFormat("NL|{}|{}|{}|{}|{}|{}|{}|{:.1f}|{:.1f}",
             tmpl ? tmpl->Name : "Unknown", NemesisTitle(mark), mark.kind == NEMESIS_SWORN ? "Sworn" : "Marked",
-            uint32(mark.levels), strengths, weakness, zoneName, x, y));
+            uint32(NemesisCopyLevel(player, mark) > player->GetLevel() ? NemesisCopyLevel(player, mark) - player->GetLevel() : 0),
+            strengths, weakness, zoneName, x, y));
     }
     std::string joined;
     for (std::string const& line : lines)
@@ -4539,7 +4548,7 @@ std::string ClasslessMgr::MarkNemesis(Player* player, Creature* killer)
     PushRunTracker(player);
     SaveNemeses(player->GetGUID(), st);
     ApplyNemesisTo(killer, mark);   // the original is hidden from this Hero from now on
-    uint32 const level = std::min<uint32>(uint32(player->GetLevel()) + mark.levels, NEMESIS_LEVEL_CAP);
+    uint32 const level = NemesisCopyLevel(player, mark);
     if (!fresh)
         return Acore::StringFormat("{} has beaten you again, and grows.", killer->GetName());
     return Acore::StringFormat("{} is your nemesis now. It waits for you where it lives, a level {} rare elite.",

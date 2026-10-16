@@ -3403,6 +3403,16 @@ def test_nemesis_titles_and_charms(h):
                  "ClasslessWildcard_API.LayoutPlayerDock()")
     h.check(pos("ClasslessWildcardBars") == "none" and pos("TotemFrame") == "TOPLEFT 99 20",
             "bars moved by hand are left where they were put")
+    # the party frames make room: down just far enough, and back after
+    h.rt.execute("PartyMemberFrame1 = CreateFrame('Frame'); UIParent.GetTop = function() return 768 end; "
+                 "PlayerFrame.GetBottom = function() return 664 end; PetFrame.GetHeight = function() return 53 end; "
+                 "ClasslessWildcardDB.barsPos = nil; ClasslessWildcardBars:Hide(); ClasslessWildcard_API.LayoutPlayerDock()")
+    h.check(pos("PartyMemberFrame1") == "TOPLEFT 10 -188",
+            "mana bar, totems and pet: the party frames move down just enough (%s)" % pos("PartyMemberFrame1"))
+    h.rt.execute("MultiCastActionBarFrame.numActiveSlots = 0; ClasslessWildcard_API.LayoutPlayerDock()")
+    h.check(pos("PartyMemberFrame1") == "TOPLEFT 10 -160",
+            "and go back to Blizzard's place when the stack is short again (%s)" % pos("PartyMemberFrame1"))
+    h.rt.execute("PartyMemberFrame1 = nil")
     h.rt.execute("PetFrame.__point = nil; function InCombatLockdown() return 1 end; ClasslessWildcard_API.LayoutPlayerDock()")
     h.check(pos("PetFrame") == "none" and h.rt.eval("ClasslessWildcard_API.dockPending") is True,
             "in combat the stack waits (the pet frame is a secure button)")
