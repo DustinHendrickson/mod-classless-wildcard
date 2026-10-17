@@ -139,8 +139,8 @@ public:
     // Cleans the name in place. False with a player-facing reason otherwise.
     bool ValidateCustomArchetype(ClasslessWildcard::Archetype& arch, std::string* err);
     // Every row's problem, for the editor to mark: kind 'A' or 'T', the row's
-    // index in its list (0-based), a code ("gone", "twice", "rank", "needs",
-    // "never") and, for "needs", the prerequisite talent (0 for an ability).
+    // index in its list (0-based) and a code ("gone", "twice", "rank",
+    // "never").
     struct RowProblem { char kind = 'A'; uint32 index = 0; char const* code = ""; uint32 extra = 0; };
     std::vector<RowProblem> InspectCustomArchetype(ClasslessWildcard::Archetype const& arch) const;
     // Follow the player's own build, exactly as a starter archetype is
@@ -507,7 +507,6 @@ private:
     // Which ability lines each talent's spells head or teach (Pyroblast,
     // Mortal Strike, Mangle); taking the talent grants those lines.
     void ResolveTalentAbilityLines();
-    void DropUnresolvablePrerequisites();
     // With a character's state and the character, what that character is
     // taught: the same list less Auto Shot when they turned it off or hold no
     // bow, gun or crossbow. Without them, the realm's list.
@@ -516,7 +515,6 @@ private:
     // Push the addon's tooltip corrections, unless a bulk operation is running
     // and will push once when it finishes.
     void PushCorrectionsUnlessBulk(Player* player);
-    bool OwnsReplacedTalent(ClasslessWildcard::CharState const& st, uint32 talentId) const;
     // form id -> the library ability that puts you in it, built from spell data
     void BuildFormSpellMap();
     // Give a Hero the stance or form an ability cannot be used without.

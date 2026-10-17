@@ -96,8 +96,9 @@ with your build on the right. Lock or reroll anything you own from the same wind
 
 ### Progression
 
-- **Classless.** Buy abilities by rarity and talents a rank at a time. Prerequisites apply and
-  each talent tier opens at its level, with no points-in-tree requirement. Unlearning refunds the
+- **Classless.** Buy abilities by rarity and talents a rank at a time. Talent prerequisites do not
+  apply (Flurry needs no Thundering Strikes) and each talent tier opens at its level, with no
+  points-in-tree requirement. Unlearning refunds the
   essence. Owned spells rank up as you level.
 - **Wildcard.** Rarity-weighted rolls, ability locks, and synergy rolls that favour classes you
   already own. See [Wildcard rolls](#wildcard-rolls).
@@ -130,8 +131,7 @@ with your build on the right. Lock or reroll anything you own from the same wind
   Classless path they cost Talent Essence, not talent points. The stock Talents window shows a
   tamed beast's pet talents.
 - **Talents that teach a spell** (Pyroblast, Mortal Strike, Mangle and so on) are in the
-  Abilities list instead, with every rank, at the level their tier opens. Owning one counts for
-  that talent's prerequisites.
+  Abilities list instead, with every rank, at the level their tier opens.
 - **General talents reach every class.** A talent that improves all of its class's abilities of
   one kind improves every ability of that kind, from any class: Fire Power every Fire spell,
   Impale every melee strike, Spiritual Healing every direct Holy heal, Benediction every instant

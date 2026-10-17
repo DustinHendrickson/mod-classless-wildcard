@@ -174,8 +174,6 @@ namespace ClasslessWildcard
         uint32 classMask = 0;           // from TalentTab
         uint32 row = 0;
         uint32 col = 0;
-        uint32 dependsOn = 0;           // prerequisite talent id (0 = none)
-        uint32 dependsOnRank = 0;
         std::array<uint32, 5> rankSpells = { 0, 0, 0, 0, 0 };
         uint8  maxRank = 0;
         Rarity rarity = Rarity::Common;

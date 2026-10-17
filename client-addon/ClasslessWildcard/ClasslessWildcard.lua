@@ -3594,7 +3594,7 @@ do
     E.fix:SetScript("OnEnter", function(self)
         GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
         GameTooltip:AddLine("Fix order")
-        GameTooltip:AddLine("Puts abilities in the order they unlock, moves each talent below the talent it needs, "
+        GameTooltip:AddLine("Puts abilities in the order they unlock, "
             .. "caps ranks and drops repeats. Rows marked in red say what is wrong.", 1, 1, 1, true)
         GameTooltip:Show()
     end)
@@ -5038,9 +5038,9 @@ function CW.HelpSections()
 
     page("classless", "Classless", ICON .. "INV_Misc_Book_11", "You choose every ability and talent, and pay with essence.", {
         b("Two currencies", "|cffffd100Ability Essence (AE)|r buys abilities. |cffffd100Talent Essence (TE)|r buys talent ranks.\nYou start with |cff00ff00" .. r.startAE .. " AE|r and earn |cff00ff00+" .. r.aePer .. " AE every level from " .. r.aeStart .. "|r. |cff00ff00Talent Essence arrives from level " .. r.teStart .. ", +" .. r.tePer .. " a level|r: " .. teByCap .. " by level " .. cap .. "."),
-        b("Prices", "Abilities are priced by rarity: |cffffffff" .. c[1] .. "|r / |cff1eff00" .. c[2] .. "|r / |cff0070dd" .. c[3] .. "|r / |cffa335ee" .. c[4] .. "|r / |cffff8000" .. c[5] .. "|r AE from common to legendary. " .. talentPrice .. " Talents follow their tree's prerequisites, and each tier opens at its level."),
+        b("Prices", "Abilities are priced by rarity: |cffffffff" .. c[1] .. "|r / |cff1eff00" .. c[2] .. "|r / |cff0070dd" .. c[3] .. "|r / |cffa335ee" .. c[4] .. "|r / |cffff8000" .. c[5] .. "|r AE from common to legendary. " .. talentPrice .. " Any talent can be taken without the talents above it, and each tier opens at its level."),
         b("Changing your mind", "Unlearning an ability refunds what you paid. |cffffd100Respec|r unlearns everything at once, free."),
-        b("Ranks", "Every ability line you own |cff00ff00ranks up on its own|r as you level. Talents that teach a spell (Pyroblast, Mortal Strike, Mangle) are in the Abilities list instead, with every rank, and owning one counts as that talent for prerequisites."),
+        b("Ranks", "Every ability line you own |cff00ff00ranks up on its own|r as you level. Talents that teach a spell (Pyroblast, Mortal Strike, Mangle) are in the Abilities list instead, with every rank."),
         b("Archetypes", "Builds you follow from level 1 to " .. cap .. ". Pick one from the |cffffd100Archetypes|r button on this panel or at the Hero Advancement NPC. It replaces your build (abilities and talents refunded, free), then buys its abilities and talents for you as each becomes available. Everything it buys is a normal purchase, and you can stop following it at any time."),
         b("My Builds", "On the same page, |cffffd100My Builds|r keeps builds of your own, to follow yourself or to share with a friend as a code."),
     })

@@ -1018,8 +1018,8 @@ void ClasslessMgr::BuildLibrary()
         t.classMask = tab->ClassMask;
         t.row = talent->Row;
         t.col = talent->Col;
-        t.dependsOn = talent->DependsOn;
-        t.dependsOnRank = talent->DependsOnRank;
+        // DependsOn is not read. A Hero takes any talent without the one
+        // above it in the class tree: Flurry without Thundering Strikes.
 
         for (uint8 r = 0; r < MAX_TALENT_RANK; ++r)
         {
@@ -1145,7 +1145,6 @@ void ClasslessMgr::BuildLibrary()
     LoadVariants();
     LoadForgedSpells();
     ResolveTalentAbilityLines();
-    DropUnresolvablePrerequisites();
 
     std::unordered_set<uint32> overridden;
     LoadOverrides(&overridden);
@@ -1813,59 +1812,6 @@ void ClasslessMgr::ResolveTalentAbilityLines()
              _replacedTalents.size(), resolved);
 }
 
-// A prerequisite that names a talent which does not exist is no prerequisite.
-//
-// Talent.dbc carries two of them, left over from beta-era tree reshuffles that
-// Blizzard never cleaned up before release:
-//
-//   1756 Sanctified Retribution (Paladin, Retribution) -> 1409, no such row
-//   1993 Merciless Combat       (Death Knight, Frost)  -> 1994, no such row
-//
-// On a class character it costs nothing -- the client gates those rows on
-// points spent in the tree and never asks about talent 1409. Here the value is
-// read straight out of the DBC and enforced, so `st.talents.find(1409)` could
-// never succeed and BuyTalentRank refused forever with "You are missing a
-// prerequisite talent." Neither talent was learnable by anyone, on any path.
-//
-// Checked after ResolveTalentAbilityLines, because a prerequisite is also met
-// by owning the ABILITY that replaced it -- so a dependency is only unresolvable
-// when it is in neither list.
-void ClasslessMgr::DropUnresolvablePrerequisites()
-{
-    uint32 dropped = 0;
-    for (auto& [talentId, t] : _talents)
-    {
-        if (!t.dependsOn)
-            continue;
-        if (_talents.count(t.dependsOn) || _replacedTalents.count(t.dependsOn))
-            continue;
-        LOG_INFO("module.classless",
-                 "mod-classless-wildcard: talent {} ({}) requires talent {}, which does not exist; "
-                 "prerequisite dropped",
-                 talentId, SpellName(t.rankSpells[0]), t.dependsOn);
-        t.dependsOn = 0;
-        t.dependsOnRank = 0;
-        ++dropped;
-    }
-    if (dropped)
-        LOG_INFO("module.classless",
-                 "mod-classless-wildcard: {} talent prerequisite(s) dropped as unresolvable",
-                 dropped);
-}
-
-// Whether a Hero owns an ability that stands in for a talent taken off the
-// list (0 when the talent is not one of those).
-bool ClasslessMgr::OwnsReplacedTalent(CharState const& st, uint32 talentId) const
-{
-    auto itr = _replacedTalents.find(talentId);
-    if (itr == _replacedTalents.end())
-        return false;
-    for (uint32 first : itr->second.abilityLines)
-        if (st.abilities.count(first))
-            return true;
-    return false;
-}
-
 // The spells that come free with a form or stance, from `cw_form_kits`. Both
 // columns are plain spell ids so a realm can pair anything with anything; the
 // shipped rows are the kits the class system itself hands out.
@@ -2207,24 +2153,6 @@ bool ClasslessMgr::ValidateCustomArchetype(Archetype& arch, std::string* err)
             placed[talentId] = rank;
             continue;
         }
-        if (t->dependsOn)
-        {
-            uint8 const need = uint8(t->dependsOnRank + 1);
-            auto dep = placed.find(t->dependsOn);
-            bool met = dep != placed.end() && dep->second >= need;
-            // a prerequisite that became an ability is met by that ability
-            if (!met)
-                if (auto rep = _replacedTalents.find(t->dependsOn); rep != _replacedTalents.end())
-                    for (uint32 line : rep->second.abilityLines)
-                        if (seen.count(line))
-                            met = true;
-            if (!met)
-            {
-                TalentPoolEntry const* d = GetTalent(t->dependsOn);
-                return fail(Acore::StringFormat("{} needs {} {} of {} earlier in the build.", name, uint32(need),
-                            need == 1 ? "rank" : "ranks", d ? SpellName(d->rankSpells[0]) : std::string("another talent")));
-            }
-        }
         placed[talentId] = rank;
     }
 
@@ -2323,22 +2251,6 @@ std::vector<ClasslessMgr::RowProblem> ClasslessMgr::InspectCustomArchetype(Arche
         }
         if (!rank || rank > t->maxRank)
             add('T', i, "rank");
-        if (t->dependsOn)
-        {
-            auto dep = placed.find(t->dependsOn);
-            bool met = dep != placed.end() && dep->second >= t->dependsOnRank + 1;
-            bool viaAbility = false;
-            if (!met)
-                if (auto rep = _replacedTalents.find(t->dependsOn); rep != _replacedTalents.end())
-                {
-                    viaAbility = true;
-                    for (uint32 line : rep->second.abilityLines)
-                        if (seen.count(line))
-                            met = true;
-                }
-            if (!met)
-                add('T', i, "needs", viaAbility ? 0 : t->dependsOn);
-        }
         placed[talentId] = rank;
     }
 
@@ -7875,17 +7787,6 @@ bool ClasslessMgr::UnlearnTalent(Player* player, uint32 talentId, std::string* e
         if (err) *err = "You do not own that talent.";
         return false;
     }
-    // Another owned talent may stand on this one. Refuse and say which,
-    // rather than pull it out from under them.
-    for (auto const& [otherId, otherRank] : st.talents)
-        if (otherId != talentId)
-            if (TalentPoolEntry const* other = GetTalent(otherId); other && other->dependsOn == talentId)
-            {
-                if (err) *err = Acore::StringFormat("{} requires this talent. Unlearn that one first.",
-                                                    SpellName(other->rankSpells[0]));
-                return false;
-            }
-
     uint8 const ranks = owned->second;
     std::string const name = SpellName(t->rankSpells[0]);
     RemoveTalentInternal(player, *t);
@@ -7934,31 +7835,6 @@ bool ClasslessMgr::BuyTalentRank(Player* player, uint32 talentId, std::string* e
     {
         if (err) *err = Acore::StringFormat("Not enough Talent Essence ({} needed, {} available).", cost, st.talentEssence);
         return false;
-    }
-    if (t->dependsOn)
-    {
-        uint8 depRank = 0;
-        if (auto itr = st.talents.find(t->dependsOn); itr != st.talents.end())
-            depRank = itr->second;
-        // a prerequisite that became an ability is met by owning that ability
-        if (OwnsReplacedTalent(st, t->dependsOn))
-            depRank = MAX_TALENT_RANK;
-        if (depRank < t->dependsOnRank + 1)
-        {
-            if (err)
-            {
-                uint32 const need = uint32(t->dependsOnRank) + 1;
-                TalentPoolEntry const* dep = GetTalent(t->dependsOn);
-                *err = dep
-                    ? Acore::StringFormat("{} needs {} {} in {} first.", SpellName(t->rankSpells[0]), need,
-                          need == 1 ? "rank" : "ranks", SpellName(dep->rankSpells[0]))
-                    : std::string("You are missing a prerequisite talent.");
-            }
-            if (auto rep = _replacedTalents.find(t->dependsOn); rep != _replacedTalents.end() && !rep->second.abilityLines.empty())
-                if (err) *err = Acore::StringFormat("That needs the {} ability first. It is in the Abilities list.",
-                                                    SpellName(rep->second.abilityLines[0]));
-            return false;
-        }
     }
     // No points-in-tree gate. A class character banks points in one tree and
     // walks down it; a Hero draws from all thirty at once and can never bank
