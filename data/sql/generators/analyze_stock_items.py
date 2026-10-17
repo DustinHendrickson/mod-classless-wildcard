@@ -14,6 +14,11 @@ items copy instead of inventing:
   ratio   median armour of each slot as a fraction of the chest at the same
           subclass and band.
   shield  median shield armour and block value per level band.
+  disenchant
+          the most common (DisenchantID, RequiredDisenchantSkill) for each
+          weapon or armour quality and item level. The table defaults are 0 and
+          -1, "cannot be disenchanted", so an item that leaves them out is dust
+          nobody can make.
 
 The first armour curve here was a straight line per level and came out at a
 quarter of stock at 80, and shields carried no block value at all.
@@ -33,9 +38,10 @@ OUT = os.path.join(HERE, "stock_items.json")
 # item_template column positions, from the dump's CREATE TABLE
 C_CLASS, C_SUB, C_QUALITY, C_INV, C_REQ = 1, 2, 6, 12, 16
 C_ARMOR, C_MATERIAL, C_SHEATH, C_BLOCK = 55, 107, 108, 111
+C_ILVL, C_DE_SKILL, C_DE_ID = 15, 126, 132
 N_COLS = 138
 
-ITEM_CLASS_ARMOR = 4
+ITEM_CLASS_WEAPON, ITEM_CLASS_ARMOR = 2, 4
 CLOTH, LEATHER, MAIL, PLATE, SHIELD = 1, 2, 3, 4, 6
 CHEST_SLOTS = (5, 20)
 BANDS = [1, 10, 20, 30, 40, 50, 60, 70, 80]
@@ -102,12 +108,16 @@ def main():
     looks = collections.defaultdict(collections.Counter)
     armor = collections.defaultdict(list)       # (sub, inv, band) -> [armor]
     block = collections.defaultdict(list)       # band -> [block]
+    dust = collections.defaultdict(collections.Counter)  # (class, quality) -> ilvl -> (id, skill)
     total = 0
     for v in rows():
         n = lambda k: int(float(v[k]))
         total += 1
         looks["%d,%d,%d" % (n(C_CLASS), n(C_SUB), n(C_INV))][
             (n(C_MATERIAL), n(C_SHEATH))] += 1
+        if (n(C_CLASS) in (ITEM_CLASS_WEAPON, ITEM_CLASS_ARMOR) and n(C_QUALITY) in (2, 3, 4)
+                and n(C_DE_ID) and n(C_DE_SKILL) >= 0):
+            dust[(n(C_CLASS), n(C_QUALITY), n(C_ILVL))][(n(C_DE_ID), n(C_DE_SKILL))] += 1
         if n(C_CLASS) != ITEM_CLASS_ARMOR or n(C_QUALITY) not in (2, 3, 4):
             continue
         if not 1 <= n(C_REQ) <= 80 or n(C_ARMOR) <= 0:
@@ -159,7 +169,9 @@ def main():
                for s, c in chest.items()},
         ratio={str(s): {str(i): r for i, r in sorted(c.items())}
                for s, c in sorted(ratio.items())},
-        shield={str(b): v for b, v in shield.items()})
+        shield={str(b): v for b, v in shield.items()},
+        disenchant=collections.OrderedDict(
+            ("%d,%d,%d" % k, list(c.most_common(1)[0][0])) for k, c in sorted(dust.items())))
     io.open(OUT, "w", encoding="utf-8", newline="\n").write(
         json.dumps(out, indent=1, sort_keys=True))
     print("plate/mail ratio %.2f" % plate_over_mail)
@@ -172,6 +184,18 @@ def main():
 def look_of(table, cls, sub, inv):
     """(Material, sheath) stock items of this kind carry, or (-1, 0) if none do."""
     return tuple(table["look"].get("%d,%d,%d" % (cls, sub, inv), (-1, 0)))
+
+
+def disenchant_of(table, cls, quality, ilvl):
+    """(DisenchantID, RequiredDisenchantSkill) of stock items of this class and
+    quality at the nearest item level, the lower one on a tie; (0, -1), not
+    disenchantable, for anything that is not green to epic gear."""
+    levels = [int(k.split(",")[2]) for k in table["disenchant"]
+              if k.startswith("%d,%d," % (cls, quality))]
+    if not levels:
+        return (0, -1)
+    near = min(levels, key=lambda l: (abs(l - ilvl), l))
+    return tuple(table["disenchant"]["%d,%d,%d" % (cls, quality, near)])
 
 
 def load():

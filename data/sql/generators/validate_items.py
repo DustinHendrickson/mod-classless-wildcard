@@ -150,6 +150,9 @@ for name in FILES:
     iM = cols.index("Material") if "Material" in cols else None
     iSh = cols.index("sheath") if "sheath" in cols else None
     iB = cols.index("block") if "block" in cols else None
+    iQ, iL = cols.index("Quality"), cols.index("ItemLevel")
+    iDE = cols.index("DisenchantID") if "DisenchantID" in cols else None
+    iDS = cols.index("RequiredDisenchantSkill") if "RequiredDisenchantSkill" in cols else None
     # a block value can also arrive in a later UPDATE in the same file
     block_set = {int(e): int(b) for b, e in re.findall(
         r"UPDATE `item_template` SET `block` = (\d+) WHERE `entry` = (\d+);", src_txt)}
@@ -206,6 +209,16 @@ for name in FILES:
             if blk <= 0:
                 print("  !! %s: entry %d is a shield with no block value" % (name, e))
                 bad += 1
+        # Green to epic gear disenchants like stock gear of its kind, quality
+        # and item level. A missing column is the table default (0, -1), which
+        # the tooltip shows as "Cannot be disenchanted".
+        want_de = analyze_stock_items.disenchant_of(STOCK, cls, int(v[iQ]), int(v[iL]))
+        have_de = (int(v[iDE]) if iDE is not None else 0,
+                   int(v[iDS]) if iDS is not None else -1)
+        if have_de != want_de:
+            print("  !! %s: entry %d disenchants as %s, stock gear of its kind says %s"
+                  % (name, e, have_de, want_de))
+            bad += 1
         if e in seen:
             print("  !! entry %d duplicated: %s and %s" % (e, seen[e], name))
             bad += 1

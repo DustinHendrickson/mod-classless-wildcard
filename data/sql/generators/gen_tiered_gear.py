@@ -270,7 +270,7 @@ L.append("  (`entry`, `class`, `subclass`, `name`, `displayid`, `Quality`, `BuyC
 L.append("   `InventoryType`, `AllowableClass`, `AllowableRace`, `ItemLevel`, `RequiredLevel`, `stackable`,")
 L.append("   `stat_type1`, `stat_value1`, `stat_type2`, `stat_value2`, `stat_type3`, `stat_value3`,")
 L.append("   `dmg_min1`, `dmg_max1`, `dmg_type1`, `delay`, `armor`, `bonding`, `MaxDurability`, `Material`, `sheath`, `block`,")
-L.append("   `RangedModRange`,")
+L.append("   `RangedModRange`, `DisenchantID`, `RequiredDisenchantSkill`,")
 L.append("   `description`, `VerifiedBuild`)")
 L.append("VALUES")
 for n, r in enumerate(rows):
@@ -283,13 +283,18 @@ for n, r in enumerate(rows):
     # which is what stock melee carries.
     ranged_mod = 100 if (r["cls"] == ITEM_CLASS_WEAPON
                          and r["sub"] in RANGED_WEAPON_SUBCLASSES) else 0
+    # Disenchanting needs both columns; the table defaults (0, -1) read
+    # "Cannot be disenchanted". Stock items of the same kind, quality and item
+    # level say which dust it makes and the skill it takes.
+    de_id, de_skill = stock.disenchant_of(STOCK, r["cls"], r["quality"], r["ilvl"])
     L.append("(%d, %d, %d, '%s', %d, %d, 1, %d, %d, %d, -1, -1, %d, %d, 1, "
-             "%d, %d, %d, %d, %d, %d, %d, %d, 0, %d, %d, 2, %d, %d, %d, %d, %d, '%s', %d)%s"
+             "%d, %d, %d, %d, %d, %d, %d, %d, 0, %d, %d, 2, %d, %d, %d, %d, %d, %d, %d, '%s', %d)%s"
              % (r["entry"], r["cls"], r["sub"], esc(r["name"]), r["disp"], r["quality"],
                 r["buy"], r["sell"], r["inv"], r["ilvl"], r["req"],
                 s[0][0], s[0][1], s[1][0], s[1][1], s[2][0], s[2][1],
                 r["dmin"], r["dmax"], r["delay"], r["armor"], r["dur"],
-                r["mat"], r["sheath"], r["block"], ranged_mod, esc(r["desc"]), VERIFIED, end))
+                r["mat"], r["sheath"], r["block"], ranged_mod, de_id, de_skill,
+                esc(r["desc"]), VERIFIED, end))
 
 L.append("")
 
