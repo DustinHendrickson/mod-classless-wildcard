@@ -1073,6 +1073,30 @@ def _deepest_modifier(records, offset_of, spell_id, want_op):
     return best
 
 
+GLYPH_SPELL_COLUMN = 1               # GlyphProperties.dbc: Id, SpellId, Flags, IconId
+
+
+def glyph_spell_ids(glyph_data: bytes):
+    """Every spell a glyph applies, from GlyphProperties.dbc.
+
+    A glyph's modifier is an aura like a talent's, but no talent row lists it,
+    so the floors never saw it: Glyph of Resonating Power took 5 rage off
+    Thunder Clap on the server while the client still refused below the
+    Improved Thunder Clap price. Pass these as `extra_modifier_spells`.
+    """
+    count, fields, size, _strings = parse_header(glyph_data)
+    if fields <= GLYPH_SPELL_COLUMN:
+        raise DbcError("GlyphProperties.dbc has %d fields, too few for SpellId"
+                       % fields)
+    out = []
+    for index in range(count):
+        spell = struct.unpack_from(
+            "<I", glyph_data, 20 + index * size + GLYPH_SPELL_COLUMN * 4)[0]
+        if spell:
+            out.append(spell)
+    return out
+
+
 def lower_talent_reduced_costs(spell_data: bytes, talent_data: bytes,
                                class_spells, stock_costs: bytes = None,
                                extra_modifier_spells=(), pct_families=(), reach=()):
@@ -1110,6 +1134,7 @@ def lower_talent_reduced_costs(spell_data: bytes, talent_data: bytes,
     the client still refused at 100%, which is the Improved Thunder Clap bug
     again with the module's own talents. Pass the deepest rank of each such
     talent; the modifier itself is read out of the spell row like any other.
+    Glyph spells (glyph_spell_ids) go here too, for the same reason.
 
     `pct_families` names the spell families whose PERCENTAGE cost may also be
     lowered. A percentage-priced spell has a ManaCost of zero and was skipped

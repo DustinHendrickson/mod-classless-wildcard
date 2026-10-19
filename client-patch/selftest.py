@@ -656,6 +656,24 @@ def main(argv):
                   tc_before == 200 and tc_after is not None and tc_after <= 160,
                   "%s -> %s (x10)" % (tc_before, tc_after))
 
+            # Glyphs are modifiers no talent row lists. Glyph of Resonating
+            # Power takes 5 more rage off Thunder Clap, on top of Improved
+            # Thunder Clap and Focused Rage: 20 - 4 - 3 = 13, then 8.
+            glyph_raw = files.find("DBFilesClient\\GlyphProperties.dbc")[0]
+            glyph_spells = dbc.glyph_spell_ids(glyph_raw)
+            check("the glyph spells are read out of GlyphProperties.dbc",
+                  58356 in glyph_spells, "%d glyph spell(s)" % len(glyph_spells))
+            glyph_dbc, _n = dbc.lower_talent_reduced_costs(
+                spell_dbc, talent_raw, class_spells, extra_modifier_spells=glyph_spells)
+            tc_talent, tc_glyph = _cost(cost_dbc, 47502), _cost(glyph_dbc, 47502)
+            check("a glyph lowers the client's cost floor",
+                  tc_talent == 130 and tc_glyph == 80,
+                  "Thunder Clap %s -> %s (x10)" % (tc_talent, tc_glyph))
+            install_src = open(os.path.join(HERE, "install.py"), encoding="utf-8").read()
+            check("the installer hands the glyph spells to both floors",
+                  install_src.count("extra_modifier_spells=modifier_spells") == 2
+                  and "glyph_spell_ids" in install_src)
+
             # A general talent of another class reaching a spell (the talent
             # reach manifest): no rogue talent takes 50% off Sinister Strike's
             # flat energy cost, so only the reach entry can.

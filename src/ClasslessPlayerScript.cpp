@@ -41,6 +41,21 @@
 
 using namespace ClasslessWildcard;
 
+namespace
+{
+    // The SC records for a Hero, once whatever is changing their modifiers has
+    // run: a glyph going on or off, or a spec swap that trades one glyph set
+    // for another.
+    void PushCorrectionsNextTick(Player* player)
+    {
+        player->m_Events.AddEventAtOffset([player]()
+        {
+            if (CharState* st = sClasslessMgr->FindState(player); st && !st->exempt)
+                PushSpellCorrections(player);
+        }, 1ms);
+    }
+}
+
 class ClasslessWorldScript : public WorldScript
 {
 public:
@@ -207,6 +222,12 @@ public:
             if (std::find(overpowers.begin(), overpowers.end(), info->Id) != overpowers.end())
                 sClasslessMgr->CloseOverpowerWindow(player);
         }
+        // A glyph is a spell modifier too, and the SC records were only sent
+        // for build changes: Glyph of Resonating Power took 5 rage off Thunder
+        // Clap on the server while the addon went on pricing it at 16. A tick
+        // later, so the effect has put the glyph's aura on.
+        if (info->HasEffect(SPELL_EFFECT_APPLY_GLYPH) || info->HasEffect(SPELL_EFFECT_TALENT_SPEC_SELECT))
+            PushCorrectionsNextTick(player);
         if (!info->RecoveryTime && !info->CategoryRecoveryTime)
             return;
         CharState* st = sClasslessMgr->FindState(player);
@@ -2191,6 +2212,10 @@ public:
                         return refuse("Your Nemesis Charm cannot be destroyed.");
                     break;
                 }
+                case CMSG_REMOVE_GLYPH:   // the glyph's modifier goes, so its numbers go back
+                    if (sClasslessMgr->cfg.enabled)
+                        PushCorrectionsNextTick(player);
+                    break;
                 default:
                     break;
             }

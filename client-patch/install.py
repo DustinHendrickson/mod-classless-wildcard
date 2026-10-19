@@ -51,6 +51,8 @@ SKILLLINE = "DBFilesClient\\SkillLine.dbc"
 # Read only -- the cost floor needs the talent list. Never written, so it is
 # deliberately absent from _OUR_FILES.
 TALENT = "DBFilesClient\\Talent.dbc"
+# read only, for the glyph spells the cost and cooldown floors must count
+GLYPHPROPERTIES = "DBFilesClient\\GlyphProperties.dbc"
 ITEM = "DBFilesClient\\Item.dbc"
 # Written, unlike TALENT two lines up: the category split appends a row per
 # new cooldown group, so this one IS in _OUR_FILES.
@@ -421,11 +423,14 @@ def apply_client_floors(files, payload, report, hero_talents=()):
     class_spells = dbc.class_spell_ids(payload.get(SKILLLINEABILITY)
                                        or files.find(SKILLLINEABILITY)[0], categories)
     talent_raw, talent_source = files.find(TALENT)
+    # Glyphs cut costs and cooldowns too, and no talent row names them.
+    modifier_spells = tuple(hero_talents) + tuple(
+        dbc.glyph_spell_ids(files.find(GLYPHPROPERTIES)[0]))
     reach = talent_reach()
     before = payload[SPELL]
     payload[SPELL], lowered = dbc.lower_talent_reduced_costs(
         before, talent_raw, class_spells, stock_costs=before,
-        extra_modifier_spells=hero_talents, pct_families=(HERO_SPELL_FAMILY,),
+        extra_modifier_spells=modifier_spells, pct_families=(HERO_SPELL_FAMILY,),
         reach=reach.get(14, ()))
     report.append("  Spell.dbc        cost floor lowered on %d spells "
                   "(talent-reduced costs cast at the real price; from %s)"
@@ -438,7 +443,7 @@ def apply_client_floors(files, payload, report, hero_talents=()):
     before = payload[SPELL]
     payload[SPELL], shortened = dbc.lower_talent_reduced_cooldowns(
         before, talent_raw, class_spells, stock=before,
-        extra_modifier_spells=hero_talents, reach=reach.get(11, ()))
+        extra_modifier_spells=modifier_spells, reach=reach.get(11, ()))
     report.append("  Spell.dbc        cooldown floor lowered on %d spells "
                   "(talent-shortened cooldowns are castable when they are ready)"
                   % shortened)
