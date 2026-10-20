@@ -810,8 +810,9 @@ spell and talent DBC tables). Most original values are backed up first and resto
 ### Client (every player)
 
 Give players the `client-patch` and `client-addon` folders. With WoW **closed**, they run
-`install.bat` on Windows or `./install.sh "/path/to/WoW"` on Linux and macOS. See
-[`client-patch/README.md`](client-patch/README.md).
+`install.bat` on Windows or `./install.sh "/path/to/WoW"` on macOS and Linux. On a Mac the
+installer patches the realm's `World of Warcraft.app` (a [wowdecomp](https://github.com/DustinHendrickson/wowdecomp/tree/macos-arm64)
+build) the way it patches `Wow.exe`. See [`client-patch/README.md`](client-patch/README.md).
 
 After that, updates are two steps: `update.bat` (or `./update.sh`) fetches the latest
 patch and addon from this repository into those two folders, then `install.bat` installs

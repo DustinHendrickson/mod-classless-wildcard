@@ -14,6 +14,10 @@ interface file, so the installer applies the well-known "allow custom
 interface" patch to Wow.exe (backed up first) so the client loads it. Confirmed
 working on a stock 3.3.5a build 12340 client. --no-creation-text skips both.
 
+On a Mac the client is World of Warcraft.app, wowdecomp's macOS build. The
+same changes are made to its executable (lib/machopatch.py, from
+mac_patch.json), and the app is signed again (lib/macapp.py).
+
 Everything is reversible with --uninstall.
 
 Requires nothing but Python 3.7+. No compiler, no StormLib, no other packages.
@@ -24,6 +28,7 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import shlex
 import shutil
 import subprocess
 import sys
@@ -32,7 +37,7 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, HERE)
 
 from lib import (blp, charcreate, clientfs, dbc, dkfaces, elemental, exepatch, framexml,  # noqa: E402
-                 forged, gluestrings, mpq, outfit)
+                 forged, gluestrings, machopatch, macapp, mpq, outfit)
 
 MANIFEST_NAME = "ClasslessWildcard-install.json"
 ADDON_NAME = "ClasslessWildcard"
@@ -76,6 +81,7 @@ COMMON_INSTALL_DIRS = [
     os.path.expanduser("~/World of Warcraft"),
     os.path.expanduser("~/Games/World of Warcraft"),
     os.path.expanduser("~/Applications/World of Warcraft"),
+    "/Applications/World of Warcraft",
 ]
 
 
@@ -115,12 +121,15 @@ def resolve_path(root, *parts):
 def looks_like_client(path) -> bool:
     if not path or not os.path.isdir(path):
         return False
-    if not os.path.isdir(resolve_child(path, "Data")):
+    data = resolve_child(path, "Data")
+    if not os.path.isdir(data):
         return False
-    if find_wow_exe(path):
+    if find_wow_exe(path) or os.path.isdir(resolve_child(path, macapp.APP_NAME)):
         return True
-    # a macOS client has no Wow.exe; the data patches still apply
-    return os.path.exists(resolve_child(path, "World of Warcraft.app"))
+    # World of Warcraft.app can live anywhere once it knows the game folder,
+    # which it takes to be any folder whose Data holds MPQs (WoW/Source/Mac/main.mm)
+    return sys.platform == "darwin" and any(name.lower().endswith(".mpq")
+                                            for name in os.listdir(data))
 
 
 def find_wow_exe(wow_dir):
@@ -136,9 +145,40 @@ def find_wow_exe(wow_dir):
     return None
 
 
+# The folder a player installed to, so later runs need no path. install.bat
+# writes it when it has to ask; on a Mac or Linux the first install does.
+PATH_FILE = os.path.join(HERE, "install_path.txt")
+
+
+def remembered_client():
+    try:
+        with open(PATH_FILE, encoding="utf-8") as handle:
+            for line in handle:
+                line = line.strip()
+                if line and not line.startswith("#"):
+                    return line.strip('"')
+    except OSError:
+        pass
+    return None
+
+
+def remember_client(wow_dir):
+    if os.name == "nt" or os.path.exists(PATH_FILE):
+        return
+    try:
+        with open(PATH_FILE, "w", encoding="utf-8", newline="\n") as handle:
+            handle.write("# The World of Warcraft folder install.sh patches.\n"
+                         "# Delete this file, or clear the line below, to be asked again.\n"
+                         "%s\n" % wow_dir)
+    except OSError:
+        pass
+
+
 def autodetect_client():
     """Look in the obvious places before asking the player to type a path."""
     candidates = []
+    if remembered_client():
+        candidates.append(remembered_client())
 
     # the installer may have been copied into the client folder itself
     probe = HERE
@@ -147,6 +187,8 @@ def autodetect_client():
         probe = os.path.dirname(probe)
 
     candidates.append(os.getcwd())
+    if sys.platform == "darwin" and macapp.remembered_game_folder():
+        candidates.append(macapp.remembered_game_folder())
     candidates.extend(COMMON_INSTALL_DIRS)
 
     seen = set()
@@ -164,12 +206,19 @@ def prompt_for_client():
     if not sys.stdin or not sys.stdin.isatty():
         return None
     print("Could not find your World of Warcraft folder automatically.")
-    print("It is the folder that contains Wow.exe and the Data folder.")
+    print("It is the folder that contains the Data folder (and Wow.exe or World of Warcraft.app).")
     print()
     try:
         raw = input("Path to your WoW 3.3.5a folder (or blank to cancel): ")
     except (EOFError, KeyboardInterrupt):
         return None
+    raw = raw.strip()
+    if os.name != "nt" and raw:
+        # a folder dragged into a Mac or Linux terminal arrives shell-escaped
+        try:
+            raw = " ".join(shlex.split(raw))
+        except ValueError:
+            pass
     raw = raw.strip().strip('"').strip("'")
     return raw or None
 
@@ -674,6 +723,63 @@ def write_manifest(wow_dir, data, dry_run):
 
 # ----------------------------------------------------------------- install
 
+def uses_app(wow_dir):
+    """(uses the Mac app, the app or None). World of Warcraft.app is the
+    program on a Mac unless Wow.exe is the only one there (Wine), and
+    elsewhere when it is the only one."""
+    app = macapp.find_app(wow_dir)
+    exe = find_wow_exe(wow_dir)
+    if sys.platform == "darwin":
+        use = app is not None or not exe
+    else:
+        use = app is not None and not exe
+    return use, app
+
+
+def plan_app(wow_dir, app):
+    """What the install does to World of Warcraft.app, decided before
+    anything is written: (state, label). Raises Abort when the app cannot be
+    given the Hero changes, so a client is never left with the Hero interface
+    files and a program that refuses them."""
+    if not app:
+        raise Abort("World of Warcraft.app was not found beside the Data folder in %s, nor\n"
+                    "in Applications. Install the realm's Mac client first." % wow_dir)
+    if not macapp.is_wowdecomp(app):
+        raise Abort("%s is not the realm's Mac client (wowdecomp's build), so it cannot be\n"
+                    "given the Hero changes. Install everything except the program\n"
+                    "changes with  --no-creation-text" % app)
+    state, uuid, label = macapp.inspect(app)
+    if state == machopatch.UNKNOWN:
+        raise Abort("%s is a build the Hero patch does not know (build %s).\n"
+                    "The realm's Mac client and this installer must come from the same\n"
+                    "release: run ./update.sh, or get the realm's current Mac client.\n"
+                    "Nothing was written." % (app, uuid or "unreadable"))
+    if state == machopatch.UNPATCHED and not macapp.can_sign():
+        raise Abort("World of Warcraft.app has to be signed again after the patch, which\n"
+                    "only a Mac can do. Run this installer on the Mac.")
+    return state, label
+
+
+def patch_app(args, app, plan, report):
+    """Patch and sign the app. Runs before any game file is written, so a
+    failure leaves the client as it was."""
+    state, label = plan
+    if state == machopatch.PATCHED:
+        report.append("  World of Warcraft.app  already has the Hero changes (%s)" % label)
+        return
+    if args.dry_run:
+        report.append("  World of Warcraft.app  would be patched and signed again (%s)" % label)
+        return
+    try:
+        report.append("  World of Warcraft.app  %s" % macapp.patch(app))
+    except macapp.AppError as error:
+        raise Abort("World of Warcraft.app was not patched: %s.\n"
+                    "No game files were written. Close the game and run this again." % error)
+    except OSError as error:
+        raise Abort("World of Warcraft.app could not be copied or written (%s). Close the game "
+                    "and run this again.\nNo game files were written." % error)
+
+
 def do_install(args, wow_dir):
     data_dir = resolve_child(wow_dir, "Data")
     exe = find_wow_exe(wow_dir)
@@ -700,6 +806,9 @@ def do_install(args, wow_dir):
         raise Abort("every patch letter from A to Z is already taken in %s"
                     % data_dir)
 
+    use_app, app = uses_app(wow_dir)
+    mac = plan_app(wow_dir, app) if use_app and args.exe else None
+
     def yn(on):
         return "yes" if on else "no"
 
@@ -710,13 +819,25 @@ def do_install(args, wow_dir):
     print("Armored outfit    : %s" % yn(args.glue))
     print("Hero class icon   : %s" % yn(args.hero_icon))
     print("Elemental variants: %s" % yn(args.elemental))
-    print("Patch Wow.exe     : %s" % yn(args.exe))
+    if use_app:
+        print("Patch the Mac app : %s" % (
+            "no" if not mac else "already patched" if mac[0] == machopatch.PATCHED
+            else "yes (%s)" % mac[1]))
+    else:
+        print("Patch Wow.exe     : %s" % yn(args.exe))
     print("Addon             : %s" % yn(args.addon))
     if previous:
         print("Note              : replacing a previous install (same letter)")
     print()
 
-    if args.exe:
+    if mac and mac[0] == machopatch.UNPATCHED:
+        print("  This installs the full Hero client. World of Warcraft.app is patched")
+        print("  the way Wow.exe is on Windows and signed again, which macOS needs to")
+        print("  start it. The app you have now is kept as")
+        print("  %s and comes back with --uninstall." % os.path.basename(macapp.backup_path(app)))
+        print("  CLOSE THE GAME before running this.")
+        print()
+    elif args.exe and not use_app:
         print("  This installs the full Hero client. The creation-screen text edits")
         print("  a signed interface file, so Wow.exe is patched (the well-known")
         print("  \"allow custom interface\" patch) to accept it, backed up first to")
@@ -733,6 +854,11 @@ def do_install(args, wow_dir):
 
     report = []
     written = []
+
+    # First, so a failure stops the install: a client must never be left with
+    # the Hero interface files and an app that refuses them.
+    if mac:
+        patch_app(args, app, mac, report)
 
     # read sources as if OUR OWN previous archives were not there, so a
     # reinstall always builds from the pristine client files, never its output
@@ -819,7 +945,7 @@ def do_install(args, wow_dir):
     # the archives already written, so a lock is reported, not fatal.
     exe_patched = False
     exe_locked = False
-    if args.exe:
+    if args.exe and not use_app:
         if not exe:
             report.append("  Wow.exe          SKIPPED, not found")
         elif args.dry_run:
@@ -863,6 +989,8 @@ def do_install(args, wow_dir):
         "files": written,
         "addon": addon_rel,
         "creation_text": bool(args.glue),
+        # the Mac app, for --uninstall
+        "app": app if mac else (previous or {}).get("app"),
     }, args.dry_run)
 
     print("\n".join(report))
@@ -870,6 +998,7 @@ def do_install(args, wow_dir):
     if args.dry_run:
         print("Dry run: nothing was written.")
         return 0
+    remember_client(wow_dir)
 
     if exe_locked:
         print("Almost done. The game was open, so Wow.exe was not patched and")
@@ -892,7 +1021,8 @@ def do_install(args, wow_dir):
     if args.glue and not exe_locked:
         print("The creation screen now shows the Hero pitch. If it instead says")
         print("the interface is corrupt, re-run with --uninstall to revert.")
-    print("To undo everything:  python install.py --uninstall \"%s\"" % wow_dir)
+    print("To undo everything:  %s --uninstall \"%s\""
+          % ("./install.sh" if sys.platform == "darwin" else "python install.py", wow_dir))
     return 0
 
 
@@ -1006,6 +1136,22 @@ def do_uninstall(args, wow_dir):
                     locked.append(addon_rel)
                     report.append("  LOCKED, not removed: %s" % addon_rel)
 
+    # The Mac app: the stock copy goes back (or the bytes are reverted and the
+    # app signed again when there is none).
+    app = (manifest or {}).get("app") or macapp.find_app(wow_dir)
+    if app and os.path.isdir(app) and macapp.is_wowdecomp(app):
+        if args.dry_run:
+            if macapp.has_changes(app):
+                report.append("  World of Warcraft.app  would put back the stock app")
+        else:
+            try:
+                result = macapp.restore(app)
+                if "left alone" not in result:
+                    report.append("  World of Warcraft.app  %s" % result)
+            except (OSError, macapp.AppError) as error:
+                locked.append(macapp.APP_NAME)
+                report.append("  World of Warcraft.app  NOT restored: %s" % error)
+
     # The creation text patches Wow.exe, so always offer to restore it.
     # restore() is a no-op ("was not patched; left alone") when an install
     # ran with --no-creation-text and there is nothing to undo.
@@ -1025,8 +1171,8 @@ def do_uninstall(args, wow_dir):
 
     clear_cache(wow_dir, args.dry_run, report)
 
-    # keep the manifest if anything was locked, so a re-run after the game
-    # closes knows what is still left to remove
+    # keep the manifest if anything was locked or not rebuilt, so a re-run
+    # knows what is still left to undo
     manifest_path = os.path.join(wow_dir, MANIFEST_NAME)
     if os.path.isfile(manifest_path) and not args.dry_run and not locked:
         os.remove(manifest_path)
@@ -1062,6 +1208,10 @@ def ensure_pillow():
     try:
         subprocess.run(cmd, check=True)
     except (OSError, subprocess.CalledProcessError):
+        if os.name != "nt":
+            # Homebrew's Python refuses --user installs; install.sh sets up its own
+            raise Abort("Pillow could not be installed automatically. Run ./install.sh instead:\n"
+                        "it sets up a Python with Pillow beside the installer.")
         raise Abort("Pillow could not be installed automatically. Run this, then run the installer again:\n"
                     "  " + " ".join(cmd))
     import importlib
@@ -1119,17 +1269,18 @@ def main(argv=None):
 
     wow_dir = args.wow_folder or autodetect_client()
     if wow_dir:
-        wow_dir = os.path.abspath(wow_dir.strip().strip('"'))
+        wow_dir = os.path.abspath(os.path.expanduser(wow_dir.strip().strip('"')))
     if not looks_like_client(wow_dir):
         typed = prompt_for_client()
-        wow_dir = os.path.abspath(typed) if typed else None
+        wow_dir = os.path.abspath(os.path.expanduser(typed)) if typed else None
 
     if not looks_like_client(wow_dir):
         raise Abort(
             "That is not a World of Warcraft folder.\n"
-            "Give me the folder that contains Wow.exe and the Data folder, "
-            "for example:\n"
-            "    python install.py \"C:\\Games\\World of Warcraft\"")
+            "Give me the folder that contains the Data folder (and Wow.exe or "
+            "World of Warcraft.app), for example:\n"
+            + ("    ./install.sh \"$HOME/Games/World of Warcraft\"" if sys.platform == "darwin"
+               else "    python install.py \"C:\\Games\\World of Warcraft\""))
 
     if args.uninstall:
         return do_uninstall(args, wow_dir)

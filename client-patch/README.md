@@ -119,6 +119,9 @@ client fills it in again as you play.
 - **Python 3** (any version from 3.7 up).
   Windows: get it from [python.org/downloads](https://www.python.org/downloads/) and
   tick **"Add python.exe to PATH"** on the first screen of the installer.
+  Mac: the one that comes with Xcode's command line tools is enough.
+- On a **Mac**: the realm's Mac client, `World of Warcraft.app`, in your WoW folder beside
+  `Data`. See [macOS](#macos) below.
 
 Nothing else. No compiler, no StormLib, no MPQ editor, no extra downloads.
 
@@ -146,7 +149,28 @@ The installer shows what it is about to do and confirms once before touching
 anything. **Close World of Warcraft first**, because the install patches
 `Wow.exe`, which the running game locks.
 
-### macOS / Linux
+### macOS
+
+The Mac client is `World of Warcraft.app`, the realm's Mac build, kept in your WoW
+folder next to `Data`. The installer patches it the way it patches `Wow.exe` on
+Windows:
+
+```bash
+./install.sh "/path/to/World of Warcraft"
+```
+
+The folder is the one that holds `Data` (and `World of Warcraft.app`). The
+installer keeps the app you have as `World of Warcraft.app.classless-bak`,
+patches it, and signs it again, which macOS needs before it will start it. Then
+it installs the data patches and the addon, as on Windows. If the app cannot be
+patched, it stops before touching anything else.
+
+The folder is remembered, so later runs only need `./install.sh`.
+
+If Homebrew's Python refuses to install Pillow, the installer sets up a Python
+of its own in `client-patch/.venv` and uses that.
+
+### Linux
 
 ```bash
 ./install.sh "/path/to/World of Warcraft"
@@ -241,6 +265,9 @@ Windows users can run `install.bat --uninstall` instead.
 This removes the patch archives, removes the addon, clears the cache, and restores
 `Wow.exe` from its backup. Your client is back to stock.
 
+On a Mac, `./install.sh --uninstall` also puts back the `World of Warcraft.app`
+you had before.
+
 ---
 
 ## Options
@@ -306,6 +333,19 @@ That means the Hero emblem was written in a texture format the client could not 
 Current versions match the client's own texture format, so update and re-run; if
 it persists, reinstall with `--no-hero-icon` to keep the stock icon; everything else
 is unaffected.
+
+**Mac: "a build the Hero patch does not know".**
+Your `World of Warcraft.app` is not the build this installer was made for. Run
+`./update.sh`, and if it still says so, get the realm's current Mac client.
+Nothing was changed.
+
+**Mac: macOS says the game "cannot be opened" after installing.**
+The patch signs the app again, and macOS can ask you to allow it once more, as it
+did the first time: open **System Settings > Privacy & Security** and click
+**Open Anyway** next to World of Warcraft.
+
+**Mac: "Permission denied" for `./install.sh`.**
+Run `bash install.sh` instead, or `chmod +x install.sh` once.
 
 **The creation screen still shows the old class descriptions.**
 The `Wow.exe` patch that lets the client load the custom text did not take, usually

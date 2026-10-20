@@ -597,6 +597,55 @@ every face without changing it, and all 2512 Face arrow runs show exactly
 what the stock exe shows on the stock table, face and skin, press by press.
 Leaving out either routine fails those last two checks.
 
+### The Mac client — the same changes, in World of Warcraft.app
+
+On a Mac the client is `World of Warcraft.app`, wowdecomp's macOS build (the
+`macos-arm64` branch of <https://github.com/DustinHendrickson/wowdecomp>),
+installed beside `Data`. The realm hands every Mac player the same build, as
+every Windows player has the same `Wow.exe`, so it is patched the same way: known
+bytes at known offsets, checked before anything is written.
+
+`mac_patch.json` holds, per build (keyed by its Mach-O UUID), one group per
+`exepatch` site, each part `[file offset, stock bytes, patched bytes]`. The
+installer applies a build only when every part holds its stock bytes, and reads
+it as patched only when every part holds its patched bytes; any other app is
+refused with its build id. `lib/machopatch.py` does the bytes (standard library
+only), `lib/macapp.py` the bundle: it keeps `World of Warcraft.app.classless-bak`,
+patches, and signs the app again with the command wowdecomp's own build runs
+(`codesign --force --sign -`), because an Apple Silicon Mac will not start an
+executable whose signature no longer matches. A patch that cannot be signed is
+taken back out. It runs before any archive is written.
+
+`gen_mac_patch.py` writes the table from a stock build. Each site is found by
+its function's symbol (the build keeps them) and an exact run of instructions
+in it, which must occur the expected number of times. Edits that need more room
+than they replace jump to a cave: code in the zero padding between the load
+commands and the first section of `__TEXT`, which is mapped executable with it
+(about 17 KB in the 3.3.5 build; the caves use 0xE0). Only `b` and `bl` reach a
+cave, since a conditional branch reaches 1 MB. What differs from `Wow.exe`:
+
+- **interface signatures** — the reject paths of `FrameXML_CheckSignature` go
+  to its digest step, and the answer is 3 (valid): the build's own
+  `DISABLE_SIGNATURE_CHECKS` path. The shipped build has the checks on.
+- **eye glow** — `tst w8, #0x14` has no arm64 encoding, so a cave tests both bits.
+- **the feral line** — the compiler copied the Druid test into the four paths
+  that reach it, so that site is four parts.
+- **nameplate colors** — `s_classColors` is filled from a read-only constant at
+  startup; the constant is patched.
+- **hunter pets** — `CanGainXP` and `GetPetPersonality` are rewritten in place
+  to read the pet's power type at `+0x47`, as on Windows.
+
+Every rebuild of the Mac app moves the code. Before players get a new build:
+run `gen_mac_patch.py` on it (it adds the build to `mac_patch.json` and keeps
+the others), then `test_mac_patch.py` and `selftest.py --macapp`. A pattern can
+still match where a register a cave borrows has become live, and only running
+the code shows that.
+
+Checked on Windows against the 3.3.5 build (UUID `7db2888e...`): every group's
+patched code runs as the `Wow.exe` patch does and the stock code does not (108
+checks), and installs, reinstalls and both uninstall routes run on a copy of
+the app with `codesign` stubbed. Not checked: signing and play on a Mac.
+
 ## Testing
 
 `test_skin_arrows.py` needs `pip install unicorn` and a client; it never writes
@@ -654,6 +703,22 @@ python3 selftest.py "B:/World.of.Warcraft.3.3.5a"
 It resolves each source file through the archive chain, applies every transform,
 builds the archives in a temp folder, reads them back, and — if `mpyq` is
 installed — cross-checks with that independent reader.
+
+It also checks `mac_patch.json` against `exepatch` (a Mac twin for every byte
+patch, the same Hero color and filled-face id). Name the Mac build to apply and
+revert the table on it in memory, and to check the table is exactly what
+`gen_mac_patch.py` writes from that build:
+
+```bash
+python3 selftest.py "B:/World.of.Warcraft.3.3.5a" --macapp "B:/code/wowdecomp/bin/Mac/World of Warcraft.app"
+```
+
+`test_mac_patch.py` (unicorn) runs the patched arm64 code itself, stock and
+patched, for every group:
+
+```bash
+python3 test_mac_patch.py "B:/code/wowdecomp/bin/Mac/World of Warcraft.app"
+```
 
 Run it against any client you can get hold of before tagging a release,
 especially a non-enUS one.

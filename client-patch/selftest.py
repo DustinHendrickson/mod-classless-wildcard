@@ -1,11 +1,15 @@
 #!/usr/bin/env python3
 """Exercise the whole client-patch pipeline against a real client, read-only.
 
-    python3 selftest.py "B:/World.of.Warcraft.3.3.5a"
+    python3 selftest.py "B:/World.of.Warcraft.3.3.5a" [--macapp "B:/.../World of Warcraft.app"]
 
 Resolves every source file through the client's archive stack, applies each
 transform, builds the archives in a temp folder, reads them back, and checks the
 results. Nothing in the client is written to. Exits non-zero on any failure.
+
+The Mac client's patch (mac_patch.json) is checked every run against
+exepatch; --macapp names a stock Mac build to apply and revert it on, in
+memory. The app is never written to.
 """
 
 from __future__ import annotations
@@ -19,7 +23,7 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, HERE)
 
 from lib import (blp, charcreate, clientfs, dbc, dkfaces, elemental, exepatch,  # noqa: E402
-                 gluestrings, mpq, outfit)
+                 gluestrings, machopatch, mpq, outfit)
 
 CHRCLASSES = "DBFilesClient\\ChrClasses.dbc"
 CHARBASEINFO = "DBFilesClient\\CharBaseInfo.dbc"
@@ -58,7 +62,88 @@ def dbc_strings(data):
     return data[start:start + string_size]
 
 
+def check_mac_patch(macapp):
+    """mac_patch.json: the Wow.exe patch's twin for each Mac build. Every byte
+    patch needs a Mac twin, the shared constants must agree, and with a build
+    at hand the table must apply and revert to the byte and be exactly what
+    gen_mac_patch.py writes from it."""
+    print("\n== Mac client (mac_patch.json)")
+    manifest = machopatch.load_manifest()
+    builds = manifest.get("builds", [])
+    check("mac_patch.json holds a build", bool(builds), "%d" % len(builds))
+    wanted = {("INTERFACE",), ("GLOW",), ("RUNE",), ("FACE_ARROW",), ("TOTEM_TOOL",),
+              ("HERO_COLOR",)} | {("CLASS_GATES", i) for i in range(len(exepatch.CLASS_GATES))}
+    # movz w10, #FILL_FIRST_ID: the Face arrow caves compare row ids with it
+    fill = (0x52800000 | (exepatch.FILL_FIRST_ID << 5) | 10).to_bytes(4, "little").hex().upper()
+    for build in builds:
+        label = build["uuid"][:12]
+        twins = {tuple(g["twin"]) for g in build["groups"]}
+        check("%s: every Wow.exe patch has a Mac twin" % label, twins == wanted,
+              "missing %s, unknown %s" % (sorted(wanted - twins), sorted(twins - wanted)))
+        spans, bad = [], []
+        for group in build["groups"]:
+            for off, stock, patched in group["parts"]:
+                if len(stock) != len(patched) or stock == patched or len(stock) % 2:
+                    bad.append(group["name"])
+                spans.append((off, off + len(stock) // 2))
+        spans.sort()
+        overlap = [a for a, b in zip(spans, spans[1:]) if a[1] > b[0]]
+        check("%s: every part changes its bytes, and no two overlap" % label,
+              not bad and not overlap, "%s %s" % (bad, overlap))
+        color = [g for g in build["groups"] if g["name"] == "class-color"]
+        check("%s: the nameplate color is exepatch's Hero color" % label,
+              color and color[0]["parts"][0][2] == exepatch.HERO_COLOR[0][2].replace(" ", ""))
+        faces = [g for g in build["groups"] if g["name"] == "face-arrow"]
+        check("%s: the Face arrow caves use the filled faces' first id" % label,
+              faces and sum(p[2].count(fill) for p in faces[0]["parts"]) == 2
+              and exepatch.FILL_FIRST_ID == dbc.CHARSECTIONS_FILL_FIRST_ID)
+
+    if not macapp:
+        print("  [skip] no --macapp build given: the table was not applied to one")
+        return
+    exe = machopatch.app_executable(macapp) if os.path.isdir(macapp) else macapp
+    data = open(exe, "rb").read()
+    build, state = machopatch.identify(data)
+    check("the build is one mac_patch.json knows", build is not None, state or "unknown")
+    if not build:
+        return
+    stock, _b = machopatch.patched_bytes(data, patched=False)
+    patched, _b = machopatch.patched_bytes(data, patched=True)
+    check("the stock build is the one the table was written from",
+          machopatch.sha256(stock) == build["sha256"] and len(stock) == build["size"])
+    check("patched, it reads as patched", machopatch.identify(patched)[1] == "done")
+    allowed = set()
+    for group in build["groups"]:
+        for off, part, _p in group["parts"]:
+            allowed.update(range(off, off + len(part) // 2))
+    changed = {i for i in range(len(stock)) if stock[i] != patched[i]}
+    check("only the listed bytes change", changed and changed <= allowed,
+          "%d changed, %d outside" % (len(changed), len(changed - allowed)))
+    try:
+        reverted = machopatch.patched_bytes(patched, patched=False)[0]
+    except RuntimeError as error:
+        reverted = str(error)
+    check("reverting gives back the stock build", reverted == stock,
+          reverted if isinstance(reverted, str) else "")
+    try:
+        import gen_mac_patch
+        with tempfile.TemporaryDirectory() as tmp:
+            copy = os.path.join(tmp, "World of Warcraft")
+            with open(copy, "wb") as handle:
+                handle.write(stock)
+            fresh = gen_mac_patch.generate(copy)
+        fresh["label"] = build["label"]
+        check("mac_patch.json is what gen_mac_patch.py writes from this build", fresh == build)
+    except ImportError as error:
+        print("  [skip] gen_mac_patch.py needs capstone and keystone-engine (%s)" % error)
+
+
 def main(argv):
+    macapp = None
+    if "--macapp" in argv:
+        at = argv.index("--macapp")
+        macapp = argv[at + 1] if at + 1 < len(argv) else None
+        argv = argv[:at] + argv[at + 2:]
     if len(argv) != 2:
         print(__doc__)
         return 2
@@ -1156,6 +1241,8 @@ def main(argv):
                     expected, label = original, "the exe apply started from"
                 check("restore gives back %s" % label,
                       expected is not None and restored == expected)
+
+    check_mac_patch(macapp)
 
     print()
     if FAILURES:

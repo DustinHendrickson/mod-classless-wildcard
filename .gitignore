@@ -22,6 +22,8 @@ client-patch/install_path.txt
 client-patch/version.txt
 client-patch/update_manifest.txt
 client-patch/*.new
+# The Python install.sh sets up for Pillow when the system's refuses pip --user
+client-patch/.venv/
 
 # Editor / OS
 .vscode/

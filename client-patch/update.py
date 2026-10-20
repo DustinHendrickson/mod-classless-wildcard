@@ -146,6 +146,20 @@ def place(path, data):
     os.replace(tmp, path)
 
 
+def keep_executable(path, member):
+    """Give a file the executable bit the repository gives it. GitHub's zip
+    stores each file's mode, and a file written by place() has none, so
+    install.sh would stop running as ./install.sh after an update."""
+    if os.name == "nt" or not (member.external_attr >> 16) & 0o111:
+        return
+    try:
+        mode = os.stat(path).st_mode
+        if mode & 0o111 != 0o111:
+            os.chmod(path, mode | 0o111)
+    except OSError:
+        pass
+
+
 def apply(archive):
     """Write the two folders out of the zip. Returns (written, changed,
     wrappers_pending, removed)."""
@@ -185,6 +199,8 @@ def apply(archive):
             if not same_bytes(dest, data):
                 place(dest, data)
                 changed += 1
+            # an unchanged file too: an older updater wrote it without the bit
+            keep_executable(dest, member)
             written.add(rel)
 
     # what an earlier run put here that the repository no longer has
