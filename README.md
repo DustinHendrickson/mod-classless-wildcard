@@ -827,6 +827,34 @@ Client and server must come from the same version of the module. After a server 
 re-run the installer. If an item shows a question mark or a ranged weapon says "Out of range",
 delete the `Cache` folder in the WoW directory and log back in.
 
+#### When you build a new Mac client
+
+Players only ever run `./install.sh`. This is for you, and only when you rebuild
+`World of Warcraft.app` from wowdecomp and give players the new app. Updating this module, or
+the server, does not need it.
+
+The Mac patch is a list of exact byte changes for one build of the app, the way the Windows
+patch only fits `Wow.exe` 12340. A rebuild moves the code, so until the new build is added,
+`./install.sh` refuses it with "a build the Hero patch does not know" and changes nothing.
+
+To add it, on any PC with Python (Windows works), from `client-patch`:
+
+1. Once: `python3 -m pip install --user capstone keystone-engine unicorn`
+2. `python3 gen_mac_patch.py "/path/to/World of Warcraft.app"`. It adds the build to
+   `mac_patch.json` and keeps the builds already there, so players on the old app can still
+   install.
+3. `python3 test_mac_patch.py "/path/to/World of Warcraft.app"` must end with
+   `all Mac patch checks pass`.
+4. `python3 selftest.py "/path/to/your/WoW folder" --macapp "/path/to/World of Warcraft.app"`
+   must end with `all checks passed`.
+5. Commit and push `mac_patch.json`, then give players the new app. They run `./update.sh` and
+   `./install.sh` as usual.
+
+Use the app exactly as the build made it, never one the installer already patched. If step 2
+prints `Not written:` and names a site, or step 3 fails, the rebuild changed code the patch
+relies on, and `gen_mac_patch.py` needs updating before players get that build. Details are in
+[`client-patch/MAINTAINERS.md`](client-patch/MAINTAINERS.md).
+
 ### Playerbots
 
 Random bots keep their real class, abilities, talents and gear rules, and show as Hero. A random
