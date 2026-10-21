@@ -14,9 +14,9 @@ interface file, so the installer applies the well-known "allow custom
 interface" patch to Wow.exe (backed up first) so the client loads it. Confirmed
 working on a stock 3.3.5a build 12340 client. --no-creation-text skips both.
 
-On a Mac the client is World of Warcraft.app, wowdecomp's macOS build. The
-same changes are made to its executable (lib/machopatch.py, from
-mac_patch.json), and the app is signed again (lib/macapp.py).
+On a Mac the client is World of Warcraft.app, and on a Switch WoW.nro, both
+wowdecomp's arm64 builds. The same changes are made to them (lib/armpatch.py,
+from arm64_patch.json); the Mac app is then signed again (lib/macapp.py).
 
 Everything is reversible with --uninstall.
 
@@ -37,7 +37,7 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, HERE)
 
 from lib import (blp, charcreate, clientfs, dbc, dkfaces, elemental, exepatch, framexml,  # noqa: E402
-                 forged, gluestrings, machopatch, macapp, mpq, outfit)
+                 forged, gluestrings, armpatch, macapp, mpq, outfit)
 
 MANIFEST_NAME = "ClasslessWildcard-install.json"
 ADDON_NAME = "ClasslessWildcard"
@@ -124,12 +124,24 @@ def looks_like_client(path) -> bool:
     data = resolve_child(path, "Data")
     if not os.path.isdir(data):
         return False
-    if find_wow_exe(path) or os.path.isdir(resolve_child(path, macapp.APP_NAME)):
+    if find_wow_exe(path) or find_wow_nro(path) or os.path.isdir(resolve_child(path, macapp.APP_NAME)):
         return True
     # World of Warcraft.app can live anywhere once it knows the game folder,
     # which it takes to be any folder whose Data holds MPQs (WoW/Source/Mac/main.mm)
     return sys.platform == "darwin" and any(name.lower().endswith(".mpq")
                                             for name in os.listdir(data))
+
+
+def find_wow_nro(wow_dir):
+    """WoW.nro, the Switch client, in sdmc:/switch/wow beside Data."""
+    try:
+        entries = os.listdir(wow_dir)
+    except OSError:
+        return None
+    for entry in entries:
+        if entry.lower() == "wow.nro" and os.path.isfile(os.path.join(wow_dir, entry)):
+            return os.path.join(wow_dir, entry)
+    return None
 
 
 def find_wow_exe(wow_dir):
@@ -206,7 +218,7 @@ def prompt_for_client():
     if not sys.stdin or not sys.stdin.isatty():
         return None
     print("Could not find your World of Warcraft folder automatically.")
-    print("It is the folder that contains the Data folder (and Wow.exe or World of Warcraft.app).")
+    print("It is the folder that contains the Data folder (and Wow.exe, World of Warcraft.app or WoW.nro).")
     print()
     try:
         raw = input("Path to your WoW 3.3.5a folder (or blank to cancel): ")
@@ -749,22 +761,51 @@ def plan_app(wow_dir, app):
                     "given the Hero changes. Install everything except the program\n"
                     "changes with  --no-creation-text" % app)
     state, uuid, label = macapp.inspect(app)
-    if state == machopatch.UNKNOWN:
+    if state == armpatch.UNKNOWN:
         raise Abort("%s is a build the Hero patch does not know (build %s).\n"
                     "The realm's Mac client and this installer must come from the same\n"
                     "release: run ./update.sh, or get the realm's current Mac client.\n"
                     "Nothing was written." % (app, uuid or "unreadable"))
-    if state == machopatch.UNPATCHED and not macapp.can_sign():
+    if state == armpatch.UNPATCHED and not macapp.can_sign():
         raise Abort("World of Warcraft.app has to be signed again after the patch, which\n"
                     "only a Mac can do. Run this installer on the Mac.")
     return state, label
+
+
+def plan_nro(nro_file):
+    """What the install does to WoW.nro, decided before anything is written:
+    (state, label). Raises Abort for a build the patch does not know."""
+    state, key, label = armpatch.inspect(nro_file)
+    if state == armpatch.UNKNOWN:
+        raise Abort("%s is a build the Hero patch does not know (build %s).\n"
+                    "The realm's Switch client and this installer must come from the same\n"
+                    "release: update the installer, or get the realm's current WoW.nro.\n"
+                    "Nothing was written." % (nro_file, key or "unreadable"))
+    return state, label
+
+
+def patch_nro(args, nro_file, plan, report):
+    """Patch WoW.nro, before any game file is written. Homebrew is not
+    signed, so the bytes are all it needs."""
+    state, label = plan
+    if state == armpatch.PATCHED:
+        report.append("  WoW.nro          already has the Hero changes (%s)" % label)
+        return
+    if args.dry_run:
+        report.append("  WoW.nro          would be patched (%s)" % label)
+        return
+    try:
+        report.append("  WoW.nro          %s" % armpatch.patch_file(nro_file))
+    except (OSError, RuntimeError) as error:
+        raise Abort("WoW.nro was not patched: %s.\n"
+                    "No game files were written. Close the game and run this again." % error)
 
 
 def patch_app(args, app, plan, report):
     """Patch and sign the app. Runs before any game file is written, so a
     failure leaves the client as it was."""
     state, label = plan
-    if state == machopatch.PATCHED:
+    if state == armpatch.PATCHED:
         report.append("  World of Warcraft.app  already has the Hero changes (%s)" % label)
         return
     if args.dry_run:
@@ -806,8 +847,12 @@ def do_install(args, wow_dir):
         raise Abort("every patch letter from A to Z is already taken in %s"
                     % data_dir)
 
-    use_app, app = uses_app(wow_dir)
+    # the program the player runs: WoW.nro on a Switch card, World of
+    # Warcraft.app on a Mac, else Wow.exe
+    nro_file = find_wow_nro(wow_dir)
+    use_app, app = (False, None) if nro_file else uses_app(wow_dir)
     mac = plan_app(wow_dir, app) if use_app and args.exe else None
+    switch = plan_nro(nro_file) if nro_file and args.exe else None
 
     def yn(on):
         return "yes" if on else "no"
@@ -819,9 +864,13 @@ def do_install(args, wow_dir):
     print("Armored outfit    : %s" % yn(args.glue))
     print("Hero class icon   : %s" % yn(args.hero_icon))
     print("Elemental variants: %s" % yn(args.elemental))
-    if use_app:
+    if nro_file:
+        print("Patch WoW.nro     : %s" % (
+            "no" if not switch else "already patched" if switch[0] == armpatch.PATCHED
+            else "yes (%s)" % switch[1]))
+    elif use_app:
         print("Patch the Mac app : %s" % (
-            "no" if not mac else "already patched" if mac[0] == machopatch.PATCHED
+            "no" if not mac else "already patched" if mac[0] == armpatch.PATCHED
             else "yes (%s)" % mac[1]))
     else:
         print("Patch Wow.exe     : %s" % yn(args.exe))
@@ -830,14 +879,19 @@ def do_install(args, wow_dir):
         print("Note              : replacing a previous install (same letter)")
     print()
 
-    if mac and mac[0] == machopatch.UNPATCHED:
+    if mac and mac[0] == armpatch.UNPATCHED:
         print("  This installs the full Hero client. World of Warcraft.app is patched")
         print("  the way Wow.exe is on Windows and signed again, which macOS needs to")
         print("  start it. The app you have now is kept as")
         print("  %s and comes back with --uninstall." % os.path.basename(macapp.backup_path(app)))
         print("  CLOSE THE GAME before running this.")
         print()
-    elif args.exe and not use_app:
+    elif switch and switch[0] == armpatch.UNPATCHED:
+        print("  This installs the full Hero client. WoW.nro is patched the way")
+        print("  Wow.exe is on Windows, kept first as WoW.nro.classless-bak, which")
+        print("  comes back with --uninstall. CLOSE THE GAME before running this.")
+        print()
+    elif args.exe and not use_app and not nro_file:
         print("  This installs the full Hero client. The creation-screen text edits")
         print("  a signed interface file, so Wow.exe is patched (the well-known")
         print("  \"allow custom interface\" patch) to accept it, backed up first to")
@@ -859,6 +913,8 @@ def do_install(args, wow_dir):
     # the Hero interface files and an app that refuses them.
     if mac:
         patch_app(args, app, mac, report)
+    if switch:
+        patch_nro(args, nro_file, switch, report)
 
     # read sources as if OUR OWN previous archives were not there, so a
     # reinstall always builds from the pristine client files, never its output
@@ -945,7 +1001,7 @@ def do_install(args, wow_dir):
     # the archives already written, so a lock is reported, not fatal.
     exe_patched = False
     exe_locked = False
-    if args.exe and not use_app:
+    if args.exe and not use_app and not nro_file:
         if not exe:
             report.append("  Wow.exe          SKIPPED, not found")
         elif args.dry_run:
@@ -991,6 +1047,7 @@ def do_install(args, wow_dir):
         "creation_text": bool(args.glue),
         # the Mac app, for --uninstall
         "app": app if mac else (previous or {}).get("app"),
+        "nro": nro_file if switch else (previous or {}).get("nro"),
     }, args.dry_run)
 
     print("\n".join(report))
@@ -1152,6 +1209,21 @@ def do_uninstall(args, wow_dir):
                 locked.append(macapp.APP_NAME)
                 report.append("  World of Warcraft.app  NOT restored: %s" % error)
 
+    # The Switch client: the stock WoW.nro goes back the same way.
+    nro_file = (manifest or {}).get("nro") or find_wow_nro(wow_dir)
+    if nro_file and os.path.isfile(nro_file):
+        if args.dry_run:
+            if armpatch.has_file_changes(nro_file):
+                report.append("  WoW.nro          would restore the original")
+        else:
+            try:
+                result = armpatch.restore_file(nro_file)
+                if "left alone" not in result:
+                    report.append("  WoW.nro          %s" % result)
+            except (OSError, RuntimeError) as error:
+                locked.append("WoW.nro")
+                report.append("  WoW.nro          NOT restored: %s" % error)
+
     # The creation text patches Wow.exe, so always offer to restore it.
     # restore() is a no-op ("was not patched; left alone") when an install
     # ran with --no-creation-text and there is nothing to undo.
@@ -1277,8 +1349,8 @@ def main(argv=None):
     if not looks_like_client(wow_dir):
         raise Abort(
             "That is not a World of Warcraft folder.\n"
-            "Give me the folder that contains the Data folder (and Wow.exe or "
-            "World of Warcraft.app), for example:\n"
+            "Give me the folder that contains the Data folder (and Wow.exe, "
+            "World of Warcraft.app or WoW.nro), for example:\n"
             + ("    ./install.sh \"$HOME/Games/World of Warcraft\"" if sys.platform == "darwin"
                else "    python install.py \"C:\\Games\\World of Warcraft\""))
 

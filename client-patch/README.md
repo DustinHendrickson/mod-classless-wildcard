@@ -122,6 +122,8 @@ client fills it in again as you play.
   Mac: the one that comes with Xcode's command line tools is enough.
 - On a **Mac**: the realm's Mac client, `World of Warcraft.app`, in your WoW folder beside
   `Data`. See [macOS](#macos) below.
+- For a **Switch**: the realm's Switch client, `WoW.nro`, in `/switch/wow` on the SD card beside
+  `Data`, and a PC to put the card in. See [Nintendo Switch](#nintendo-switch) below.
 
 Nothing else. No compiler, no StormLib, no MPQ editor, no extra downloads.
 
@@ -170,12 +172,23 @@ The folder is remembered, so later runs only need `./install.sh`.
 If Homebrew's Python refuses to install Pillow, the installer sets up a Python
 of its own in `client-patch/.venv` and uses that.
 
-### Linux
+### Nintendo Switch
 
-```bash
-./install.sh "/path/to/World of Warcraft"
+The Switch client is `WoW.nro`, the realm's Switch build, in `/switch/wow` on the SD card
+next to `Data`. The installer runs on a PC: put the SD card in the PC (or reach it any other
+way the PC can open), then point the installer at that folder on the card, for example:
+
+```
+install.bat "E:\switch\wow"
 ```
 
+or `./install.sh "/Volumes/SWITCH/switch/wow"` on a Mac or Linux PC. Everything is written
+straight onto the card: `WoW.nro` is patched (the one you had is kept as
+`WoW.nro.classless-bak`), the patch archives go into `Data`, the addon into
+`Interface/AddOns`, and the cache is cleared. Nothing has to be copied by hand. Put the card
+back in the Switch and start the game as usual.
+
+### Linux
 ### Any system, explicitly
 
 ```bash
@@ -266,7 +279,7 @@ This removes the patch archives, removes the addon, clears the cache, and restor
 `Wow.exe` from its backup. Your client is back to stock.
 
 On a Mac, `./install.sh --uninstall` also puts back the `World of Warcraft.app`
-you had before.
+you had before, and for a Switch it puts back the `WoW.nro` you had before.
 
 ---
 
@@ -334,9 +347,9 @@ Current versions match the client's own texture format, so update and re-run; if
 it persists, reinstall with `--no-hero-icon` to keep the stock icon; everything else
 is unaffected.
 
-**Mac: "a build the Hero patch does not know".**
-Your `World of Warcraft.app` is not the build this installer was made for. Run
-`./update.sh`, and if it still says so, get the realm's current Mac client.
+**Mac or Switch: "a build the Hero patch does not know".**
+Your `World of Warcraft.app` or `WoW.nro` is not the build this installer was made
+for. Update the installer, and if it still says so, get the realm's current client.
 Nothing was changed.
 
 **Mac: macOS says the game "cannot be opened" after installing.**

@@ -2,7 +2,7 @@
 
 The Mac client is wowdecomp's macOS build, installed beside Data the way
 Blizzard's Mac client sat in its game folder, and every player of a realm gets
-the same build. lib/machopatch.py knows the bytes to change in it; this does
+the same build. lib/armpatch.py knows the bytes to change in it; this does
 the rest. The app is copied to World of Warcraft.app.classless-bak first (the
 Mac twin of Wow.exe.classless-bak), patched, then signed again: an Apple
 Silicon Mac will not start an executable whose signature no longer matches it,
@@ -16,7 +16,7 @@ import plistlib
 import shutil
 import subprocess
 
-from . import machopatch
+from . import armpatch
 
 APP_NAME = "World of Warcraft.app"
 BUNDLE_ID = "org.wowdecomp.wow"
@@ -61,12 +61,12 @@ def is_wowdecomp(app) -> bool:
 
 
 def executable(app):
-    return machopatch.app_executable(app)
+    return armpatch.app_executable(app)
 
 
 def inspect(app):
-    """(state, uuid, label), machopatch's states."""
-    return machopatch.inspect(executable(app))
+    """(state, key, label), armpatch's states."""
+    return armpatch.inspect(executable(app))
 
 
 def backup_path(app):
@@ -94,9 +94,9 @@ def patch(app):
     """Patch and sign the app. Returns a summary line; raises AppError with the
     app left as it was."""
     state, uuid, label = inspect(app)
-    if state == machopatch.PATCHED:
+    if state == armpatch.PATCHED:
         return "already has the Hero changes (%s)" % label
-    if state == machopatch.UNKNOWN:
+    if state == armpatch.UNKNOWN:
         raise AppError("this World of Warcraft.app is not a build the Hero patch knows "
                        "(build %s), so it was not touched" % (uuid or "unreadable"))
     if not can_sign():
@@ -107,7 +107,7 @@ def patch(app):
     if kept:
         shutil.copytree(app, backup, symlinks=True)
     try:
-        machopatch.write_executable(executable(app), patched=True)
+        armpatch.write_executable(executable(app), patched=True)
         sign(app)
     except (OSError, RuntimeError, AppError) as error:
         _put_back(app, backup, kept)
@@ -122,14 +122,14 @@ def _put_back(app, backup, made_now):
         os.rename(backup, app)
     else:
         try:
-            machopatch.write_executable(executable(app), patched=False)
+            armpatch.write_executable(executable(app), patched=False)
             sign(app)
         except (OSError, RuntimeError, AppError):
             pass
 
 
 def has_changes(app) -> bool:
-    return os.path.isdir(backup_path(app)) or inspect(app)[0] == machopatch.PATCHED
+    return os.path.isdir(backup_path(app)) or inspect(app)[0] == armpatch.PATCHED
 
 
 def restore(app):
@@ -140,10 +140,10 @@ def restore(app):
         shutil.rmtree(app)
         os.rename(backup, app)
         return "stock app put back"
-    if inspect(app)[0] != machopatch.PATCHED:
+    if inspect(app)[0] != armpatch.PATCHED:
         return "has no Hero changes; left alone"
     if not can_sign():
         raise AppError("codesign was not found; restore the app on the Mac it runs on")
-    machopatch.write_executable(executable(app), patched=False)
+    armpatch.write_executable(executable(app), patched=False)
     sign(app)
     return "Hero changes taken out and the app signed again (no stock copy was kept)"

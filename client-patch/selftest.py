@@ -1,15 +1,17 @@
 #!/usr/bin/env python3
 """Exercise the whole client-patch pipeline against a real client, read-only.
 
-    python3 selftest.py "B:/World.of.Warcraft.3.3.5a" [--macapp "B:/.../World of Warcraft.app"]
+    python3 selftest.py "B:/World.of.Warcraft.3.3.5a" [--macapp ".../World of Warcraft.app"]
+                        [--nro ".../WoW.nro" [--elf ".../Wow.elf"]]
 
 Resolves every source file through the client's archive stack, applies each
 transform, builds the archives in a temp folder, reads them back, and checks the
 results. Nothing in the client is written to. Exits non-zero on any failure.
 
-The Mac client's patch (mac_patch.json) is checked every run against
-exepatch; --macapp names a stock Mac build to apply and revert it on, in
-memory. The app is never written to.
+The arm64 clients' patch (arm64_patch.json) is checked every run against
+exepatch; --macapp and --nro name stock builds (the Mac app, the Switch NRO with
+the Wow.elf beside it) to apply and revert it on, in memory. They are never
+written to.
 """
 
 from __future__ import annotations
@@ -23,7 +25,7 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, HERE)
 
 from lib import (blp, charcreate, clientfs, dbc, dkfaces, elemental, exepatch,  # noqa: E402
-                 gluestrings, machopatch, mpq, outfit)
+                 gluestrings, armpatch, mpq, outfit)
 
 CHRCLASSES = "DBFilesClient\\ChrClasses.dbc"
 CHARBASEINFO = "DBFilesClient\\CharBaseInfo.dbc"
@@ -62,26 +64,31 @@ def dbc_strings(data):
     return data[start:start + string_size]
 
 
-def check_mac_patch(macapp):
-    """mac_patch.json: the Wow.exe patch's twin for each Mac build. Every byte
-    patch needs a Mac twin, the shared constants must agree, and with a build
-    at hand the table must apply and revert to the byte and be exactly what
-    gen_mac_patch.py writes from it."""
-    print("\n== Mac client (mac_patch.json)")
-    manifest = machopatch.load_manifest()
-    builds = manifest.get("builds", [])
-    check("mac_patch.json holds a build", bool(builds), "%d" % len(builds))
+def check_arm64_patch(builds):
+    """arm64_patch.json: the Wow.exe patch's twin for each Mac and Switch
+    build. Every byte patch needs a twin in every build, the shared constants
+    must agree, and with a build at hand the table must apply and revert to the
+    byte and be exactly what gen_arm64_patch.py writes from it. `builds` is
+    [(program path, elf path or None)]."""
+    print("\n== arm64 clients (arm64_patch.json)")
+    manifest = armpatch.load_manifest()
+    entries = manifest.get("builds", [])
+    check("arm64_patch.json holds a Mac and a Switch build",
+          {b.get("platform") for b in entries} >= {"mac", "switch"},
+          ", ".join(sorted("%s %s" % (b.get("platform"), b.get("key", "")[:8]) for b in entries)))
     wanted = {("INTERFACE",), ("GLOW",), ("RUNE",), ("FACE_ARROW",), ("TOTEM_TOOL",),
               ("HERO_COLOR",)} | {("CLASS_GATES", i) for i in range(len(exepatch.CLASS_GATES))}
     # movz w10, #FILL_FIRST_ID: the Face arrow caves compare row ids with it
     fill = (0x52800000 | (exepatch.FILL_FIRST_ID << 5) | 10).to_bytes(4, "little").hex().upper()
-    for build in builds:
-        label = build["uuid"][:12]
+    for build in entries:
+        label = "%s %s" % (build["platform"], build["key"][:8])
         twins = {tuple(g["twin"]) for g in build["groups"]}
-        check("%s: every Wow.exe patch has a Mac twin" % label, twins == wanted,
+        check("%s: every Wow.exe patch has a twin" % label, twins == wanted,
               "missing %s, unknown %s" % (sorted(wanted - twins), sorted(twins - wanted)))
         spans, bad = [], []
         for group in build["groups"]:
+            if not group["parts"] and not group.get("built"):
+                bad.append(group["name"])
             for off, stock, patched in group["parts"]:
                 if len(stock) != len(patched) or stock == patched or len(stock) % 2:
                     bad.append(group["name"])
@@ -98,52 +105,61 @@ def check_mac_patch(macapp):
               faces and sum(p[2].count(fill) for p in faces[0]["parts"]) == 2
               and exepatch.FILL_FIRST_ID == dbc.CHARSECTIONS_FILL_FIRST_ID)
 
-    if not macapp:
-        print("  [skip] no --macapp build given: the table was not applied to one")
+    if not builds:
+        print("  [skip] no --macapp or --nro build given: the table was not applied to one")
         return
-    exe = machopatch.app_executable(macapp) if os.path.isdir(macapp) else macapp
-    data = open(exe, "rb").read()
-    build, state = machopatch.identify(data)
-    check("the build is one mac_patch.json knows", build is not None, state or "unknown")
-    if not build:
-        return
-    stock, _b = machopatch.patched_bytes(data, patched=False)
-    patched, _b = machopatch.patched_bytes(data, patched=True)
-    check("the stock build is the one the table was written from",
-          machopatch.sha256(stock) == build["sha256"] and len(stock) == build["size"])
-    check("patched, it reads as patched", machopatch.identify(patched)[1] == "done")
-    allowed = set()
-    for group in build["groups"]:
-        for off, part, _p in group["parts"]:
-            allowed.update(range(off, off + len(part) // 2))
-    changed = {i for i in range(len(stock)) if stock[i] != patched[i]}
-    check("only the listed bytes change", changed and changed <= allowed,
-          "%d changed, %d outside" % (len(changed), len(changed - allowed)))
-    try:
-        reverted = machopatch.patched_bytes(patched, patched=False)[0]
-    except RuntimeError as error:
-        reverted = str(error)
-    check("reverting gives back the stock build", reverted == stock,
-          reverted if isinstance(reverted, str) else "")
-    try:
-        import gen_mac_patch
-        with tempfile.TemporaryDirectory() as tmp:
-            copy = os.path.join(tmp, "World of Warcraft")
-            with open(copy, "wb") as handle:
-                handle.write(stock)
-            fresh = gen_mac_patch.generate(copy)
-        fresh["label"] = build["label"]
-        check("mac_patch.json is what gen_mac_patch.py writes from this build", fresh == build)
-    except ImportError as error:
-        print("  [skip] gen_mac_patch.py needs capstone and keystone-engine (%s)" % error)
+    for path, elf_path in builds:
+        exe = armpatch.app_executable(path) if os.path.isdir(path) else path
+        data = open(exe, "rb").read()
+        build, state = armpatch.identify(data)
+        name = os.path.basename(path.rstrip("/\\"))
+        check("%s is a build arm64_patch.json knows" % name, build is not None, state or "unknown")
+        if not build:
+            continue
+        stock, _b = armpatch.patched_bytes(data, patched=False)
+        patched, _b = armpatch.patched_bytes(data, patched=True)
+        check("%s: the stock build is the one the table was written from" % name,
+              armpatch.sha256(stock) == build["sha256"] and len(stock) == build["size"])
+        check("%s: patched, it reads as patched" % name, armpatch.identify(patched)[1] == "done")
+        allowed = set()
+        for group in build["groups"]:
+            for off, part, _p in group["parts"]:
+                allowed.update(range(off, off + len(part) // 2))
+        changed = {i for i in range(len(stock)) if stock[i] != patched[i]}
+        check("%s: only the listed bytes change" % name, changed and changed <= allowed,
+              "%d changed, %d outside" % (len(changed), len(changed - allowed)))
+        try:
+            reverted = armpatch.patched_bytes(patched, patched=False)[0]
+        except RuntimeError as error:
+            reverted = str(error)
+        check("%s: reverting gives back the stock build" % name, reverted == stock,
+              reverted if isinstance(reverted, str) else "")
+        try:
+            import gen_arm64_patch
+            if build["platform"] == "switch" and not elf_path:
+                folder = os.path.dirname(os.path.abspath(exe))
+                elf_path = next((os.path.join(folder, n) for n in os.listdir(folder)
+                                 if n.lower() == "wow.elf"), None)
+            with tempfile.TemporaryDirectory() as tmp:
+                copy = os.path.join(tmp, "WoW.nro" if build["platform"] == "switch" else "World of Warcraft")
+                with open(copy, "wb") as handle:
+                    handle.write(stock)
+                fresh = gen_arm64_patch.generate(gen_arm64_patch.load(copy, elf_path))
+            fresh["label"] = build["label"]
+            check("%s: arm64_patch.json is what gen_arm64_patch.py writes from it" % name, fresh == build)
+        except ImportError as error:
+            print("  [skip] gen_arm64_patch.py needs capstone and keystone-engine (%s)" % error)
 
 
 def main(argv):
-    macapp = None
-    if "--macapp" in argv:
-        at = argv.index("--macapp")
-        macapp = argv[at + 1] if at + 1 < len(argv) else None
-        argv = argv[:at] + argv[at + 2:]
+    options = {}
+    for flag in ("--macapp", "--nro", "--elf"):
+        if flag in argv:
+            at = argv.index(flag)
+            options[flag] = argv[at + 1] if at + 1 < len(argv) else None
+            argv = argv[:at] + argv[at + 2:]
+    arm64_builds = ([(options["--macapp"], None)] if options.get("--macapp") else []) + \
+        ([(options["--nro"], options.get("--elf"))] if options.get("--nro") else [])
     if len(argv) != 2:
         print(__doc__)
         return 2
@@ -1242,7 +1258,7 @@ def main(argv):
                 check("restore gives back %s" % label,
                       expected is not None and restored == expected)
 
-    check_mac_patch(macapp)
+    check_arm64_patch(arm64_builds)
 
     print()
     if FAILURES:

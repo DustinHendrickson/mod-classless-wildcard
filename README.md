@@ -811,8 +811,9 @@ spell and talent DBC tables). Most original values are backed up first and resto
 
 Give players the `client-patch` and `client-addon` folders. With WoW **closed**, they run
 `install.bat` on Windows or `./install.sh "/path/to/WoW"` on macOS and Linux. On a Mac the
-installer patches the realm's `World of Warcraft.app` (a [wowdecomp](https://github.com/DustinHendrickson/wowdecomp/tree/macos-arm64)
-build) the way it patches `Wow.exe`. See [`client-patch/README.md`](client-patch/README.md).
+installer patches the realm's `World of Warcraft.app`, and for a Switch it patches `WoW.nro` on the
+SD card from a PC (both [wowdecomp](https://github.com/DustinHendrickson/wowdecomp) builds), the way
+it patches `Wow.exe`. See [`client-patch/README.md`](client-patch/README.md).
 
 After that, updates are two steps: `update.bat` (or `./update.sh`) fetches the latest
 patch and addon from this repository into those two folders, then `install.bat` installs
@@ -827,32 +828,33 @@ Client and server must come from the same version of the module. After a server 
 re-run the installer. If an item shows a question mark or a ranged weapon says "Out of range",
 delete the `Cache` folder in the WoW directory and log back in.
 
-#### When you build a new Mac client
+#### When you build a new Mac or Switch client
 
-Players only ever run `./install.sh`. This is for you, and only when you rebuild
-`World of Warcraft.app` from wowdecomp and give players the new app. Updating this module, or
-the server, does not need it.
+Players only ever run the installer. This is for you, and only when you rebuild the Mac
+`World of Warcraft.app` or the Switch `WoW.nro` from wowdecomp and give players the new one.
+Updating this module, or the server, does not need it.
 
-The Mac patch is a list of exact byte changes for one build of the app, the way the Windows
-patch only fits `Wow.exe` 12340. A rebuild moves the code, so until the new build is added,
-`./install.sh` refuses it with "a build the Hero patch does not know" and changes nothing.
+The Mac and Switch patches are lists of exact byte changes for one build, the way the Windows
+patch only fits `Wow.exe` 12340. A rebuild moves the code, so until the new build is added, the
+installer refuses it with "a build the Hero patch does not know" and changes nothing.
 
 To add it, on any PC with Python (Windows works), from `client-patch`:
 
 1. Once: `python3 -m pip install --user capstone keystone-engine unicorn`
-2. `python3 gen_mac_patch.py "/path/to/World of Warcraft.app"`. It adds the build to
-   `mac_patch.json` and keeps the builds already there, so players on the old app can still
+2. `python3 gen_arm64_patch.py "/path/to/World of Warcraft.app"`, or for the Switch
+   `python3 gen_arm64_patch.py "/path/to/WoW.nro"` with the `Wow.elf` from the same build next
+   to it (`Tools/Switch/build.sh` writes both into `bin/Switch`). It adds the build to
+   `arm64_patch.json` and keeps the builds already there, so players on an older one can still
    install.
-3. `python3 test_mac_patch.py "/path/to/World of Warcraft.app"` must end with
-   `all Mac patch checks pass`.
+3. `python3 test_arm64_patch.py` with the same path must end with `all arm64 patch checks pass`.
 4. `python3 selftest.py "/path/to/your/WoW folder" --macapp "/path/to/World of Warcraft.app"`
-   must end with `all checks passed`.
-5. Commit and push `mac_patch.json`, then give players the new app. They run `./update.sh` and
-   `./install.sh` as usual.
+   (or `--nro "/path/to/WoW.nro"`) must end with `all checks passed`.
+5. Commit and push `arm64_patch.json`, then give players the new build. They update and
+   install as usual.
 
-Use the app exactly as the build made it, never one the installer already patched. If step 2
+Use the build exactly as it was made, never one the installer already patched. If step 2
 prints `Not written:` and names a site, or step 3 fails, the rebuild changed code the patch
-relies on, and `gen_mac_patch.py` needs updating before players get that build. Details are in
+relies on, and `gen_arm64_patch.py` needs updating before players get that build. Details are in
 [`client-patch/MAINTAINERS.md`](client-patch/MAINTAINERS.md).
 
 ### Playerbots
