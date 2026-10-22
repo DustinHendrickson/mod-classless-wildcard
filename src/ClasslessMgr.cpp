@@ -1155,6 +1155,7 @@ void ClasslessMgr::BuildLibrary()
     BuildClassPassives();
     LoadArchetypes();
     StripSpellTools();
+    FreeTotemItems();
     GateOverpowerOnDodge();
     PrepareNemesisTrack();
     PrepareSwearVendetta();
@@ -6945,6 +6946,56 @@ void ClasslessMgr::StripSpellTools()
                 strip(t.rankSpells[r]);
 
     LOG_INFO("module.classless", "mod-classless-wildcard: tool requirement cleared from {} spells", cleared);
+}
+
+// The shaman's elemental totems (Earth, Fire, Water and Air Totem) are quest
+// rewards any Hero can earn, and carry ITEM_FLAG_NO_USER_DESTROY, so once
+// taken they could never leave the bags. Nothing needs them now:
+// StripSpellTools takes the tool off every spell, and the client patch reads
+// the totem categories as carried. What is left is Relic of the Earthen Ring,
+// which takes all four for a relic that counts as each. So the flag comes off
+// and the player chooses: keep them for the relic, or destroy them.
+//
+// Found by what they are rather than by id: an item that is not equipped (so
+// not a relic) whose tool category is a shaman totem's, and that cannot be
+// destroyed. Without that last test three unrelated items whose data carries a
+// totem category would be caught too (a recipe, a glyph, Indalamar's Holy Hand
+// Grenade). In 3.3.5 this finds exactly the four totems. In memory only, like
+// StripSpellTools, so removing the module puts the flag back.
+void ClasslessMgr::FreeTotemItems()
+{
+    if (!_freedTotemItems.empty())
+        return;     // done already: the flag is gone, so the test below would find nothing
+    for (ItemTemplate* proto : *sObjectMgr->GetItemTemplateStoreFast())
+    {
+        if (!proto || !proto->TotemCategory || proto->InventoryType != INVTYPE_NON_EQUIP
+            || !proto->HasFlag(ITEM_FLAG_NO_USER_DESTROY))
+            continue;
+        TotemCategoryEntry const* category = sTotemCategoryStore.LookupEntry(proto->TotemCategory);
+        if (!category || category->categoryType != TOTEM_CATEGORY_TYPE_TOTEM)
+            continue;
+        proto->Flags = ItemFlags(proto->Flags & ~ITEM_FLAG_NO_USER_DESTROY);
+        _freedTotemItems.push_back(proto->ItemId);
+    }
+
+    LOG_INFO("module.classless", "mod-classless-wildcard: {} shaman totem item(s) can be destroyed",
+             _freedTotemItems.size());
+}
+
+// The client checks ITEM_FLAG_NO_USER_DESTROY itself, from its cached copy of
+// the item (CGGameUI::DeleteCursorItem), and keeps that copy across sessions,
+// so a player who saw a totem before FreeTotemItems keeps being told it
+// cannot be destroyed. An item record the server sends replaces the cached
+// one whether or not the client asked, so each login sends the totems' again,
+// through the core's own query handler.
+void ClasslessMgr::SendTotemItems(Player* player) const
+{
+    for (uint32 entry : _freedTotemItems)
+    {
+        WorldPacket query(CMSG_ITEM_QUERY_SINGLE, 4);
+        query << entry;
+        player->GetSession()->HandleItemQuerySingleOpcode(query);
+    }
 }
 
 // Overpower, taken off combo points.

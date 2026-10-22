@@ -208,6 +208,10 @@ with your build on the right. Lock or reroll anything you own from the same wind
   on). `ArmorWeight.Enable = 0` turns it off.
 - **Every item for every Hero.** Class armour sets, all 353 glyphs, rogue poisons, soul bags,
   quivers and relics. Sons of Hodir satchels give a random armour type.
+- **Shaman totems can be destroyed.** No spell needs the Earth, Fire, Water or Air Totem, so
+  each can be thrown away like any other item. Keep all four to trade them in for the relic from
+  *Relic of the Earthen Ring* (level 30), which counts as all four and takes one slot instead of
+  four. A totem thrown away cannot be got back.
 - **Starter kit.** A neutral outfit, a bag, a spread of basic weapons (dagger, one- and two-hand
   swords and maces, an axe, a staff, a bow, a gun and throwing axes) with ammunition, a shield, and
   food and water.

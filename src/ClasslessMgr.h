@@ -204,6 +204,10 @@ public:
     // Tells the addon the amounts in force and at a full set whenever they
     // change, or always with `push` (a state request after a /reload).
     void SyncArmorWeight(Player* player, bool push = false);
+    // Send the destroyable totems' item records again (see FreeTotemItems).
+    // The client refuses to destroy an item from its own cached copy, which
+    // can predate the change. Called at login.
+    void SendTotemItems(Player* player) const;
     void SyncRebirthAura(Player* player, uint32 rank);
     uint32 GrantRebirthTitles(Player* player);   // the title granted just now, 0 if none
 
@@ -563,6 +567,9 @@ private:
     // spell. The client patch clears the same two columns and the two must
     // agree, so this is not conditional.
     void StripSpellTools();
+    // Let the shaman's elemental totems (Earth, Fire, Water, Air Totem) be
+    // destroyed: with the tool requirement gone they only take a bag slot.
+    void FreeTotemItems();
     // Take Overpower off combo points: no finishing-move flag, and the
     // OVERPOWER_AURA_STATE as its caster aura state. The client patch makes the
     // same two changes, so this is not conditional.
@@ -635,6 +642,8 @@ private:
     std::unordered_map<uint32, uint32> _spellToFirst;                  // any rank -> firstSpellId
     // form/stance spell (any rank) -> the basic spells that come with it
     std::unordered_map<uint32, std::vector<uint32>> _formKits;
+    // the totem items FreeTotemItems made destroyable, re-sent at login
+    std::vector<uint32> _freedTotemItems;
     // class passive -> every ability rank and talent rank spell that needs it
     std::unordered_map<uint32, std::unordered_set<uint32>> _classPassiveOwners;
     // shapeshift form id -> the RANK spell that grants that form. Not the

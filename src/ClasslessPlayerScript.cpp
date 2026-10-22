@@ -747,6 +747,10 @@ public:
         sClasslessMgr->HandleLogin(player);
         sClasslessMgr->SyncArmorWeight(player);
 
+        // the client's cached totem records may still say "cannot be destroyed"
+        if (!sClasslessMgr->IsExempt(player))
+            sClasslessMgr->SendTotemItems(player);
+
         // InitTalentForLevel hands out (ceiling - used) free points whenever the
         // core recalculates, and it recalculates on login. Spending them is
         // refused by OnPlayerCanLearnTalent, but the number itself should read
