@@ -24,6 +24,8 @@ client-patch/update_manifest.txt
 client-patch/*.new
 # The Python install.sh sets up for Pillow when the system's refuses pip --user
 client-patch/.venv/
+# Mac and Switch builds a player's installer worked out on their own PC
+client-patch/arm64_patch.local.json
 
 # Editor / OS
 .vscode/

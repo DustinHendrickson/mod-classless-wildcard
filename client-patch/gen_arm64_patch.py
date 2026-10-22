@@ -23,9 +23,17 @@ it, then test_arm64_patch.py on it: a pattern can still match where a register
 a cave borrows has become live, and only running the code shows that.
 
 A Mac app keeps its symbols. An NRO does not: give the Wow.elf the same build
-wrote next to it (found beside the .nro, or --elf). Maintainers only: needs
-`pip install capstone keystone-engine`. Players' installs read
-arm64_patch.json with the standard library alone.
+wrote next to it (found beside the .nro, or --elf).
+
+The installer runs this too, on a player's PC, for a build arm64_patch.json
+does not hold (learn()): the result is checked with test_arm64_patch.py and kept
+in that PC's arm64_patch.local.json only. So nothing here may need keystone,
+which has no Apple Silicon build: edits and caves are put together by
+assemble() below, which encodes branches itself and takes every other
+instruction from the "encodings" table in arm64_patch.json. Running this file
+with keystone installed (`pip install capstone keystone-engine`) refreshes that
+table; selftest.py checks it covers every instruction and matches keystone.
+Players need capstone (and unicorn for the checks), installed on demand.
 """
 
 from __future__ import annotations
@@ -50,6 +58,11 @@ HEX = r"(0x[0-9a-f]+)"
 
 class GenError(Exception):
     pass
+
+
+class SiteMissing(GenError):
+    """A site none of whose forms is in the build: the build moved code the
+    patch relies on, and SITES needs a form for it."""
 
 
 class Code:
@@ -273,6 +286,113 @@ SITES = [
 ]
 
 
+# --------------------------------------------------------------- assembler
+
+CONDITIONS = {"eq": 0, "ne": 1, "hs": 2, "cs": 2, "lo": 3, "cc": 3, "mi": 4, "pl": 5, "vs": 6,
+              "vc": 7, "hi": 8, "ls": 9, "ge": 10, "lt": 11, "gt": 12, "le": 13, "al": 14}
+_BRANCH = re.compile(r"(b\.[a-z]{2}|bl|b|cbz|cbnz)\s+(.+)")
+_LABEL = re.compile(r"([A-Za-z_]\w*):\s*(.*)")
+
+
+def _items(text):
+    """[('label', name) or ('ins', text)] for assembly written one
+    instruction per line or ';', labels as `name:`."""
+    items = []
+    for piece in re.split(r"[;\n]", text):
+        piece = piece.strip()
+        while piece:
+            label = _LABEL.fullmatch(piece)
+            if not label:
+                break
+            items.append(("label", label.group(1)))
+            piece = label.group(2).strip()
+        if piece:
+            items.append(("ins", " ".join(piece.split())))
+    return items
+
+
+def _branch(ins, pc, labels):
+    """The encoding of a b, bl, b.cond, cbz or cbnz at `pc`, or None for any
+    other instruction."""
+    match = _BRANCH.fullmatch(ins)
+    if not match:
+        return None
+    op, operands = match.groups()
+    reg = None
+    if op in ("cbz", "cbnz"):
+        reg, operands = [part.strip() for part in operands.split(",", 1)]
+    operands = operands.strip()
+    target = labels[operands] if operands in labels else int(operands.lstrip("#"), 16)
+    offset = target - pc
+    if offset % 4:
+        raise GenError("%s: the target is not instruction aligned" % ins)
+    words = offset >> 2
+    if op in ("b", "bl"):
+        if not -(1 << 25) <= words < (1 << 25):
+            raise GenError("%s: out of reach (128 MB)" % ins)
+        return (0x94000000 if op == "bl" else 0x14000000) | (words & 0x3FFFFFF)
+    if not -(1 << 18) <= words < (1 << 18):
+        raise GenError("%s: out of reach (1 MB)" % ins)
+    if op.startswith("b."):
+        return 0x54000000 | ((words & 0x7FFFF) << 5) | CONDITIONS[op[2:]]
+    wide = reg.startswith("x")
+    base = (0x35000000 if op == "cbnz" else 0x34000000) | (0x80000000 if wide else 0)
+    return base | ((words & 0x7FFFF) << 5) | int(reg[1:])
+
+
+def assemble(text, addr, encodings):
+    """Machine code for `text` placed at `addr`."""
+    items = _items(text)
+    labels, pc = {}, addr
+    for kind, value in items:
+        if kind == "label":
+            labels[value] = pc
+        else:
+            pc += 4
+    out, pc = bytearray(), addr
+    for kind, value in items:
+        if kind == "label":
+            continue
+        word = _branch(value, pc, labels)
+        if word is None:
+            if value not in encodings:
+                raise GenError("no encoding for '%s': run gen_arm64_patch.py with keystone "
+                               "installed to refresh the table" % value)
+            word = int.from_bytes(bytes.fromhex(encodings[value]), "little")     # stored as file bytes
+        out += word.to_bytes(4, "little")
+        pc += 4
+    return bytes(out)
+
+
+def template_instructions():
+    """Every instruction other than a branch that the edits and caves use."""
+    texts = list(CAVES.values())
+    for _name, _twin, forms in SITES:
+        for form in forms:
+            texts += [part.edit[2] for part in form if isinstance(part, Code)]
+    found = set()
+    for text in texts:
+        for kind, value in _items(text):
+            if kind == "ins" and not _BRANCH.fullmatch(value):
+                found.add(value)
+    return found
+
+
+def keystone_encodings():
+    """{instruction: hex word} for template_instructions(), from keystone."""
+    import keystone
+    ks = keystone.Ks(keystone.KS_ARCH_ARM64, keystone.KS_MODE_LITTLE_ENDIAN)
+    table = {}
+    for ins in sorted(template_instructions()):
+        if "{" in ins:
+            raise GenError("'%s' has a placeholder outside a branch" % ins)
+        code, _count = ks.asm(ins, 0)
+        if len(code) != 4:
+            raise GenError("'%s' is not one instruction" % ins)
+        table[ins] = bytes(code).hex().upper()
+    return table
+
+
 # ------------------------------------------------------------------ builds
 
 class Build:
@@ -283,10 +403,9 @@ class Build:
 
     def __init__(self, data):
         import capstone
-        import keystone
         self.data = data
         self.cs = capstone.Cs(capstone.CS_ARCH_ARM64, capstone.CS_MODE_ARM)
-        self.ks = keystone.Ks(keystone.KS_ARCH_ARM64, keystone.KS_MODE_LITTLE_ENDIAN)
+        self.encodings = armpatch.load_manifest().get("encodings", {})
 
     def symbol(self, name):
         """A symbol's address. Names are written as the Mac spells them; an
@@ -329,8 +448,7 @@ class Build:
         return hits
 
     def assemble(self, text, addr):
-        encoding, _count = self.ks.asm(text, addr)
-        return bytes(encoding)
+        return assemble(text, addr, self.encodings)
 
 
 class MacBuild(Build):
@@ -481,7 +599,7 @@ def generate(build):
                 chosen.append((name, twin, found))
                 break
         else:
-            raise GenError("%s: none of its %d form(s) is in this build" % (name, len(forms)))
+            raise SiteMissing("%s: none of its %d form(s) is in this build" % (name, len(forms)))
         for part, _hits in found[0]:
             if part.cave and part.cave not in cave_sizes:
                 body = re.sub(r"\{[^}]+\}", "0x0", CAVES[part.cave])
@@ -546,6 +664,33 @@ def generate(build):
     }
 
 
+def learn(path, elf_path=None):
+    """The installer's step for a build arm64_patch.json does not hold, run
+    on the player's PC: work out its patch, check it by running the patched
+    code (test_arm64_patch.py), and keep it in that PC's arm64_patch.local.json.
+    Returns (entry, checks passed). Raises GenError (SiteMissing when the
+    build moved code the patch relies on), keeping nothing."""
+    import contextlib
+    import io
+    import test_arm64_patch
+    entry = generate(load(path, elf_path))
+    armpatch.save_local_build(entry)
+    test_arm64_patch.FAILURES.clear()
+    out = io.StringIO()
+    try:
+        with contextlib.redirect_stdout(out):
+            code = test_arm64_patch.run(path, elf_path)
+    except Exception as error:     # a crash in the emulated code is a failed check
+        code = 1
+        out.write("\nfailed: %s\n" % error)
+    if code:
+        armpatch.remove_local_build(entry["key"])
+        failed = [line.strip() for line in out.getvalue().splitlines()
+                  if "FAIL" in line or "Not checked" in line or "failed" in line]
+        raise GenError("the patched code failed its checks (%s)" % "; ".join(failed[:4]))
+    return entry, out.getvalue().count("[ok  ]")
+
+
 def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
     parser.add_argument("build", help="World of Warcraft.app (or its executable), or WoW.nro: a stock build")
@@ -553,12 +698,20 @@ def main(argv=None):
     parser.add_argument("--check", action="store_true",
                         help="only say whether arm64_patch.json already holds this build")
     args = parser.parse_args(argv)
+    manifest = armpatch.load_manifest()
+    try:
+        fresh = keystone_encodings()
+    except ImportError:
+        fresh = None
+    if fresh is not None and fresh != manifest.get("encodings") and not args.check:
+        manifest["encodings"] = fresh
+        armpatch.save_manifest(manifest)
+        print("instruction table refreshed from keystone (%d instructions)" % len(fresh))
     try:
         entry = generate(load(args.build, args.elf))
     except (GenError, macho.MachOError, nro.NroError, elf.ElfError, OSError) as error:
         print("Not written: %s" % error)
         return 1
-    manifest = armpatch.load_manifest()
     old = [b for b in manifest["builds"] if b["key"] == entry["key"]]
     if args.check:
         same = bool(old) and old[0] == entry

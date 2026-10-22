@@ -830,32 +830,18 @@ delete the `Cache` folder in the WoW directory and log back in.
 
 #### When you build a new Mac or Switch client
 
-Players only ever run the installer. This is for you, and only when you rebuild the Mac
-`World of Warcraft.app` or the Switch `WoW.nro` from wowdecomp and give players the new one.
-Updating this module, or the server, does not need it.
+Nothing to do for the patch. The first time a player installs onto a Mac or Switch build the
+installer has not seen, it works that build's patch out on their PC, checks it by running the
+patched code, and keeps it there for later installs. It takes a minute or two longer, once.
 
-The Mac and Switch patches are lists of exact byte changes for one build, the way the Windows
-patch only fits `Wow.exe` 12340. A rebuild moves the code, so until the new build is added, the
-installer refuses it with "a build the Hero patch does not know" and changes nothing.
+For the Switch, give players the `WoW.nro` **and** the `Wow.elf` from the same build
+(`Tools/Switch/build.sh` writes both into `bin/Switch`): they copy both into `/switch/wow`. The
+`.nro` keeps no function names, and the installer needs them from the `.elf` to find its way
+around a new build.
 
-To add it, on any PC with Python (Windows works), from `client-patch`:
-
-1. Once: `python3 -m pip install --user capstone keystone-engine unicorn`
-2. `python3 gen_arm64_patch.py "/path/to/World of Warcraft.app"`, or for the Switch
-   `python3 gen_arm64_patch.py "/path/to/WoW.nro"` with the `Wow.elf` from the same build next
-   to it (`Tools/Switch/build.sh` writes both into `bin/Switch`). It adds the build to
-   `arm64_patch.json` and keeps the builds already there, so players on an older one can still
-   install.
-3. `python3 test_arm64_patch.py` with the same path must end with `all arm64 patch checks pass`.
-4. `python3 selftest.py "/path/to/your/WoW folder" --macapp "/path/to/World of Warcraft.app"`
-   (or `--nro "/path/to/WoW.nro"`) must end with `all checks passed`.
-5. Commit and push `arm64_patch.json`, then give players the new build. They update and
-   install as usual.
-
-Use the build exactly as it was made, never one the installer already patched. If step 2
-prints `Not written:` and names a site, or step 3 fails, the rebuild changed code the patch
-relies on, and `gen_arm64_patch.py` needs updating before players get that build. Details are in
-[`client-patch/MAINTAINERS.md`](client-patch/MAINTAINERS.md).
+If a player's installer says the build "moved code the Hero patch relies on", the patch needs
+updating for that build before it can install; nothing on their side was changed.
+[`client-patch/MAINTAINERS.md`](client-patch/MAINTAINERS.md) has the details.
 
 ### Playerbots
 

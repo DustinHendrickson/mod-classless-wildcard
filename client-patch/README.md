@@ -122,8 +122,8 @@ client fills it in again as you play.
   Mac: the one that comes with Xcode's command line tools is enough.
 - On a **Mac**: the realm's Mac client, `World of Warcraft.app`, in your WoW folder beside
   `Data`. See [macOS](#macos) below.
-- For a **Switch**: the realm's Switch client, `WoW.nro`, in `/switch/wow` on the SD card beside
-  `Data`, and a PC to put the card in. See [Nintendo Switch](#nintendo-switch) below.
+- For a **Switch**: the realm's Switch client, `WoW.nro` and `Wow.elf`, in `/switch/wow` on the
+  SD card beside `Data`, and a PC to put the card in. See [Nintendo Switch](#nintendo-switch) below.
 
 Nothing else. No compiler, no StormLib, no MPQ editor, no extra downloads.
 
@@ -174,9 +174,10 @@ of its own in `client-patch/.venv` and uses that.
 
 ### Nintendo Switch
 
-The Switch client is `WoW.nro`, the realm's Switch build, in `/switch/wow` on the SD card
-next to `Data`. The installer runs on a PC: put the SD card in the PC (or reach it any other
-way the PC can open), then point the installer at that folder on the card, for example:
+The Switch client is the realm's Switch build: `WoW.nro` and `Wow.elf`. Put both in
+`/switch/wow` on the SD card, next to `Data`. The installer runs on a PC: put the SD card in
+the PC (or reach it any other way the PC can open), then point the installer at that folder
+on the card, for example:
 
 ```
 install.bat "E:\switch\wow"
@@ -187,6 +188,12 @@ straight onto the card: `WoW.nro` is patched (the one you had is kept as
 `WoW.nro.classless-bak`), the patch archives go into `Data`, the addon into
 `Interface/AddOns`, and the cache is cleared. Nothing has to be copied by hand. Put the card
 back in the Switch and start the game as usual.
+
+The first install onto a new build of `WoW.nro` takes a minute or two longer: the installer
+reads `Wow.elf` to work out where the changes go in that build, and checks them by running
+the patched code before it writes anything. It downloads two Python libraries for that
+(`capstone` and `unicorn`), the way it downloads Pillow. The same happens once for a new
+build of the Mac app.
 
 ### Linux
 ### Any system, explicitly
@@ -347,10 +354,13 @@ Current versions match the client's own texture format, so update and re-run; if
 it persists, reinstall with `--no-hero-icon` to keep the stock icon; everything else
 is unaffected.
 
-**Mac or Switch: "a build the Hero patch does not know".**
-Your `World of Warcraft.app` or `WoW.nro` is not the build this installer was made
-for. Update the installer, and if it still says so, get the realm's current client.
-Nothing was changed.
+**Switch: "put the Wow.elf from the same build next to it".**
+Copy the `Wow.elf` that came with your `WoW.nro` into `/switch/wow` beside it, and run
+the installer again. A `Wow.elf` from another build does not work. Nothing was changed.
+
+**Mac or Switch: "moved code the Hero patch relies on".**
+This build of the client cannot be patched until the installer is updated for it. Run
+the updater later, or ask on the realm's Discord. Nothing was changed.
 
 **Mac: macOS says the game "cannot be opened" after installing.**
 The patch signs the app again, and macOS can ask you to allow it once more, as it

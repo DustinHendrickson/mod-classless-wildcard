@@ -748,7 +748,36 @@ def uses_app(wow_dir):
     return use, app
 
 
-def plan_app(wow_dir, app):
+# A Mac or Switch build the shipped table does not hold: its patch is worked
+# out on this PC and checked first (gen_arm64_patch.learn), or not at all.
+NEW_BUILD = "new"
+
+
+def learn_build(program, elf_path=None, name=None):
+    """Work out and check the patch for a build the installer has not seen,
+    keeping it in this PC's arm64_patch.local.json. Raises Abort, having kept
+    nothing, when it cannot be done."""
+    print("This %s is a build the installer has not seen. Working out its patch on this"
+          % (name or os.path.basename(program)))
+    print("PC and checking it by running the patched code (first time only, a minute or two).")
+    print()
+    ensure_library("capstone", "capstone", "read the new build's code")
+    ensure_library("unicorn", "unicorn", "check the patched code by running it")
+    import gen_arm64_patch
+    try:
+        _entry, checks = gen_arm64_patch.learn(program, elf_path)
+    except gen_arm64_patch.SiteMissing as error:
+        raise Abort("This build moved code the Hero patch relies on (%s), so it cannot be\n"
+                    "patched yet. Ask the realm for an installer update. Nothing was written."
+                    % error)
+    except Exception as error:     # an unreadable file, a Wow.elf from another build, a failed check
+        raise Abort("The patch for this build could not be worked out: %s.\n"
+                    "Nothing was written." % error)
+    print("Checked: all %d checks passed. Kept on this PC for later installs." % checks)
+    print()
+
+
+def plan_app(args, wow_dir, app):
     """What the install does to World of Warcraft.app, decided before
     anything is written: (state, label). Raises Abort when the app cannot be
     given the Hero changes, so a client is never left with the Hero interface
@@ -760,27 +789,42 @@ def plan_app(wow_dir, app):
         raise Abort("%s is not the realm's Mac client (wowdecomp's build), so it cannot be\n"
                     "given the Hero changes. Install everything except the program\n"
                     "changes with  --no-creation-text" % app)
-    state, uuid, label = macapp.inspect(app)
+    state, _key, label = macapp.inspect(app)
     if state == armpatch.UNKNOWN:
-        raise Abort("%s is a build the Hero patch does not know (build %s).\n"
-                    "The realm's Mac client and this installer must come from the same\n"
-                    "release: run ./update.sh, or get the realm's current Mac client.\n"
-                    "Nothing was written." % (app, uuid or "unreadable"))
+        if args.dry_run:
+            return NEW_BUILD, "a new build: its patch is worked out on this PC first"
+        learn_build(macapp.executable(app), name=macapp.APP_NAME)
+        state, _key, label = macapp.inspect(app)
     if state == armpatch.UNPATCHED and not macapp.can_sign():
         raise Abort("World of Warcraft.app has to be signed again after the patch, which\n"
                     "only a Mac can do. Run this installer on the Mac.")
     return state, label
 
 
-def plan_nro(nro_file):
+def find_wow_elf(folder):
+    try:
+        return next((os.path.join(folder, name) for name in os.listdir(folder)
+                     if name.lower() == "wow.elf"), None)
+    except OSError:
+        return None
+
+
+def plan_nro(args, nro_file):
     """What the install does to WoW.nro, decided before anything is written:
-    (state, label). Raises Abort for a build the patch does not know."""
-    state, key, label = armpatch.inspect(nro_file)
+    (state, label). A build the installer has not seen is worked out here,
+    which needs the Wow.elf from the same build next to it."""
+    state, _key, label = armpatch.inspect(nro_file)
     if state == armpatch.UNKNOWN:
-        raise Abort("%s is a build the Hero patch does not know (build %s).\n"
-                    "The realm's Switch client and this installer must come from the same\n"
-                    "release: update the installer, or get the realm's current WoW.nro.\n"
-                    "Nothing was written." % (nro_file, key or "unreadable"))
+        elf_path = find_wow_elf(os.path.dirname(nro_file))
+        if not elf_path:
+            raise Abort("This WoW.nro is a build the installer has not seen. To patch it, put the\n"
+                        "Wow.elf from the same build next to it in %s (the realm's Switch\n"
+                        "build comes as WoW.nro and Wow.elf) and run this again.\n"
+                        "Nothing was written." % os.path.dirname(nro_file))
+        if args.dry_run:
+            return NEW_BUILD, "a new build: its patch is worked out on this PC first"
+        learn_build(nro_file, elf_path)
+        state, _key, label = armpatch.inspect(nro_file)
     return state, label
 
 
@@ -851,8 +895,8 @@ def do_install(args, wow_dir):
     # Warcraft.app on a Mac, else Wow.exe
     nro_file = find_wow_nro(wow_dir)
     use_app, app = (False, None) if nro_file else uses_app(wow_dir)
-    mac = plan_app(wow_dir, app) if use_app and args.exe else None
-    switch = plan_nro(nro_file) if nro_file and args.exe else None
+    mac = plan_app(args, wow_dir, app) if use_app and args.exe else None
+    switch = plan_nro(args, nro_file) if nro_file and args.exe else None
 
     def yn(on):
         return "yes" if on else "no"
@@ -1263,37 +1307,46 @@ def do_uninstall(args, wow_dir):
 
 # -------------------------------------------------------------------- main
 
-def ensure_pillow():
-    """The install paints the Hero emblem and the elemental icons, so the
-    Python 'Pillow' library is required. Install it on the spot when it is
-    missing, and stop if that fails: a client without the icons is not the
-    full install."""
+def ensure_library(module, package, why):
+    """Install a Python library on the spot when it is missing, and stop if
+    that fails."""
     try:
-        import PIL  # noqa: F401
+        __import__(module)
         return
     except ImportError:
         pass
-    cmd = [sys.executable, "-m", "pip", "install", "--user", "pillow"]
-    print("The Python library 'Pillow' is needed to paint the Hero and elemental icons.")
+    cmd = [sys.executable, "-m", "pip", "install", "--user", package]
+    print("The Python library '%s' is needed to %s." % (package, why))
     print("Installing it now:  " + " ".join(cmd))
     print()
     try:
         subprocess.run(cmd, check=True)
     except (OSError, subprocess.CalledProcessError):
         if os.name != "nt":
-            # Homebrew's Python refuses --user installs; install.sh sets up its own
-            raise Abort("Pillow could not be installed automatically. Run ./install.sh instead:\n"
-                        "it sets up a Python with Pillow beside the installer.")
-        raise Abort("Pillow could not be installed automatically. Run this, then run the installer again:\n"
-                    "  " + " ".join(cmd))
+            # Homebrew's Python refuses --user installs; install.sh's own Python takes them
+            raise Abort("'%s' could not be installed automatically. Run this, then ./install.sh again:\n"
+                        "  %s -m venv .venv && .venv/bin/python -m pip install pillow %s"
+                        % (package, os.path.basename(sys.executable), package))
+        raise Abort("'%s' could not be installed automatically. Run this, then run the installer "
+                    "again:\n  %s" % (package, " ".join(cmd)))
     import importlib
+    import site
     importlib.invalidate_caches()
+    user_site = site.getusersitepackages()
+    if user_site not in sys.path:
+        sys.path.append(user_site)
     try:
-        import PIL  # noqa: F401
+        __import__(module)
     except ImportError:
-        raise Abort("Pillow was installed but this Python cannot import it. Run this, then try again:\n"
-                    "  " + " ".join(cmd))
+        raise Abort("'%s' was installed but this Python cannot import it. Run this, then try again:\n"
+                    "  %s" % (package, " ".join(cmd)))
     print()
+
+
+def ensure_pillow():
+    """The install paints the Hero emblem and the elemental icons, so the
+    Python 'Pillow' library is required."""
+    ensure_library("PIL", "pillow", "paint the Hero and elemental icons")
 
 
 def main(argv=None):

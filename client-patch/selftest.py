@@ -105,6 +105,38 @@ def check_arm64_patch(builds):
               faces and sum(p[2].count(fill) for p in faces[0]["parts"]) == 2
               and exepatch.FILL_FIRST_ID == dbc.CHARSECTIONS_FILL_FIRST_ID)
 
+    # A player's installer puts edits and caves together without keystone:
+    # its instruction table must cover every instruction, and agree with
+    # keystone, branches included, wherever keystone is installed.
+    import re
+    import gen_arm64_patch
+    encodings = manifest.get("encodings", {})
+    missing = sorted(gen_arm64_patch.template_instructions() - set(encodings))
+    check("the instruction table covers every edit and cave", not missing, ", ".join(missing))
+    try:
+        reference = gen_arm64_patch.keystone_encodings()
+    except ImportError:
+        print("  [skip] keystone-engine is not installed: the table was not compared with it")
+    else:
+        import keystone
+        ks = keystone.Ks(keystone.KS_ARCH_ARM64, keystone.KS_MODE_LITTLE_ENDIAN)
+        texts = list(gen_arm64_patch.CAVES.values()) + [
+            part.edit[2] for _n, _t, forms in gen_arm64_patch.SITES for form in forms
+            for part in form if isinstance(part, gen_arm64_patch.Code)]
+        at = 0x100400000
+        differ = []
+        for text in texts:
+            text = re.sub(r"\{[^}]+\}", "0x%x" % (at + 0x80), text)
+            try:
+                ours = gen_arm64_patch.assemble(text, at, encodings)
+            except gen_arm64_patch.GenError:
+                ours = None
+            theirs = bytes(ks.asm(text, at)[0])
+            if ours != theirs:
+                differ.append(text.strip().splitlines()[0][:40])
+        check("the table is keystone's, and the built-in assembler matches it",
+              reference == encodings and not differ, "; ".join(differ))
+
     if not builds:
         print("  [skip] no --macapp or --nro build given: the table was not applied to one")
         return

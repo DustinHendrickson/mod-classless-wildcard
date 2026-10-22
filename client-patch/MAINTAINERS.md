@@ -611,8 +611,9 @@ one group per `exepatch` site, each part `[file offset, stock bytes, patched
 bytes]`. A group can hold no parts and a `built` note when the build has the
 change already: the Switch build is made with the interface signature checks
 off. The installer applies a build only when every part holds its stock bytes,
-and reads it as patched only when every part holds its patched bytes; any other
-program is refused with its build id. `lib/armpatch.py` does the bytes
+and reads it as patched only when every part holds its patched bytes. A build
+neither table holds is worked out on the player's PC first (see below), and
+refused when that fails. `lib/armpatch.py` does the bytes
 (standard library only) and the NRO (backup `WoW.nro.classless-bak`, nothing
 else: homebrew is not signed); `lib/macapp.py` the Mac bundle: it keeps
 `World of Warcraft.app.classless-bak`, patches, and signs the app again with the
@@ -647,11 +648,25 @@ reaches 1 MB. What differs from `Wow.exe`:
 - **hunter pets** — `CanGainXP` and `GetPetPersonality` are rewritten in place
   to read the pet's power type at `+0x47`, as on Windows.
 
-Every rebuild moves the code. Before players get a new build: run
-`gen_arm64_patch.py` on it (it adds the build to `arm64_patch.json` and keeps
-the others), then `test_arm64_patch.py` and `selftest.py --macapp` / `--nro`. A
-pattern can still match where a register a cave borrows has become live, and
-only running the code shows that.
+Every rebuild moves the code, and a player's installer handles that itself.
+For a build `arm64_patch.json` does not hold, `install.py` calls
+`gen_arm64_patch.learn()` on the player's PC: it generates the entry (an NRO's
+symbols from the `Wow.elf` beside it, which is why Switch players get both
+files), runs `test_arm64_patch.py` against it, and keeps it in that PC's
+`arm64_patch.local.json` (git-ignored, never shipped) only when every check
+passes; otherwise it is dropped and the install stops before writing anything.
+The checks matter: a pattern can still match where a register a cave borrows
+has become live, and only running the code shows that. capstone and unicorn
+are installed on demand, as Pillow is. keystone is not, because it has no Apple
+Silicon build: edits and caves are put together by `gen_arm64_patch.assemble()`,
+which encodes branches itself and takes every other instruction from the
+`encodings` table in `arm64_patch.json`. After changing `SITES` or `CAVES`, run
+`gen_arm64_patch.py` on a build with keystone installed to refresh that table;
+selftest fails until it covers every instruction and matches keystone.
+
+Adding a build to the shipped table (`gen_arm64_patch.py <build>`) is optional:
+it saves players the first-install step for that build. When `learn()` says a
+build moved code (`SiteMissing`), give the site a form for it in `SITES`.
 
 Checked on Windows: the Mac 3.3.5 build (UUID `7db2888e...`, 108 checks) and
 the Switch build `5e4b1972...` (96 checks; the feral line is one site there),

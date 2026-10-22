@@ -29,6 +29,9 @@ from . import macho, nro
 
 HERE = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 MANIFEST = os.path.join(HERE, "arm64_patch.json")
+# builds this PC's installer worked out itself (gen_arm64_patch.learn): never
+# shipped, never in the repository, read after the shipped table
+LOCAL_MANIFEST = os.path.join(HERE, "arm64_patch.local.json")
 
 UNPATCHED = "unpatched"
 PATCHED = "patched"
@@ -51,6 +54,31 @@ def save_manifest(manifest, path=MANIFEST):
     manifest["builds"] = sorted(manifest["builds"], key=lambda build: (build["platform"], build["key"]))
     with open(path, "w", encoding="utf-8", newline="\n") as handle:
         json.dump(manifest, handle, indent=1, sort_keys=True)
+        handle.write("\n")
+
+
+def all_builds():
+    """The shipped builds, then the ones this PC worked out."""
+    return load_manifest()["builds"] + load_manifest(LOCAL_MANIFEST)["builds"]
+
+
+def save_local_build(entry):
+    local = load_manifest(LOCAL_MANIFEST)
+    local["builds"] = [b for b in local["builds"] if b["key"] != entry["key"]] + [entry]
+    _save_local(local)
+
+
+def remove_local_build(key):
+    local = load_manifest(LOCAL_MANIFEST)
+    local["builds"] = [b for b in local["builds"] if b["key"] != key]
+    _save_local(local)
+
+
+def _save_local(local):
+    local["about"] = ("Builds this PC's installer worked out and checked itself. "
+                      "Local only; delete it to have them worked out again.")
+    with open(LOCAL_MANIFEST, "w", encoding="utf-8", newline="\n") as handle:
+        json.dump(local, handle, indent=1, sort_keys=True)
         handle.write("\n")
 
 
@@ -94,10 +122,11 @@ def _state(data, build):
 
 def identify(data, manifest=None):
     """(build entry, 'apply' or 'done') for the build these bytes are, or
-    (None, None). The id picks the entry; the bytes decide."""
-    manifest = manifest or load_manifest()
+    (None, None). The id picks the entry; the bytes decide. Without a
+    manifest, the shipped builds and this PC's own are searched."""
+    builds = manifest["builds"] if manifest else all_builds()
     key = build_key(data)
-    for build in manifest["builds"]:
+    for build in builds:
         if key and build["key"] == key:
             state = _state(data, build)
             return (build, state) if state != "absent" else (None, None)
