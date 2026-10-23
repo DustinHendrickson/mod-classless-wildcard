@@ -666,6 +666,7 @@ def main(argv):
                     (framexml.RAIDUI_LUA, framexml.open_raid_pets, 'fileName == "WARLOCK" ) then'),
                     (framexml.PAPERDOLL_LUA, framexml.open_pet_bonus, '\tunitClass = strupper(unitClass);\n\tif( unitClass == "WARLOCK" )'),
                     (framexml.UIPARENT_LUA, framexml.open_bar_row, 'for i=1, GetNumShapeshiftForms() do'),
+                    (framexml.UIPARENT_LUA, framexml.pet_talents_key, 'PlayerTalentFrame_Toggle(false, GetActiveTalentGroup());'),
                     (framexml.PETBAR_LUA, framexml.open_pet_bar_row, '_G["ShapeshiftButton"..GetNumShapeshiftForms()]:GetRight() + 20;\n\telseif')):
                 fx_text = files.find(path)[0].decode("utf-8", "surrogateescape")
                 fx_new, fx_changed = edit(fx_text)
@@ -692,6 +693,10 @@ def main(argv):
             check("every file in the locale archive is one uninstall knows",
                   all(_ours(n.lower()) for n in locale_payload),
                   ", ".join(n for n in locale_payload if not _ours(n.lower())))
+            ui_built = locale_payload.get(framexml.UIPARENT_LUA, b"").decode("utf-8", "surrogateescape")
+            check("UIParent.lua in the archive carries both of its edits",
+                  "function ShapeshiftBar_RowRight()" in ui_built
+                  and "PlayerTalentFrame_Toggle(true, 1);" in ui_built)
             for atlas_path in (installer.CLASSICONS_INGAME, installer.CLASSICONS_CREATE,
                                installer.CLASSICONS_SCORE):
                 atlas_name = atlas_path.split(chr(92))[-1]

@@ -582,6 +582,8 @@ def build_locale_patch(files, name, report, locale, theme=False, icon=False):
                  "a Hero's pet bonus lines on the character sheet"),
                 (framexml.UIPARENT_LUA, framexml.open_bar_row,
                  "the totem bar joins the stance row; forms past ten are laid out"),
+                (framexml.UIPARENT_LUA, framexml.pet_talents_key,
+                 "the Talents button and key open pet talents only"),
                 (framexml.PETBAR_LUA, framexml.open_pet_bar_row,
                  "the pet bar starts after the whole stance row")):
             try:
@@ -589,7 +591,8 @@ def build_locale_patch(files, name, report, locale, theme=False, icon=False):
             except FileNotFoundError:
                 report.append("  %s  not found; left alone" % path.split("\\")[-1])
                 continue
-            text = raw.decode("utf-8", "surrogateescape")
+            # a second edit to the same file builds on the first
+            text = payload.get(path, raw).decode("utf-8", "surrogateescape")
             new_text, changed = edit(text)
             if changed:
                 payload[path] = new_text.encode("utf-8", "surrogateescape")

@@ -4186,6 +4186,45 @@ def test_pet_talents(h):
     P.later["__scripts"]["OnUpdate"](P.later)
     h.check(not shown(talent), "the window closes once the pet has gone")
 
+    # in combat no close is made from here (it would slide the other panels
+    # from tainted code): the line shows at once, the close waits for combat
+    # to end, and both ways in wait the same
+    h.check(not P.regen["__events"]["PLAYER_REGEN_ENABLED"], "out of combat nothing waits for combat to end")
+    h.rt.execute("""
+        HIDES = 0
+        local stockHide = HideUIPanel
+        function HideUIPanel(f) HIDES = HIDES + 1; stockHide(f) end
+        function InCombatLockdown() return 1 end
+        ERRORS = {}
+    """)
+    g.PlayerTalentFrame_Toggle(False, 1)
+    P.later["__scripts"]["OnUpdate"](P.later)
+    errors = [str(v) for v in g.ERRORS.values()]
+    h.check(shown(talent) and g.HIDES == 0,
+            "in combat the window is not closed from here: shown=%r hides=%r" % (shown(talent), g.HIDES))
+    h.check(len(errors) == 1 and "Pet talents" in errors[0],
+            "the line still says what the button is for: %r" % errors)
+    h.check(bool(P.regen["__events"]["PLAYER_REGEN_ENABLED"]), "and the close waits for combat to end")
+    h.rt.execute("function InCombatLockdown() return nil end")
+    P.regen["__scripts"]["OnEvent"](P.regen, "PLAYER_REGEN_ENABLED")
+    h.check(shown(talent), "the close is a frame after combat ends, not inside the event")
+    P.later["__scripts"]["OnUpdate"](P.later)
+    h.check(not shown(talent) and g.HIDES == 1,
+            "and then it closes: shown=%r hides=%r" % (shown(talent), g.HIDES))
+
+    # a pet tamed during the fight: when combat ends it turns to the pet's spec
+    h.rt.execute("function InCombatLockdown() return 1 end")
+    g.PlayerTalentFrame_Toggle(False, 1)
+    g.PET_TALENT_GROUPS = 1
+    h.rt.execute("function InCombatLockdown() return nil end")
+    P.regen["__scripts"]["OnEvent"](P.regen, "PLAYER_REGEN_ENABLED")
+    P.later["__scripts"]["OnUpdate"](P.later)
+    h.check(shown(talent) and talent["pet"] and g.HIDES == 1,
+            "a pet by then: the window turns to its spec instead: shown=%r pet=%r"
+            % (shown(talent), talent["pet"]))
+    talent.Hide(talent)
+    g.PET_TALENT_GROUPS = 0
+
 
 def test_talents_key(h):
     print("--- J opens the stock Talents window, only when nothing is on J")

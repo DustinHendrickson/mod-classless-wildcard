@@ -216,3 +216,34 @@ def open_pet_bar_row(lua_text: str):
     """PetActionBarFrame.lua: the pet bar starts after the whole stance row.
     Returns (new_text, changed)."""
     return _swap_once(lua_text, _PETBAR_STOCK, _PETBAR_ROW)
+
+
+# ------------------------------------------------------------ the Talents key
+#
+# A Hero's talents are in the addon's Hero Advancement panel; the stock window
+# is for a tamed beast's. The Talents button and key (both ToggleTalentFrame)
+# open it on the player's spec, and the addon used to turn it to the pet's or
+# close it again. In combat it cannot close it: HideUIPanel from an addon
+# slides the other panels from tainted code. So ToggleTalentFrame itself asks
+# first: without a pet with talents it opens nothing and says what the button
+# is for, and with one it opens on the pet's spec.
+_TALENTS_STOCK = ("\tTalentFrame_LoadUI();\n"
+                  "\tif ( PlayerTalentFrame_Toggle ) then\n"
+                  "\t\tPlayerTalentFrame_Toggle(false, GetActiveTalentGroup());\n"
+                  "\tend\n")
+_TALENTS_PET = ("\t-- mod-classless-wildcard: this button and key are for a tamed beast's talents;\n"
+                "\t-- a Hero's own are in Hero Advancement\n"
+                "\tif ( (GetNumTalentGroups(false, true) or 0) == 0 ) then\n"
+                "\t\tUIErrorsFrame:AddMessage(\"Pet talents open here when you have a tamed beast out.\", 1.0, 0.82, 0.0);\n"
+                "\t\treturn;\n"
+                "\tend\n"
+                "\tTalentFrame_LoadUI();\n"
+                "\tif ( PlayerTalentFrame_Toggle ) then\n"
+                "\t\tPlayerTalentFrame_Toggle(true, 1);\n"
+                "\tend\n")
+
+
+def pet_talents_key(lua_text: str):
+    """UIParent.lua: the Talents button and key open the pet's talents, or
+    nothing without a pet that has them. Returns (new_text, changed)."""
+    return _swap_once(lua_text, _TALENTS_STOCK, _TALENTS_PET)

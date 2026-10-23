@@ -129,7 +129,7 @@ with your build on the right. Lock or reroll anything you own from the same wind
 
 - **Talents are in the Hero Advancement panel** at the rank you own, and in your spellbook. On the
   Classless path they cost Talent Essence, not talent points. The stock Talents window shows a
-  tamed beast's pet talents.
+  tamed beast's pet talents. Without one, the Talents button and key open nothing, in combat too.
 - **Talents that teach a spell** (Pyroblast, Mortal Strike, Mangle and so on) are in the
   Abilities list instead, with every rank, at the level their tier opens.
 - **General talents reach every class.** A talent that improves all of its class's abilities of

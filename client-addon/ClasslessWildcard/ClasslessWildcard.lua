@@ -11799,6 +11799,24 @@ do
         return (GetNumTalentGroups(false, true) or 0) > 0
     end
 
+    -- In combat a close from here would slide the other panels from tainted
+    -- code, so it waits until combat ends. The Talents button and key never
+    -- get this far without a pet: the client patch has ToggleTalentFrame ask
+    -- first (lib/framexml.py). This is for every other way in.
+    P.regen = CreateFrame("Frame")
+    P.regen:SetScript("OnEvent", function(self)
+        self:UnregisterEvent("PLAYER_REGEN_ENABLED")
+        P.later:Show()
+    end)
+
+    function P.close()
+        if InCombatLockdown() then
+            P.regen:RegisterEvent("PLAYER_REGEN_ENABLED")
+        else
+            HideUIPanel(PlayerTalentFrame)
+        end
+    end
+
     -- Without a pet the window has nothing for a Hero, so it closes and says
     -- what the button is for, where the game says "Not enough rage": the
     -- centre-screen line that fades by itself. Hero Advancement has its own
@@ -11810,8 +11828,7 @@ do
             PlayerTalentFrame_Open(true, 1)
             return
         end
-        if InCombatLockdown() then return end         -- panels do not move in combat
-        HideUIPanel(PlayerTalentFrame)
+        P.close()
         UIErrorsFrame:AddMessage("Pet talents open here when you have a tamed beast out.", 1.0, 0.82, 0.0)
     end
 
@@ -11842,8 +11859,8 @@ do
         if P.onGlyphs() then return end
         if P.petHasTalents() then
             PlayerTalentFrame_Open(true, 1)
-        elseif not InCombatLockdown() then
-            HideUIPanel(PlayerTalentFrame)
+        else
+            P.close()
         end
     end)
 

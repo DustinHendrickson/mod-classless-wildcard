@@ -550,6 +550,25 @@ The addon sizes its own buttons' borders (`CW.SizeFormButtons`) and leaves the
 totem bar alone whenever `ShapeshiftBar_RowRight` exists. `test_bar_row.py`
 runs both edits under Lua 5.1 against the client's own files.
 
+#### The Talents button and key
+
+The stock talent window is for a tamed beast's talents; a Hero's own are in
+Hero Advancement. `ToggleTalentFrame` (the Talents micro button and the
+`TOGGLETALENTS` key) opened it on the player's spec, and the addon turned it to
+the pet's or closed it again. In combat it could not close it:
+`HideUIPanel` from an addon slides the other panels through
+`FramePositionDelegate` from tainted code, and a plain `Hide()` leaves the
+frame in the delegate's slot, where `CloseWindows` keeps finding it and Escape
+stops opening the game menu. So `UIParent.lua` gets a second edit
+(`pet_talents_key`): without a pet that has talents
+(`GetNumTalentGroups(false, true)`) `ToggleTalentFrame` shows the "tamed beast"
+line and opens nothing, and with one it opens the pet's spec. The installer
+builds the second `UIParent.lua` edit on the first. Other ways onto the player's
+spec (the pet dismissed with the window up) still go through the addon, which
+in combat waits for `PLAYER_REGEN_ENABLED` to close it. `test_talents_key.py`
+runs the edited function under Lua 5.1, in and out of combat, with the stock one
+for contrast.
+
 #### Death Knight skins from any face
 
 The skin arrows are stock; the filled-in faces do their work. The Face arrows
@@ -685,11 +704,13 @@ python3 test_skin_arrows.py "B:/World.of.Warcraft.3.3.5a"
 
 `test_power_sync.py` (unicorn) runs the patched power-update guard from a
 patched copy of the client's bytes, for every pool against the bar's pool, and
-the stock bytes for contrast. `test_bar_row.py` (lupa) runs the bar-row edits:
+the stock bytes for contrast. `test_bar_row.py` (lupa) runs the bar-row edits,
+and `test_talents_key.py` (lupa) the Talents key edit:
 
 ```bash
 python3 test_power_sync.py "B:/World.of.Warcraft.3.3.5a"
 python3 test_bar_row.py "B:/World.of.Warcraft.3.3.5a"
+python3 test_talents_key.py "B:/World.of.Warcraft.3.3.5a"
 ```
 
 `test_elemental.py` checks the elemental-variant step against a DBC extract, no
