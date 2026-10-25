@@ -51,6 +51,7 @@
 #include "SpellDefines.h"
 
 #include <algorithm>
+#include <mutex>
 #include <unordered_map>
 #include <unordered_set>
 #include <vector>
@@ -96,6 +97,17 @@ namespace
     constexpr uint32 ICON_BROAD_STROKES = 1871;   // Overflow spills back to you
     constexpr uint32 ICON_MEDICINAL_VENOM = 2101; // the beetle learns to heal
 
+    // Guards the four per-character caches below: _lastDamageSchool,
+    // _weaveCount, _lastDamagingCastMs and _repertoireUsed.
+    //
+    // They are written from hits and casts, and maps update on their own
+    // threads, so two players on different maps write them at the same moment.
+    // An unordered_map insert can rehash under the other thread, which is the
+    // heap corruption ClasslessMgr::_statesLock was added for. Nothing that
+    // calls back into the game runs while it is held, so it cannot be taken
+    // twice by one thread.
+    std::mutex _cacheLock;
+
     // Two Schools: the school mask of the last damage this character dealt.
     // A pure cache like the two below -- losing it costs one hit's bonus.
     std::unordered_map<ObjectGuid::LowType, uint32> _lastDamageSchool;
@@ -136,17 +148,22 @@ namespace
 
         // Two Schools: only on damage, and only when the school differs from
         // the last one this character dealt. Recorded either way, so repeating
-        // a school simply earns nothing.
+        // a school simply earns nothing. Only a holder of the talent is
+        // recorded: every other player's hits would take the lock for nothing.
         if (!isHeal && schoolMask)
-        {
-            ObjectGuid::LowType const guid = player->GetGUID().GetCounter();
-            auto itr = _lastDamageSchool.find(guid);
-            bool const different = (itr == _lastDamageSchool.end() || itr->second != schoolMask);
-            if (different)
-                if (int32 const bonus = HeroTalentAmount(player, ICON_TWO_SCHOOLS))
+            if (int32 const bonus = HeroTalentAmount(player, ICON_TWO_SCHOOLS))
+            {
+                ObjectGuid::LowType const guid = player->GetGUID().GetCounter();
+                bool different;
+                {
+                    std::lock_guard<std::mutex> guard(_cacheLock);
+                    auto [itr, added] = _lastDamageSchool.try_emplace(guid, schoolMask);
+                    different = added || itr->second != schoolMask;
+                    itr->second = schoolMask;
+                }
+                if (different)
                     pct += bonus;
-            _lastDamageSchool[guid] = schoolMask;
-        }
+            }
 
         if (pct > 0)
             amount = int32(amount + CalculatePct(amount, pct));
@@ -242,7 +259,10 @@ public:
             return;
 
         if (IsDamagingSpellCast(info))
+        {
+            std::lock_guard<std::mutex> guard(_cacheLock);
             _lastDamagingCastMs[guid] = uint32(GameTime::GetGameTimeMS().count());
+        }
 
         // Weave: every Nth Hero ability gives its cost back. Family 14 is what
         // makes a spell a Hero ability, so nothing else is counted.
@@ -253,10 +273,18 @@ public:
         if (info->SpellFamilyName == HERO_FAMILY && !info->IsPassive())
             if (int32 const every = HeroTalentAmount(player, ICON_WEAVE))
             {
-                uint32& cast = _weaveCount[guid];
-                if (++cast >= uint32(every))
+                bool refund = false;
                 {
-                    cast = 0;
+                    std::lock_guard<std::mutex> guard(_cacheLock);
+                    uint32& cast = _weaveCount[guid];
+                    if (++cast >= uint32(every))
+                    {
+                        cast = 0;
+                        refund = true;
+                    }
+                }
+                if (refund)
+                {
                     int32 const cost = spell->GetPowerCost();
                     Powers const power = Powers(info->PowerType);
                     if (cost > 0)
@@ -270,15 +298,22 @@ public:
         // Repertoire counts DISTINCT abilities, so a repeat is free to ignore.
         // The set is created when the aura goes up and dropped when it comes
         // down, so an absent entry means the buff is not running.
-        auto itr = _repertoireUsed.find(guid);
-        if (itr == _repertoireUsed.end())
-            return;
-        if (!itr->second.used.insert(info->Id).second)
-            return;
+        uint32 auraSpellId;
+        size_t used;
+        {
+            std::lock_guard<std::mutex> guard(_cacheLock);
+            auto itr = _repertoireUsed.find(guid);
+            if (itr == _repertoireUsed.end())
+                return;
+            if (!itr->second.used.insert(info->Id).second)
+                return;
+            auraSpellId = itr->second.auraSpellId;
+            used = itr->second.used.size();
+        }
 
-        int32 const limit = std::max<int32>(1, SlotValue(itr->second.auraSpellId, EFFECT_1, player));
-        uint8 const stacks = uint8(std::min<size_t>(itr->second.used.size(), size_t(limit)));
-        if (Aura* aura = player->GetAura(itr->second.auraSpellId, player->GetGUID()))
+        int32 const limit = std::max<int32>(1, SlotValue(auraSpellId, EFFECT_1, player));
+        uint8 const stacks = uint8(std::min<size_t>(used, size_t(limit)));
+        if (Aura* aura = player->GetAura(auraSpellId, player->GetGUID()))
             if (aura->GetStackAmount() != stacks)
                 aura->SetStackAmount(stacks);
     }
@@ -286,6 +321,7 @@ public:
     void OnPlayerLogout(Player* player) override
     {
         ObjectGuid::LowType const guid = player->GetGUID().GetCounter();
+        std::lock_guard<std::mutex> guard(_cacheLock);
         _lastDamagingCastMs.erase(guid);
         _lastDamageSchool.erase(guid);
         _repertoireUsed.erase(guid);
@@ -312,12 +348,17 @@ class spell_cw_crossdraw : public SpellScript
         if (!caster || !target || !target->IsAlive())
             return;
 
-        auto itr = _lastDamagingCastMs.find(caster->GetGUID().GetCounter());
-        if (itr == _lastDamagingCastMs.end())
-            return;
+        uint32 last;
+        {
+            std::lock_guard<std::mutex> guard(_cacheLock);
+            auto itr = _lastDamagingCastMs.find(caster->GetGUID().GetCounter());
+            if (itr == _lastDamagingCastMs.end())
+                return;
+            last = itr->second;
+        }
         uint32 const now = uint32(GameTime::GetGameTimeMS().count());
         uint32 const window = uint32(std::max<int32>(0, GetSpellInfo()->Effects[EFFECT_1].CalcValue(caster)));
-        if (now < itr->second || now - itr->second > window)
+        if (now < last || now - last > window)
             return;
 
         uint32 const companion = GetSpellInfo()->Id + CROSSDRAW_COMPANION_OFFSET;
@@ -514,6 +555,7 @@ class spell_cw_repertoire : public AuraScript
     {
         if (Player* owner = GetUnitOwner() ? GetUnitOwner()->ToPlayer() : nullptr)
         {
+            std::lock_guard<std::mutex> guard(_cacheLock);
             RepertoireWindow& window = _repertoireUsed[owner->GetGUID().GetCounter()];
             window.auraSpellId = GetId();
             window.used.clear();
@@ -523,7 +565,10 @@ class spell_cw_repertoire : public AuraScript
     void CloseWindow(AuraEffect const* /*effect*/, AuraEffectHandleModes /*mode*/)
     {
         if (Player* owner = GetUnitOwner() ? GetUnitOwner()->ToPlayer() : nullptr)
+        {
+            std::lock_guard<std::mutex> guard(_cacheLock);
             _repertoireUsed.erase(owner->GetGUID().GetCounter());
+        }
     }
 
     void CalcAmount(AuraEffect const* aurEff, int32& amount, bool& /*canBeRecalculated*/)

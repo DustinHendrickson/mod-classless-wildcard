@@ -7,7 +7,10 @@
 -- SkillTierID/SkillCostIndex are copied from each skill's most permissive
 -- original row. Race-locked lines (languages, racials) are left untouched.
 -- Requires a worldserver restart to take effect.
-DELETE FROM `skillraceclassinfo_dbc` WHERE `ID` BETWEEN 990000 AND 990999;
+-- This file owns 990000-990499. 990500 is the Hero skill line's row, written
+-- by cw_spells_forged.sql, which runs first: clearing it made _LoadSkills
+-- drop every forged spell and its action button at login.
+DELETE FROM `skillraceclassinfo_dbc` WHERE `ID` BETWEEN 990000 AND 990499;
 INSERT INTO `skillraceclassinfo_dbc` (`ID`,`SkillID`,`RaceMask`,`ClassMask`,`Flags`,`MinLevel`,`SkillTierID`,`SkillCostIndex`) VALUES
 (990000,6,0,0,1040,0,0,0),
 (990001,8,0,0,1040,0,0,0),

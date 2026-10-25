@@ -263,6 +263,12 @@ nothing for that part; items, XP, gold and reputation are paid as normal.
   soon as the core has it; the worldserver log says at startup which applies.
 - Other UI addons are not supported. Anything that reads class, spellbook, talent frames or power
   type may display wrongly or throw errors.
+- Action bar addons (Bartender4, Dominos, ElvUI) choose how the main bar pages in a stance or form by
+  class, and to them a Hero is a Paladin, so the main bar keeps the same buttons in every stance.
+  The game itself pages it: the default bar does, and so does any bar given the paging condition
+  `[bonusbar:1] 7; [bonusbar:2] 8; [bonusbar:3] 9; [bonusbar:4] 10; 1`, which matches the
+  default bar. Bartender4 takes it as a custom condition for bar 1, and ElvUI as bar 1's action
+  paging.
 
 ---
 

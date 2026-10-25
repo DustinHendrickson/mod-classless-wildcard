@@ -128,7 +128,7 @@ def title_sql():
     return out
 HERO_LINE_ICON = 3411        # Ability_Hunter_FocusedAim, unused by any pool spell
 SKILL_CATEGORY_CLASS = 7
-RCI_ID = 990500              # skillraceclassinfo_dbc, clear of cw_world_skillraceclass
+RCI_ID = 990500              # skillraceclassinfo_dbc, above cw_world_skillraceclass's 990000..990499
 RCI_FLAGS = 1040             # what the module's other class-line rows use
 
 # The summoned markers. They exist to be looked at: not attackable, cannot
@@ -166,6 +166,9 @@ SUMMON_MARKER = 121       # what Force of Nature uses: temporary, fights, despaw
 # totems is confusing, and these are not totems in any mechanical sense either.
 # Each display is worn by a live creature and has a creature_model_info row --
 # without one Creature::UpdateEntry returns false and nothing spawns.
+# Entries stay inside 990110..990199 (FORGED_CREATURE_FIRST/LAST in
+# ClasslessForgedScripts.cpp must cover them): gen_vendor_lists.py owns
+# 990200..990299 and deletes that whole band.
 SUMMON_CREATURES = [
     (990110, "Bulwark Anchor", 31124, None),     # BoneGuardSpike, driven into the ground
     # The Gnomish Flame Turret, and it does turn out to shoot. A marker summon
@@ -1755,10 +1758,12 @@ TALENTS = [
     # rank 1's 500 printed as "0 sec" and ranks 2 and 3 both as "1". The
     # ${...}.1 form is how Blizzard's own talents print a fraction of a second
     # ("Reduces the global cooldown of your Curses by ${$m2/-1000}.1 sec").
+    # Inside ${...} the client knows $m and not $s: no stock text puts $s in an
+    # expression, and "${$s1/1000}.1" printed as a bare "$".
     dict(key="improvised_arsenal", name="Improvised Arsenal", row=0, col=0, ranks=5,
          icon=2185, dummy=True, values=[500, 1000, 1500, 2000, 2500],
          desc="Each time Makeshift Strike deals damage, the remaining cooldown of "
-              "Hurl drops by ${$s1/1000}.1 sec."),
+              "Hurl drops by ${$m1/1000}.1 sec."),
     # One point, one clear promise. Restoring your reserves while rooted was
     # the moment both of these spells felt pointless.
     dict(key="field_repairs", name="Field Repairs", row=1, col=0, ranks=1,

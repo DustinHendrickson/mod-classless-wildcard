@@ -50,6 +50,7 @@
 #include "TemporarySummon.h"
 #include "World.h"
 
+#include <mutex>
 #include <unordered_set>
 
 using namespace ClasslessWildcard;
@@ -754,8 +755,11 @@ public:
                     sClasslessMgr->SendNemesisMark(hero, unit->ToCreature(), false);
                     sClasslessMgr->SendNemesisTraits(hero, unit->ToCreature(), false);
                 }
-        _legionCalled.erase(unit->GetGUID());
-        _legionSpawn.erase(unit->GetGUID());
+        {
+            std::lock_guard<std::mutex> guard(_legionLock);
+            _legionCalled.erase(unit->GetGUID());
+            _legionSpawn.erase(unit->GetGUID());
+        }
         sClasslessMgr->ForgetCreature(unit->GetGUID());
         // passive, so death alone would leave a corpse on the minimap
         unit->RemoveAurasDueToSpell(ClasslessMgr::NEMESIS_TRACK_SPELL);
@@ -796,8 +800,11 @@ private:
     // loot like any other of their kind.
     void CallTheLegion(Creature* creature, Player* player)
     {
-        if (_legionSpawn.count(creature->GetGUID()) || !_legionCalled.insert(creature->GetGUID()).second)
-            return;
+        {
+            std::lock_guard<std::mutex> guard(_legionLock);
+            if (_legionSpawn.count(creature->GetGUID()) || !_legionCalled.insert(creature->GetGUID()).second)
+                return;
+        }
         CreatureTemplate const* tmpl = creature->GetCreatureTemplate();
         if (!tmpl || creature->IsDungeonBoss() || tmpl->rank == CREATURE_ELITE_WORLDBOSS
             || creature->GetCreatureType() == CREATURE_TYPE_CRITTER || creature->IsTrigger())
@@ -809,7 +816,10 @@ private:
                                                           TEMPSUMMON_TIMED_OR_DEAD_DESPAWN, LEGION_LINGER_MS);
             if (!called)
                 continue;
-            _legionSpawn[called->GetGUID()] = player->GetGUID();
+            {
+                std::lock_guard<std::mutex> guard(_legionLock);
+                _legionSpawn[called->GetGUID()] = player->GetGUID();
+            }
             called->SetHomePosition(pos);
             if (called->AI())
                 called->AI()->AttackStart(player);
@@ -921,6 +931,7 @@ private:
             return tag->owner;
         if (creature->GetEntry() == ClasslessMgr::HUNTER_ENTRY && creature->IsSummon())
             return creature->ToTempSummon()->GetSummonerGUID();
+        std::lock_guard<std::mutex> guard(_legionLock);
         auto itr = _legionSpawn.find(creature->GetGUID());
         return itr != _legionSpawn.end() ? itr->second : ObjectGuid::Empty;
     }
@@ -1010,6 +1021,10 @@ private:
         }
     }
 
+    // One script object serves every map, and maps update on their own
+    // threads: a death on one map erased from these while a hit on another
+    // read them. Held only around the containers themselves.
+    mutable std::mutex _legionLock;
     std::unordered_set<ObjectGuid> _legionCalled;   // originals that have called
     std::unordered_map<ObjectGuid, ObjectGuid> _legionSpawn;   // the called, who never call -> their Hero
 };

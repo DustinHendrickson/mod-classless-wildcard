@@ -1559,7 +1559,7 @@ def main():
     # Improvised Arsenal held 500 ms and printed "drops by 0 sec" for a whole
     # release: $/1000;s1 truncates, and ranks 2 and 3 both read "1". A divisor
     # is only honest when every rank's value is a multiple of it; a fraction
-    # wants Blizzard's ${$s1/1000}.1 form instead, which the client evaluates.
+    # wants Blizzard's ${$m1/1000}.1 form instead, which the client evaluates.
     truncated = []
     for sp in spells:
         text = sp["description"] or ""
@@ -1573,6 +1573,28 @@ def main():
                 truncated.append("%s: %s on %d shows %d" % (sp["name"], m.group(0), value, value // divisor))
     check("no tooltip divides a value the client would truncate", not truncated,
           "%s" % truncated[:4])
+
+    # ---- what the client reads inside ${...} ------------------------------
+    # The expression parser has its own vocabulary: $m1 works there and $s1
+    # does not, so Improvised Arsenal's "${$s1/1000}.1 sec" printed "$ sec".
+    # Every variable inside an expression must be a kind the stock text uses
+    # inside one, read from the extract rather than listed here.
+    stock_expr_kinds = set()
+    bad_expr = []
+    if _dbc_ok:
+        for _r in range(_sp.rows):
+            for _col in (F["Description"], F["ToolTip"]):
+                for _e in re.findall(r"\$\{([^}]*)\}", _sp.s(_r, _col)):
+                    stock_expr_kinds.update(re.findall(r"\$\d*([A-Za-z]+?)\d*(?![A-Za-z])", _e))
+        for sp in spells:
+            for field in ("description", "tooltip"):
+                for _e in re.findall(r"\$\{([^}]*)\}", sp.get(field) or ""):
+                    for kind in re.findall(r"\$\d*([A-Za-z]+?)\d*(?![A-Za-z])", _e):
+                        if kind not in stock_expr_kinds:
+                            bad_expr.append("%s: $%s in ${%s}" % (sp["name"], kind, _e))
+    check("every variable inside a ${...} expression is one the client evaluates there",
+          _dbc_ok and stock_expr_kinds and not bad_expr,
+          "%d stock kinds; %s" % (len(stock_expr_kinds), bad_expr[:4]))
 
     # ---- challenge-run rewards ----------------------------------------------
     # A reward line is paid for FINISHING a challenge run and must reach the

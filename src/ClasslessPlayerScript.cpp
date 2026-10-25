@@ -690,6 +690,11 @@ public:
     // only the chassis bar is displayed; the addon renders the off-pools).
     // This hook fires at the end of Player::UpdateMaxPower for every power
     // type on every stat update, so the pools can never be zeroed out.
+    //
+    // The configured size stands in for the core's base pool (GetCreatePowers:
+    // 100 energy, 1000 rage) inside the same formula, so Vigor and the like
+    // still add to it. Taking the larger of the two, as this once did, threw
+    // away any setting below stock: MaxEnergy = 70 still gave 100.
     void OnPlayerAfterUpdateMaxPower(Player* player, Powers& power, float& value) override
     {
         Config const& cfg = sClasslessMgr->cfg;
@@ -698,17 +703,24 @@ public:
         if (sClasslessMgr->IsExempt(player)) // bots/system accounts stay vanilla
             return;
 
+        uint32 configured;
         switch (power)
         {
             case POWER_RAGE:
-                value = std::max(value, float(cfg.urMaxRage));
+                configured = cfg.urMaxRage;
                 break;
             case POWER_ENERGY:
-                value = std::max(value, float(cfg.urMaxEnergy));
+                configured = cfg.urMaxEnergy;
                 break;
             default:
-                break;
+                return;
         }
+
+        UnitMods const unitMod = UnitMods(static_cast<uint16>(UNIT_MOD_POWER_START) + power);
+        value += (float(configured) - float(player->GetCreatePowers(power)))
+            * player->GetPctModifierValue(unitMod, BASE_PCT)
+            * player->GetPctModifierValue(unitMod, TOTAL_PCT);
+        value = std::max(value, 0.0f);
     }
 
     // Put the character on the one chassis the moment it is created, so the

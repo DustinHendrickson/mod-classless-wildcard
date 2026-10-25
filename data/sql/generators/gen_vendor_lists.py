@@ -52,7 +52,12 @@ JEWEL_SLOTS = {2, 11, 12, 23}          # neck, finger, trinket, held off-hand
 TIERS = [(1, 20), (21, 40), (41, 60), (61, 80)]
 
 # vendorEntry = LIST_BASE + category*10 + tier, tier 4 meaning "all levels".
-LIST_BASE = 990110
+# The lists own creature entries LIST_BASE..LIST_BASE+99 and nothing else may
+# live there: this file deletes the whole band before it writes the lists.
+LIST_BASE = 990200
+# Where the lists used to be. gen_forged_spells.py puts its summons in the same
+# band (990110 and up), so only the old copies of the NPC are cleared from it.
+OLD_LIST_LO, OLD_LIST_HI = 990110, 990209
 
 
 def split_top(s):
@@ -213,10 +218,40 @@ L.append("DELETE FROM `npc_vendor` WHERE `entry` = %d AND `item` BETWEEN %d AND 
          % (NPC, OWNED_LO, OWNED_HI))
 L.append("DELETE FROM `npc_vendor` WHERE `entry` BETWEEN %d AND %d;"
          % (LIST_BASE, LIST_BASE + 99))
+L.append("DELETE FROM `npc_vendor` WHERE `entry` BETWEEN %d AND %d;"
+         % (OLD_LIST_LO, OLD_LIST_HI))
 L.append("DELETE FROM `conditions` WHERE `SourceTypeOrReferenceId` = 23")
 L.append("  AND `SourceGroup` = %d AND `SourceEntry` BETWEEN %d AND %d;"
          % (NPC, OWNED_LO, OWNED_HI))
 L.append("")
+
+L.append(textwrap.dedent("""\
+    -- Older versions kept the lists at %d-%d, which is also where
+    -- cw_spells_forged.sql puts the forged summons (Venom Beetle, Reclaimed
+    -- Sentry, the markers), and that file runs first. Deleting the whole band
+    -- deleted them, so only the old lists go: each was a copy of %d and
+    -- carries its name. Their models first, while the templates still say
+    -- which rows were copies.
+    DROP PROCEDURE IF EXISTS cw_vendor_list_retire;
+    DELIMITER //
+    CREATE PROCEDURE cw_vendor_list_retire()
+    BEGIN
+        IF EXISTS (SELECT 1 FROM information_schema.TABLES
+                   WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'creature_template_model') THEN
+            DELETE m FROM `creature_template_model` m
+            JOIN `creature_template` ct ON ct.`entry` = m.`CreatureID`
+            JOIN `creature_template` npc ON npc.`entry` = %d
+            WHERE m.`CreatureID` BETWEEN %d AND %d AND ct.`name` = npc.`name`;
+        END IF;
+    END //
+    DELIMITER ;
+    CALL cw_vendor_list_retire();
+    DROP PROCEDURE IF EXISTS cw_vendor_list_retire;
+    DELETE ct FROM `creature_template` ct
+    JOIN `creature_template` npc ON npc.`entry` = %d
+    WHERE ct.`entry` BETWEEN %d AND %d AND ct.`name` = npc.`name`;
+    """ % (OLD_LIST_LO, OLD_LIST_HI, NPC, NPC, OLD_LIST_LO, OLD_LIST_HI,
+           NPC, OLD_LIST_LO, OLD_LIST_HI)))
 
 L.append(textwrap.dedent("""\
     -- Each list needs a creature_template row of its own. AzerothCore has the

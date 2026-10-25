@@ -786,12 +786,15 @@ ClasslessWildcard.CallPetSpell = 883
 #    numbers below are tunable.
 
 #    ClasslessWildcard.UniversalResources.MaxRage
-#        Maximum rage in internal units. 1000 is 100 displayed rage.
+#        Maximum rage in internal units. 1000 is 100 displayed rage. It
+#        replaces the stock 1000, so a smaller value shrinks the pool.
 #        Default: 1000
 ClasslessWildcard.UniversalResources.MaxRage = 1000
 
 #    ClasslessWildcard.UniversalResources.MaxEnergy
-#        Maximum energy.
+#        Maximum energy, as the bar shows it (70 is 70 energy). It replaces
+#        the stock 100, so a smaller value shrinks the pool, and talents such
+#        as Vigor still add to it.
 #        Default: 100
 ClasslessWildcard.UniversalResources.MaxEnergy = 100
 

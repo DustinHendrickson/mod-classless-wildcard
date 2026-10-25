@@ -6683,6 +6683,7 @@ namespace
         75461,  // Flame Shock Passive: Flame Shock's damage over time can crit
         58284,  // Chaos Bolt Passive: Chaos Bolt goes through absorbs
         75445,  // Demonic Immolate: Immolate's damage over time can crit
+        32215,  // Victorious State: a kill worth experience or honor allows Victory Rush
     };
 }
 
@@ -6691,6 +6692,11 @@ namespace
 // none (Deep Freeze Immunity State is a proc and keeps its mask there). Read
 // rather than listed, so the elemental variants -- separate library lines
 // that carry their base's family flags -- are covered with their bases.
+//
+// A passive that names no spells at all may still switch on a state: Victorious
+// State procs Victorious on a kill, Victorious sets the Victory Rush aura
+// state, and Victory Rush asks for that state before it can be cast. Its
+// owners are the spells that ask for the state its triggered spell sets.
 void ClasslessMgr::BuildClassPassives()
 {
     _classPassiveOwners.clear();
@@ -6715,7 +6721,13 @@ void ClasslessMgr::BuildClassPassives()
         if (!reaches)
             if (SpellProcEntry const* proc = sSpellMgr->GetSpellProcEntry(passiveId))
                 reaches = proc->SpellFamilyMask;
+        AuraStateType state = AURA_STATE_NONE;
         if (!reaches)
+            for (SpellEffectInfo const& eff : passive->GetEffects())
+                if (SpellInfo const* triggered = sSpellMgr->GetSpellInfo(eff.TriggerSpell))
+                    if (triggered->GetAuraState() != AURA_STATE_NONE)
+                        state = triggered->GetAuraState();
+        if (!reaches && state == AURA_STATE_NONE)
         {
             LOG_WARN("module.classless",
                      "mod-classless-wildcard: class passive {} names no spells it affects, skipped", passiveId);
@@ -6725,7 +6737,11 @@ void ClasslessMgr::BuildClassPassives()
         auto needs = [&](uint32 spellId)
         {
             SpellInfo const* info = sSpellMgr->GetSpellInfo(spellId);
-            return info && info->SpellFamilyName == passive->SpellFamilyName
+            if (!info)
+                return false;
+            if (state != AURA_STATE_NONE)
+                return info->CasterAuraState == uint32(state);
+            return info->SpellFamilyName == passive->SpellFamilyName
                 && (info->SpellFamilyFlags & reaches);
         };
 

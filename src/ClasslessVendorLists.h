@@ -39,22 +39,22 @@ namespace ClasslessWildcard
 
     constexpr VendorList VENDOR_LISTS[] =
     {
-        { 990110, 0, "Levels 1-20", 30, false },
-        { 990111, 0, "Levels 21-40", 32, false },
-        { 990112, 0, "Levels 41-60", 20, false },
-        { 990113, 0, "Levels 61-80", 20, false },
-        { 990114, 0, "All levels", 102, true },
-        { 990120, 1, "Levels 1-20", 36, false },
-        { 990121, 1, "Levels 21-40", 34, false },
-        { 990122, 1, "Levels 41-60", 24, false },
-        { 990123, 1, "Levels 61-80", 24, false },
-        { 990124, 1, "All levels", 118, true },
-        { 990130, 2, "Levels 1-20", 12, false },
-        { 990131, 2, "Levels 21-40", 14, false },
-        { 990132, 2, "Levels 41-60", 8, false },
-        { 990133, 2, "Levels 61-80", 8, false },
-        { 990134, 2, "All levels", 42, true },
-        { 990144, 3, "Heirloom gear", 23, true },
+        { 990200, 0, "Levels 1-20", 30, false },
+        { 990201, 0, "Levels 21-40", 32, false },
+        { 990202, 0, "Levels 41-60", 20, false },
+        { 990203, 0, "Levels 61-80", 20, false },
+        { 990204, 0, "All levels", 102, true },
+        { 990210, 1, "Levels 1-20", 36, false },
+        { 990211, 1, "Levels 21-40", 34, false },
+        { 990212, 1, "Levels 41-60", 24, false },
+        { 990213, 1, "Levels 61-80", 24, false },
+        { 990214, 1, "All levels", 118, true },
+        { 990220, 2, "Levels 1-20", 12, false },
+        { 990221, 2, "Levels 21-40", 14, false },
+        { 990222, 2, "Levels 41-60", 8, false },
+        { 990223, 2, "Levels 61-80", 8, false },
+        { 990224, 2, "All levels", 42, true },
+        { 990234, 3, "Heirloom gear", 23, true },
     };
 
     // The supplies counter is the creature's own list, which

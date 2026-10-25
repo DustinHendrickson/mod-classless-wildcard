@@ -807,10 +807,16 @@ namespace
         return ai->CanCastSpell(ks.id, on);
     }
 
+    // A spell cast on the ground goes through the unit overload too, which
+    // puts the destination on the target (targets.SetDst(*target)), as
+    // playerbots' own classes cast theirs. The position overload deletes the
+    // Spell after prepare() when the bot is moving and the spell has a cast
+    // time, but prepare() has already handed it to a SpellEvent that deletes
+    // it again a millisecond later: a double free that took the whole
+    // worldserver down (heap corruption, no crash log) whenever a moving
+    // Hero bot cast Flamestrike.
     bool Cast(PlayerbotAI* ai, Player* bot, KitSpell const& ks, Unit* target)
     {
-        if (ks.dest && target)
-            return ai->CastSpell(ks.id, target->GetPositionX(), target->GetPositionY(), target->GetPositionZ());
         return ai->CastSpell(ks.id, ks.selfOnly ? bot : target);
     }
 
